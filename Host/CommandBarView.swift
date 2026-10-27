@@ -7,13 +7,18 @@ protocol CommandBarDelegate: AnyObject {
 }
 
 final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
-  private static let fieldHeight: CGFloat = 60
-  private static let rowHeight: CGFloat = 44
-  private static let maxWidth: CGFloat = 760
+  private static let fieldHeight: CGFloat = 62
+  private static let rowHeight: CGFloat = 50
+  private static let listPadding: CGFloat = 7
+  private static let maxWidth: CGFloat = 765
+  private static let restingRows: CGFloat = 5
+  static let contentInset: CGFloat = 52
+  static let iconCenter: CGFloat = 31
+  static let rowInset: CGFloat = 9
 
   weak var delegate: CommandBarDelegate?
   let field = NSTextField()
-  private let panel = NSView()
+  private let panel = FlippedView()
   private let searchIcon = NSImageView()
   private let separator = NSView()
   private let scrollView = NSScrollView()
@@ -27,7 +32,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     wantsLayer = true
 
     panel.wantsLayer = true
-    panel.layer?.cornerRadius = 14
+    panel.layer?.cornerRadius = 12
     panel.layer?.cornerCurve = .continuous
     panel.layer?.borderWidth = 1
     panel.shadow = {
@@ -40,14 +45,14 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     addSubview(panel)
 
     searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
-    searchIcon.symbolConfiguration = .init(pointSize: 18, weight: .medium)
+    searchIcon.symbolConfiguration = .init(pointSize: 15, weight: .semibold)
     searchIcon.contentTintColor = .secondaryLabelColor
     panel.addSubview(searchIcon)
 
     field.isBordered = false
     field.drawsBackground = false
     field.focusRingType = .none
-    field.font = .systemFont(ofSize: 22)
+    field.font = .systemFont(ofSize: 20)
     field.placeholderString = "Search or Enter URL…"
     field.cell?.isScrollable = true
     field.cell?.usesSingleLineMode = true
@@ -64,7 +69,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     tableView.backgroundColor = .clear
     tableView.focusRingType = .none
     tableView.refusesFirstResponder = true
-    tableView.selectionHighlightStyle = .none
+    tableView.selectionHighlightStyle = .regular
     tableView.dataSource = self
     tableView.delegate = self
     tableView.target = self
@@ -73,7 +78,14 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     scrollView.drawsBackground = false
     scrollView.hasVerticalScroller = false
     panel.addSubview(scrollView)
+    scrollView.addTrackingArea(NSTrackingArea(
+      rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     updateColors()
+  }
+
+  override func mouseMoved(with event: NSEvent) {
+    let row = tableView.row(at: tableView.convert(event.locationInWindow, from: nil))
+    if row >= 0, row != tableView.selectedRow { tableView.selectRowIndexes([row], byExtendingSelection: false) }
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -130,16 +142,18 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   override func layout() {
     super.layout()
     let width = min(Self.maxWidth, bounds.width - 80)
-    let listHeight = CGFloat(suggestions.count) * Self.rowHeight + (suggestions.isEmpty ? 0 : 12)
+    let listHeight = suggestions.isEmpty ? 0 : CGFloat(suggestions.count) * Self.rowHeight + Self.listPadding * 2
     let height = Self.fieldHeight + listHeight
-    panel.frame = NSRect(x: (bounds.width - width) / 2, y: max(20, bounds.height * 0.16), width: width, height: height)
-    panel.layer?.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-    panel.layer?.position = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
-    searchIcon.frame = NSRect(x: 20, y: (Self.fieldHeight - 22) / 2, width: 22, height: 22)
-    field.frame = NSRect(x: 54, y: (Self.fieldHeight - 28) / 2, width: width - 74, height: 28)
-    separator.frame = NSRect(x: 0, y: Self.fieldHeight - 1, width: width, height: 1)
+    let restingHeight = Self.fieldHeight + Self.restingRows * Self.rowHeight + Self.listPadding * 2
+    let top = max(20, (bounds.height - restingHeight) / 2)
+    panel.frame = NSRect(x: (bounds.width - width) / 2, y: top, width: width, height: height)
+    searchIcon.frame = NSRect(x: Self.iconCenter - 9, y: (Self.fieldHeight - 18) / 2, width: 18, height: 18)
+    field.frame = NSRect(
+      x: Self.contentInset - 2, y: (Self.fieldHeight - 26) / 2, width: width - Self.contentInset - 24, height: 26)
+    separator.frame = NSRect(x: 11, y: Self.fieldHeight - 1, width: width - 22, height: 1)
     separator.isHidden = suggestions.isEmpty
-    scrollView.frame = NSRect(x: 8, y: Self.fieldHeight + 6, width: width - 16, height: max(0, listHeight - 12))
+    scrollView.frame = NSRect(
+      x: 0, y: Self.fieldHeight + Self.listPadding, width: width, height: max(0, listHeight - Self.listPadding * 2))
   }
 
   func moveSelection(by step: Int) {
@@ -191,6 +205,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     let cell = (tableView.makeView(withIdentifier: .init("suggestion"), owner: nil) as? SuggestionCell) ?? SuggestionCell()
     cell.identifier = .init("suggestion")
     cell.show(suggestions[row])
+    cell.selected = row == tableView.selectedRow
     return cell
   }
 
@@ -202,10 +217,15 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   }
 }
 
+final class FlippedView: NSView {
+  override var isFlipped: Bool { true }
+}
+
 private final class SuggestionRowBackground: NSTableRowView {
   override func drawSelection(in dirtyRect: NSRect) {
-    NSColor.labelColor.withAlphaComponent(0.08).setFill()
-    NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 2), xRadius: 8, yRadius: 8).fill()
+    NSColor.controlAccentColor.withAlphaComponent(0.22).setFill()
+    let rect = bounds.insetBy(dx: CommandBarView.rowInset, dy: 2)
+    NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
   }
 
   override var isEmphasized: Bool {
@@ -215,12 +235,14 @@ private final class SuggestionRowBackground: NSTableRowView {
 }
 
 private final class SuggestionCell: NSTableCellView {
+  private let iconBox = NSView()
   private let icon = NSImageView()
-  private let title = NSTextField(labelWithString: "")
-  private let detail = NSTextField(labelWithString: "")
+  private let label = NSTextField(labelWithString: "")
   private let action = NSTextField(labelWithString: "Switch to Tab")
+  private let arrowBox = NSView()
   private let arrow = NSImageView()
   private var isTab = false
+  private var suggestion: Suggestion?
 
   var selected = false {
     didSet { updateAccessory() }
@@ -229,46 +251,77 @@ private final class SuggestionCell: NSTableCellView {
   init() {
     super.init(frame: .zero)
     icon.imageScaling = .scaleProportionallyUpOrDown
-    title.font = .systemFont(ofSize: 15, weight: .medium)
-    title.lineBreakMode = .byTruncatingTail
-    detail.font = .systemFont(ofSize: 13)
-    detail.textColor = .secondaryLabelColor
-    detail.lineBreakMode = .byTruncatingHead
-    action.font = .systemFont(ofSize: 14, weight: .medium)
+    iconBox.wantsLayer = true
+    iconBox.layer?.cornerRadius = 6
+    iconBox.layer?.cornerCurve = .continuous
+    iconBox.addSubview(icon)
+    label.lineBreakMode = .byTruncatingTail
+    label.cell?.truncatesLastVisibleLine = true
+    action.font = .systemFont(ofSize: 15, weight: .medium)
+    action.alignment = .right
+    arrowBox.wantsLayer = true
+    arrowBox.layer?.cornerRadius = 6
+    arrowBox.layer?.cornerCurve = .continuous
     arrow.image = NSImage(systemSymbolName: "arrow.right", accessibilityDescription: nil)
-    arrow.symbolConfiguration = .init(pointSize: 14, weight: .semibold)
-    [icon, title, detail, action, arrow].forEach(addSubview)
+    arrow.symbolConfiguration = .init(pointSize: 13, weight: .semibold)
+    arrowBox.addSubview(arrow)
+    [iconBox, label, action, arrowBox].forEach(addSubview)
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
+  override var isFlipped: Bool { true }
+
   override func layout() {
     super.layout()
     let mid = bounds.height / 2
-    icon.frame = NSRect(x: 12, y: mid - 10, width: 20, height: 20)
-    arrow.frame = NSRect(x: bounds.width - 30, y: mid - 9, width: 18, height: 18)
-    let actionWidth: CGFloat = isTab ? 110 : 0
-    action.frame = NSRect(x: arrow.frame.minX - actionWidth - 6, y: mid - 9, width: actionWidth, height: 18)
-    action.alignment = .right
-    let right = (isTab ? action.frame.minX : arrow.frame.minX) - 12
-    let titleWidth = min(title.intrinsicContentSize.width, (right - 44) * 0.7)
-    title.frame = NSRect(x: 44, y: mid - 10, width: titleWidth, height: 20)
-    detail.frame = NSRect(x: title.frame.maxX + 10, y: mid - 9, width: max(0, right - title.frame.maxX - 10), height: 18)
+    iconBox.frame = NSRect(x: CommandBarView.iconCenter - 12, y: mid - 12, width: 24, height: 24)
+    icon.frame = iconBox.bounds.insetBy(dx: 4, dy: 4)
+    arrowBox.frame = NSRect(x: bounds.width - 22 - 24, y: mid - 12, width: 24, height: 24)
+    arrow.frame = arrowBox.bounds.insetBy(dx: 4, dy: 4)
+    let actionWidth = isTab ? ceil(action.intrinsicContentSize.width) : 0
+    action.frame = NSRect(x: arrowBox.frame.minX - 9 - actionWidth, y: mid - 10, width: actionWidth, height: 20)
+    let right = (isTab ? action.frame.minX : arrowBox.frame.minX) - 16
+    label.frame = NSRect(
+      x: CommandBarView.contentInset, y: mid - 10, width: max(0, right - CommandBarView.contentInset), height: 20)
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    updateAccessory()
   }
 
   func show(_ suggestion: Suggestion) {
+    self.suggestion = suggestion
     icon.image = suggestion.icon
-    title.stringValue = suggestion.title
     if case .tab = suggestion.kind { isTab = true } else { isTab = false }
-    detail.stringValue = suggestion.detail == suggestion.title ? "" : suggestion.detail
+    let text = NSMutableAttributedString(
+      string: suggestion.title,
+      attributes: [.font: NSFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: NSColor.labelColor])
+    let detail: String
+    switch suggestion.kind {
+    case .tab: detail = ""
+    case .search: detail = suggestion.detail
+    case .url, .history: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
+    }
+    if !detail.isEmpty {
+      text.append(NSAttributedString(
+        string: " — " + detail,
+        attributes: [.font: NSFont.systemFont(ofSize: 15, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor]))
+    }
+    label.attributedStringValue = text
     updateAccessory()
     needsLayout = true
   }
 
   private func updateAccessory() {
     action.isHidden = !isTab
-    action.textColor = selected ? .labelColor : .tertiaryLabelColor
-    arrow.isHidden = !(isTab || selected)
-    arrow.contentTintColor = selected ? .labelColor : .tertiaryLabelColor
+    arrowBox.isHidden = !(isTab || selected)
+    effectiveAppearance.performAsCurrentDrawingAppearance {
+      action.textColor = selected ? .labelColor : .tertiaryLabelColor
+      arrowBox.layer?.backgroundColor = (selected ? NSColor.labelColor : NSColor.labelColor.withAlphaComponent(0.08)).cgColor
+      arrow.contentTintColor = selected ? .windowBackgroundColor : .tertiaryLabelColor
+      iconBox.layer?.backgroundColor = selected ? NSColor.white.cgColor : NSColor.clear.cgColor
+    }
   }
 }
