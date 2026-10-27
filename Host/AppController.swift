@@ -30,6 +30,11 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     controller.searches.warm()
   }
 
+  func engineQuitCancelled() {
+    quitting = false
+    windows.forEach { $0.resumeAfterCancelledQuit() }
+  }
+
   func engineWillShutDown() {
     if !quitting { windows.forEach { $0.prepareForQuit() } }
     quitting = true
@@ -70,10 +75,9 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-    if quitting { return .terminateNow }
+    quitting = true
     windows.forEach { $0.prepareForQuit() }
-    DispatchQueue.main.async { [weak self] in self?.quit(nil) }
-    return .terminateCancel
+    return .terminateNow
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

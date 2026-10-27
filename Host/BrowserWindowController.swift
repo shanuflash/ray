@@ -175,6 +175,16 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     closing = true
   }
 
+  func resumeAfterCancelledQuit() {
+    guard closing else { return }
+    closing = false
+    for entry in state.allEntries where entry.tab?.closed == true {
+      entry.tab = nil
+      if entry.kind == .today { state.remove(entry) }
+    }
+    changed("quitCancelled")
+  }
+
   // MARK: Entries
 
   private func reloadSidebar() {
