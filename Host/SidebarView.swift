@@ -562,6 +562,9 @@ final class SidebarView: NSView {
       let frame = glow.convert(glow.bounds, to: nil)
       frames[name] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
     }
+    frames["alive"] = shownViews.filter { view, _ in
+      (view as? SidebarRowView)?.residency.showsDot ?? (view as? FavoriteTileView)?.residency.showsDot ?? false
+    }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["newTab"] = {
       let frame = newTabRow.convert(newTabRow.bounds, to: nil)
       return String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
@@ -906,6 +909,7 @@ final class FavoriteTileView: NSView, Liftable {
   override func layout() {
     super.layout()
     icon.frame = NSRect(x: (bounds.width - 20) / 2, y: (bounds.height - 20) / 2, width: 20, height: 20)
+    residency.placeDot(at: CGPoint(x: bounds.midX, y: 6))
   }
 
   override func mouseDown(with event: NSEvent) {
@@ -916,10 +920,13 @@ final class FavoriteTileView: NSView, Liftable {
   override func mouseDragged(with event: NSEvent) { onPointer?(event) }
   override func mouseUp(with event: NSEvent) { onPointer?(event) }
 
+  let residency = TabResidency()
+
   func show(_ entry: SidebarEntry, icon image: NSImage?, selected: Bool) {
     self.selected = selected
     icon.image = image ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
     icon.contentTintColor = image == nil ? .secondaryLabelColor : nil
+    residency.show(entry, in: self)
     toolTip = entry.displayTitle
     needsDisplay = true
   }
@@ -927,6 +934,8 @@ final class FavoriteTileView: NSView, Liftable {
 
 final class SidebarRowView: NSView, Liftable {
   enum Part { case icon, body }
+
+  let residency = TabResidency()
 
   var onClick: ((Part) -> Void)?
   var onPointer: ((NSEvent) -> Void)?
@@ -1054,6 +1063,7 @@ final class SidebarRowView: NSView, Liftable {
     icon.image = image ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
     icon.contentTintColor = image == nil ? .secondaryLabelColor : nil
     icon.alphaValue = entry.kind == .today && !entry.isLive ? 0.45 : 1
+    residency.show(entry, in: self)
     slash.isHidden = !away
     title.stringValue = entry.displayTitle
     title.textColor = .labelColor
@@ -1082,6 +1092,7 @@ final class SidebarRowView: NSView, Liftable {
     let mid = bounds.height / 2
     let iconSize: CGFloat = isNewTab ? 14 : 16
     icon.frame = NSRect(x: 17 - iconSize / 2, y: mid - iconSize / 2, width: iconSize, height: iconSize)
+    residency.placeDot(at: CGPoint(x: 3.5, y: mid))
     slash.frame = NSRect(x: 28, y: mid - 11, width: 10, height: 22)
     let textX: CGFloat = away ? 41 : 35
     closeButton.frame = NSRect(x: bounds.width - 30, y: mid - 11, width: 22, height: 22)
@@ -1174,5 +1185,70 @@ final class DropHintView: NSView {
       icon.frame = NSRect(x: 9, y: mid - 8, width: 16, height: 16)
       label.frame = NSRect(x: 35, y: mid - 10, width: bounds.width - 45, height: 20)
     }
+  }
+}
+
+/// Whether a pinned tab or favorite is open: a tiny grey dot, like the Dock's running-app dot, that fades in when the
+/// tab opens and out when it closes. Kept quiet on purpose (an accent dot with a glow and a pulse read as too loud).
+/// Today's tabs are open by nature and get no dot.
+final class TabResidency {
+  private var entryID: UUID?
+  private var live = false
+  private let dot = CALayer()
+  private weak var host: NSView?
+
+  var showsDot: Bool { live && !dot.isHidden }
+
+  func show(_ entry: SidebarEntry, in host: NSView) {
+    attach(to: host)
+    let wanted = entry.kind != .today && entry.isLive
+    let woke = entry.id == entryID && !live && wanted
+    let slept = entry.id == entryID && live && !wanted
+    entryID = entry.id
+    live = wanted
+    host.effectiveAppearance.performAsCurrentDrawingAppearance {
+      dot.backgroundColor = NSColor.secondaryLabelColor.cgColor
+    }
+    if woke {
+      dot.isHidden = false
+      fadeDot(to: 1)
+    } else if slept {
+      fadeDot(to: 0)
+    } else {
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      dot.isHidden = !wanted
+      dot.opacity = 1
+      CATransaction.commit()
+    }
+  }
+
+  func placeDot(at centre: CGPoint) {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    dot.position = centre
+    CATransaction.commit()
+  }
+
+  private func attach(to host: NSView) {
+    guard self.host !== host, let layer = host.layer else { return }
+    self.host = host
+    dot.bounds = CGRect(x: 0, y: 0, width: 3, height: 3)
+    dot.cornerRadius = 1.5
+    dot.isHidden = true
+    dot.zPosition = 5
+    layer.addSublayer(dot)
+  }
+
+  private func fadeDot(to value: Float) {
+    let fade = CABasicAnimation(keyPath: "opacity")
+    fade.fromValue = 1 - value
+    fade.toValue = value
+    fade.duration = 0.25
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    dot.opacity = value
+    CATransaction.commit()
+    dot.add(fade, forKey: "fade")
   }
 }

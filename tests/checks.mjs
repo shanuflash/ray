@@ -453,9 +453,13 @@ const checks = {
       return e && !e.live && e;
     });
     assert(unloaded.url === unloaded.pinnedURL, `unloaded at ${unloaded.url}`);
+    await settle();
+    assert(!state().sidebarFrames.alive.includes(id), "closed pinned tab still marked open");
     assert(state().tabs.length === liveBefore - 1, "the tab wasn't closed");
     await command(`row ${id}`);
     await until("reloaded and active", () => state().sidebar.pinned.find((e) => e.id === id)?.live && state().activeEntry === id);
+    await settle();
+    assert(state().sidebarFrames.alive.includes(id), "open pinned tab has no open dot");
     assert(oneVisibleActive(), "pinned tab not shown");
   },
   async favorites() {
