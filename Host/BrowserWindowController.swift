@@ -121,6 +121,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "active": activeTab.map { Int($0.tabId) } ?? NSNull(),
       "address": sidebar.addressField.stringValue,
       "pages": pages.debugState,
+      "windowFrame": NSStringFromRect(window.frame),
+      "windowMovable": window.isMovable,
       "commandBar": commandBar.map { bar in
         [
           "mode": commandBarMode.rawValue, "query": bar.field.stringValue, "selected": bar.selectedIndex,
@@ -139,6 +141,12 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
           let json = String(data: data, encoding: .utf8) else { return }
     FileHandle.standardError.write("[lumen-state] \(json)\n".data(using: .utf8)!)
   }
+
+  func pageContains(windowPoint point: NSPoint) -> Bool {
+    pages.bounds.contains(pages.convert(point, from: nil)) && commandBar == nil
+  }
+
+  var debugWindowFrame: String { NSStringFromRect(window.frame) }
 
   private func focusPage(_ tab: ArdiaCoreTab) {
     window.makeFirstResponder(tab.view)

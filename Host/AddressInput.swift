@@ -1,7 +1,8 @@
 import Foundation
 
 enum AddressInput {
-  static let searchTemplate = "https://www.google.com/search?q=%s"
+  static let searchTemplate = ProcessInfo.processInfo.environment["LUMEN_SEARCH_URL"]
+    ?? "https://www.google.com/search?q=%s"
 
   private static let passThroughSchemes: Set<String> = ["http", "https", "file", "chrome", "about", "data", "view-source"]
 

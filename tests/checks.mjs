@@ -19,6 +19,7 @@ const pages = {
   "/b": `<title>Page B</title><p>b</p>`,
   "/c": `<title>Page C</title><button id=close onclick="window.close()">close</button>`,
   "/h": `<title>Hist Page</title><p>history</p>`,
+  "/search": `<title>Search</title><p>results</p>`,
 };
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://x");
@@ -45,6 +46,7 @@ const child = spawn(join(app, "Contents/MacOS/Lumen"), [], {
     LUMEN_LOG_STATE: "1",
     LUMEN_TEST_COMMANDS: "1",
     LUMEN_SUGGEST_URL: `${origin}/suggest?q=%s`,
+    LUMEN_SEARCH_URL: `${origin}/search?q=%s`,
     LUMEN_DATA_DIR: dataDir,
     LUMEN_REMOTE_DEBUGGING_PORT: String(port),
     LUMEN_START_URL: `${origin}/a`,
@@ -317,8 +319,8 @@ const checks = {
     await until("second row selected", () => state().commandBar.selected === 1);
     const before = state().tabs.length;
     await command("enter");
-    const opened = await until("search tab", () => state().tabs.length === before + 1 && state().tabs.find((t) => t.id === state().active && t.url.includes("q=zzq+one") || t.url.includes("q=zzq%20one")));
-    assert(opened, "search tab missing");
+    await until("search tab", () => state().tabs.length === before + 1 &&
+      state().tabs.find((t) => t.id === state().active && t.url.startsWith(`${origin}/search?q=zzq`) && t.url.includes("one")));
   },
   async "devtools-docked"() {
     await command("menu toggleDevTools");
@@ -332,6 +334,20 @@ const checks = {
     assert(oneVisibleActive(), "page not visible");
     await command("menu toggleDevTools");
     await until("devtools closed", () => !state().pages?.devToolsFrame);
+  },
+  async "top-strip-click"() {
+    const { target, sessionId } = await session(`${origin}/a`);
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id && oneVisibleActive());
+    await evaluate(sessionId, `window.__downs = []; addEventListener("mousedown", (e) => __downs.push([e.clientX, e.clientY]), true); true`);
+    const frame = state().windowFrame;
+    await command("drag 400 14 120 60");
+    await sleep(300);
+    const downs = await evaluate(sessionId, `JSON.stringify(window.__downs)`);
+    assert(JSON.parse(downs).length === 1, `page saw mousedowns ${downs}`);
+    await command("menu newTab");
+    await command("escape");
+    assert(state().windowMovable === true, "window left unmovable after the drag");
   },
   async quit() {
     send("Browser.close").catch(() => {});

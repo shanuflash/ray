@@ -152,6 +152,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
       ? self.suggestions[tableView.selectedRow].key : nil
     let keepsSelection = previous != nil && self.suggestions.first?.key == suggestions.first?.key
     self.suggestions = suggestions
+    needsLayout = true
     tableView.reloadData()
     if !suggestions.isEmpty {
       let row = keepsSelection ? suggestions.firstIndex { $0.key == previous } ?? 0 : 0

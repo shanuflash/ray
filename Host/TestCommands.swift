@@ -23,6 +23,25 @@ enum TestCommands {
     }
   }
 
+  private static func drag(_ argument: String, in window: NSWindow?) -> String {
+    let numbers = argument.split(separator: " ").compactMap { Double($0) }
+    guard let window, let content = window.contentView, numbers.count == 4 else { return "usage: drag x y dx dy" }
+    let start = NSPoint(x: numbers[0], y: content.bounds.height - numbers[1])
+    func post(_ type: NSEvent.EventType, _ point: NSPoint) {
+      guard let event = NSEvent.mouseEvent(
+        with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { return }
+      NSApp.sendEvent(event)
+    }
+    post(.leftMouseDown, start)
+    for step in 1...5 {
+      let t = Double(step) / 5
+      post(.leftMouseDragged, NSPoint(x: start.x + numbers[2] * t, y: start.y - numbers[3] * t))
+    }
+    post(.leftMouseUp, NSPoint(x: start.x + numbers[2], y: start.y - numbers[3]))
+    return "ok"
+  }
+
   private static func run(_ line: String) {
     let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
     guard let command = parts.first else { return }
@@ -43,6 +62,8 @@ enum TestCommands {
       if let editor { editor.doCommand(by: #selector(NSResponder.moveDown(_:))) } else { result = "no editor" }
     case "up":
       if let editor { editor.doCommand(by: #selector(NSResponder.moveUp(_:))) } else { result = "no editor" }
+    case "drag":
+      result = drag(argument, in: window)
     default:
       result = "unknown"
     }
