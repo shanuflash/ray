@@ -36,7 +36,11 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   the main menu.
 
 ## Rules
-- Never steal focus: test only through `scripts/run-hidden.sh` (`open -g -n`, `LUMEN_BACKGROUND=1`).
+- Never steal focus with test instances: test only through `scripts/run-hidden.sh` / `tests/checks.mjs`
+  (`LUMEN_BACKGROUND=1`, own data dir).
+- After a build the user should look at, run `scripts/relaunch.sh` once checks pass: it quits their running Lumen with
+  a normal macOS quit and opens the new build in front on their default data dir. The user asked for this; they
+  can't easily run commands themselves.
 - Every test instance gets its own throwaway `LUMEN_DATA_DIR`; never the default data dir, never a real browser profile.
 - Quit the instances you start (`kill -TERM <pid>`), and only those.
 - Every wait has a deadline.
