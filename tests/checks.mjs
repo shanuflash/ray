@@ -488,8 +488,25 @@ const checks = {
     await todayTabs(2);
     const entry = state().sidebar.today[0];
     const pinnedBefore = state().sidebar.pinned.length;
-    const from = frameOf(entry.id), newTab = frameOf("newTab");
-    await command(`drag ${from.cx} ${from.cy} 0 ${newTab.y + 6 - from.cy}`);
+    const from = frameOf(entry.id);
+    await command(`press ${from.cx} ${from.cy}`);
+    await command(`move ${from.cx} ${from.cy + 10}`);
+    await settle();
+    if (pinnedBefore === 0) {
+      assert(!("pinHint" in state().sidebarFrames), "pin slot open while over today's tabs");
+      const newTab = frameOf("newTab");
+      await command(`move ${from.cx} ${newTab.y + 8}`);
+      await settle();
+      const hint = frameOf("pinHint");
+      await command(`move ${from.cx} ${hint.cy + 10}`);
+      await settle();
+      assert("pinHint" in state().sidebarFrames, "pin slot closed with the tab over it");
+      await command(`release ${from.cx} ${hint.cy + 10}`);
+    } else {
+      const newTab = frameOf("newTab");
+      await command(`move ${from.cx} ${newTab.y - 20}`);
+      await command(`release ${from.cx} ${newTab.y - 20}`);
+    }
     const pinned = await until("pinned", () => state().sidebar.pinned.find((e) => e.id === entry.id));
     assert(state().sidebar.pinned.length === pinnedBefore + 1, "pinned count");
     assert(pinned.pinnedURL === pinned.url, `pinned URL ${pinned.pinnedURL} vs ${pinned.url}`);
@@ -504,6 +521,10 @@ const checks = {
     await until("favorite first", () => state().sidebar.favorites[0]?.id === entry.id);
     assert(!state().sidebar.pinned.some((e) => e.id === entry.id), "still pinned");
     assert(state().sidebar.favorites[0].pinnedURL, "favorite lost its URL");
+  },
+  async "drag-pin-hint-gone"() {
+    await settle();
+    assert(!("pinHint" in state().sidebarFrames), "the empty pin slot stayed after the drop");
   },
   async "drag-out-cancels"() {
     await settle();

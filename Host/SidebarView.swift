@@ -122,6 +122,7 @@ final class SidebarView: NSView {
   private let separator = NSView()
   private let clearButton = NSButton()
   private let newTabRow = SidebarRowView()
+  private let pinHint = PinHintView()
 
   private var tiles: [FavoriteTileView] = []
   private var pinnedRows: [SidebarRowView] = []
@@ -182,6 +183,8 @@ final class SidebarView: NSView {
       self.delegate?.sidebarNewTab(self)
     }
     content.addSubview(newTabRow)
+    pinHint.isHidden = true
+    content.addSubview(pinHint)
 
     addTrackingArea(NSTrackingArea(
       rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
@@ -316,7 +319,10 @@ final class SidebarView: NSView {
     case nil: break
     }
     let tileSlots = slots(tiles, favorites, gap: favoriteGap)
-    let pinnedSlots = slots(pinnedRows, pinned, gap: pinnedGap)
+    // With nothing else pinned, aiming at the top opens a pin slot above a divider, so pinning looks unlike a gap
+    // among today's tabs.
+    let pinBand = pinnedGap != nil && !pinned.contains { $0 !== dragged }
+    let pinnedSlots = slots(pinnedRows, pinned, gap: pinBand ? nil : pinnedGap)
     let todaySlots = slots(todayRows, today, gap: todayGap)
 
     let columns = tileSlots.isEmpty ? 1 : min(tileSlots.count, 4)
@@ -334,12 +340,19 @@ final class SidebarView: NSView {
 
     place(scrollView, NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y - inset)), entry: nil)
     var rowY: CGFloat = 0
+    let hintFrame = NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight)
+    if pinBand && pinHint.isHidden { pinHint.frame = hintFrame }
+    pinHint.isHidden = !pinBand
+    if pinBand {
+      place(pinHint, hintFrame, entry: nil)
+      rowY += Self.rowHeight
+    }
     for slot in pinnedSlots {
       if case let (row, entry)? = slot { place(row, NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight), entry: entry) }
       rowY += Self.rowHeight
     }
-    separator.isHidden = pinnedSlots.isEmpty
-    if !pinnedSlots.isEmpty {
+    separator.isHidden = pinnedSlots.isEmpty && !pinBand
+    if !separator.isHidden {
       let lineY = rowY + 12
       let clearWidth = ceil(clearButton.intrinsicContentSize.width)
       clearButton.frame = NSRect(x: bounds.width - 19 - clearWidth, y: lineY - 9, width: clearWidth, height: 18)
@@ -465,9 +478,16 @@ final class SidebarView: NSView {
     let top = centre - height / 2
     let pinnedCount = pinned.filter { $0 !== drag.entry }.count
     let todayCount = today.filter { $0 !== drag.entry }.count
-    let newTabY = pinnedCount > 0 ? CGFloat(pinnedCount) * height + 12 + 30 - height / 2 : 0
+    // With nothing pinned, the pin slot opens once the tab reaches the top half of New Tab; while it's open, all
+    // of it down to the divider pins (no flicker at the edge).
+    let pinning: Bool
+    if case .pinned = drag.target { pinning = true } else { pinning = false }
+    let slots = pinnedCount > 0 || pinning ? max(pinnedCount, 1) : 0
+    let lineY = CGFloat(slots) * height + 12
+    let newTabY = slots > 0 ? lineY + 30 - height / 2 : 0
     func index(_ value: CGFloat, _ count: Int) -> Int { min(max(Int((value / height).rounded()), 0), count) }
-    if centre < newTabY + height / 2 {
+    let pinLimit = pinnedCount > 0 ? newTabY + height / 2 : pinning ? lineY : height / 2
+    if centre < pinLimit {
       return .pinned(index(top, pinnedCount))
     }
     return .today(index(top - newTabY - height, todayCount))
@@ -532,6 +552,10 @@ final class SidebarView: NSView {
     for (view, entry) in shownViews {
       let frame = view.convert(view.bounds, to: nil)
       frames[entry.id.uuidString] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
+    }
+    if !pinHint.isHidden {
+      let frame = pinHint.convert(pinHint.bounds, to: nil)
+      frames["pinHint"] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
     }
     frames["newTab"] = {
       let frame = newTabRow.convert(newTabRow.bounds, to: nil)
@@ -1073,5 +1097,54 @@ private enum Lift {
     layer.shadowOffset = CGSize(width: 0, height: -3)
     layer.shadowColor = NSColor.black.cgColor
     layer.shadowPath = on ? CGPath(roundedRect: layer.bounds, cornerWidth: radius, cornerHeight: radius, transform: nil) : nil
+  }
+}
+
+/// The empty pin slot shown while a drag is lifted and nothing else is pinned.
+final class PinHintView: NSView {
+  private let outline = CAShapeLayer()
+  private let label = NSTextField(labelWithString: "Pin tab")
+  private let icon = NSImageView()
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    outline.lineWidth = 1
+    outline.lineDashPattern = [4, 3]
+    layer?.addSublayer(outline)
+    icon.image = NSImage(systemSymbolName: "pin", accessibilityDescription: nil)
+    icon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
+    icon.contentTintColor = .secondaryLabelColor
+    label.font = .systemFont(ofSize: 13, weight: .medium)
+    label.textColor = .secondaryLabelColor
+    addSubview(icon)
+    addSubview(label)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+  override func updateLayer() {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    outline.fillColor = SidebarColors.hover.cgColor
+    outline.strokeColor = NSColor.secondaryLabelColor.cgColor
+    CATransaction.commit()
+  }
+
+  override func layout() {
+    super.layout()
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    let rect = bounds.insetBy(dx: 0.5, dy: SidebarRowView.fillInset + 0.5)
+    outline.frame = bounds
+    outline.path = CGPath(roundedRect: rect, cornerWidth: 8, cornerHeight: 8, transform: nil)
+    CATransaction.commit()
+    let mid = bounds.height / 2
+    icon.frame = NSRect(x: 9, y: mid - 8, width: 16, height: 16)
+    label.frame = NSRect(x: 35, y: mid - 10, width: bounds.width - 45, height: 20)
   }
 }

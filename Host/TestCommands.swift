@@ -43,6 +43,18 @@ enum TestCommands {
 
   private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2]
 
+  /// `press x y`, `move x y`, `release x y`: one mouse drag in steps, so checks can look at it mid-way.
+  private static func mouse(_ type: NSEvent.EventType, _ argument: String, in window: NSWindow?) -> String {
+    let numbers = argument.split(separator: " ").compactMap { Double($0) }
+    guard let window, let content = window.contentView, numbers.count == 2 else { return "usage: press|move|release x y" }
+    guard let event = NSEvent.mouseEvent(
+      with: type, location: NSPoint(x: numbers[0], y: content.bounds.height - numbers[1]), modifierFlags: [],
+      timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+      eventNumber: 0, clickCount: 1, pressure: 1) else { return "no event" }
+    NSApp.sendEvent(event)
+    return "ok"
+  }
+
   private static func drag(_ argument: String, in window: NSWindow?) -> String {
     let numbers = argument.split(separator: " ").compactMap { Double($0) }
     guard let window, let content = window.contentView, numbers.count == 4 else { return "usage: drag x y dx dy" }
@@ -131,6 +143,12 @@ enum TestCommands {
       result = key(argument, in: window)
     case "drag":
       result = drag(argument, in: window)
+    case "press":
+      result = mouse(.leftMouseDown, argument, in: window)
+    case "move":
+      result = mouse(.leftMouseDragged, argument, in: window)
+    case "release":
+      result = mouse(.leftMouseUp, argument, in: window)
     default:
       result = "unknown"
     }
