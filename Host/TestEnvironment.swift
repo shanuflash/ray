@@ -1,7 +1,7 @@
 import Foundation
 
 enum TestEnvironment {
-  #if LUMEN_TEST_HOOKS
+  #if RAY_TEST_HOOKS
   static let isTestBuild = true
   static subscript(key: String) -> String? { ProcessInfo.processInfo.environment[key] }
   #else
@@ -11,6 +11,6 @@ enum TestEnvironment {
 
   static func log(_ message: @autoclosure () -> String) {
     guard isTestBuild else { return }
-    FileHandle.standardError.write("[lumen] \(message())\n".data(using: .utf8)!)
+    FileHandle.standardError.write("[ray] \(message())\n".data(using: .utf8)!)
   }
 }

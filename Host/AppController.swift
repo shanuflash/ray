@@ -12,7 +12,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
 
   func engineDidStart() {
     guard let engine = ArdiaCoreEngine.shared else { return }
-    NSLog("[lumen] engine started (Chromium %@)", engine.chromiumVersion)
+    NSLog("[ray] engine started (Chromium %@)", engine.chromiumVersion)
     if let major = engine.chromiumVersion.split(separator: ".").first {
       SearchSuggestions.userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
         + "(KHTML, like Gecko) Chrome/\(major).0.0.0 Safari/537.36"
@@ -26,7 +26,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     TestCommands.start()
     let controller = makeWindow(profile: engine.defaultProfile)
     controller.present(background: launchedInBackground)
-    controller.restore(startURL: TestEnvironment["LUMEN_START_URL"])
+    controller.restore(startURL: TestEnvironment["RAY_START_URL"])
     controller.searches.warm()
   }
 

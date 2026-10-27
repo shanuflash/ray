@@ -4,14 +4,14 @@ enum MainMenu {
   static func install(target: AppController) {
     let main = NSMenu()
 
-    main.addItem(submenu("Lumen", [
-      item("About Lumen", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), nil, target: NSApp),
+    main.addItem(submenu("Ray", [
+      item("About Ray", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), nil, target: NSApp),
       .separator(),
-      item("Hide Lumen", #selector(NSApplication.hide(_:)), "h", target: NSApp),
+      item("Hide Ray", #selector(NSApplication.hide(_:)), "h", target: NSApp),
       item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option], target: NSApp),
       item("Show All", #selector(NSApplication.unhideAllApplications(_:)), nil, target: NSApp),
       .separator(),
-      item("Quit Lumen", #selector(AppController.quit(_:)), "q", target: target),
+      item("Quit Ray", #selector(AppController.quit(_:)), "q", target: target),
     ]))
 
     main.addItem(submenu("File", [

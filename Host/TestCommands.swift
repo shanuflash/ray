@@ -4,7 +4,7 @@ enum TestCommands {
   private static var buffer = ""
 
   static func start() {
-    guard TestEnvironment["LUMEN_TEST_COMMANDS"] == "1" else { return }
+    guard TestEnvironment["RAY_TEST_COMMANDS"] == "1" else { return }
     FileHandle.standardInput.readabilityHandler = { handle in
       guard let text = String(data: handle.availableData, encoding: .utf8), !text.isEmpty else {
         handle.readabilityHandler = nil
@@ -112,6 +112,6 @@ enum TestCommands {
     default:
       result = "unknown"
     }
-    FileHandle.standardError.write("[lumen-test] \(line) -> \(result)\n".data(using: .utf8)!)
+    FileHandle.standardError.write("[ray-test] \(line) -> \(result)\n".data(using: .utf8)!)
   }
 }

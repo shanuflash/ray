@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Drives a hidden build/Lumen.app over DevTools and Lumen's [lumen-state] log.
+// Drives a hidden build/Ray.app over DevTools and Ray's [ray-state] log.
 //   node tests/checks.mjs [check …]      (build first: scripts/build-app.sh)
 import { spawn, execFileSync } from "node:child_process";
 import { createServer } from "node:http";
@@ -9,7 +9,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const app = join(root, "build/LumenTests.app");
+const app = join(root, "build/RayTests.app");
 const port = 9400 + Math.floor(Math.random() * 400);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -35,8 +35,9 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
-const dataDir = mkdtempSync(join(tmpdir(), "lumen-checks-"));
+const dataDir = mkdtempSync(join(tmpdir(), "ray-checks-"));
 const crashesBefore = crashReports();
+const stateMarker = "[ray-state] ";
 let stderr = "";
 let states = [];
 let child;
@@ -48,17 +49,17 @@ function launch() {
   states = [];
   exitCode = null;
   let partial = "";
-  child = spawn(join(app, "Contents/MacOS/Lumen"), [], {
+  child = spawn(join(app, "Contents/MacOS/Ray"), [], {
     env: {
       ...process.env,
-      LUMEN_BACKGROUND: "1",
-      LUMEN_LOG_STATE: "1",
-      LUMEN_TEST_COMMANDS: "1",
-      LUMEN_SUGGEST_URL: `${origin}/suggest?q=%s`,
-      LUMEN_SEARCH_URL: `${origin}/search?q=%s`,
-      LUMEN_DATA_DIR: dataDir,
-      LUMEN_REMOTE_DEBUGGING_PORT: String(port),
-      LUMEN_START_URL: `${origin}/a`,
+      RAY_BACKGROUND: "1",
+      RAY_LOG_STATE: "1",
+      RAY_TEST_COMMANDS: "1",
+      RAY_SUGGEST_URL: `${origin}/suggest?q=%s`,
+      RAY_SEARCH_URL: `${origin}/search?q=%s`,
+      RAY_DATA_DIR: dataDir,
+      RAY_REMOTE_DEBUGGING_PORT: String(port),
+      RAY_START_URL: `${origin}/a`,
     },
     stdio: ["pipe", "ignore", "pipe"],
   });
@@ -69,8 +70,8 @@ function launch() {
     const lines = (partial + chunk).split("\n");
     partial = lines.pop();
     for (const line of lines) {
-      const at = line.indexOf("[lumen-state] ");
-      if (at >= 0) states.push(JSON.parse(line.slice(at + 14)));
+      const at = line.indexOf(stateMarker);
+      if (at >= 0) states.push(JSON.parse(line.slice(at + stateMarker.length)));
     }
   });
   exited = new Promise((r) => child.on("exit", (code, signal) => r((exitCode = code ?? signal))));
@@ -134,7 +135,7 @@ async function clickElement(sessionId, selector, modifiers = 0) {
     await send("Input.dispatchMouseEvent", { type, x: box[0], y: box[1], button: "left", clickCount: 1, modifiers }, sessionId);
 }
 async function command(line) {
-  const marker = `[lumen-test] ${line} -> `;
+  const marker = `[ray-test] ${line} -> `;
   const from = stderr.length;
   child.stdin.write(line + "\n");
   const result = await until(`command ${line}`, () => {
@@ -239,7 +240,7 @@ const checks = {
     const { sessionId } = await session("/a");
     const result = await evaluate(sessionId, `Notification.requestPermission()`);
     assert(result === "default" || result === "denied", `notification permission answered ${result}`);
-    await until("permission log", () => stderr.includes("[lumen] permission"));
+    await until("permission log", () => stderr.includes("[ray] permission"));
   },
   async "address-new-tab"() {
     const before = state().tabs.length;
@@ -377,7 +378,7 @@ const checks = {
     await send("Target.activateTarget", { targetId: again.target.targetId });
     let shownAfter = null;
     for (let i = 0; i < 100 && shownAfter === null; i++) {
-      const marker = `[lumen-test] hit 400 14 -> `;
+      const marker = `[ray-test] hit 400 14 -> `;
       const from = stderr.length;
       child.stdin.write("hit 400 14\n");
       const result = await until("hit", () => {
@@ -405,7 +406,7 @@ const checks = {
     await sleep(Number(process.env.STRIP_WAIT ?? 300));
     child.stdin.write("hit 400 14\n");
     await sleep(100);
-    console.log("     hit:", (stderr.match(/\[lumen-test\] hit 400 14 -> (.*)/) || [])[1], "pages:", JSON.stringify(state().pages));
+    console.log("     hit:", (stderr.match(/\[ray-test\] hit 400 14 -> (.*)/) || [])[1], "pages:", JSON.stringify(state().pages));
     await command("drag 400 14 120 60");
     await sleep(300);
     const downs = await evaluate(sessionId, `JSON.stringify(window.__downs)`);
@@ -553,7 +554,7 @@ const checks = {
 
 function crashReports() {
   const dir = join(homedir(), "Library/Logs/DiagnosticReports");
-  return existsSync(dir) ? readdirSync(dir).filter((f) => f.startsWith("Lumen")) : [];
+  return existsSync(dir) ? readdirSync(dir).filter((f) => f.startsWith("Ray")) : [];
 }
 
 const wanted = process.argv.slice(2);
@@ -577,8 +578,8 @@ try {
       failed++;
       console.log(`FAIL ${name}: ${error.message}`);
       console.log(`     state: ${JSON.stringify(state())}`);
-      const notes = stderr.split("\n").filter((l) => l.includes("[lumen] ") && !l.includes("loaded") && !l.includes("inserted")).slice(-3);
-      for (const note of notes) console.log(`     log: ${note.slice(note.indexOf("[lumen]"))}`);
+      const notes = stderr.split("\n").filter((l) => l.includes("[ray] ") && !l.includes("loaded") && !l.includes("inserted")).slice(-3);
+      for (const note of notes) console.log(`     log: ${note.slice(note.indexOf("[ray]"))}`);
     }
   }
 } finally {

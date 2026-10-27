@@ -1,14 +1,14 @@
 #!/bin/bash
-# Builds build/Lumen.app (the user's app) and build/LumenTests.app (same code plus test hooks, its own bundle id),
+# Builds build/Ray.app (the user's app) and build/RayTests.app (same code plus test hooks, its own bundle id),
 # both linked against the prebuilt engine and signed ad hoc for local use.
-#   scripts/build-app.sh [lumen|tests]     (default: both)
+#   scripts/build-app.sh [ray|tests]     (default: both)
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 fw_name="Chromium Framework"
 fw_src=$("$root/scripts/fetch-engine.sh")
-bundle_id=${LUMEN_BUNDLE_ID:-dev.shanus.lumen}
+bundle_id=${RAY_BUNDLE_ID:-dev.shanus.ray}
 version=0.0.1
-identity=${LUMEN_SIGN_IDENTITY:--}
+identity=${RAY_SIGN_IDENTITY:--}
 sign() { codesign --force --timestamp=none --sign "$identity" "$@" 2>/dev/null; }
 
 build() {
@@ -25,14 +25,14 @@ build() {
     "$root"/Host/*.swift \
     -Xlinker "$app/Contents/Frameworks/$fw_name.framework/Versions/$fw_version/$fw_name" \
     -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
-    -o "$app/Contents/MacOS/Lumen"
+    -o "$app/Contents/MacOS/Ray"
   cp "$root"/Resources/* "$app/Contents/Resources/"
 
   cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleExecutable</key><string>Lumen</string>
+  <key>CFBundleExecutable</key><string>Ray</string>
   <key>CFBundleIdentifier</key><string>$id</string>
   <key>CFBundleName</key><string>$name</string>
   <key>CFBundleDisplayName</key><string>$name</string>
@@ -53,16 +53,16 @@ PLIST
     [ -e "$helper" ] && sign "$helper"
   done
   sign "$app/Contents/Frameworks/$fw_name.framework"
-  sign "$app/Contents/MacOS/Lumen"
+  sign "$app/Contents/MacOS/Ray"
   sign "$app"
   codesign --verify --deep --strict "$app"
   echo "$app"
 }
 
 which=${1:-both}
-if [ "$which" = both ] || [ "$which" = lumen ]; then
-  build "$root/build/Lumen.app" "$bundle_id" "Lumen"
+if [ "$which" = both ] || [ "$which" = ray ]; then
+  build "$root/build/Ray.app" "$bundle_id" "Ray"
 fi
 if [ "$which" = both ] || [ "$which" = tests ]; then
-  build "$root/build/LumenTests.app" "$bundle_id.tests" "Lumen Tests" -D LUMEN_TEST_HOOKS
+  build "$root/build/RayTests.app" "$bundle_id.tests" "Ray Tests" -D RAY_TEST_HOOKS
 fi

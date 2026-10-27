@@ -87,7 +87,7 @@ final class FaviconCache {
 }
 
 final class SearchSuggestions {
-  static let endpoint = TestEnvironment["LUMEN_SUGGEST_URL"]
+  static let endpoint = TestEnvironment["RAY_SUGGEST_URL"]
     ?? "https://suggestqueries.google.com/complete/search?client=firefox&q=%s"
   static var userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
   private static let minimumInterval: TimeInterval = 0.1

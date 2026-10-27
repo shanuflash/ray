@@ -99,7 +99,7 @@ final class SidebarState: Codable {
 final class SidebarStore {
   private let url: URL
   private var pending: DispatchWorkItem?
-  private let queue = DispatchQueue(label: "lumen.sidebar.store", qos: .utility)
+  private let queue = DispatchQueue(label: "ray.sidebar.store", qos: .utility)
 
   init(directory: String) {
     url = URL(fileURLWithPath: directory).appendingPathComponent("Sidebar.json")

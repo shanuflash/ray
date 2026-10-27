@@ -9,7 +9,7 @@ name="Chromium Framework"
 short=${tree:0:12}
 store="$root/build/engine"
 dest="$store/$short"
-mirror="${LUMEN_ENGINE_MIRROR:-$HOME/Library/Caches/Lumen/engines}"
+mirror="${RAY_ENGINE_MIRROR:-$HOME/Library/Caches/Ray/engines}"
 file="ArdiaCore-$short.tar.xz"
 die() { echo "error: $*" >&2; exit 1; }
 

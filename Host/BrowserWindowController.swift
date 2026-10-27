@@ -9,7 +9,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   private static let margin: CGFloat = 8
-  private static let logsState = TestEnvironment["LUMEN_LOG_STATE"] == "1"
+  private static let logsState = TestEnvironment["RAY_LOG_STATE"] == "1"
 
   let coreWindow: ArdiaCoreWindow
   let profile: ArdiaCoreProfile
@@ -96,7 +96,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     if window.frame != frame { window.setFrame(frame, display: false) }
     window.titlebarAppearsTransparent = true
     window.titleVisibility = .hidden
-    window.title = "Lumen"
+    window.title = "Ray"
     window.minSize = NSSize(width: 720, height: 460)
     window.backgroundColor = SidebarColors.background
     window.isReleasedWhenClosed = false
@@ -761,7 +761,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     ]
     guard let data = try? JSONSerialization.data(withJSONObject: state),
           let json = String(data: data, encoding: .utf8) else { return }
-    FileHandle.standardError.write("[lumen-state] \(json)\n".data(using: .utf8)!)
+    FileHandle.standardError.write("[ray-state] \(json)\n".data(using: .utf8)!)
   }
 }
 

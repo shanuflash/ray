@@ -1,7 +1,7 @@
 import Foundation
 
 enum AddressInput {
-  static let searchTemplate = TestEnvironment["LUMEN_SEARCH_URL"]
+  static let searchTemplate = TestEnvironment["RAY_SEARCH_URL"]
     ?? "https://www.google.com/search?q=%s"
 
   private static let passThroughSchemes: Set<String> = ["http", "https", "file", "chrome", "about", "data", "view-source"]

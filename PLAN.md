@@ -276,9 +276,9 @@ Targets, measured with `xbench.mjs` against Chrome, Helium and our previous rele
    pay ~8 ms. A real fix needs Phase B.
 3. **Upstream pace:** Ardia has one maintainer. If it stalls, Phase B becomes urgent.
 4. **Prebuilt limits:** Ardia branding inside, no passkeys/saved cards, no engine fixes of our own. The engine's
-   keychain item is "Ardia Safe Storage", which is the real Ardia's; Lumen runs with `--use-mock-keychain` until
+   keychain item is "Ardia Safe Storage", which is the real Ardia's; Ray runs with `--use-mock-keychain` until
    Phase B, so its saved passwords and cookies are encrypted with a fixed, public key. Don't keep real passwords
-   in Lumen before Phase B.
+   in Ray before Phase B.
 5. **No Widevine:** streaming sites with DRM won't play.
 6. **Build hardware** for Phase B.
 
@@ -286,8 +286,8 @@ Targets, measured with `xbench.mjs` against Chrome, Helium and our previous rele
 
 ## 11. Decided 2026-10-27
 
-Name **Lumen** (bundle id `dev.shanus.lumen` until changed), Arc-style Spaces, macOS 14 minimum, prebuilt engine
-for personal use first. "Nova" / `NovaCore` above means Lumen / `LumenCore`.
+Name **Ray** (bundle id `dev.shanus.ray` until changed), Arc-style Spaces, macOS 14 minimum, prebuilt engine
+for personal use first. "Nova" / `NovaCore` above means Ray / `RayCore`.
 
 ---
 
