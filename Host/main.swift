@@ -33,6 +33,14 @@ var engineArguments = [
 if TestEnvironment["RAY_ENGINE_FEATURES"] == "none" {
   engineArguments.removeAll { $0.hasPrefix("--enable-features=") }
 }
+if TestEnvironment["RAY_IGNORE_CERT_ERRORS"] == "1" {
+  // Test-only: the fixture's HTTPS server uses a throwaway self-signed certificate.
+  engineArguments.append("--ignore-certificate-errors")
+}
+if let rules = TestEnvironment["RAY_HOST_RULES"] {
+  // Test-only: names like ray.test resolve to the local fixture server (insecure-origin checks need a real host).
+  engineArguments.append("--host-resolver-rules=\(rules)")
+}
 if let port = TestEnvironment["RAY_REMOTE_DEBUGGING_PORT"] {
   engineArguments += ["--remote-debugging-port=\(port)", "--remote-allow-origins=*"]
 }

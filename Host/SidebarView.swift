@@ -25,6 +25,7 @@ protocol SidebarViewDelegate: AnyObject {
   func sidebarReload(_ sidebar: SidebarView)
   func sidebarIcon(for entry: SidebarEntry) -> NSImage?
   func sidebarExtensions(_ sidebar: SidebarView, anchor: NSView)
+  func sidebarDownloads(_ sidebar: SidebarView, anchor: NSView)
 }
 
 enum SidebarColors {
@@ -119,6 +120,8 @@ final class SidebarView: NSView {
   private let backButton = SidebarView.iconButton("arrow.left")
   private let forwardButton = SidebarView.iconButton("arrow.right")
   private let reloadButton = SidebarView.iconButton("arrow.clockwise")
+  private let downloadsButton = SidebarView.iconButton("arrow.down.circle")
+  private let downloadsRing = CAShapeLayer()
   private let addressPill = AddressPill()
   private let tilesView = FlippedView()
   private let scrollView = NSScrollView()
@@ -156,7 +159,16 @@ final class SidebarView: NSView {
     forwardButton.action = #selector(forward)
     reloadButton.target = self
     reloadButton.action = #selector(reload)
-    [windowLights, toggleButton, backButton, forwardButton, reloadButton, addressPill, tilesView, scrollView]
+    downloadsButton.target = self
+    downloadsButton.action = #selector(showDownloads)
+    downloadsButton.isHidden = true
+    downloadsRing.fillColor = nil
+    downloadsRing.lineWidth = 2
+    downloadsRing.lineCap = .round
+    downloadsRing.strokeEnd = 0
+    downloadsButton.wantsLayer = true
+    downloadsButton.layer?.addSublayer(downloadsRing)
+    [windowLights, toggleButton, downloadsButton, backButton, forwardButton, reloadButton, addressPill, tilesView, scrollView]
       .forEach(addSubview)
 
     addressPill.onClick = { [weak self] in
@@ -291,6 +303,12 @@ final class SidebarView: NSView {
     reloadButton.frame = NSRect(x: bounds.width - inset - 32 - 2, y: rowCenter - 16, width: 32, height: 32)
     forwardButton.frame = reloadButton.frame.offsetBy(dx: -34, dy: 0)
     backButton.frame = forwardButton.frame.offsetBy(dx: -34, dy: 0)
+    downloadsButton.frame = backButton.frame.offsetBy(dx: -34, dy: 0)
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    downloadsRing.frame = downloadsButton.bounds
+    downloadsRing.path = CGPath(ellipseIn: downloadsButton.bounds.insetBy(dx: 6, dy: 6), transform: nil)
+    CATransaction.commit()
 
     addressPill.frame = NSRect(x: inset, y: rowCenter + 24, width: width, height: 36)
     var y = addressPill.frame.maxY + 8
@@ -791,6 +809,19 @@ final class SidebarView: NSView {
   @objc private func back() { delegate?.sidebarBack(self) }
   @objc private func forward() { delegate?.sidebarForward(self) }
   @objc private func reload() { delegate?.sidebarReload(self) }
+  @objc private func showDownloads() { delegate?.sidebarDownloads(self, anchor: downloadsButton) }
+
+  /// The downloads button shows once anything has downloaded this session; while files are coming in, a ring
+  /// around it fills with their progress.
+  func setDownloads(shown: Bool, progress: Double?) {
+    downloadsButton.isHidden = !shown
+    downloadsRing.strokeColor = NSColor.controlAccentColor.cgColor
+    downloadsRing.isHidden = progress == nil
+    downloadsRing.strokeEnd = CGFloat(progress ?? 0)
+  }
+
+  var downloadsAnchor: NSView { downloadsButton }
+  var downloadsShown: Bool { !downloadsButton.isHidden }
 
   private func reuse<V: NSView>(_ views: [V], count: Int, in parent: NSView, make: () -> V) -> [V] {
     var views = views

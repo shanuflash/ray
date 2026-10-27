@@ -166,6 +166,15 @@ enum TestCommands {
       result = extensionPrompt(argument)
     case "extclose":
       AppController.shared.current?.extensions.closePopup()
+    case "dlopen":
+      AppController.shared.current?.showDownloads()
+    case "dl":
+      let parts = argument.split(separator: " ").map(String.init)
+      if parts.count == 2, ["keep", "discard"].contains(parts[0]), let controller = AppController.shared.current {
+        if !controller.pressDownload(parts[1], keep: parts[0] == "keep") { result = "not ready" }
+      } else {
+        result = "usage: dl keep|discard <id>"
+      }
     case "pointer":
       let numbers = argument.split(separator: " ").compactMap { Double($0) }
       if numbers.count == 2 {

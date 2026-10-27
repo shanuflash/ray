@@ -3,6 +3,8 @@
 //   node tests/checks.mjs [check …]      (build first: scripts/build-app.sh)
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
+import { createServer as createSecureServer } from "node:https";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join, dirname } from "node:path";
@@ -23,21 +25,34 @@ const pages = {
   "/long": `<title>Long</title><style>body{margin:0;font:16px/1.6 sans-serif}p{margin:0 16px 12px}</style>` +
     Array.from({ length: 120 }, (_, i) => `<p id=p${i}>Paragraph ${i}: the quick brown fox jumps over the lazy dog, again and again, to make lines wrap differently at different widths.</p>`).join(""),
 };
-const server = createServer((req, res) => {
+function serve(req, res) {
   const url = new URL(req.url, "http://x");
   if (url.pathname === "/suggest") {
     const q = url.searchParams.get("q") ?? "";
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify([q, q.startsWith("zz") ? [`${q} one`, `${q} two`, q] : []]));
   }
+  if (url.pathname.startsWith("/files/")) {
+    // Attachments for the download checks.
+    const name = url.pathname.slice("/files/".length);
+    res.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${name}"` });
+    return res.end("ray download fixture\n".repeat(64));
+  }
   const body = pages[url.pathname];
   res.writeHead(body ? 200 : 404, { "content-type": "text/html" });
   res.end(body ?? "not found");
-});
+}
+const server = createServer(serve);
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
 const dataDir = mkdtempSync(join(tmpdir(), "ray-checks-"));
+// A throwaway self-signed certificate for the HTTPS fixture (the test app accepts any certificate).
+execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=ray.test",
+  "-keyout", join(dataDir, "fixture.key"), "-out", join(dataDir, "fixture.crt")], { stdio: "ignore" });
+const secureServer = createSecureServer({ key: readFileSync(join(dataDir, "fixture.key")), cert: readFileSync(join(dataDir, "fixture.crt")) }, serve);
+await new Promise((r) => secureServer.listen(0, "127.0.0.1", r));
+const secureOrigin = `https://ray.test:${secureServer.address().port}`;
 const crashesBefore = crashReports();
 const stateMarker = "[ray-state] ";
 let stderr = "";
@@ -60,6 +75,9 @@ function launch() {
       RAY_SUGGEST_URL: `${origin}/suggest?q=%s`,
       RAY_SEARCH_URL: `${origin}/search?q=%s`,
       RAY_DATA_DIR: dataDir,
+      RAY_DOWNLOADS_DIR: join(dataDir, "Downloads"),
+      RAY_HOST_RULES: "MAP ray.test 127.0.0.1",
+      RAY_IGNORE_CERT_ERRORS: "1",
       RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}`,
       RAY_REMOTE_DEBUGGING_PORT: String(port),
       RAY_START_URL: `${origin}/a`,
@@ -191,6 +209,7 @@ function needsVisibleWindow() {
     throw new Skip("the test window isn't on the visible desktop (a full-screen Space?), so Chrome hides its pages");
 }
 
+process.on("exit", () => { secureServer.close(); });
 // Springs run on the display's frame timer, which stops while the display sleeps (overnight runs).
 async function needsFrames() {
   await command("state");
@@ -694,6 +713,27 @@ const checks = {
     await until("add ready", async () => { await command("state"); return state().installPrompt?.addEnabled; }, 3000);
     await command("extprompt cancel");
     await until("prompt gone", () => state().installPrompt === null);
+  },
+  async downloads() {
+    const { sessionId } = await session(state().tabs.find((t) => t.active)?.url ?? "/a");
+    await evaluate(sessionId, `(() => { const a = document.createElement("a"); a.href = "/files/notes.txt"; a.click(); })()`);
+    const item = await until("finished", () => state().downloads.find((d) => d.filename === "notes.txt" && d.state === "finished"), 15000);
+    assert(item.path.startsWith(join(dataDir, "Downloads")), `saved to ${item.path}`);
+    assert(existsSync(item.path), "no file on disk");
+    await command("dlopen");
+    await until("list open", () => state().downloadsOpen);
+  },
+  async "download-insecure-blocked"() {
+    // A file over plain HTTP from a secure page never lands (the engine cancels Chrome's insecure download).
+    const insecure = origin.replace("127.0.0.1", "ray.test");
+    await send("Target.createTarget", { url: `${secureOrigin}/b?dl` });
+    const { sessionId } = await session(secureOrigin);
+    await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+    await evaluate(sessionId, `(() => { const a = document.createElement("a"); a.href = ${JSON.stringify(insecure + "/files/held.txt")}; a.click(); })()`);
+    const item = await until("blocked", () => state().downloads.find((d) => d.filename === "held.txt" && d.state !== "downloading"), 15000);
+    assert(item.state !== "finished", "an insecure download finished");
+    await sleep(500);
+    assert(!existsSync(join(dataDir, "Downloads", "held.txt")), "an insecure download was saved");
   },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]

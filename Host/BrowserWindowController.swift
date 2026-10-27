@@ -169,8 +169,71 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     return controller
   }()
 
+  private(set) lazy var downloads: DownloadsController = {
+    let controller = DownloadsController(profile: profile)
+    controller.onChange = { [weak self] newlyWaiting in self?.downloadsChanged(newlyWaiting: newlyWaiting) }
+    return controller
+  }()
+  private var downloadsPopover: NSPopover?
+  private var downloadsList: DownloadsListView?
+
+  private func downloadsChanged(newlyWaiting: Bool) {
+    let items = downloads.items
+    let active = items.filter { $0.active && !$0.waiting }
+    let progress = active.isEmpty ? nil : active.map(\.fraction).reduce(0, +) / Double(active.count)
+    sidebar.setDownloads(shown: !items.isEmpty, progress: progress)
+    if let downloadsList, let downloadsPopover {
+      downloadsList.show(items)
+      downloadsPopover.contentSize = downloadsList.fittingSize
+    }
+    if newlyWaiting {
+      // A held download needs an answer: open the list where it can be given.
+      if sidebar.window != nil, !state.sidebarHidden || peeking { showDownloads() } else { sidebar.flashAddress("Download needs your OK") }
+    } else if let started = items.first, started.active, items.count == 1 || downloadsPopover == nil, started.received == 0 {
+      sidebar.flashAddress("Downloading \(started.filename)")
+    }
+    logState("downloads")
+  }
+
+  func showDownloads() {
+    guard downloadsPopover == nil else { return }
+    layoutIfNeededForDownloads()
+    let list = DownloadsListView(frame: .zero)
+    list.controller = downloads
+    list.show(downloads.items)
+    let controller = NSViewController()
+    controller.view = list
+    let popover = NSPopover()
+    popover.contentViewController = controller
+    popover.contentSize = list.fittingSize
+    popover.behavior = .transient
+    popover.animates = false
+    NotificationCenter.default.addObserver(self, selector: #selector(downloadsClosed), name: NSPopover.didCloseNotification, object: popover)
+    downloadsPopover = popover
+    downloadsList = list
+    popover.show(relativeTo: sidebar.downloadsAnchor.bounds, of: sidebar.downloadsAnchor, preferredEdge: .maxY)
+    logState("downloads")
+  }
+
+  private func layoutIfNeededForDownloads() {
+    if !sidebar.downloadsShown { sidebar.setDownloads(shown: true, progress: nil) }
+    sidebar.layoutSubtreeIfNeeded()
+  }
+
+  @objc private func downloadsClosed() {
+    downloadsPopover = nil
+    downloadsList = nil
+    logState("downloads")
+  }
+
+  /// For tests: Keep or Discard through the open list's buttons.
+  func pressDownload(_ id: String, keep: Bool) -> Bool {
+    downloadsList?.row(for: id)?.press(keep: keep) ?? false
+  }
+
   func present(background: Bool) {
     extensions.refresh()
+    _ = downloads
     window.center()
     if background {
       // Test instances never go full screen: it would take over a Space in front of the user.
@@ -743,6 +806,10 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       .popUp(positioning: nil, at: NSPoint(x: 0, y: anchor.bounds.maxY + 4), in: anchor)
   }
 
+  func sidebarDownloads(_ sidebar: SidebarView, anchor: NSView) {
+    showDownloads()
+  }
+
   func sidebarNewTab(_ sidebar: SidebarView) { beginNewTab() }
   func sidebarOpenAddress(_ sidebar: SidebarView) { focusAddress() }
   func sidebarToggle(_ sidebar: SidebarView) { toggleSidebar() }
@@ -889,6 +956,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
       "fullScreen": isFullScreen,
+      "downloads": downloads.items.map { [
+        "id": $0.id, "filename": $0.filename, "state": $0.state, "dangerous": $0.dangerous, "path": $0.path,
+        "keepReady": downloadsList?.row(for: $0.id)?.keepReady ?? false,
+      ] },
+      "downloadsOpen": downloadsPopover != nil,
       "extensions": extensions.items.map { ["id": $0.id, "name": $0.name, "enabled": $0.enabled] },
       "extensionPopup": extensions.popupURL ?? NSNull(),
       "installPrompt": extensions.promptState ?? NSNull(),
