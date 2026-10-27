@@ -12,7 +12,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   let profile: ArdiaCoreProfile
   var onClose: (() -> Void)?
 
-  private let root = NSView()
+  private let root = WindowDragArea()
   private let sidebar = SidebarView()
   private let pages = PageContainerView()
   private(set) var tabs: [ArdiaCoreTab] = []

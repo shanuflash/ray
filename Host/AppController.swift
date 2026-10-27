@@ -22,7 +22,6 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate {
       engine.pageScript = source
     }
     MainMenu.install(target: self)
-    installWindowDragGuard()
     TestCommands.start()
     let controller = makeWindow(profile: engine.defaultProfile)
     controller.openTab(environment["LUMEN_START_URL"] ?? "https://example.com", foreground: true)
@@ -47,20 +46,6 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate {
     guard let id = request["id"] as? String else { return }
     NSLog("[lumen] permission %@ dismissed (no prompt UI yet)", String(describing: request["type"] ?? "?"))
     ArdiaCoreEngine.resolvePermission(id, result: "dismiss", remember: false)
-  }
-
-  private var dragGuard: Any?
-
-  private func installWindowDragGuard() {
-    dragGuard = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] event in
-      guard let self, let controller = self.windows.first(where: { $0.window === event.window }) else { return event }
-      if event.type == .leftMouseDown {
-        controller.window.isMovable = !controller.pageContains(windowPoint: event.locationInWindow)
-      } else {
-        controller.window.isMovable = true
-      }
-      return event
-    }
   }
 
   private func makeWindow(profile: ArdiaCoreProfile) -> BrowserWindowController {
