@@ -510,6 +510,26 @@ const checks = {
     await until("shown", () => !state().sidebar.hidden);
     assert(state().tabs.length === state().sidebar.pinned.filter((e) => e.live).length + state().sidebar.favorites.filter((e) => e.live).length, "today tabs still loaded");
   },
+  async "window-lights"() {
+    await command("state");
+    assert(state().realLightsHidden === true, "the real traffic lights show in windowed mode");
+    for (const [x, kind] of [[22, "close"], [45, "minimize"], [68, "zoom"]]) {
+      const from = stderr.length;
+      child.stdin.write(`hit ${x} 26\n`);
+      const hit = await until(`hit ${kind}`, () => {
+        const at = stderr.indexOf(`[ray-test] hit ${x} 26 -> `, from);
+        return at >= 0 ? stderr.slice(at).split("\n")[0] : null;
+      });
+      assert(hit.includes("WindowLightButton"), `${kind}: ${hit}`);
+    }
+    const from = stderr.length;
+    child.stdin.write("hit 104 26\n");
+    const toggle = await until("hit toggle", () => {
+      const at = stderr.indexOf("[ray-test] hit 104 26 -> ", from);
+      return at >= 0 ? stderr.slice(at).split("\n")[0] : null;
+    });
+    assert(toggle.includes("HoverIconButton"), `toggle: ${toggle}`);
+  },
   async quit() {
     savedSidebar = state().sidebar;
     savedActive = state().activeEntry;

@@ -27,6 +27,7 @@ enum SidebarColors {
   static let background = dynamic(dark: NSColor(white: 0.075, alpha: 1), light: NSColor(white: 0.9, alpha: 1))
   static let fill = dynamic(dark: NSColor(white: 1, alpha: 0.08), light: NSColor(white: 0, alpha: 0.06))
   static let hover = dynamic(dark: NSColor(white: 1, alpha: 0.06), light: NSColor(white: 0, alpha: 0.05))
+  static let lightsIdle = dynamic(dark: NSColor(white: 1, alpha: 0.18), light: NSColor(white: 0, alpha: 0.15))
   static let selected = dynamic(dark: NSColor(white: 1, alpha: 0.14), light: NSColor(white: 1, alpha: 0.85))
 }
 
@@ -40,6 +41,7 @@ final class SidebarView: NSView {
   var trafficLightsCenterY: CGFloat = 20 { didSet { if oldValue != trafficLightsCenterY { needsLayout = true } } }
   var reservesTrafficLights = true { didSet { if oldValue != reservesTrafficLights { needsLayout = true } } }
 
+  private let windowLights = WindowLights()
   private let toggleButton = SidebarView.iconButton("sidebar.left")
   private let backButton = SidebarView.iconButton("arrow.left")
   private let forwardButton = SidebarView.iconButton("arrow.right")
@@ -71,7 +73,8 @@ final class SidebarView: NSView {
     forwardButton.action = #selector(forward)
     reloadButton.target = self
     reloadButton.action = #selector(reload)
-    [toggleButton, backButton, forwardButton, reloadButton, addressPill, tilesView, scrollView].forEach(addSubview)
+    [windowLights, toggleButton, backButton, forwardButton, reloadButton, addressPill, tilesView, scrollView]
+      .forEach(addSubview)
 
     addressPill.onClick = { [weak self] in
       guard let self else { return }
@@ -200,6 +203,8 @@ final class SidebarView: NSView {
     let inset = Self.inset
     let width = bounds.width - inset * 2
     let rowCenter = trafficLightsCenterY
+    windowLights.isHidden = !reservesTrafficLights
+    windowLights.frame = NSRect(x: 14, y: rowCenter - 8, width: WindowLights.width, height: 16)
     toggleButton.frame = NSRect(x: reservesTrafficLights ? 88 : 13, y: rowCenter - 16, width: 32, height: 32)
     reloadButton.frame = NSRect(x: bounds.width - inset - 32 - 2, y: rowCenter - 16, width: 32, height: 32)
     forwardButton.frame = reloadButton.frame.offsetBy(dx: -34, dy: 0)
@@ -320,6 +325,110 @@ final class SidebarView: NSView {
     button.contentTintColor = .secondaryLabelColor
     button.refusesFirstResponder = true
     return button
+  }
+}
+
+final class WindowLights: NSView {
+  static let width: CGFloat = 12 * 3 + 11 * 2
+  private let buttons: [WindowLightButton] = [
+    WindowLightButton(kind: .close), WindowLightButton(kind: .minimize), WindowLightButton(kind: .zoom),
+  ]
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    buttons.forEach(addSubview)
+    addTrackingArea(NSTrackingArea(
+      rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var mouseDownCanMoveWindow: Bool { false }
+
+  override func layout() {
+    super.layout()
+    for (index, button) in buttons.enumerated() {
+      button.frame = NSRect(x: CGFloat(index) * 23 + 2, y: (bounds.height - 12) / 2, width: 12, height: 12)
+    }
+  }
+
+  override func mouseEntered(with event: NSEvent) { buttons.forEach { $0.lit = true } }
+  override func mouseExited(with event: NSEvent) { buttons.forEach { $0.lit = false } }
+}
+
+final class WindowLightButton: NSView {
+  enum Kind { case close, minimize, zoom }
+
+  let kind: Kind
+  private let glyph = NSImageView()
+  var lit = false {
+    didSet { needsDisplay = true }
+  }
+
+  init(kind: Kind) {
+    self.kind = kind
+    super.init(frame: .zero)
+    wantsLayer = true
+    layer?.cornerRadius = 6
+    let symbol: String
+    switch kind {
+    case .close: symbol = "xmark"
+    case .minimize: symbol = "minus"
+    case .zoom: symbol = "arrow.up.left.and.arrow.down.right"
+    }
+    glyph.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+    glyph.symbolConfiguration = .init(pointSize: kind == .zoom ? 6 : 7, weight: .bold)
+    glyph.contentTintColor = NSColor.black.withAlphaComponent(0.55)
+    addSubview(glyph)
+    setAccessibilityRole(.button)
+    setAccessibilityLabel(kind == .close ? "Close" : kind == .minimize ? "Minimize" : "Full Screen")
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var wantsUpdateLayer: Bool { true }
+  override var mouseDownCanMoveWindow: Bool { false }
+
+  override func layout() {
+    super.layout()
+    glyph.frame = bounds
+  }
+
+  override func updateLayer() {
+    let colour: NSColor
+    if lit {
+      switch kind {
+      case .close: colour = NSColor(srgbRed: 1, green: 0.373, blue: 0.341, alpha: 1)
+      case .minimize: colour = NSColor(srgbRed: 0.996, green: 0.737, blue: 0.180, alpha: 1)
+      case .zoom: colour = NSColor(srgbRed: 0.157, green: 0.784, blue: 0.251, alpha: 1)
+      }
+    } else {
+      colour = SidebarColors.lightsIdle
+    }
+    layer?.backgroundColor = colour.cgColor
+    glyph.isHidden = !lit
+  }
+
+  override func mouseUp(with event: NSEvent) {
+    guard let window, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+    switch kind {
+    case .close: window.performClose(nil)
+    case .minimize: window.performMiniaturize(nil)
+    case .zoom:
+      if event.modifierFlags.contains(.option) { window.performZoom(nil) } else { window.toggleFullScreen(nil) }
+    }
+  }
+
+  override func mouseDown(with event: NSEvent) {}
+
+  override func accessibilityPerformPress() -> Bool {
+    guard let window else { return false }
+    switch kind {
+    case .close: window.performClose(nil)
+    case .minimize: window.performMiniaturize(nil)
+    case .zoom: window.toggleFullScreen(nil)
+    }
+    return true
   }
 }
 

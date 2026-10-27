@@ -104,22 +104,13 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     window.animationBehavior = .none
     window.tabbingMode = .disallowed
     window.acceptsMouseMovedEvents = true
-    window.toolbar = NSToolbar(identifier: "ray.titlebar")
-    window.toolbarStyle = .unified
-    window.titlebarSeparatorStyle = .none
   }
 
   @objc private func hostResized() { layout() }
 
   private var isFullScreen: Bool { window.styleMask.contains(.fullScreen) }
 
-  private var trafficLightsCenter: CGFloat {
-    guard !isFullScreen, let button = window.standardWindowButton(.closeButton), let content = window.contentView
-    else { return 20 }
-    let frame = button.convert(button.bounds, to: nil)
-    let center = content.bounds.height - frame.midY
-    return center > 0 && center < 60 ? center : 20
-  }
+  private static let windowedRowCenter: CGFloat = 26
 
   private func layout() {
     let bounds = root.bounds
@@ -127,18 +118,17 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let width = SidebarView.width
     let shown = dockSpring.value
     let peek = peekSpring.value
-    let lights = trafficLightsCenter
 
     if peeking || peek > 0.001 {
       let inset = Self.peekInset
       floating.frame = NSRect(
         x: inset - (width + 12) * (1 - peek), y: inset, width: width, height: bounds.height - inset * 2)
       sidebar.frame = floating.bounds
-      sidebar.trafficLightsCenterY = isFullScreen ? Self.fullScreenRowCenter : lights - inset
+      sidebar.trafficLightsCenterY = isFullScreen ? Self.fullScreenRowCenter : Self.windowedRowCenter
       sidebar.reservesTrafficLights = !isFullScreen
     } else {
       sidebar.frame = NSRect(x: -width * (1 - shown), y: 0, width: width, height: bounds.height)
-      sidebar.trafficLightsCenterY = isFullScreen ? Self.fullScreenRowCenter : lights
+      sidebar.trafficLightsCenterY = isFullScreen ? Self.fullScreenRowCenter : Self.windowedRowCenter
       sidebar.reservesTrafficLights = !isFullScreen
     }
     let edge = isFullScreen ? margin * shown : margin
@@ -150,9 +140,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   private func updateTrafficLights() {
-    let visible = !state.sidebarHidden || peeking || dockSpring.isMoving
     for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
-      window.standardWindowButton(kind)?.isHidden = !visible
+      window.standardWindowButton(kind)?.isHidden = !isFullScreen
     }
   }
 
@@ -741,11 +730,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowMovable": window.isMovable,
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
-      "trafficLights": [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { kind in
-        window.standardWindowButton(kind).map { button -> String in
-          let frame = button.convert(button.bounds, to: nil)
-          return String(format: "%.1f,%.1f", frame.midX, (window.contentView?.bounds.height ?? 0) - frame.midY)
-        }
+      "realLightsHidden": [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
+        window.standardWindowButton($0)?.isHidden ?? true
       },
       "toggleCenter": sidebar.debugToggleCenter,
       "sidebar": [
