@@ -185,6 +185,10 @@ final class SidebarView: NSView {
 
   var addressText: String { addressPill.text }
 
+  func setNewTabActive(_ active: Bool) {
+    newTabRow.setSelected(active)
+  }
+
   override func layout() {
     super.layout()
     let inset = Self.inset
@@ -367,7 +371,7 @@ final class AddressPill: NSView {
     wantsLayer = true
     layer?.cornerRadius = 10
     layer?.cornerCurve = .continuous
-    label.font = .systemFont(ofSize: 15)
+    label.font = .systemFont(ofSize: 14)
     label.textColor = .secondaryLabelColor
     label.lineBreakMode = .byTruncatingHead
     securityIcon.image = NSImage(systemSymbolName: "lock.slash.fill", accessibilityDescription: "Not secure")
@@ -410,7 +414,7 @@ final class AddressPill: NSView {
     let mid = bounds.height / 2
     securityIcon.frame = NSRect(x: 12, y: mid - 8, width: 16, height: 16)
     searchIcon.frame = securityIcon.frame
-    let x: CGFloat = securityIcon.isHidden && searchIcon.isHidden ? 14 : 36
+    let x: CGFloat = securityIcon.isHidden && searchIcon.isHidden ? 12 : 34
     label.frame = NSRect(x: x, y: mid - 10, width: bounds.width - x - 12, height: 20)
   }
 }
@@ -471,16 +475,19 @@ final class SidebarRowView: NSView {
   private var isNewTab = false
   private var away = false
   private var closable = false
+  private let fill = CALayer()
+  static let fillInset: CGFloat = 3
 
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    layer?.cornerRadius = 10
-    layer?.cornerCurve = .continuous
+    fill.cornerRadius = 8
+    fill.cornerCurve = .continuous
+    layer?.addSublayer(fill)
     icon.imageScaling = .scaleProportionallyUpOrDown
     slash.font = .systemFont(ofSize: 16, weight: .light)
     slash.textColor = .tertiaryLabelColor
-    title.font = .systemFont(ofSize: 15, weight: .medium)
+    title.font = .systemFont(ofSize: 14, weight: .medium)
     title.lineBreakMode = .byTruncatingTail
     subtitle.font = .systemFont(ofSize: 12)
     subtitle.textColor = .secondaryLabelColor
@@ -505,7 +512,10 @@ final class SidebarRowView: NSView {
 
   override func updateLayer() {
     let color: NSColor = selected ? SidebarColors.selected : hovered ? SidebarColors.hover : .clear
-    layer?.backgroundColor = color.cgColor
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    fill.backgroundColor = color.cgColor
+    CATransaction.commit()
   }
 
   override func mouseEntered(with event: NSEvent) {
@@ -531,6 +541,12 @@ final class SidebarRowView: NSView {
 
   @objc private func close() { onClose?() }
 
+  func setSelected(_ selected: Bool) {
+    guard self.selected != selected else { return }
+    self.selected = selected
+    needsDisplay = true
+  }
+
   func showNewTab() {
     isNewTab = true
     icon.image = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)
@@ -538,7 +554,7 @@ final class SidebarRowView: NSView {
     icon.contentTintColor = .secondaryLabelColor
     title.stringValue = "New Tab"
     title.textColor = .secondaryLabelColor
-    title.font = .systemFont(ofSize: 15)
+    title.font = .systemFont(ofSize: 14)
     subtitle.isHidden = true
     slash.isHidden = true
     closeButton.isHidden = true
@@ -555,7 +571,8 @@ final class SidebarRowView: NSView {
     title.stringValue = entry.displayTitle
     title.textColor = .labelColor
     subtitle.stringValue = entry.host
-    subtitle.isHidden = entry.host.isEmpty || entry.host == entry.displayTitle
+    let showsHost = !entry.isLive || entry.isAwayFromPinned
+    subtitle.isHidden = !showsHost || entry.host.isEmpty || entry.host == entry.displayTitle
     closeButton.image = NSImage(
       systemSymbolName: entry.kind == .today ? "xmark" : "minus", accessibilityDescription: "Close")
     toolTip = away ? "Click the icon to go back to the pinned page" : nil
@@ -570,17 +587,22 @@ final class SidebarRowView: NSView {
 
   override func layout() {
     super.layout()
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    fill.frame = bounds.insetBy(dx: 0, dy: Self.fillInset)
+    CATransaction.commit()
     let mid = bounds.height / 2
-    icon.frame = NSRect(x: 8, y: mid - 10, width: 20, height: 20)
-    slash.frame = NSRect(x: 30, y: mid - 11, width: 10, height: 22)
-    let textX: CGFloat = isNewTab ? 34 : away ? 44 : 37
+    let iconSize: CGFloat = isNewTab ? 14 : 16
+    icon.frame = NSRect(x: 17 - iconSize / 2, y: mid - iconSize / 2, width: iconSize, height: iconSize)
+    slash.frame = NSRect(x: 28, y: mid - 11, width: 10, height: 22)
+    let textX: CGFloat = away ? 41 : 35
     closeButton.frame = NSRect(x: bounds.width - 30, y: mid - 11, width: 22, height: 22)
     let textWidth = (closeButton.isHidden ? bounds.width - 10 : closeButton.frame.minX - 4) - textX
     if subtitle.isHidden {
       title.frame = NSRect(x: textX, y: mid - 10, width: textWidth, height: 20)
     } else {
-      title.frame = NSRect(x: textX, y: mid - 17, width: textWidth, height: 19)
-      subtitle.frame = NSRect(x: textX, y: mid + 2, width: textWidth, height: 15)
+      title.frame = NSRect(x: textX, y: mid - 16, width: textWidth, height: 18)
+      subtitle.frame = NSRect(x: textX, y: mid + 1, width: textWidth, height: 15)
     }
   }
 }

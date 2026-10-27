@@ -23,6 +23,11 @@ final class PageContainerView: NSView {
 
   static let radius: CGFloat = 10
 
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    updateBackground()
+  }
+
   var cornerRadius: CGFloat {
     get { layer?.cornerRadius ?? 0 }
     set {
@@ -105,7 +110,9 @@ final class PageContainerView: NSView {
   private func updateBackground() {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    layer?.backgroundColor = shown == nil ? NSColor.clear.cgColor : NSColor.white.cgColor
+    let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    let empty = dark ? NSColor(white: 0.165, alpha: 1) : NSColor(white: 0.96, alpha: 1)
+    layer?.backgroundColor = (shown == nil ? empty : NSColor.white).cgColor
     CATransaction.commit()
   }
 

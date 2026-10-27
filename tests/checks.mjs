@@ -264,8 +264,10 @@ const checks = {
     await command("menu newTab");
     const bar = await until("bar rows", () => state().commandBar?.rows.length && state().commandBar);
     assert(bar.mode === "newTab", `mode ${bar.mode}`);
-    assert(bar.rows.every((r) => r.kind === "tab"), `rows ${JSON.stringify(bar.rows)}`);
-    assert(bar.rows.length === Math.min(8, state().tabs.length - 1), `expected the other tabs, got ${bar.rows.length}`);
+    const tabRows = bar.rows.filter((r) => r.kind === "tab");
+    assert(tabRows.length === Math.min(8, state().tabs.length - 1), `expected the other tabs, got ${tabRows.length}`);
+    assert(bar.rows.slice(0, tabRows.length).every((r) => r.kind === "tab"), `open tabs should come first: ${JSON.stringify(bar.rows)}`);
+    assert(bar.rows.slice(tabRows.length).every((r) => r.kind === "history"), `then frequent history: ${JSON.stringify(bar.rows)}`);
     await command("escape");
   },
   async "bar-switch-to-tab"() {

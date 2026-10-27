@@ -114,8 +114,9 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
 
   private func updateColors() {
     effectiveAppearance.performAsCurrentDrawingAppearance {
-      panel.layer?.backgroundColor = NSColor.windowBackgroundColor.blended(withFraction: 0.04, of: .labelColor)?.cgColor
-      panel.layer?.borderColor = NSColor.separatorColor.cgColor
+      let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+      panel.layer?.backgroundColor = (dark ? NSColor(white: 0.115, alpha: 1) : NSColor(white: 1, alpha: 1)).cgColor
+      panel.layer?.borderColor = (dark ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.1)).cgColor
       separator.layer?.backgroundColor = NSColor.separatorColor.cgColor
     }
   }

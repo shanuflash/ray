@@ -501,6 +501,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       commandBar = bar
     }
     searches.warm()
+    sidebar.setNewTabActive(commandBarMode == .newTab)
     bar.present(query: query)
     refreshSuggestions()
     history.refresh(profile: profile) { [weak self] in self?.refreshSuggestions() }
@@ -535,6 +536,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     guard let bar = commandBar else { return }
     commandBar = nil
     bar.removeFromSuperview()
+    sidebar.setNewTabActive(false)
     if focus, let tab = activeTab { focusPage(tab) }
     logState("commandBar")
   }

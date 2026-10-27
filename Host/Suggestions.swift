@@ -169,6 +169,7 @@ enum Suggestions {
   private static let magnifier = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
 
   static let maxSearchSuggestions = 4
+  static let emptyQueryRows = 5
 
   static func build(
     query raw: String, tabs: [ArdiaCoreTab], active: ArdiaCoreTab?, history: [HistoryEntry], searches: [String],
@@ -176,7 +177,18 @@ enum Suggestions {
   ) -> [Suggestion] {
     let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     if query.isEmpty {
-      return tabs.filter { $0 !== active }.prefix(limit).map(tabSuggestion)
+      let open = tabs.filter { $0 !== active }.prefix(limit).map(tabSuggestion)
+      let openURLs = Set(tabs.map(\.url))
+      let frequent = history
+        .filter { !openURLs.contains($0.url) && $0.url.hasPrefix("http") }
+        .sorted { ($0.visits, $0.lastVisit) > ($1.visits, $1.lastVisit) }
+        .prefix(max(0, emptyQueryRows - open.count))
+        .map { entry in
+          Suggestion(
+            kind: .history(entry.url), title: entry.title.isEmpty ? entry.url : entry.title,
+            detail: AddressInput.display(for: entry.url), icon: favicon(entry.url) ?? clock)
+        }
+      return Array((open + frequent).prefix(limit))
     }
     let tokens = query.lowercased().split(separator: " ").map(String.init)
     let matchingTabs = tabs.filter { matches(tokens, $0.title, $0.url) }.prefix(4).map(tabSuggestion)
