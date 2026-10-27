@@ -616,7 +616,6 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   func sidebarBack(_ sidebar: SidebarView) { activeTab?.goBack() }
   func sidebarForward(_ sidebar: SidebarView) { activeTab?.goForward() }
   func sidebarReload(_ sidebar: SidebarView) { activeTab?.reload() }
-  func sidebarClearToday(_ sidebar: SidebarView) { clearToday() }
 
   func sidebarIcon(for entry: SidebarEntry) -> NSImage? {
     if entry.isLive, let icon = entry.tab?.favicon { return icon }

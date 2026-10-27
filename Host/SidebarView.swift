@@ -19,7 +19,6 @@ protocol SidebarViewDelegate: AnyObject {
   func sidebarBack(_ sidebar: SidebarView)
   func sidebarForward(_ sidebar: SidebarView)
   func sidebarReload(_ sidebar: SidebarView)
-  func sidebarClearToday(_ sidebar: SidebarView)
   func sidebarIcon(for entry: SidebarEntry) -> NSImage?
 }
 
@@ -120,7 +119,6 @@ final class SidebarView: NSView {
   private let scrollView = NSScrollView()
   private let content = FlippedView()
   private let separator = NSView()
-  private let clearButton = NSButton()
   private let newTabRow = SidebarRowView()
   private let pinHint = DropHintView(symbol: "pin", title: "Pin tab")
   private let favoriteHint = DropHintView(symbol: "star", title: "Add to Favorites", inset: 0)
@@ -134,7 +132,6 @@ final class SidebarView: NSView {
   private(set) var pinned: [SidebarEntry] = []
   private(set) var today: [SidebarEntry] = []
   private var active: SidebarEntry?
-  private var hovering = false
   private var drag: SidebarDrag?
   private var pendingShow: (() -> Void)?
   private var landing: [UUID: NSRect] = [:]
@@ -171,14 +168,6 @@ final class SidebarView: NSView {
 
     separator.wantsLayer = true
     content.addSubview(separator)
-    clearButton.title = "↓ Clear"
-    clearButton.isBordered = false
-    clearButton.font = .systemFont(ofSize: 12, weight: .semibold)
-    clearButton.contentTintColor = .tertiaryLabelColor
-    clearButton.target = self
-    clearButton.action = #selector(clearToday)
-    clearButton.refusesFirstResponder = true
-    content.addSubview(clearButton)
 
     newTabRow.showNewTab()
     newTabRow.onClick = { [weak self] _ in
@@ -194,9 +183,6 @@ final class SidebarView: NSView {
     tilesView.addSubview(favoritesGlow, positioned: .below, relativeTo: nil)
     pinnedGlow.isHidden = true
     content.addSubview(pinnedGlow, positioned: .below, relativeTo: nil)
-
-    addTrackingArea(NSTrackingArea(
-      rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     updateColors()
   }
 
@@ -213,20 +199,6 @@ final class SidebarView: NSView {
     effectiveAppearance.performAsCurrentDrawingAppearance {
       separator.layer?.backgroundColor = NSColor.separatorColor.cgColor
     }
-  }
-
-  override func mouseEntered(with event: NSEvent) {
-    hovering = true
-    updateClear()
-  }
-
-  override func mouseExited(with event: NSEvent) {
-    hovering = false
-    updateClear()
-  }
-
-  private func updateClear() {
-    clearButton.isHidden = !hovering || today.isEmpty || pinned.isEmpty
   }
 
   func show(favorites: [SidebarEntry], pinned: [SidebarEntry], today: [SidebarEntry], active: SidebarEntry?) {
@@ -262,7 +234,6 @@ final class SidebarView: NSView {
       }
       row.menu = menu(for: entry)
     }
-    updateClear()
     needsLayout = true
   }
 
@@ -372,9 +343,7 @@ final class SidebarView: NSView {
     separator.isHidden = pinnedSlots.isEmpty && !pinBand
     if !separator.isHidden {
       let lineY = rowY + 12
-      let clearWidth = ceil(clearButton.intrinsicContentSize.width)
-      clearButton.frame = NSRect(x: bounds.width - 19 - clearWidth, y: lineY - 9, width: clearWidth, height: 18)
-      place(separator, NSRect(x: 22, y: lineY, width: max(0, clearButton.frame.minX - 8.5 - 22), height: 1), entry: nil)
+      place(separator, NSRect(x: 22, y: lineY, width: max(0, bounds.width - 44), height: 1), entry: nil)
       rowY = lineY + 30 - Self.rowHeight / 2
     }
     place(newTabRow, NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight), entry: nil)
@@ -654,7 +623,6 @@ final class SidebarView: NSView {
   @objc private func back() { delegate?.sidebarBack(self) }
   @objc private func forward() { delegate?.sidebarForward(self) }
   @objc private func reload() { delegate?.sidebarReload(self) }
-  @objc private func clearToday() { delegate?.sidebarClearToday(self) }
 
   private func reuse<V: NSView>(_ views: [V], count: Int, in parent: NSView, make: () -> V) -> [V] {
     var views = views
