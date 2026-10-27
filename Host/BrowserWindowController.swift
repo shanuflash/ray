@@ -811,9 +811,11 @@ final class FloatingSidebarFrame: NSView {
     layer?.cornerCurve = .continuous
     layer?.masksToBounds = false
     layer?.borderWidth = 1
+    // Arc's peek shadow, measured from a recording (2026-10-27): about 9 % darker at the panel's edge, gone within
+    // about 8 pt, a little deeper below. Ardia's (black 0.5, radius 20) read as too heavy.
     layer?.shadowColor = NSColor.black.cgColor
-    layer?.shadowRadius = 20
-    layer?.shadowOffset = CGSize(width: 0, height: -6)
+    layer?.shadowRadius = 8
+    layer?.shadowOffset = CGSize(width: 0, height: -2)
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -824,7 +826,7 @@ final class FloatingSidebarFrame: NSView {
     let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     layer?.backgroundColor = SidebarColors.background.cgColor
     layer?.borderColor = (dark ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.1)).cgColor
-    layer?.shadowOpacity = dark ? 0.5 : 0.18
+    layer?.shadowOpacity = dark ? 0.18 : 0.12
   }
 
   override func layout() {
