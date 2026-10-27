@@ -1,10 +1,10 @@
 import AppKit
 
 let environment = ProcessInfo.processInfo.environment
-let launchedInBackground = environment["LUMEN_BACKGROUND"] == "1"
+let launchedInBackground = TestEnvironment["LUMEN_BACKGROUND"] == "1"
 
 let dataDirectory: String = {
-  let base = environment["LUMEN_DATA_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+  let base = TestEnvironment["LUMEN_DATA_DIR"].flatMap { $0.isEmpty ? nil : $0 }
     ?? (NSHomeDirectory() as NSString).appendingPathComponent("Library/Application Support/Lumen")
   return (base as NSString).appendingPathComponent("Chromium")
 }()
@@ -30,10 +30,10 @@ var engineArguments = [
     + "InfiniteTabsFreezing:ardia_unconnected_unfreeze_interval/600s,"
     + "ThrottleMainFrameTo60Hz,UrgentMainFrameForInput",
 ]
-if environment["LUMEN_ENGINE_FEATURES"] == "none" {
+if TestEnvironment["LUMEN_ENGINE_FEATURES"] == "none" {
   engineArguments.removeAll { $0.hasPrefix("--enable-features=") }
 }
-if let port = environment["LUMEN_REMOTE_DEBUGGING_PORT"] {
+if let port = TestEnvironment["LUMEN_REMOTE_DEBUGGING_PORT"] {
   engineArguments += ["--remote-debugging-port=\(port)", "--remote-allow-origins=*"]
 }
 if launchedInBackground {

@@ -175,7 +175,8 @@ final class SidebarView: NSView {
   }
 
   func showAddress(_ entry: SidebarEntry?) {
-    addressPill.show(url: entry?.currentURL ?? "")
+    let level = entry.flatMap { $0.isLive ? $0.tab?.securityInfo["level"] as? String : nil }
+    addressPill.show(url: entry?.currentURL ?? "", security: level)
   }
 
   func setNavigation(canGoBack: Bool, canGoForward: Bool) {
@@ -397,15 +398,29 @@ final class AddressPill: NSView {
 
   override func mouseDown(with event: NSEvent) { onClick?() }
 
-  func show(url: String) {
+  func show(url: String, security: String?) {
     let components = URLComponents(string: url)
-    let host = components?.host ?? ""
-    text = host.isEmpty ? url : (host.hasPrefix("www.") ? String(host.dropFirst(4)) : host)
+    let hasHost = !(components?.host ?? "").isEmpty
+    text = AddressInput.pillText(for: url)
     let empty = text.isEmpty
     label.stringValue = empty ? "Search or Enter URL…" : text
+    label.lineBreakMode = hasHost ? .byTruncatingHead : .byTruncatingTail
     label.textColor = empty ? .tertiaryLabelColor : .secondaryLabelColor
     searchIcon.isHidden = !empty
-    securityIcon.isHidden = empty || components?.scheme != "http"
+    let level = security ?? (components?.scheme == "http" ? "insecure" : "none")
+    switch level {
+    case "insecure", "certificateError":
+      securityIcon.image = NSImage(systemSymbolName: "lock.slash.fill", accessibilityDescription: "Not secure")
+      securityIcon.contentTintColor = .systemRed
+      securityIcon.isHidden = empty
+    case "mixed":
+      securityIcon.image = NSImage(
+        systemSymbolName: "lock.trianglebadge.exclamationmark.fill", accessibilityDescription: "Partly secure")
+      securityIcon.contentTintColor = .systemOrange
+      securityIcon.isHidden = empty
+    default:
+      securityIcon.isHidden = true
+    }
     needsLayout = true
   }
 

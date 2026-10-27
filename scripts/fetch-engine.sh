@@ -18,14 +18,17 @@ if [ ! -f "$dest/.complete" ]; then
   tmp="$store/.tmp-$$"
   rm -rf "$tmp" && mkdir -p "$tmp"
   trap 'rm -rf "$tmp"' EXIT
-  if [ ! -f "$mirror/$file" ] || [ "$(shasum -a 256 "$mirror/$file" | awk '{print $1}')" != "$sha256" ]; then
+  if [ -f "$mirror/$file" ]; then
+    cp "$mirror/$file" "$tmp/$file"
+  else
     url="https://github.com/$repo/releases/download/$release/$file"
     echo "downloading $url" >&2
-    curl -fsSL --retry 3 -o "$mirror/$file.part" "$url" || die "couldn't download $url"
-    mv "$mirror/$file.part" "$mirror/$file"
+    curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$tmp/$file" "$url" || die "couldn't download $url"
   fi
-  [ "$(shasum -a 256 "$mirror/$file" | awk '{print $1}')" = "$sha256" ] || die "$file doesn't match engine.lock's sha256"
-  tar -xJf "$mirror/$file" -C "$tmp" || die "couldn't unpack $file"
+  [ "$(shasum -a 256 "$tmp/$file" | awk '{print $1}')" = "$sha256" ] || die "$file doesn't match engine.lock's sha256"
+  cp "$tmp/$file" "$mirror/$file.part" && mv "$mirror/$file.part" "$mirror/$file"
+  tar -xJf "$tmp/$file" -C "$tmp" || die "couldn't unpack $file"
+  rm -f "$tmp/$file"
   [ -f "$tmp/$name.framework/Versions/Current/$name" ] || die "$file holds no $name.framework"
   touch "$tmp/.complete"
   rm -rf "$dest"

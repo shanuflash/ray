@@ -128,7 +128,7 @@ final class SidebarStore {
     guard let data = try? JSONEncoder().encode(state) else { return }
     let url = self.url
     if now {
-      try? data.write(to: url, options: .atomic)
+      queue.sync { try? data.write(to: url, options: .atomic) }
     } else {
       queue.async { try? data.write(to: url, options: .atomic) }
     }

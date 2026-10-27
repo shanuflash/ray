@@ -40,5 +40,35 @@ for (input, expected) in displayCases where AddressInput.display(for: input) != 
   failures += 1
   print("FAIL display(\(input)) = \(AddressInput.display(for: input)), expected \(expected)")
 }
-print(failures == 0 ? "all \(cases.count + displayCases.count) passed" : "\(failures) failed")
+let pillCases: [(String, String)] = [
+  ("https://www.example.com/path?q=1#x", "example.com"),
+  ("http://localhost:3000/", "localhost"),
+  ("about:blank#////accounts.google.com", "about:blank"),
+  ("about:blank?x=//accounts.google.com", "about:blank"),
+  ("data:text/html,<h1>accounts.google.com</h1>", "data:"),
+  ("blob:https://evil.example/1234-5678", "blob: evil.example"),
+  ("file:///Users/me/Downloads/accounts.google.com.html", "file: accounts.google.com.html"),
+  ("", ""),
+]
+for (input, expected) in pillCases where AddressInput.pillText(for: input) != expected {
+  failures += 1
+  print("FAIL pillText(\(input)) = \(AddressInput.pillText(for: input)), expected \(expected)")
+}
+let autocompleteCases: [(String, String?, String, Bool)] = [
+  ("github.com", nil, "git", true),
+  ("google.com.evil.tld", nil, "google", false),
+  ("google.com.evil.tld", "google.com", "google.com", false),
+  ("google.com", "google.com", "google.com", true),
+  ("mail.google.com", nil, "mail", false),
+  ("bbc.co.uk", nil, "bbc", true),
+  ("evil.co.uk", nil, "co", false),
+  ("", nil, "x", false),
+]
+for (candidate, typed, query, expected) in autocompleteCases
+where AddressInput.autocompletes(candidateHost: candidate, typedHost: typed, query: query) != expected {
+  failures += 1
+  print("FAIL autocompletes(\(candidate), typed: \(typed ?? "nil"), \(query)) != \(expected)")
+}
+let total = cases.count + displayCases.count + pillCases.count + autocompleteCases.count
+print(failures == 0 ? "all \(total) passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)

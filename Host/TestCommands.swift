@@ -4,7 +4,7 @@ enum TestCommands {
   private static var buffer = ""
 
   static func start() {
-    guard environment["LUMEN_TEST_COMMANDS"] == "1" else { return }
+    guard TestEnvironment["LUMEN_TEST_COMMANDS"] == "1" else { return }
     FileHandle.standardInput.readabilityHandler = { handle in
       guard let text = String(data: handle.availableData, encoding: .utf8), !text.isEmpty else {
         handle.readabilityHandler = nil

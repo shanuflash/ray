@@ -1,7 +1,7 @@
 import Foundation
 
 enum AddressInput {
-  static let searchTemplate = ProcessInfo.processInfo.environment["LUMEN_SEARCH_URL"]
+  static let searchTemplate = TestEnvironment["LUMEN_SEARCH_URL"]
     ?? "https://www.google.com/search?q=%s"
 
   private static let passThroughSchemes: Set<String> = ["http", "https", "file", "chrome", "about", "data", "view-source"]
@@ -23,6 +23,45 @@ enum AddressInput {
 
   static func isSearch(_ url: String) -> Bool {
     url.hasPrefix(searchTemplate.replacingOccurrences(of: "%s", with: ""))
+  }
+
+  static func host(of url: String) -> String {
+    let host = URLComponents(string: url)?.host?.lowercased() ?? ""
+    return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+  }
+
+  static func registrableDomain(_ host: String) -> String {
+    let labels = host.split(separator: ".")
+    guard labels.count > 2, let last = labels.last else { return host }
+    let second = labels[labels.count - 2]
+    let take = last.count == 2 && second.count <= 3 ? 3 : 2
+    return labels.suffix(take).joined(separator: ".")
+  }
+
+  static func autocompletes(candidateHost: String, typedHost: String?, query: String) -> Bool {
+    guard !candidateHost.isEmpty else { return false }
+    if let typedHost { return candidateHost == typedHost }
+    return registrableDomain(candidateHost).hasPrefix(query.lowercased())
+  }
+
+  static func pillText(for url: String) -> String {
+    guard !url.isEmpty else { return "" }
+    let components = URLComponents(string: url)
+    if let host = components?.host, !host.isEmpty {
+      return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+    let scheme = (components?.scheme ?? url.split(separator: ":").first.map(String.init) ?? "").lowercased()
+    switch scheme {
+    case "about":
+      return "about:" + (components?.path ?? "")
+    case "file":
+      return "file: " + ((components?.path ?? "") as NSString).lastPathComponent
+    case "blob":
+      let inner = URLComponents(string: String(url.dropFirst(5)))?.host ?? ""
+      return inner.isEmpty ? "blob:" : "blob: " + inner
+    default:
+      return scheme.isEmpty ? "" : scheme + ":"
+    }
   }
 
   static func display(for url: String) -> String {

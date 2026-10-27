@@ -33,8 +33,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     let visible = scrollView.contentView.documentVisibleRect
     let fits = (0..<suggestions.count).allSatisfy { visible.contains(tableView.rect(ofRow: $0)) }
     if !fits, let last = suggestions.indices.last {
-      NSLog("[lumen] command bar rows cut off: visible %@, last row %@, table %@",
-            NSStringFromRect(visible), NSStringFromRect(tableView.rect(ofRow: last)), NSStringFromRect(tableView.frame))
+      TestEnvironment.log(
+        "command bar rows cut off: visible \(NSStringFromRect(visible)), last row \(NSStringFromRect(tableView.rect(ofRow: last)))")
     }
     return fits
   }
@@ -324,7 +324,7 @@ private final class SuggestionCell: NSTableCellView {
       attributes: [.font: NSFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: NSColor.labelColor])
     let detail: String
     switch suggestion.kind {
-    case .tab: detail = ""
+    case .tab: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
     case .search: detail = suggestion.detail
     case .url, .history: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
     }

@@ -87,7 +87,7 @@ final class FaviconCache {
 }
 
 final class SearchSuggestions {
-  static let endpoint = environment["LUMEN_SUGGEST_URL"]
+  static let endpoint = TestEnvironment["LUMEN_SUGGEST_URL"]
     ?? "https://suggestqueries.google.com/complete/search?client=firefox&q=%s"
   static var userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
   private static let minimumInterval: TimeInterval = 0.1
@@ -207,7 +207,14 @@ enum Suggestions {
 
     var rows: [Suggestion] = []
     let typed = typedSuggestion(query)
-    let autocomplete = (matchingTabs + matchingHistory).first { hostStarts($0, with: query.lowercased()) }
+    let typedHost: String? = {
+      if case .url(let url)? = typed?.kind { return host(of: url) }
+      return nil
+    }()
+    let lower = query.lowercased()
+    let autocomplete = (matchingTabs + matchingHistory).first { candidate in
+      AddressInput.autocompletes(candidateHost: host(of: candidate) ?? "", typedHost: typedHost, query: lower)
+    }
     if let autocomplete { rows.append(autocomplete) }
     if let typed { rows.append(typed) }
     let searchRows = searches
@@ -242,9 +249,10 @@ enum Suggestions {
   }
 
   private static func tabSuggestion(_ tab: ArdiaCoreTab) -> Suggestion {
-    Suggestion(
+    let host = host(of: tab.url)
+    return Suggestion(
       kind: .tab(tab), title: tab.title.isEmpty ? AddressInput.display(for: tab.url) : tab.title,
-      detail: AddressInput.display(for: tab.url), icon: tab.favicon ?? globe)
+      detail: host.isEmpty ? AddressInput.display(for: tab.url) : host, icon: tab.favicon ?? globe)
   }
 
   private static func matches(_ tokens: [String], _ title: String, _ url: String) -> Bool {
@@ -260,18 +268,16 @@ enum Suggestions {
     return score
   }
 
-  private static func hostStarts(_ suggestion: Suggestion, with query: String) -> Bool {
+  private static func host(of suggestion: Suggestion) -> String? {
     switch suggestion.kind {
-    case .tab(let tab): return host(of: tab.url).hasPrefix(query)
-    case .history(let url): return host(of: url).hasPrefix(query)
-    default: return false
+    case .tab(let tab): return host(of: tab.url)
+    case .history(let url): return host(of: url)
+    default: return nil
     }
   }
 
-  private static func host(of url: String) -> String {
-    let host = URLComponents(string: url)?.host?.lowercased() ?? ""
-    return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-  }
+
+  private static func host(of url: String) -> String { AddressInput.host(of: url) }
 
   private static func same(_ a: Suggestion, _ b: Suggestion) -> Bool {
     switch (a.kind, b.kind) {

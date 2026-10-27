@@ -24,12 +24,37 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
 - `third_party/crest/`: read-only reference clone of Crest (gitignored), another native-Mac Chromium browser.
 
 ## Build and run
-- `scripts/build-app.sh` → `build/Lumen.app` (fetches the engine, compiles `Host/`, re-signs the framework ad hoc).
+- `scripts/build-app.sh` → `build/Lumen.app` (the user's app) and `build/LumenTests.app` (same code compiled with
+  `-D LUMEN_TEST_HOOKS`, bundle id `….tests`). Test hooks, `LUMEN_*` overrides, URL logs and the DevTools port exist
+  only in the test app; checks and `run-hidden.sh` use it, `relaunch.sh` opens the real one.
 - `scripts/run-hidden.sh <throwaway data dir> [port] [url]` launches hidden and prints DevTools' page list.
 - `scripts/test.sh [check …]`: address-parsing unit tests, then `tests/checks.mjs` (hidden instance, own data dir,
   local fixture pages). Add a check for every behaviour you add or fix.
 - Engine delegate methods are `@optional`: a Swift name that's slightly off compiles with only a "nearly matches"
   warning and is never called. Treat those warnings as errors.
+
+## Security checklist (every change)
+Web pages are hostile; Chromium sandboxes them, but Lumen's chrome must not hand them anything back.
+- **Identity comes from the engine, never the page.** Use the verified `origin` the engine passes with page messages
+  and the tab's `committedOrigin`; ignore any URL or origin a page reports about itself.
+- **Page channel:** `Resources/page_script.js` runs in every frame; iframes return on its first line unless a feature
+  needs them. Treat every message as untrusted: check kind, types and sizes; never act on it across tabs.
+- **URLs from anywhere** (address field, command bar, history, suggestions, drag and drop, `Sidebar.json`, popups) go
+  through `AddressInput`. Never load `javascript:`. Load `data:`/`file:` only when the user typed it.
+- **Address display:** host only, elided from the start, `user:pass@` hidden, port shown; never show page-controlled
+  text where the address goes.
+- **Prompts** (permissions, external apps, downloads, extension installs, password save): deny or close by default,
+  show the full origin, ignore clicks for the first 0.5 s, never auto-accept, never show over another tab's page.
+- **No string-built code:** JSON through `JSONSerialization` only (`EngineCalls`); never build JS for
+  `evaluate`/`executeJavaScript` from untrusted text.
+- **Test and debug hooks** (`TestCommands`, `[lumen-state]` logs, DevTools port, `LUMEN_*` overrides) work only when
+  their `LUMEN_*` variable is set, and are never reachable from a page or a normal launch.
+- **Logs:** no URLs, titles, page messages, cookies or credentials in `NSLog` in normal runs.
+- **Secrets:** never in `Sidebar.json`, logs or tests. While on the prebuilt engine (mock keychain), Lumen isn't for
+  real accounts.
+- **Monitors:** global event monitors watch pointer position only, never keys; none in test instances.
+- **Engine:** `engine.lock` pins the SHA-256; on every bump, note the Chromium version against current Chrome stable.
+- **Every security-relevant behaviour gets a check** in `tests/checks.mjs`.
 
 ## Key routing
 - `preHandleKeyEvent` runs only Chrome's reserved set (`Shortcuts.isReserved`: ⌘T ⌘W ⌘N ⌘Q ⇧⌘T ⇧⌘W ⇧⌘N ⇧⌘[ ⇧⌘]
@@ -37,6 +62,8 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   the main menu.
 
 ## Rules
+- Commit messages: caveman style, one short line like `feat: arc like sidebar` or `fix: sidebar opening too quickly`
+  (conventional prefix, lowercase, no body unless the why is non-obvious). No Co-Authored-By or other attribution.
 - Before any design or behaviour decision, check all three references and say what each does: Chromium's source
   (Chrome's behaviour), Ardia (`third_party/ardia`, same engine) and Crest (`third_party/crest`). None is
   automatically right; weigh them, and where they disagree pick on evidence. Don't narrate the checking.

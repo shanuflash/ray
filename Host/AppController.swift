@@ -26,7 +26,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     TestCommands.start()
     let controller = makeWindow(profile: engine.defaultProfile)
     controller.present(background: launchedInBackground)
-    controller.restore(startURL: environment["LUMEN_START_URL"])
+    controller.restore(startURL: TestEnvironment["LUMEN_START_URL"])
     controller.searches.warm()
   }
 
@@ -51,7 +51,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
 
   func engine(_ engine: ArdiaCoreEngine, permissionRequest request: [String: Any], tab: ArdiaCoreTab) {
     guard let id = request["id"] as? String else { return }
-    NSLog("[lumen] permission %@ dismissed (no prompt UI yet)", String(describing: request["type"] ?? "?"))
+    TestEnvironment.log("permission \(request["type"] ?? "?") dismissed (no prompt UI yet)")
     ArdiaCoreEngine.resolvePermission(id, result: "dismiss", remember: false)
   }
 

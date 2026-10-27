@@ -9,7 +9,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   private static let margin: CGFloat = 8
-  private static let logsState = environment["LUMEN_LOG_STATE"] == "1"
+  private static let logsState = TestEnvironment["LUMEN_LOG_STATE"] == "1"
 
   let coreWindow: ArdiaCoreWindow
   let profile: ArdiaCoreProfile
@@ -612,7 +612,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   // MARK: ArdiaCoreWindowDelegate
 
   func window(_ window: ArdiaCoreWindow, didInsert tab: ArdiaCoreTab, opener: ArdiaCoreTab?, disposition: String) {
-    NSLog("[lumen] tab %d inserted (%@)", tab.tabId, disposition)
+    TestEnvironment.log("tab \(tab.tabId) inserted (\(disposition))")
     if state.entry(for: tab) != nil { return }
     if let entry = loadingEntry, entry.tab == nil {
       bind(entry, tab)
@@ -694,10 +694,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   func tabDidChangeURL(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "url") }
   func tabDidChangeFavicon(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "favicon") }
   func tabDidChangeNavigationState(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "navigation") }
+  func tabDidChangeSecurity(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "security") }
 
   func tabDidChangeLoading(_ tab: ArdiaCoreTab) {
     pages.updateProgress(for: tab)
-    if !tab.loading { NSLog("[lumen] tab %d loaded %@", tab.tabId, tab.url) }
+    if !tab.loading { TestEnvironment.log("tab \(tab.tabId) loaded \(tab.url)") }
   }
 
   func tabDidChangeProgress(_ tab: ArdiaCoreTab) {
@@ -705,14 +706,14 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   func tab(_ tab: ArdiaCoreTab, didFailLoad url: String, code: Int32, description text: String) {
-    NSLog("[lumen] tab %d failed %@ (%d %@)", tab.tabId, url, code, text)
+    TestEnvironment.log("tab \(tab.tabId) failed \(url) (\(code) \(text))")
   }
 
   func tab(
     _ tab: ArdiaCoreTab, didReceivePageMessage kind: String, json: String, frame frameId: String, main: Bool,
     origin: String
   ) {
-    if kind == "hello" && main { NSLog("[lumen] page channel ready in tab %d (%@)", tab.tabId, origin) }
+    if kind == "hello" && main { TestEnvironment.log("page channel ready in tab \(tab.tabId) (\(origin))") }
   }
 
   // MARK: State log
