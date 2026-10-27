@@ -120,6 +120,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "event": event,
       "active": activeTab.map { Int($0.tabId) } ?? NSNull(),
       "address": sidebar.addressField.stringValue,
+      "pages": pages.debugState,
       "commandBar": commandBar.map { bar in
         [
           "mode": commandBarMode.rawValue, "query": bar.field.stringValue, "selected": bar.selectedIndex,
@@ -290,6 +291,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   func window(_ window: ArdiaCoreWindow, devToolsDidChangeFor tab: ArdiaCoreTab, view devToolsView: NSView?) {
     if tab === activeTab { pages.setDevTools(devToolsView) }
+    logState("devTools")
   }
 
   func window(_ window: ArdiaCoreWindow, preHandleKeyEvent event: NSEvent) -> Bool {

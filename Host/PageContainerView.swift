@@ -21,6 +21,20 @@ final class PageContainerView: NSView {
 
   required init?(coder: NSCoder) { fatalError() }
 
+  override var isFlipped: Bool { true }
+
+  var debugState: [String: Any] {
+    let page = shown?.view
+    var state: [String: Any] = ["pageFrame": page.map { NSStringFromRect($0.frame) } ?? ""]
+    if let devTools, devTools.superview === self {
+      state["devToolsFrame"] = NSStringFromRect(devTools.frame)
+      if let page, let pageIndex = subviews.firstIndex(of: page), let devIndex = subviews.firstIndex(of: devTools) {
+        state["pageAboveDevTools"] = pageIndex > devIndex
+      }
+    }
+    return state
+  }
+
   func attach(_ tab: ArdiaCoreTab) {
     let page = tab.view
     guard page.superview !== self else { return }
@@ -64,7 +78,11 @@ final class PageContainerView: NSView {
       devTools = view
       if let view {
         view.removeFromSuperview()
-        addSubview(view)
+        if let page = shown?.view, page.superview === self {
+          addSubview(view, positioned: .below, relativeTo: page)
+        } else {
+          addSubview(view, positioned: .below, relativeTo: nil)
+        }
       }
     }
     layoutPages()
@@ -86,7 +104,7 @@ final class PageContainerView: NSView {
       page.frame = page === shown?.view ? pageFrame : bounds
     }
     let progressFrame = progressLayer.frame
-    progressLayer.frame = NSRect(x: 0, y: bounds.height - 2, width: progressFrame.width, height: 2)
+    progressLayer.frame = NSRect(x: 0, y: 0, width: progressFrame.width, height: 2)
   }
 
   func updateProgress(for tab: ArdiaCoreTab) {

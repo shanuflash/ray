@@ -320,6 +320,19 @@ const checks = {
     const opened = await until("search tab", () => state().tabs.length === before + 1 && state().tabs.find((t) => t.id === state().active && t.url.includes("q=zzq+one") || t.url.includes("q=zzq%20one")));
     assert(opened, "search tab missing");
   },
+  async "devtools-docked"() {
+    await command("menu toggleDevTools");
+    const pages = await until("devtools docked", () => state().pages?.devToolsFrame && state().pages);
+    const rect = (text) => text.match(/-?[\d.]+/g).map(Number);
+    const [, , pw, ph] = rect(pages.pageFrame);
+    const [, , dw, dh] = rect(pages.devToolsFrame);
+    assert(pw > 100 && ph > 100, `page frame ${pages.pageFrame}`);
+    assert(dw > 0 && dh > 0, `devtools frame ${pages.devToolsFrame}`);
+    assert(pages.pageAboveDevTools === true, "the DevTools view covers the page");
+    assert(oneVisibleActive(), "page not visible");
+    await command("menu toggleDevTools");
+    await until("devtools closed", () => !state().pages?.devToolsFrame);
+  },
   async quit() {
     send("Browser.close").catch(() => {});
     await Promise.race([exited, sleep(15000)]);
