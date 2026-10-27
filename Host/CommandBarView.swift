@@ -17,6 +17,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   static let rowInset: CGFloat = 9
 
   weak var delegate: CommandBarDelegate?
+  var onSelectionChange: (() -> Void)?
   let field = NSTextField()
   private let panel = FlippedView()
   private let searchIcon = NSImageView()
@@ -26,6 +27,17 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   private(set) var suggestions: [Suggestion] = []
 
   var selectedIndex: Int { tableView.selectedRow }
+
+  var rowsFullyVisible: Bool {
+    layoutSubtreeIfNeeded()
+    let visible = scrollView.contentView.documentVisibleRect
+    let fits = (0..<suggestions.count).allSatisfy { visible.contains(tableView.rect(ofRow: $0)) }
+    if !fits, let last = suggestions.indices.last {
+      NSLog("[lumen] command bar rows cut off: visible %@, last row %@, table %@",
+            NSStringFromRect(visible), NSStringFromRect(tableView.rect(ofRow: last)), NSStringFromRect(tableView.frame))
+    }
+    return fits
+  }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -64,6 +76,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
 
     tableView.addTableColumn(NSTableColumn(identifier: .init("suggestion")))
     tableView.headerView = nil
+    tableView.style = .plain
     tableView.rowHeight = Self.rowHeight
     tableView.intercellSpacing = .zero
     tableView.backgroundColor = .clear
@@ -77,6 +90,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     scrollView.documentView = tableView
     scrollView.drawsBackground = false
     scrollView.hasVerticalScroller = false
+    scrollView.automaticallyAdjustsContentInsets = false
+    scrollView.contentInsets = NSEdgeInsets()
     panel.addSubview(scrollView)
     scrollView.addTrackingArea(NSTrackingArea(
       rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
@@ -133,9 +148,15 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   }
 
   func show(_ suggestions: [Suggestion]) {
+    let previous = tableView.selectedRow >= 0 && tableView.selectedRow < self.suggestions.count
+      ? self.suggestions[tableView.selectedRow].key : nil
+    let keepsSelection = previous != nil && self.suggestions.first?.key == suggestions.first?.key
     self.suggestions = suggestions
     tableView.reloadData()
-    if !suggestions.isEmpty { tableView.selectRowIndexes([0], byExtendingSelection: false) }
+    if !suggestions.isEmpty {
+      let row = keepsSelection ? suggestions.firstIndex { $0.key == previous } ?? 0 : 0
+      tableView.selectRowIndexes([row], byExtendingSelection: false)
+    }
     needsLayout = true
   }
 
@@ -210,6 +231,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   }
 
   func tableViewSelectionDidChange(_ notification: Notification) {
+    defer { onSelectionChange?() }
     for row in 0..<suggestions.count {
       (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? SuggestionCell)?
         .selected = row == tableView.selectedRow
@@ -321,7 +343,11 @@ private final class SuggestionCell: NSTableCellView {
       action.textColor = selected ? .labelColor : .tertiaryLabelColor
       arrowBox.layer?.backgroundColor = (selected ? NSColor.labelColor : NSColor.labelColor.withAlphaComponent(0.08)).cgColor
       arrow.contentTintColor = selected ? .windowBackgroundColor : .tertiaryLabelColor
-      iconBox.layer?.backgroundColor = selected ? NSColor.white.cgColor : NSColor.clear.cgColor
+      let symbol = icon.image?.isTemplate ?? false
+      icon.contentTintColor = symbol ? .secondaryLabelColor : nil
+      iconBox.layer?.backgroundColor =
+        symbol ? NSColor.labelColor.withAlphaComponent(0.08).cgColor
+        : selected ? NSColor.white.cgColor : NSColor.clear.cgColor
     }
   }
 }

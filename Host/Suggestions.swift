@@ -13,6 +13,13 @@ struct Suggestion {
   let detail: String
   let icon: NSImage?
 
+  var key: String {
+    switch kind {
+    case .tab(let tab): return "tab:\(tab.tabId)"
+    case .url(let url), .search(let url), .history(let url): return "\(kindName):\(url)"
+    }
+  }
+
   var kindName: String {
     switch kind {
     case .tab: return "tab"
@@ -52,13 +59,89 @@ final class HistoryCache {
   }
 }
 
+final class FaviconCache {
+  private var images: [String: NSImage] = [:]
+  private var missing: Set<String> = []
+  private var requested: Set<String> = []
+
+  func image(for page: String) -> NSImage? { images[page] }
+
+  func load(_ pages: [String], profile: ArdiaCoreProfile, then done: @escaping () -> Void) {
+    let wanted = pages.filter { images[$0] == nil && !missing.contains($0) && !requested.contains($0) }
+    guard !wanted.isEmpty else { return }
+    requested.formUnion(wanted)
+    EngineCalls.call("ac_favicons_get", profile: profile, args: ["pages": wanted, "size": 32]) { [weak self] reply in
+      guard let self else { return }
+      let found = reply?["pages"] as? [String: [String: Any]] ?? [:]
+      for page in wanted {
+        self.requested.remove(page)
+        if let png = found[page]?["png"] as? String, let data = Data(base64Encoded: png), let image = NSImage(data: data) {
+          self.images[page] = image
+        } else {
+          self.missing.insert(page)
+        }
+      }
+      if !found.isEmpty { done() }
+    }
+  }
+}
+
+final class SearchSuggestions {
+  static let endpoint = environment["LUMEN_SUGGEST_URL"]
+    ?? "https://suggestqueries.google.com/complete/search?client=firefox&q=%s"
+
+  private var cache: [String: [String]] = [:]
+  private var latest: (query: String, results: [String]) = ("", [])
+  private var pending: DispatchWorkItem?
+  private var task: URLSessionDataTask?
+
+  func current(for query: String) -> [String] {
+    let key = query.lowercased()
+    if let exact = cache[key] { return exact }
+    guard !latest.query.isEmpty, key.hasPrefix(latest.query) else { return [] }
+    return latest.results.filter { $0.lowercased().hasPrefix(key) }
+  }
+
+  func fetch(_ query: String, then done: @escaping () -> Void) {
+    pending?.cancel()
+    let key = query.lowercased()
+    guard !key.isEmpty, cache[key] == nil else { return }
+    let work = DispatchWorkItem { [weak self] in self?.request(key, then: done) }
+    pending = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+  }
+
+  private func request(_ key: String, then done: @escaping () -> Void) {
+    task?.cancel()
+    let encoded = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))) ?? key
+    guard let url = URL(string: Self.endpoint.replacingOccurrences(of: "%s", with: encoded)) else { return }
+    task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+      guard let data,
+            let json = try? JSONSerialization.jsonObject(with: data) as? [Any],
+            json.count > 1, let list = json[1] as? [String] else { return }
+      DispatchQueue.main.async {
+        guard let self else { return }
+        self.cache[key] = list
+        self.latest = (key, list)
+        done()
+      }
+    }
+    task?.resume()
+  }
+}
+
 enum Suggestions {
   static let limit = 8
   private static let globe = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
   private static let clock = NSImage(systemSymbolName: "clock", accessibilityDescription: nil)
   private static let magnifier = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
 
-  static func build(query raw: String, tabs: [ArdiaCoreTab], active: ArdiaCoreTab?, history: [HistoryEntry]) -> [Suggestion] {
+  static let maxSearchSuggestions = 4
+
+  static func build(
+    query raw: String, tabs: [ArdiaCoreTab], active: ArdiaCoreTab?, history: [HistoryEntry], searches: [String],
+    favicon: (String) -> NSImage? = { _ in nil }
+  ) -> [Suggestion] {
     let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     if query.isEmpty {
       return tabs.filter { $0 !== active }.prefix(limit).map(tabSuggestion)
@@ -75,7 +158,7 @@ enum Suggestions {
       .map { entry, _ in
         Suggestion(
           kind: .history(entry.url), title: entry.title.isEmpty ? entry.url : entry.title,
-          detail: AddressInput.display(for: entry.url), icon: clock)
+          detail: AddressInput.display(for: entry.url), icon: favicon(entry.url) ?? clock)
       }
 
     var rows: [Suggestion] = []
@@ -83,9 +166,14 @@ enum Suggestions {
     let autocomplete = (matchingTabs + matchingHistory).first { hostStarts($0, with: query.lowercased()) }
     if let autocomplete { rows.append(autocomplete) }
     if let typed { rows.append(typed) }
-    for row in matchingTabs + matchingHistory where !rows.contains(where: { same($0, row) }) {
-      rows.append(row)
-    }
+    let searchRows = searches
+      .filter { $0.lowercased() != query.lowercased() }
+      .prefix(maxSearchSuggestions)
+      .compactMap(searchSuggestion)
+    let others = (matchingTabs + matchingHistory).filter { row in !rows.contains { same($0, row) } }
+    let room = max(0, limit - rows.count - min(others.count, 3))
+    rows += searchRows.prefix(room)
+    rows += others
     return Array(rows.prefix(limit))
   }
 
@@ -95,6 +183,18 @@ enum Suggestions {
       return Suggestion(kind: .search(url), title: query, detail: "Search Google", icon: magnifier)
     }
     return Suggestion(kind: .url(url), title: AddressInput.display(for: url), detail: "Open", icon: globe)
+  }
+
+  private static func searchSuggestion(_ text: String) -> Suggestion? {
+    let query = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))) ?? text
+    let url = AddressInput.searchTemplate.replacingOccurrences(of: "%s", with: query)
+    return Suggestion(kind: .search(url), title: text, detail: "", icon: magnifier)
+  }
+
+  static func wantsSearchSuggestions(for raw: String) -> Bool {
+    let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty, query.count <= 200, let url = AddressInput.url(for: query) else { return false }
+    return AddressInput.isSearch(url)
   }
 
   private static func tabSuggestion(_ tab: ArdiaCoreTab) -> Suggestion {

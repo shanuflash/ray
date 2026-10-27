@@ -21,7 +21,13 @@ const pages = {
   "/h": `<title>Hist Page</title><p>history</p>`,
 };
 const server = createServer((req, res) => {
-  const body = pages[new URL(req.url, "http://x").pathname];
+  const url = new URL(req.url, "http://x");
+  if (url.pathname === "/suggest") {
+    const q = url.searchParams.get("q") ?? "";
+    res.writeHead(200, { "content-type": "application/json" });
+    return res.end(JSON.stringify([q, q.startsWith("zz") ? [`${q} one`, `${q} two`, q] : []]));
+  }
+  const body = pages[url.pathname];
   res.writeHead(body ? 200 : 404, { "content-type": "text/html" });
   res.end(body ?? "not found");
 });
@@ -38,6 +44,7 @@ const child = spawn(join(app, "Contents/MacOS/Lumen"), [], {
     LUMEN_BACKGROUND: "1",
     LUMEN_LOG_STATE: "1",
     LUMEN_TEST_COMMANDS: "1",
+    LUMEN_SUGGEST_URL: `${origin}/suggest?q=%s`,
     LUMEN_DATA_DIR: dataDir,
     LUMEN_REMOTE_DEBUGGING_PORT: String(port),
     LUMEN_START_URL: `${origin}/a`,
@@ -289,6 +296,30 @@ const checks = {
     assert(!state().tabs.some((t) => t.title === "pwned"), "javascript: ran");
     await command("escape");
   },
+  async "bar-one-row"() {
+    await command("menu newTab");
+    await command("type qqqxyz");
+    const bar = await until("one row", () => state().commandBar?.query === "qqqxyz" && state().commandBar);
+    await sleep(300);
+    const now = state().commandBar;
+    assert(now.rows.length === 1, `rows ${JSON.stringify(now.rows)}`);
+    assert(now.rowsFullyVisible, "the only row is cut off");
+    await command("escape");
+  },
+  async "bar-search-suggestions"() {
+    await command("menu newTab");
+    await command("type zzq");
+    const bar = await until("suggestions", () => state().commandBar?.rows.some((r) => r.title === "zzq one") && state().commandBar);
+    assert(bar.rows[0].title === "zzq" && bar.rows[0].kind === "search", `first row ${JSON.stringify(bar.rows[0])}`);
+    assert(!bar.rows.slice(1).some((r) => r.title === "zzq"), "the typed query is repeated as a suggestion");
+    assert(bar.rowsFullyVisible, "rows are cut off");
+    await command("down");
+    await until("second row selected", () => state().commandBar.selected === 1);
+    const before = state().tabs.length;
+    await command("enter");
+    const opened = await until("search tab", () => state().tabs.length === before + 1 && state().tabs.find((t) => t.id === state().active && t.url.includes("q=zzq+one") || t.url.includes("q=zzq%20one")));
+    assert(opened, "search tab missing");
+  },
   async quit() {
     send("Browser.close").catch(() => {});
     await Promise.race([exited, sleep(15000)]);
@@ -319,6 +350,8 @@ try {
       failed++;
       console.log(`FAIL ${name}: ${error.message}`);
       console.log(`     state: ${JSON.stringify(state())}`);
+      const notes = stderr.split("\n").filter((l) => l.includes("[lumen] ") && !l.includes("loaded") && !l.includes("inserted")).slice(-3);
+      for (const note of notes) console.log(`     log: ${note.slice(note.indexOf("[lumen]"))}`);
     }
   }
 } finally {

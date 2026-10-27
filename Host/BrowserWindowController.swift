@@ -20,6 +20,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private var commandBar: CommandBarView?
   private var commandBarMode = CommandBarMode.newTab
   private let history = HistoryCache()
+  private let searches = SearchSuggestions()
+  private let favicons = FaviconCache()
 
   var window: NSWindow { coreWindow.window }
 
@@ -121,6 +123,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "commandBar": commandBar.map { bar in
         [
           "mode": commandBarMode.rawValue, "query": bar.field.stringValue, "selected": bar.selectedIndex,
+          "rowsFullyVisible": bar.rowsFullyVisible,
           "rows": bar.suggestions.map { ["kind": $0.kindName, "title": $0.title] },
         ] as [String: Any]
       } ?? NSNull(),
@@ -170,6 +173,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     if commandBar == nil {
       bar.autoresizingMask = [.width, .height]
       bar.delegate = self
+      bar.onSelectionChange = { [weak self] in self?.logState("commandBarSelection") }
       root.addSubview(bar)
       commandBar = bar
     }
@@ -181,8 +185,25 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private func refreshSuggestions() {
     guard let bar = commandBar else { return }
     let query = commandBarMode == .currentTab && bar.field.stringValue == activeTab?.url ? "" : bar.field.stringValue
-    bar.show(Suggestions.build(query: query, tabs: tabs, active: activeTab, history: history.entries))
+    let wantsSearches = Suggestions.wantsSearchSuggestions(for: query)
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    let rows = Suggestions.build(
+      query: query, tabs: tabs, active: activeTab, history: history.entries,
+      searches: wantsSearches ? searches.current(for: trimmed) : [], favicon: favicons.image(for:))
+    bar.show(rows)
+    let pages = rows.compactMap { row -> String? in
+      if case .history(let url) = row.kind { return url }
+      return nil
+    }
+    favicons.load(pages, profile: profile) { [weak self] in self?.refreshSuggestions() }
     logState("commandBar")
+  }
+
+  private func requestSearchSuggestions() {
+    guard let bar = commandBar else { return }
+    let query = bar.field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard Suggestions.wantsSearchSuggestions(for: query) else { return }
+    searches.fetch(query) { [weak self] in self?.refreshSuggestions() }
   }
 
   private func closeCommandBar(focus: Bool) {
@@ -212,6 +233,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   func commandBar(_ bar: CommandBarView, queryChanged query: String) {
     refreshSuggestions()
+    requestSearchSuggestions()
   }
 
   func commandBar(_ bar: CommandBarView, choose suggestion: Suggestion) {
