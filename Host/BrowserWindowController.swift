@@ -134,9 +134,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       sidebar.trafficLightsCenterY = lights
       sidebar.reservesTrafficLights = !isFullScreen
     }
-    let cardX = max(margin, width * shown)
+    let edge = isFullScreen ? margin * shown : margin
+    let cardX = max(edge, width * shown)
     pages.frame = NSRect(
-      x: cardX, y: margin, width: max(0, bounds.width - cardX - margin), height: max(0, bounds.height - margin * 2))
+      x: cardX, y: edge, width: max(0, bounds.width - cardX - edge), height: max(0, bounds.height - edge * 2))
+    pages.cornerRadius = isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
     updateTrafficLights()
   }
 

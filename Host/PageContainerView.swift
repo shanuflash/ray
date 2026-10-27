@@ -9,7 +9,7 @@ final class PageContainerView: NSView {
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    layer?.cornerRadius = 10
+    layer?.cornerRadius = Self.radius
     layer?.cornerCurve = .continuous
     layer?.masksToBounds = true
     layer?.backgroundColor = NSColor.white.cgColor
@@ -20,6 +20,19 @@ final class PageContainerView: NSView {
   }
 
   required init?(coder: NSCoder) { fatalError() }
+
+  static let radius: CGFloat = 10
+
+  var cornerRadius: CGFloat {
+    get { layer?.cornerRadius ?? 0 }
+    set {
+      guard layer?.cornerRadius != newValue else { return }
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      layer?.cornerRadius = newValue
+      CATransaction.commit()
+    }
+  }
 
   override var isFlipped: Bool { true }
 
