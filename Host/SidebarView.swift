@@ -838,7 +838,7 @@ final class AddressPill: NSView {
     wantsLayer = true
     layer?.cornerRadius = 10
     layer?.cornerCurve = .continuous
-    label.font = .systemFont(ofSize: 14)
+    label.font = .systemFont(ofSize: 13)
     label.textColor = .secondaryLabelColor
     label.lineBreakMode = .byTruncatingHead
     securityIcon.image = NSImage(systemSymbolName: "lock.slash.fill", accessibilityDescription: "Not secure")
@@ -986,9 +986,10 @@ final class SidebarRowView: NSView, Liftable {
     icon.imageScaling = .scaleProportionallyUpOrDown
     slash.font = .systemFont(ofSize: 16, weight: .light)
     slash.textColor = .tertiaryLabelColor
-    title.font = .systemFont(ofSize: 14, weight: .medium)
+    // Measured against Arc (2026-10-27): titles 14 pt regular, the host under them 11 pt.
+    title.font = .systemFont(ofSize: 14)
     title.lineBreakMode = .byTruncatingTail
-    subtitle.font = .systemFont(ofSize: 12)
+    subtitle.font = .systemFont(ofSize: 11)
     subtitle.textColor = .secondaryLabelColor
     subtitle.lineBreakMode = .byTruncatingTail
     closeButton.isBordered = false
@@ -1117,10 +1118,10 @@ final class SidebarRowView: NSView, Liftable {
     closeButton.frame = NSRect(x: bounds.width - 30, y: mid - 11, width: 22, height: 22)
     let textWidth = (closeButton.isHidden ? bounds.width - 10 : closeButton.frame.minX - 4) - textX
     if subtitle.isHidden {
-      title.frame = NSRect(x: textX, y: mid - 10, width: textWidth, height: 20)
+      title.frame = NSRect(x: textX, y: mid - 8.5, width: textWidth, height: 20)
     } else {
-      title.frame = NSRect(x: textX, y: mid - 16, width: textWidth, height: 18)
-      subtitle.frame = NSRect(x: textX, y: mid + 1, width: textWidth, height: 15)
+      title.frame = NSRect(x: textX, y: mid - 15, width: textWidth, height: 18)
+      subtitle.frame = NSRect(x: textX, y: mid + 1.5, width: textWidth, height: 14)
     }
   }
 }
