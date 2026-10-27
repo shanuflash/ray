@@ -11,6 +11,12 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   current tab). Rows: autocompleted host match, typed URL or search, open tabs ("Switch to Tab"), history.
 - `EngineCalls`: calls the engine's exported `ac_*` C functions (`dlsym`, JSON in, JSON reply), e.g.
   `ac_history_query`. Their arguments are in `third_party/ardia/engine/chromium/src/chrome/browser/ardia/ac_*.cc`.
+  `EngineEvents` is the one engine event sink (`downloads.changed`, …), handed out by topic.
+- Pinned folders are `SidebarEntry`s of kind `.folder` inside `state.pinned`, kept in tree order with `parentID`
+  links; `SidebarState.normalizePinned()` rebuilds a valid tree after every change and on load.
+- `Extensions` (puzzle button in the address field, action popups, install prompt), `Downloads` (top-row button,
+  popover list), `FindBar` (⌘F), `PermissionPrompt` (site permissions, only over their own tab), `ArcImport`
+  (File › Import from Arc…, reads Arc's StorableSidebar.json only when asked).
 - `Resources/page_script.js`: runs in every frame; iframes return on its first line. Only `hello` today.
 - `tests/`: `checks.mjs` (DevTools + `[ray-state]` log checks on a hidden instance), `AddressInputTests.swift`.
 - `Host/TestCommands.swift`: with `RAY_TEST_COMMANDS=1`, stdin lines drive the real UI (`menu <action>`,
