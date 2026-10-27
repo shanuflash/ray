@@ -1,0 +1,4 @@
+/build/
+/third_party/ardia/
+/third_party/ardia-spike/
+.DS_Store
