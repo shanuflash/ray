@@ -51,6 +51,9 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   var activeEntry: SidebarEntry? { state.activeEntryID.flatMap(state.entry(id:)) }
 
+  func owns(_ tab: ArdiaCoreTab) -> Bool { state.entry(for: tab) != nil }
+  var extensionsAnchor: NSView { sidebar.extensionsAnchor }
+
   var activeTab: ArdiaCoreTab? { activeEntry.flatMap { $0.isLive ? $0.tab : nil } }
 
   var tabs: [ArdiaCoreTab] { state.allEntries.compactMap { $0.isLive ? $0.tab : nil } }
@@ -155,7 +158,19 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     }
   }
 
+  private(set) lazy var extensions: ExtensionsController = {
+    let controller = ExtensionsController(profile: profile, coreWindow: coreWindow)
+    controller.onChange = { [weak self, weak controller] in
+      guard let self, let controller else { return }
+      self.sidebar.setExtensionsShown(controller.items.contains { $0.enabled })
+      self.logState("extensions")
+    }
+    controller.openPage = { [weak self] url in self?.openToday(url, after: nil, foreground: true) }
+    return controller
+  }()
+
   func present(background: Bool) {
+    extensions.refresh()
     window.center()
     if background {
       // Test instances never go full screen: it would take over a Space in front of the user.
@@ -722,6 +737,12 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     rename(entry, to: title)
   }
 
+  func sidebarExtensions(_ sidebar: SidebarView, anchor: NSView) {
+    extensions.refresh()
+    extensions.menu(for: activeTab, anchor: anchor)
+      .popUp(positioning: nil, at: NSPoint(x: 0, y: anchor.bounds.maxY + 4), in: anchor)
+  }
+
   func sidebarNewTab(_ sidebar: SidebarView) { beginNewTab() }
   func sidebarOpenAddress(_ sidebar: SidebarView) { focusAddress() }
   func sidebarToggle(_ sidebar: SidebarView) { toggleSidebar() }
@@ -868,6 +889,9 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
       "fullScreen": isFullScreen,
+      "extensions": extensions.items.map { ["id": $0.id, "name": $0.name, "enabled": $0.enabled] },
+      "extensionPopup": extensions.popupURL ?? NSNull(),
+      "installPrompt": extensions.promptState ?? NSNull(),
       "displayAsleep": CGDisplayIsAsleep(window.screen?.displayID ?? CGMainDisplayID()) != 0,
       "pasteboard": Self.pasteboard.string(forType: .string) ?? NSNull(),
       "addressShown": sidebar.addressLabel,

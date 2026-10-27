@@ -55,6 +55,23 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     ArdiaCoreEngine.resolvePermission(id, result: "dismiss", remember: false)
   }
 
+  func engine(_ engine: ArdiaCoreEngine, extensionInstallPrompt prompt: [String: Any], tab: ArdiaCoreTab?) {
+    let controller = tab.flatMap { tab in windows.first { $0.owns(tab) } } ?? current
+    guard let controller else {
+      if let id = prompt["requestId"] as? String { ArdiaCoreEngine.resolveExtensionInstallPrompt(id, accepted: false) }
+      return
+    }
+    controller.extensions.showInstallPrompt(prompt, in: controller.window)
+  }
+
+  func engine(_ engine: ArdiaCoreEngine, extensionActionPopup popup: [String: Any], tab: ArdiaCoreTab) -> Bool {
+    guard let id = popup["extensionId"] as? String, let controller = windows.first(where: { $0.owns(tab) }) else {
+      return false
+    }
+    controller.extensions.showPopup(for: id, tab: tab, anchor: controller.extensionsAnchor)
+    return true
+  }
+
   private func makeWindow(profile: ArdiaCoreProfile) -> BrowserWindowController {
     let controller = BrowserWindowController(
       profile: profile, store: SidebarStore(directory: (dataDirectory as NSString).deletingLastPathComponent))

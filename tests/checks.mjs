@@ -3,7 +3,7 @@
 //   node tests/checks.mjs [check …]      (build first: scripts/build-app.sh)
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -155,6 +155,15 @@ async function todayTabs(count) {
 async function settle() {
   await sleep(250);
   await command("state");
+}
+async function commandResult(line) {
+  const marker = `[ray-test] ${line} -> `;
+  const from = stderr.length;
+  child.stdin.write(line + "\n");
+  return until(`command ${line}`, () => {
+    const at = stderr.indexOf(marker, from);
+    return at >= 0 ? stderr.slice(at + marker.length).split("\n")[0] : null;
+  });
 }
 async function command(line) {
   const marker = `[ray-test] ${line} -> `;
@@ -653,6 +662,38 @@ const checks = {
     assert(pinned.find((e) => e.id === nested.id).parent === null, "the deleted folder's folder didn't move up");
     await command(`rowaction infolder ${b} ${nested.id}`);
     await until("kept a folder for restore", () => state().sidebar.pinned.find((e) => e.id === b)?.parent === nested.id);
+  },
+  async extensions() {
+    // A local unpacked extension with a toolbar popup; nothing is fetched from the Web Store.
+    const dir = join(dataDir, "fixture-extension");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "manifest.json"), JSON.stringify({
+      manifest_version: 3, name: "Ray Fixture", version: "1.0",
+      action: { default_title: "Fixture", default_popup: "popup.html" },
+    }));
+    writeFileSync(join(dir, "popup.html"), `<!doctype html><body style="width:220px;height:90px">fixture popup</body>`);
+    const from = stderr.length;
+    await command(`extinstall ${dir}`);
+    const id = await until("installed", () => stderr.slice(from).match(/\[ray-test\] installed ([a-p]{32})/)?.[1], 15000);
+    await until("listed", async () => { await command("state"); return state().extensions.some((e) => e.id === id && e.enabled); }, 8000);
+    const before = state().sidebar.today.length;
+    await command(`extrun ${id}`);
+    await until("popup open", () => state().extensionPopup?.startsWith(`chrome-extension://${id}/popup.html`));
+    await until("popup page loaded", async () => (await targets()).some((t) => t.url.startsWith(`chrome-extension://${id}/popup.html`)), 8000);
+    assert(state().sidebar.today.length === before, "the popup page showed up as a tab");
+    assert(![...state().sidebar.today, ...state().sidebar.pinned].some((e) => e.url.startsWith("chrome-extension://")), "popup in the sidebar");
+    await command("extclose");
+    await until("popup closed", () => state().extensionPopup === null);
+    await until("popup page gone", async () => !(await targets()).some((t) => t.url.startsWith(`chrome-extension://${id}/`)), 8000);
+  },
+  async "extension-prompt"() {
+    await command("extprompt fake Evil\u2028Name");
+    await until("prompt shown", () => state().installPrompt);
+    assert(state().installPrompt.addEnabled === false, "Add was clickable straight away");
+    assert(await commandResult("extprompt accept") === "not ready", "Add took a click in its first half second");
+    await until("add ready", async () => { await command("state"); return state().installPrompt?.addEnabled; }, 3000);
+    await command("extprompt cancel");
+    await until("prompt gone", () => state().installPrompt === null);
   },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]

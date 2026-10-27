@@ -98,6 +98,23 @@ enum TestCommands {
     return "ok"
   }
 
+  /// `extprompt fake <name>` shows an install prompt as the engine would; `extprompt accept|cancel` clicks it.
+  private static func extensionPrompt(_ argument: String) -> String {
+    guard let controller = AppController.shared.current else { return "no window" }
+    let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+    switch parts.first {
+    case "fake":
+      controller.extensions.showInstallPrompt([
+        "requestId": "test-install", "id": "abcdefghijklmnopabcdefghijklmnop", "name": parts.count > 1 ? parts[1] : "Test",
+        "version": "1.0", "permissions": ["Read and change all your data on all websites"],
+      ], in: controller.window)
+      return "ok"
+    case "accept": return controller.extensions.answerPrompt(accept: true) ? "ok" : "not ready"
+    case "cancel": return controller.extensions.answerPrompt(accept: false) ? "ok" : "no prompt"
+    default: return "usage: extprompt fake <name> | accept | cancel"
+    }
+  }
+
   /// `rename <id> <title…>`: what the inline editor commits.
   private static func rename(_ argument: String) -> String {
     let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -135,6 +152,20 @@ enum TestCommands {
       result = rowAction(argument)
     case "rename":
       result = rename(argument)
+    case "extinstall":
+      AppController.shared.current?.extensions.installUnpacked(argument) { id in
+        FileHandle.standardError.write("[ray-test] installed \(id ?? "nothing")\n".data(using: .utf8)!)
+      }
+    case "extrun":
+      if let controller = AppController.shared.current, let tab = controller.activeTab {
+        controller.extensions.run(argument, on: tab, anchor: controller.extensionsAnchor)
+      } else {
+        result = "no tab"
+      }
+    case "extprompt":
+      result = extensionPrompt(argument)
+    case "extclose":
+      AppController.shared.current?.extensions.closePopup()
     case "pointer":
       let numbers = argument.split(separator: " ").compactMap { Double($0) }
       if numbers.count == 2 {

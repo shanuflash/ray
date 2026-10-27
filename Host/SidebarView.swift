@@ -24,6 +24,7 @@ protocol SidebarViewDelegate: AnyObject {
   func sidebarForward(_ sidebar: SidebarView)
   func sidebarReload(_ sidebar: SidebarView)
   func sidebarIcon(for entry: SidebarEntry) -> NSImage?
+  func sidebarExtensions(_ sidebar: SidebarView, anchor: NSView)
 }
 
 enum SidebarColors {
@@ -162,6 +163,10 @@ final class SidebarView: NSView {
       guard let self else { return }
       self.delegate?.sidebarOpenAddress(self)
     }
+    addressPill.onExtensions = { [weak self] anchor in
+      guard let self else { return }
+      self.delegate?.sidebarExtensions(self, anchor: anchor)
+    }
 
     scrollView.documentView = content
     scrollView.drawsBackground = false
@@ -262,6 +267,8 @@ final class SidebarView: NSView {
   var addressText: String { addressPill.text }
 
   func flashAddress(_ message: String) { addressPill.flash(message) }
+  func setExtensionsShown(_ shown: Bool) { addressPill.extensionsShown = shown }
+  var extensionsAnchor: NSView { addressPill.extensionsButton }
   var addressLabel: String { addressPill.shownText }
 
   var debugToggleCenter: String {
@@ -960,6 +967,16 @@ final class AddressPill: NSView {
   private let label = NSTextField(labelWithString: "")
   private let securityIcon = NSImageView()
   private let searchIcon = NSImageView()
+  /// Arc keeps extensions behind a button at the end of the address field; shown once any are installed.
+  let extensionsButton = HoverIconButton()
+  var onExtensions: ((NSView) -> Void)?
+  var extensionsShown = false {
+    didSet {
+      guard oldValue != extensionsShown else { return }
+      extensionsButton.isHidden = !extensionsShown
+      needsLayout = true
+    }
+  }
   private(set) var text = ""
 
   override init(frame: NSRect) {
@@ -976,6 +993,17 @@ final class AddressPill: NSView {
     searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
     searchIcon.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
     searchIcon.contentTintColor = .tertiaryLabelColor
+    extensionsButton.image = NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: "Extensions")
+    extensionsButton.symbolConfiguration = .init(pointSize: 13, weight: .medium)
+    extensionsButton.isBordered = false
+    extensionsButton.bezelStyle = .regularSquare
+    extensionsButton.imagePosition = .imageOnly
+    extensionsButton.contentTintColor = .secondaryLabelColor
+    extensionsButton.refusesFirstResponder = true
+    extensionsButton.isHidden = true
+    extensionsButton.target = self
+    extensionsButton.action = #selector(showExtensions)
+    addSubview(extensionsButton)
     addSubview(searchIcon)
     addSubview(securityIcon)
     addSubview(label)
@@ -992,6 +1020,8 @@ final class AddressPill: NSView {
   }
 
   override func mouseDown(with event: NSEvent) { onClick?() }
+
+  @objc private func showExtensions() { onExtensions?(extensionsButton) }
 
   private var flashMessage: String?
   private var flashGeneration = 0
@@ -1052,7 +1082,9 @@ final class AddressPill: NSView {
     securityIcon.frame = NSRect(x: 12, y: mid - 8, width: 16, height: 16)
     searchIcon.frame = securityIcon.frame
     let x: CGFloat = securityIcon.isHidden && searchIcon.isHidden ? 12 : 34
-    label.frame = NSRect(x: x, y: mid - 10, width: bounds.width - x - 12, height: 20)
+    extensionsButton.frame = NSRect(x: bounds.width - 32, y: mid - 13, width: 26, height: 26)
+    let right: CGFloat = extensionsShown ? 36 : 12
+    label.frame = NSRect(x: x, y: mid - 10, width: bounds.width - x - right, height: 20)
   }
 }
 
