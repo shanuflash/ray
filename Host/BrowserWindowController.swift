@@ -517,6 +517,19 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     openCommandBar(.currentTab, query: activeEntry?.currentURL ?? "")
   }
 
+  /// ⇧⌘C, as in Arc and Chrome: the current page's full URL to the clipboard, and a moment of "Copied URL".
+  func copyURL() {
+    guard let url = activeEntry?.currentURL, !url.isEmpty else { return }
+    let pasteboard = Self.pasteboard
+    pasteboard.clearContents()
+    pasteboard.setString(url, forType: .string)
+    sidebar.flashAddress("Copied URL")
+    logState("copyURL")
+  }
+
+  /// Test instances copy to a pasteboard of their own so checks never touch the user's clipboard.
+  static let pasteboard = TestEnvironment["RAY_PASTEBOARD"].map { NSPasteboard(name: .init($0)) } ?? .general
+
   private func openCommandBar(_ mode: CommandBarMode, query: String) {
     commandBarMode = activeEntry == nil ? .newTab : mode
     let bar = commandBar ?? CommandBarView(frame: root.bounds)
@@ -769,6 +782,9 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
       "fullScreen": isFullScreen,
+      "displayAsleep": CGDisplayIsAsleep(window.screen?.displayID ?? CGMainDisplayID()) != 0,
+      "pasteboard": Self.pasteboard.string(forType: .string) ?? NSNull(),
+      "addressShown": sidebar.addressLabel,
       "realLightsHidden": [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
         window.standardWindowButton($0)?.isHidden ?? true
       },
@@ -854,4 +870,8 @@ final class FloatingSidebarFrame: NSView {
     super.viewDidChangeEffectiveAppearance()
     needsDisplay = true
   }
+}
+
+private extension NSScreen {
+  var displayID: CGDirectDisplayID? { deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID }
 }

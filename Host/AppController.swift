@@ -84,6 +84,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
 
   @objc func newTab(_ sender: Any?) { current?.beginNewTab() }
   @objc func focusAddress(_ sender: Any?) { current?.focusAddress() }
+  @objc func copyURL(_ sender: Any?) { current?.copyURL() }
   @objc func closeTab(_ sender: Any?) { current?.closeActive() }
   @objc func toggleSidebar(_ sender: Any?) { current?.toggleSidebar() }
   @objc func togglePin(_ sender: Any?) { current?.togglePin() }

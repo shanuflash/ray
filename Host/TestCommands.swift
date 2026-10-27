@@ -31,17 +31,19 @@ enum TestCommands {
     if parts.contains("shift") { flags.insert(.shift) }
     if parts.contains("opt") { flags.insert(.option) }
     if parts.contains("ctrl") { flags.insert(.control) }
+    // A real keyboard reports the shifted character (⇧⌘C arrives as "C"), even ignoring modifiers.
+    let shown = flags.contains(.shift) ? character.uppercased() : character
     for type in [NSEvent.EventType.keyDown, .keyUp] {
       guard let event = NSEvent.keyEvent(
         with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
-        windowNumber: window.windowNumber, context: nil, characters: character, charactersIgnoringModifiers: character,
+        windowNumber: window.windowNumber, context: nil, characters: shown, charactersIgnoringModifiers: shown,
         isARepeat: false, keyCode: code) else { return "no event" }
       NSApp.sendEvent(event)
     }
     return "ok"
   }
 
-  private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2]
+  private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45]
 
   /// `press x y`, `move x y`, `release x y`: one mouse drag in steps, so checks can look at it mid-way.
   private static func mouse(_ type: NSEvent.EventType, _ argument: String, in window: NSWindow?) -> String {

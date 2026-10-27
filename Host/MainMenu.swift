@@ -34,6 +34,8 @@ enum MainMenu {
       item("Paste", #selector(NSText.paste(_:)), "v"),
       item("Paste and Match Style", #selector(NSTextView.pasteAsPlainText(_:)), "v", [.command, .option, .shift]),
       item("Select All", #selector(NSText.selectAll(_:)), "a"),
+      .separator(),
+      item("Copy URL", #selector(AppController.copyURL(_:)), "c", [.command, .shift], target: target),
     ]))
 
     main.addItem(submenu("View", [
@@ -90,7 +92,9 @@ enum MainMenu {
     target: AnyObject? = nil,
     alternate: Bool = false
   ) -> NSMenuItem {
-    let entry = NSMenuItem(title: title, action: action, keyEquivalent: key ?? "")
+    // A shifted letter must be written uppercase: ⇧⌘C arrives as "C", which an item keyed "c" + Shift never matches.
+    let shifted = modifiers.contains(.shift) && key?.count == 1 && key?.first?.isLetter == true
+    let entry = NSMenuItem(title: title, action: action, keyEquivalent: shifted ? key!.uppercased() : key ?? "")
     entry.keyEquivalentModifierMask = key == nil ? [] : modifiers
     entry.target = target
     entry.isHidden = alternate

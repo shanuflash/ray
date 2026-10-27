@@ -60,6 +60,7 @@ function launch() {
       RAY_SUGGEST_URL: `${origin}/suggest?q=%s`,
       RAY_SEARCH_URL: `${origin}/search?q=%s`,
       RAY_DATA_DIR: dataDir,
+      RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}`,
       RAY_REMOTE_DEBUGGING_PORT: String(port),
       RAY_START_URL: `${origin}/a`,
     },
@@ -179,6 +180,12 @@ class Skip extends Error {}
 function needsVisibleWindow() {
   if (state()?.windowVisibleOnScreen === false || state()?.windowOnActiveSpace === false)
     throw new Skip("the test window isn't on the visible desktop (a full-screen Space?), so Chrome hides its pages");
+}
+
+// Springs run on the display's frame timer, which stops while the display sleeps (overnight runs).
+async function needsFrames() {
+  await command("state");
+  if (state()?.displayAsleep) throw new Skip("the display is asleep, so no animation frames arrive");
 }
 
 let savedSidebar = null;
@@ -559,7 +566,16 @@ const checks = {
     assert(today.pinnedURL === null, "today tab kept a pinned URL");
     assert(!state().sidebar.favorites.some((e) => e.id === entry.id), "still a favorite");
   },
+  async "copy-url"() {
+    const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]
+      .find((e) => e.id === state().activeEntry).url;
+    await command("key c cmd shift");
+    await until("copied", () => state().pasteboard === url);
+    assert(state().addressShown === "Copied URL", `address shows ${state().addressShown}`);
+    await until("address back", async () => { await command("state"); return state().addressShown !== "Copied URL"; }, 3000);
+  },
   async "sidebar-toggle"() {
+    await needsFrames();
     const x = () => Number(state().cardFrame.match(/-?[\d.]+/g)[0]);
     assert(x() > 200, `card starts at ${x()}`);
     await command("menu toggleSidebar");
@@ -575,6 +591,7 @@ const checks = {
     await until("card back", async () => { await command("state"); return x() > 200; }, 3000, 50);
   },
   async "peek-zones"() {
+    await needsFrames();
     await command("menu toggleSidebar");
     await until("hidden", () => state().sidebar.hidden);
     await sleep(500);
@@ -626,6 +643,7 @@ const checks = {
     assert(state().tabs.length === state().sidebar.pinned.filter((e) => e.live).length + state().sidebar.favorites.filter((e) => e.live).length, "today tabs still loaded");
   },
   async "window-lights"() {
+    await needsFrames();
     // The previous check may have just shown the sidebar; hit-test once it has finished sliding in.
     await until("sidebar docked", async () => {
       await command("state");
