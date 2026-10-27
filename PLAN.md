@@ -275,7 +275,10 @@ Targets, measured with `xbench.mjs` against Chrome, Helium and our previous rele
 2. **One compositor per tab** (inherited): 1–2 refreshes on first show; prewarm hides it on clicks, keyboard switches
    pay ~8 ms. A real fix needs Phase B.
 3. **Upstream pace:** Ardia has one maintainer. If it stalls, Phase B becomes urgent.
-4. **Prebuilt limits:** Ardia branding inside, no passkeys/saved cards, no engine fixes of our own.
+4. **Prebuilt limits:** Ardia branding inside, no passkeys/saved cards, no engine fixes of our own. The engine's
+   keychain item is "Ardia Safe Storage", which is the real Ardia's; Lumen runs with `--use-mock-keychain` until
+   Phase B, so its saved passwords and cookies are encrypted with a fixed, public key. Don't keep real passwords
+   in Lumen before Phase B.
 5. **No Widevine:** streaming sites with DRM won't play.
 6. **Build hardware** for Phase B.
 

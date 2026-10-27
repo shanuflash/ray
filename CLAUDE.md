@@ -38,3 +38,6 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
 - UI hot paths (sidebar, tab rows, window chrome) are AppKit + Core Animation, never SwiftUI. Animations run on
   layers, not main-thread timers. A tab switch shows the page before any store update.
 - No Peek, no WebKit, no built-in content blocker, no Ardia performance messages in the page script.
+- Lumen always runs with `--use-mock-keychain` while it's on Ardia's prebuilt engine: that engine's keychain item
+  is "Ardia Safe Storage", which belongs to the user's real Ardia. Never let Lumen read it. Our own engine build
+  (Phase B) gets a "Lumen Safe Storage" item and drops the switch.

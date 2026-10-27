@@ -20,6 +20,7 @@ var engineArguments = [
   CommandLine.arguments.first ?? "Lumen",
   "--user-data-dir=\(dataDirectory)",
   "--profile-directory=Default",
+  "--use-mock-keychain",
   "--disable-stack-profiler",
   "--disable-features=MacAppCodeSignClone,DevToolsAcceptDebuggingConnections,AutofillAiWalletPrivatePasses",
   "--enable-features=WebContentsDiscard,"
@@ -32,7 +33,7 @@ if let port = environment["LUMEN_REMOTE_DEBUGGING_PORT"] {
   engineArguments += ["--remote-debugging-port=\(port)", "--remote-allow-origins=*"]
 }
 if launchedInBackground {
-  engineArguments += ["--use-mock-keychain", "--mute-audio", "--disable-modal-animations"]
+  engineArguments += ["--mute-audio", "--disable-modal-animations"]
 }
 
 let argv = engineArguments.map { UnsafePointer<CChar>(strdup($0)!) }
