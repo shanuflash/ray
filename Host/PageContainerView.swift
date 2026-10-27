@@ -49,6 +49,10 @@ final class PageContainerView: NSView {
         "\(type(of: $0)) \(NSStringFromRect($0.frame)) hidden=\($0.isHidden)"
       }
     }
+    // Chrome's content layer is the first sublayer of the render view's layer; it must track the page size.
+    if let render = page?.subviews.first, let content = render.layer?.sublayers?.first {
+      state["contentLayerMatches"] = content.bounds.size == render.bounds.size
+    }
     if let devTools, devTools.superview === self {
       state["devToolsFrame"] = NSStringFromRect(devTools.frame)
       if let page, let pageIndex = subviews.firstIndex(of: page), let devIndex = subviews.firstIndex(of: devTools) {

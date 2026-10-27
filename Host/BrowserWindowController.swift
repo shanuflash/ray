@@ -133,8 +133,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     }
     let edge = isFullScreen ? margin * shown : margin
     let cardX = max(edge, width * shown)
-    pages.frame = NSRect(
-      x: cardX, y: edge, width: max(0, bounds.width - cardX - edge), height: max(0, bounds.height - edge * 2))
+    // Whole points only: Chrome's content layer follows the page by CALayer autoresizing, which rounds each
+    // step to a point, so fractional sizes made the page creep a little further on every ⌘S.
+    let left = cardX.rounded(), right = (bounds.width - edge).rounded()
+    let bottom = edge.rounded(), top = (bounds.height - edge).rounded()
+    pages.frame = NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
     pages.cornerRadius = isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
     updateTrafficLights()
   }

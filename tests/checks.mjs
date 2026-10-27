@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Drives a hidden build/Ray.app over DevTools and Ray's [ray-state] log.
 //   node tests/checks.mjs [check …]      (build first: scripts/build-app.sh)
-import { spawn, execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
@@ -20,6 +20,8 @@ const pages = {
   "/c": `<title>Page C</title><button id=close onclick="window.close()">close</button>`,
   "/h": `<title>Hist Page</title><p>history</p>`,
   "/search": `<title>Search</title><p>results</p>`,
+  "/long": `<title>Long</title><style>body{margin:0;font:16px/1.6 sans-serif}p{margin:0 16px 12px}</style>` +
+    Array.from({ length: 120 }, (_, i) => `<p id=p${i}>Paragraph ${i}: the quick brown fox jumps over the lazy dog, again and again, to make lines wrap differently at different widths.</p>`).join(""),
 };
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://x");
@@ -529,6 +531,24 @@ const checks = {
       return at >= 0 ? stderr.slice(at).split("\n")[0] : null;
     });
     assert(toggle.includes("HoverIconButton"), `toggle: ${toggle}`);
+  },
+  async "toggle-keeps-page-still"() {
+    await send("Target.createTarget", { url: `${origin}/long` });
+    await until("long page", () => tabFor("/long") && state().active === tabFor("/long").id);
+    const { sessionId } = await session("/long");
+    await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+    const probe = `JSON.stringify({ y: scrollY, h: innerHeight, top: document.getElementById("p0").getBoundingClientRect().top })`;
+    const before = JSON.parse(await evaluate(sessionId, probe));
+    for (let i = 0; i < 4; i++) {
+      const was = state().sidebar.hidden;
+      await command("key s cmd");
+      await until("toggled", async () => { await command("state"); return state().sidebar.hidden !== was; }, 3000, 50);
+      await sleep(700);
+      await command("state");
+      assert(state().pages.contentLayerMatches === true, `chrome content layer drifted from the page after toggle ${i + 1}`);
+    }
+    const after = JSON.parse(await evaluate(sessionId, probe));
+    assert(JSON.stringify(after) === JSON.stringify(before), `page moved: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
   },
   async quit() {
     savedSidebar = state().sidebar;

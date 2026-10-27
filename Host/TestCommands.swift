@@ -23,6 +23,26 @@ enum TestCommands {
     }
   }
 
+  private static func key(_ argument: String, in window: NSWindow?) -> String {
+    let parts = argument.split(separator: " ").map(String.init)
+    guard let window, let character = parts.first, let code = keyCodes[character] else { return "usage: key <char> [cmd shift opt ctrl]" }
+    var flags: NSEvent.ModifierFlags = []
+    if parts.contains("cmd") { flags.insert(.command) }
+    if parts.contains("shift") { flags.insert(.shift) }
+    if parts.contains("opt") { flags.insert(.option) }
+    if parts.contains("ctrl") { flags.insert(.control) }
+    for type in [NSEvent.EventType.keyDown, .keyUp] {
+      guard let event = NSEvent.keyEvent(
+        with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil, characters: character, charactersIgnoringModifiers: character,
+        isARepeat: false, keyCode: code) else { return "no event" }
+      NSApp.sendEvent(event)
+    }
+    return "ok"
+  }
+
+  private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2]
+
   private static func drag(_ argument: String, in window: NSWindow?) -> String {
     let numbers = argument.split(separator: " ").compactMap { Double($0) }
     guard let window, let content = window.contentView, numbers.count == 4 else { return "usage: drag x y dx dy" }
@@ -107,6 +127,8 @@ enum TestCommands {
         }
         result = chain.joined(separator: " < ")
       }
+    case "key":
+      result = key(argument, in: window)
     case "drag":
       result = drag(argument, in: window)
     default:
