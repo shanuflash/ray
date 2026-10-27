@@ -1058,7 +1058,8 @@ final class SidebarRowView: NSView, Liftable {
     title.stringValue = entry.displayTitle
     title.textColor = .labelColor
     subtitle.stringValue = entry.host
-    let showsHost = !entry.isLive || entry.isAwayFromPinned
+    // Arc shows a closed tab by its title alone; the host only tells you a pinned tab has wandered off its page.
+    let showsHost = entry.isLive && entry.isAwayFromPinned
     subtitle.isHidden = !showsHost || entry.host.isEmpty || entry.host == entry.displayTitle
     closeButton.image = NSImage(
       systemSymbolName: entry.kind == .today ? "xmark" : "minus", accessibilityDescription: "Close")
