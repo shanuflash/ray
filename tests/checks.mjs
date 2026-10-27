@@ -477,8 +477,13 @@ const checks = {
   async "drag-reorder"() {
     await todayTabs(3);
     const [first, , third] = state().sidebar.today;
-    const a = frameOf(first.id), c = frameOf(third.id);
-    await command(`drag ${a.cx} ${a.cy} 0 ${c.cy - a.cy + 4}`);
+    const a = frameOf(first.id);
+    await command(`press ${a.cx} ${a.cy}`);
+    await command(`move ${a.cx} ${a.cy + 10}`);
+    await settle();
+    const c = frameOf(third.id);
+    await command(`move ${a.cx} ${c.cy + 4}`);
+    await command(`release ${a.cx} ${c.cy + 4}`);
     await until("moved below the third", () => state().sidebar.today[2]?.id === first.id);
     await settle();
     const moved = frameOf(first.id), was = frameOf(state().sidebar.today[1].id);
@@ -505,6 +510,8 @@ const checks = {
     } else {
       const newTab = frameOf("newTab");
       await command(`move ${from.cx} ${newTab.y - 20}`);
+      await settle();
+      assert("pinnedGlow" in state().sidebarFrames, "pinned tabs not lit with a tab dragged into them");
       await command(`release ${from.cx} ${newTab.y - 20}`);
     }
     const pinned = await until("pinned", () => state().sidebar.pinned.find((e) => e.id === entry.id));
@@ -517,14 +524,29 @@ const checks = {
     const from = frameOf(entry.id), first = state().sidebar.favorites[0];
     const listTop = Math.min(...[...state().sidebar.pinned, ...state().sidebar.today].map((e) => frameOf(e.id).y), frameOf("newTab").y);
     const tile = first ? frameOf(first.id) : { x: 12, cy: listTop - 30 };
-    await command(`drag ${from.cx} ${from.cy} ${tile.x + 4 - from.cx} ${tile.cy - from.cy}`);
-    await until("favorite first", () => state().sidebar.favorites[0]?.id === entry.id);
+    await command(`press ${from.cx} ${from.cy}`);
+    await command(`move ${from.cx} ${from.cy - 10}`);
+    await settle();
+    let frames = state().sidebarFrames;
+    assert(!("favoriteHint" in frames || "favoritesGlow" in frames), "favorites lit while over the list");
+    await command(`move ${tile.x + 4} ${tile.cy}`);
+    await settle();
+    frames = state().sidebarFrames;
+    assert((first ? "favoritesGlow" : "favoriteHint") in frames, "favorites not lit with the tab over them");
+    const slot = frameOf(first ? "favoritesGlow" : "favoriteHint");
+    const rowsTop = Math.min(frameOf("newTab").y, ...[...state().sidebar.pinned, ...state().sidebar.today]
+      .filter((e) => e.id !== entry.id).map((e) => frameOf(e.id).y));
+    assert(rowsTop >= slot.y + slot.h, `the list didn't make room for the favorites slot (${slot.y}+${slot.h} > ${rowsTop})`);
+    await command(`release ${tile.x + 4} ${tile.cy}`);
+    await until("favorite added at the end", () => state().sidebar.favorites.at(-1)?.id === entry.id);
     assert(!state().sidebar.pinned.some((e) => e.id === entry.id), "still pinned");
-    assert(state().sidebar.favorites[0].pinnedURL, "favorite lost its URL");
+    assert(state().sidebar.favorites.at(-1).pinnedURL, "favorite lost its URL");
   },
   async "drag-pin-hint-gone"() {
     await settle();
     assert(!("pinHint" in state().sidebarFrames), "the empty pin slot stayed after the drop");
+    const after = state().sidebarFrames;
+    assert(!["favoriteHint", "favoritesGlow", "pinnedGlow"].some((k) => k in after), "a drop highlight stayed after the drop");
   },
   async "drag-out-cancels"() {
     await settle();
@@ -609,7 +631,11 @@ const checks = {
     assert(state().tabs.length === state().sidebar.pinned.filter((e) => e.live).length + state().sidebar.favorites.filter((e) => e.live).length, "today tabs still loaded");
   },
   async "window-lights"() {
-    await command("state");
+    // The previous check may have just shown the sidebar; hit-test once it has finished sliding in.
+    await until("sidebar docked", async () => {
+      await command("state");
+      return Number(state().cardFrame.match(/-?[\d.]+/g)[0]) >= 267;
+    }, 3000, 50);
     assert(state().realLightsHidden === true, "the real traffic lights show in windowed mode");
     for (const [x, kind] of [[22, "close"], [45, "minimize"], [68, "zoom"]]) {
       const from = stderr.length;

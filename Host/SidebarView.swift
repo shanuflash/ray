@@ -122,7 +122,10 @@ final class SidebarView: NSView {
   private let separator = NSView()
   private let clearButton = NSButton()
   private let newTabRow = SidebarRowView()
-  private let pinHint = PinHintView()
+  private let pinHint = DropHintView(symbol: "pin", title: "Pin tab")
+  private let favoriteHint = DropHintView(symbol: "star", title: "Add to Favorites", inset: 0)
+  private let favoritesGlow = DropHintView(symbol: nil, title: "", inset: 0)
+  private let pinnedGlow = DropHintView(symbol: nil, title: "")
 
   private var tiles: [FavoriteTileView] = []
   private var pinnedRows: [SidebarRowView] = []
@@ -185,6 +188,12 @@ final class SidebarView: NSView {
     content.addSubview(newTabRow)
     pinHint.isHidden = true
     content.addSubview(pinHint)
+    favoriteHint.isHidden = true
+    tilesView.addSubview(favoriteHint)
+    favoritesGlow.isHidden = true
+    tilesView.addSubview(favoritesGlow, positioned: .below, relativeTo: nil)
+    pinnedGlow.isHidden = true
+    content.addSubview(pinnedGlow, positioned: .below, relativeTo: nil)
 
     addTrackingArea(NSTrackingArea(
       rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
@@ -318,11 +327,16 @@ final class SidebarView: NSView {
     case .today(let index): todayGap = index
     case nil: break
     }
-    let tileSlots = slots(tiles, favorites, gap: favoriteGap)
-    // With nothing else pinned, aiming at the top opens a pin slot above a divider, so pinning looks unlike a gap
-    // among today's tabs.
+    // As in Arc: moving within a section opens a gap; moving into another section lights that section up (accent
+    // tint and border) and appends. An empty section has nothing to light, so aiming at it opens one lit slot:
+    // "Add to Favorites" below the address field, "Pin tab" above the divider.
+    let noFavorites = !favorites.contains { $0 !== dragged }
+    let favoriteBand = favoriteGap != nil && noFavorites
+    let favoritesLit = favoriteGap != nil && !noFavorites && dragged?.kind != .favorite
+    let tileSlots = slots(tiles, favorites, gap: favoritesLit ? nil : favoriteGap)
     let pinBand = pinnedGap != nil && !pinned.contains { $0 !== dragged }
-    let pinnedSlots = slots(pinnedRows, pinned, gap: pinBand ? nil : pinnedGap)
+    let pinnedLit = pinnedGap != nil && !pinBand && dragged?.kind != .pinned
+    let pinnedSlots = slots(pinnedRows, pinned, gap: pinBand || pinnedLit ? nil : pinnedGap)
     let todaySlots = slots(todayRows, today, gap: todayGap)
 
     let columns = tileSlots.isEmpty ? 1 : min(tileSlots.count, 4)
@@ -330,23 +344,27 @@ final class SidebarView: NSView {
     let tileWidth = (width - CGFloat(columns - 1) * 8) / CGFloat(columns)
     let tilesHeight = rows == 0 ? 0 : CGFloat(rows) * Self.tileHeight + CGFloat(rows - 1) * 8
     place(tilesView, NSRect(x: inset, y: y, width: width, height: tilesHeight), entry: nil)
+    var gapFrame: NSRect?
     for (index, slot) in tileSlots.enumerated() {
-      guard case let (tile, entry)? = slot else { continue }
-      place(tile, NSRect(
+      let frame = NSRect(
         x: CGFloat(index % columns) * (tileWidth + 8), y: CGFloat(index / columns) * (Self.tileHeight + 8),
-        width: tileWidth, height: Self.tileHeight), entry: entry)
+        width: tileWidth, height: Self.tileHeight)
+      guard case let (tile, entry)? = slot else {
+        gapFrame = frame
+        continue
+      }
+      place(tile, frame, entry: entry)
     }
+    show(favoriteHint, at: favoriteBand ? gapFrame : nil)
+    show(favoritesGlow, at: favoritesLit ? NSRect(origin: .zero, size: tilesView.frame.size).insetBy(dx: -4, dy: -4) : nil)
     if rows > 0 { y += tilesHeight + 10 }
 
     place(scrollView, NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y - inset)), entry: nil)
     var rowY: CGFloat = 0
-    let hintFrame = NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight)
-    if pinBand && pinHint.isHidden { pinHint.frame = hintFrame }
-    pinHint.isHidden = !pinBand
-    if pinBand {
-      place(pinHint, hintFrame, entry: nil)
-      rowY += Self.rowHeight
-    }
+    show(pinHint, at: pinBand ? NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight) : nil)
+    if pinBand { rowY += Self.rowHeight }
+    show(pinnedGlow, at: pinnedLit
+      ? NSRect(x: inset - 4, y: 0, width: width + 8, height: CGFloat(pinnedSlots.count) * Self.rowHeight) : nil)
     for slot in pinnedSlots {
       if case let (row, entry)? = slot { place(row, NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight), entry: entry) }
       rowY += Self.rowHeight
@@ -367,6 +385,13 @@ final class SidebarView: NSView {
     }
     content.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(rowY + inset, scrollView.frame.height))
     landing = [:]
+  }
+
+  /// Shows a drop hint at a frame (appearing in place, then following the layout), or hides it.
+  private func show(_ hint: NSView, at frame: NSRect?) {
+    if let frame, hint.isHidden { hint.frame = frame }
+    hint.isHidden = frame == nil
+    if let frame { place(hint, frame, entry: nil) }
   }
 
   /// Sets a frame: springs there while a drag is lifted, lands from where a dropped item was, else jumps.
@@ -471,6 +496,8 @@ final class SidebarView: NSView {
       let tileWidth = (bounds.width - inset * 2 - CGFloat(columns - 1) * 8) / CGFloat(columns)
       let column = min(max(Int((point.x - inset) / (tileWidth + 8)), 0), columns - 1)
       let row = min(max(Int((point.y - tilesView.frame.minY) / (Self.tileHeight + 8)), 0), rows - 1)
+      // Into favorites from elsewhere, they light up as a whole and the tab goes at the end, as in Arc.
+      if drag.entry.kind != .favorite { return .favorites(others) }
       return .favorites(min(row * columns + column, others))
     }
     let height = Self.rowHeight
@@ -488,6 +515,7 @@ final class SidebarView: NSView {
     func index(_ value: CGFloat, _ count: Int) -> Int { min(max(Int((value / height).rounded()), 0), count) }
     let pinLimit = pinnedCount > 0 ? newTabY + height / 2 : pinning ? lineY : height / 2
     if centre < pinLimit {
+      if drag.entry.kind != .pinned { return .pinned(pinnedCount) }
       return .pinned(index(top, pinnedCount))
     }
     return .today(index(top - newTabY - height, todayCount))
@@ -556,6 +584,14 @@ final class SidebarView: NSView {
     if !pinHint.isHidden {
       let frame = pinHint.convert(pinHint.bounds, to: nil)
       frames["pinHint"] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
+    }
+    if !favoriteHint.isHidden {
+      let frame = favoriteHint.convert(favoriteHint.bounds, to: nil)
+      frames["favoriteHint"] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
+    }
+    for (name, glow) in [("favoritesGlow", favoritesGlow), ("pinnedGlow", pinnedGlow)] where !glow.isHidden {
+      let frame = glow.convert(glow.bounds, to: nil)
+      frames[name] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
     }
     frames["newTab"] = {
       let frame = newTabRow.convert(newTabRow.bounds, to: nil)
@@ -1100,19 +1136,27 @@ private enum Lift {
   }
 }
 
-/// The empty pin slot shown while a drag is lifted and nothing else is pinned.
-final class PinHintView: NSView {
+/// Where a drag would land, lit Arc's way (accent tint and border): a whole section, or the one slot an empty
+/// section opens (pinned tabs, favorites).
+final class DropHintView: NSView {
   private let outline = CAShapeLayer()
-  private let label = NSTextField(labelWithString: "Pin tab")
+  private let label: NSTextField
   private let icon = NSImageView()
+  private let inset: CGFloat
+  /// Lit while the dragged tab would land here; dim while it's only on offer.
+  var active = true {
+    didSet { if oldValue != active { needsDisplay = true } }
+  }
 
-  override init(frame: NSRect) {
-    super.init(frame: frame)
+  init(symbol: String?, title: String, inset: CGFloat = SidebarRowView.fillInset) {
+    label = NSTextField(labelWithString: title)
+    self.inset = inset
+    super.init(frame: .zero)
     wantsLayer = true
     outline.lineWidth = 1
-    outline.lineDashPattern = [4, 3]
     layer?.addSublayer(outline)
-    icon.image = NSImage(systemSymbolName: "pin", accessibilityDescription: nil)
+    icon.image = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+    icon.isHidden = symbol == nil
     icon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
     icon.contentTintColor = .secondaryLabelColor
     label.font = .systemFont(ofSize: 13, weight: .medium)
@@ -1130,21 +1174,35 @@ final class PinHintView: NSView {
   override func updateLayer() {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    outline.fillColor = SidebarColors.hover.cgColor
-    outline.strokeColor = NSColor.secondaryLabelColor.cgColor
+    let accent = NSColor.controlAccentColor
+    outline.fillColor = accent.withAlphaComponent(active ? 0.22 : 0.1).cgColor
+    outline.strokeColor = accent.withAlphaComponent(active ? 0.65 : 0.3).cgColor
     CATransaction.commit()
+    label.textColor = active ? .labelColor : .secondaryLabelColor
+    icon.contentTintColor = accent
   }
 
   override func layout() {
     super.layout()
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    let rect = bounds.insetBy(dx: 0.5, dy: SidebarRowView.fillInset + 0.5)
+    let rect = bounds.insetBy(dx: 0.5, dy: inset + 0.5)
+    let radius: CGFloat = inset == 0 ? 10 : 8
     outline.frame = bounds
-    outline.path = CGPath(roundedRect: rect, cornerWidth: 8, cornerHeight: 8, transform: nil)
+    outline.path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
     CATransaction.commit()
     let mid = bounds.height / 2
-    icon.frame = NSRect(x: 9, y: mid - 8, width: 16, height: 16)
-    label.frame = NSRect(x: 35, y: mid - 10, width: bounds.width - 45, height: 20)
+    if label.stringValue.isEmpty {
+      icon.frame = NSRect(x: (bounds.width - 16) / 2, y: mid - 8, width: 16, height: 16)
+    } else if inset == 0 {
+      // A tile: icon and title centred together.
+      let width = min(ceil(label.intrinsicContentSize.width), bounds.width - 40)
+      let x = (bounds.width - width - 22) / 2
+      icon.frame = NSRect(x: x, y: mid - 8, width: 16, height: 16)
+      label.frame = NSRect(x: x + 22, y: mid - 10, width: width, height: 20)
+    } else {
+      icon.frame = NSRect(x: 9, y: mid - 8, width: 16, height: 16)
+      label.frame = NSRect(x: 35, y: mid - 10, width: bounds.width - 45, height: 20)
+    }
   }
 }
