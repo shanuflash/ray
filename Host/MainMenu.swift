@@ -24,6 +24,8 @@ enum MainMenu {
       item("New Folder", #selector(AppController.newFolder(_:)), "n", [.command, .option], target: target),
       item("Back to Pinned URL", #selector(AppController.backToPinned(_:)), nil, target: target),
       item("Clear Today's Tabs", #selector(AppController.clearToday(_:)), nil, target: target),
+      .separator(),
+      item("Import from Arc…", #selector(AppController.importFromArc(_:)), nil, target: target),
     ]))
 
     main.addItem(submenu("Edit", [

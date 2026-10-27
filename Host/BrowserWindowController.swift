@@ -236,6 +236,84 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     downloadsList?.row(for: id)?.press(keep: keep) ?? false
   }
 
+  // MARK: Arc import
+
+  private var arcPrompt: (alert: NSAlert, data: ArcImport)?
+
+  /// File › Import from Arc…: Arc's favorites, and its pinned tabs and folders (one folder per space when there are
+  /// several, until Ray has Spaces). Asks first; tabs come in closed and open when clicked.
+  func importFromArc() {
+    guard arcPrompt == nil else { return }
+    let alert = NSAlert()
+    guard let arc = ArcImport.load() else {
+      alert.messageText = "Arc's sidebar wasn't found"
+      alert.informativeText = "Ray looks for it in ~/Library/Application Support/Arc."
+      alert.beginSheetModal(for: window)
+      return
+    }
+    let counts = arc.counts
+    alert.messageText = "Import from Arc?"
+    let spaces = arc.spaces.map(\.name).joined(separator: ", ")
+    alert.informativeText = "\(counts.favorites) favorites and \(counts.tabs) pinned tabs in \(counts.folders) folders"
+      + (spaces.isEmpty ? "" : ", from \(spaces)") + ". They come in closed and open when you click them; "
+      + "anything already in Ray isn't added twice. Arc's unpinned tabs stay behind."
+    alert.addButton(withTitle: "Import")
+    alert.addButton(withTitle: "Cancel")
+    arcPrompt = (alert, arc)
+    logState("arcImport")
+    alert.beginSheetModal(for: window) { [weak self] response in
+      guard let self else { return }
+      self.arcPrompt = nil
+      if response == .alertFirstButtonReturn { self.apply(arc) } else { self.logState("arcImport") }
+    }
+  }
+
+  private func apply(_ arc: ArcImport) {
+    var known = Set(state.allEntries.filter { !$0.isFolder }.map { $0.pinnedURL ?? $0.url })
+    for case .tab(let url, let title) in arc.favorites where known.insert(url).inserted {
+      state.favorites.append(SidebarEntry(kind: .favorite, url: url, title: title))
+    }
+    var added: [SidebarEntry] = []
+    func add(_ nodes: [ArcImport.Node], in parent: UUID?) {
+      for node in nodes {
+        switch node {
+        case .tab(let url, let title):
+          guard known.insert(url).inserted else { continue }
+          let entry = SidebarEntry(kind: .pinned, url: url, title: title)
+          entry.parentID = parent
+          added.append(entry)
+        case .folder(let title, let children):
+          let folder = SidebarEntry.folder(title, in: parent)
+          folder.isOpen = false
+          added.append(folder)
+          let before = added.count
+          add(children, in: folder.id)
+          // Nothing new inside (all already in Ray): leave the folder out.
+          if added.count == before { added.removeLast() }
+        }
+      }
+    }
+    if arc.spaces.count == 1 {
+      add(arc.spaces[0].pinned, in: nil)
+    } else {
+      add(arc.spaces.map { ArcImport.Node.folder(title: $0.name, children: $0.pinned) }, in: nil)
+    }
+    state.pinned += added
+    state.normalizePinned()
+    changed("arcImport")
+  }
+
+  /// For tests: the import question on screen, and answering it.
+  var arcImportShown: [String: Any]? {
+    arcPrompt.map { ["favorites": $0.data.counts.favorites, "tabs": $0.data.counts.tabs, "folders": $0.data.counts.folders] }
+  }
+
+  func answerArcImport(_ accept: Bool) -> Bool {
+    guard let arcPrompt else { return false }
+    arcPrompt.alert.buttons[accept ? 0 : 1].performClick(nil)
+    return true
+  }
+
   // MARK: Permission prompts
 
   private(set) lazy var permissions: PermissionPrompts = {
@@ -1020,6 +1098,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
       "fullScreen": isFullScreen,
+      "arcImport": arcImportShown ?? NSNull(),
       "permission": permissions.shown ?? NSNull(),
       "find": findBar.map { ["text": $0.text, "count": $0.matches.count, "active": $0.matches.active] } ?? NSNull(),
       "downloads": downloads.items.map { [

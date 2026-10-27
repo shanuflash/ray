@@ -110,6 +110,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   @objc func focusAddress(_ sender: Any?) { current?.focusAddress() }
   @objc func copyURL(_ sender: Any?) { current?.copyURL() }
   @objc func newFolder(_ sender: Any?) { current?.newFolder() }
+  @objc func importFromArc(_ sender: Any?) { current?.importFromArc() }
   @objc func find(_ sender: Any?) { current?.showFind() }
   @objc func findNext(_ sender: Any?) { current?.findAgain(forward: true) }
   @objc func findPrevious(_ sender: Any?) { current?.findAgain(forward: false) }

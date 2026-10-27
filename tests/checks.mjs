@@ -78,6 +78,7 @@ function launch() {
       RAY_DATA_DIR: dataDir,
       RAY_DOWNLOADS_DIR: join(dataDir, "Downloads"),
       RAY_HOST_RULES: "MAP ray.test 127.0.0.1",
+      RAY_ARC_SIDEBAR: join(dataDir, "Arc", "StorableSidebar.json"),
       RAY_IGNORE_CERT_ERRORS: "1",
       RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}`,
       RAY_REMOTE_DEBUGGING_PORT: String(port),
@@ -905,6 +906,62 @@ const checks = {
     }
     const after = JSON.parse(await evaluate(sessionId, probe));
     assert(JSON.stringify(after) === JSON.stringify(before), `page moved: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
+  },
+  async "arc-import"() {
+    // A small Arc sidebar in Arc's format (as Ardia's importer fixture builds it); never the user's real one.
+    const tab = (id, parent, url, title, rename = null) => ({ id, parentID: parent, childrenIds: [], title: rename, data: { tab: { savedURL: url, savedTitle: title } } });
+    const folder = (id, parent, name, children) => ({ id, parentID: parent, childrenIds: children, title: name, data: { list: {} } });
+    const box = (id, children) => ({ id, parentID: null, childrenIds: children, title: null, data: { itemContainer: {} } });
+    const items = [
+      box("P-PIN", ["T-1", "F-1", "SV-1", "T-J"]),
+      tab("T-1", "P-PIN", "https://calendar.example/", "Calendar", "Cal"),
+      folder("F-1", "P-PIN", "Reading", ["T-2", "F-2"]),
+      tab("T-2", "F-1", "https://blog.example/post", "A blog post"),
+      folder("F-2", "F-1", "Later", ["T-3"]),
+      tab("T-3", "F-2", "https://later.example/", "Later"),
+      { id: "SV-1", parentID: "P-PIN", childrenIds: ["T-4", "T-5"], title: null, data: { splitView: {} } },
+      tab("T-4", "SV-1", "https://left.example/", "Left"),
+      tab("T-5", "SV-1", "https://right.example/", "Right"),
+      tab("T-J", "P-PIN", "javascript:alert(1)", "Sneaky"),
+      box("W-PIN", ["T-8"]),
+      tab("T-8", "W-PIN", "https://jira.example/", "Board"),
+      box("FAV", ["T-10", "T-11", "F-3"]),
+      tab("T-10", "FAV", "https://mail.example.com/", "Mail"),
+      tab("T-11", "FAV", "https://music.example/", "Music", "Tunes"),
+      folder("F-3", "FAV", "Fav folder", ["T-12"]),
+      tab("T-12", "F-3", "https://maps.example/", "Maps"),
+    ];
+    const spaces = [
+      { id: "S-1", title: "Personal", newContainerIDs: [{ pinned: {} }, "P-PIN"] },
+      { id: "S-2", title: "Work", containerIDs: ["pinned", "W-PIN"] },
+    ];
+    const flat = (list) => list.flatMap((o) => [o.id, o]);
+    mkdirSync(join(dataDir, "Arc"), { recursive: true });
+    writeFileSync(join(dataDir, "Arc", "StorableSidebar.json"), JSON.stringify({ sidebar: { containers: [
+      { global: {} }, { spaces: flat(spaces), items: flat(items), topAppsContainerIDs: [{ default: true }, "FAV"] },
+    ] } }));
+    await command("menu importFromArc");
+    const asked = await until("asked", () => state().arcImport);
+    assert(asked.favorites === 3 && asked.tabs === 6 && asked.folders === 4, `counted ${JSON.stringify(asked)}`);
+    await command("arcimport accept");
+    await until("imported", () => state().arcImport === null && state().sidebar.pinned.some((e) => e.title === "Personal"));
+    const { favorites, pinned } = state().sidebar;
+    const find = (title) => pinned.find((e) => e.title === title);
+    assert(["Mail", "Tunes", "Maps"].every((t) => favorites.some((e) => e.title === t)), "favorites missing");
+    const personal = find("Personal"), work = find("Work"), reading = find("Reading"), later = find("Later");
+    assert(personal?.kind === "folder" && work?.kind === "folder", "spaces didn't become folders");
+    assert(find("Cal")?.parent === personal.id && find("Left")?.parent === personal.id, "tabs not in their space");
+    assert(reading?.parent === personal.id && find("A blog post")?.parent === reading.id && later?.parent === reading.id, "nesting lost");
+    assert(find("Board")?.parent === work.id, "work tab misplaced");
+    assert(![...favorites, ...pinned].some((e) => e.url.startsWith("javascript:")), "a javascript: link came in");
+    assert([...favorites, ...pinned].filter((e) => e.url.includes(".example")).every((e) => !e.live), "imported tabs loaded");
+    const count = pinned.length + favorites.length;
+    await command("menu importFromArc");
+    await until("asked again", () => state().arcImport);
+    await command("arcimport accept");
+    await until("second import done", () => state().arcImport === null);
+    await settle();
+    assert(state().sidebar.pinned.length + state().sidebar.favorites.length === count, "importing twice added duplicates");
   },
   async quit() {
     savedSidebar = state().sidebar;
