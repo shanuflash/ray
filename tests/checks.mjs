@@ -189,6 +189,7 @@ async function needsFrames() {
 }
 
 let savedSidebar = null;
+let folderIDs = {};
 let savedActive = null;
 
 const checks = {
@@ -566,6 +567,93 @@ const checks = {
     assert(today.pinnedURL === null, "today tab kept a pinned URL");
     assert(!state().sidebar.favorites.some((e) => e.id === entry.id), "still a favorite");
   },
+  async "folder-create"() {
+    await todayTabs(3);
+    for (let i = 0; i < 2; i++) {
+      const id = state().sidebar.today[0].id;
+      await command(`rowaction pin ${id}`);
+      await until("pinned", () => state().sidebar.pinned.some((e) => e.id === id));
+    }
+    const [a, b] = state().sidebar.pinned.filter((e) => e.kind === "pinned").slice(-2);
+    await command(`rowaction newfolder ${a.id}`);
+    const folder = await until("folder", () => state().sidebar.pinned.find((e) => e.kind === "folder" && state().sidebar.pinned.find((x) => x.id === a.id)?.parent === e.id));
+    assert(folder.title === "New Folder", `folder named ${folder.title}`);
+    const order = state().sidebar.pinned.map((e) => e.id);
+    assert(order.indexOf(a.id) === order.indexOf(folder.id) + 1, "the tab isn't right after its folder");
+    await until("renaming the new folder", async () => { await command("state"); return state().sidebarFrames.renaming === folder.id; }, 3000);
+    await settle();
+    assert(frameOf(a.id).x === frameOf(folder.id).x + 16, `indent ${frameOf(folder.id).x} -> ${frameOf(a.id).x}`);
+    await command(`rename ${folder.id} Work`);
+    await until("renamed", () => state().sidebar.pinned.find((e) => e.id === folder.id)?.title === "Work");
+    folderIDs = { folder: folder.id, a: a.id, b: b.id };
+  },
+  async "folder-toggle"() {
+    const { folder, a, b } = folderIDs;
+    await command(`row ${b}`);
+    await until("b active", () => state().activeEntry === b);
+    await command(`rowaction togglefolder ${folder}`);
+    await until("closed", () => state().sidebar.pinned.find((e) => e.id === folder)?.open === false);
+    await settle();
+    assert(state().sidebarFrames.hidden.includes(a), "a closed folder still shows its tab");
+    await command(`row ${a}`);
+    await until("a active", () => state().activeEntry === a);
+    await settle();
+    assert(!state().sidebarFrames.hidden.includes(a), "the active tab hid inside a closed folder");
+    await command(`row ${folder}`);
+    await until("open again", () => state().sidebar.pinned.find((e) => e.id === folder)?.open === true);
+  },
+  async "folder-drag-in"() {
+    const { folder, b } = folderIDs;
+    await settle();
+    const from = frameOf(b), target = frameOf(folder);
+    await command(`press ${from.cx} ${from.cy}`);
+    await command(`move ${from.cx} ${from.cy + 10}`);
+    await command(`move ${target.cx} ${target.cy}`);
+    await settle();
+    assert(state().sidebarFrames.litFolder === folder, "the folder didn't light up under the tab");
+    await command(`release ${target.cx} ${target.cy}`);
+    await until("in the folder", () => state().sidebar.pinned.find((e) => e.id === b)?.parent === folder);
+    await settle();
+    assert(state().sidebarFrames.litFolder === "", "the folder stayed lit");
+  },
+  async "folder-drag-folder"() {
+    const { folder, a, b } = folderIDs;
+    const other = state().sidebar.today[0];
+    await command(`rowaction pin ${other.id}`);
+    await until("pinned last", () => state().sidebar.pinned.at(-1)?.id === other.id);
+    await settle();
+    const from = frameOf(folder), below = frameOf(other.id);
+    await command(`press ${from.cx} ${from.cy}`);
+    await command(`move ${from.cx} ${from.cy + 10}`);
+    await settle();
+    assert(state().sidebarFrames.hidden.includes(a), "a dragged folder didn't fold");
+    const after = frameOf(other.id);
+    await command(`move ${from.cx} ${after.y + after.h + 4}`);
+    await command(`release ${from.cx} ${after.y + after.h + 4}`);
+    await until("folder after the other tab", () => {
+      const ids = state().sidebar.pinned.map((e) => e.id);
+      return ids.indexOf(folder) > ids.indexOf(other.id);
+    });
+    const ids = state().sidebar.pinned.map((e) => e.id);
+    const at = ids.indexOf(folder);
+    assert(new Set([ids[at + 1], ids[at + 2]]).has(a) && new Set([ids[at + 1], ids[at + 2]]).has(b), `tabs left their folder: ${ids}`);
+    assert([a, b].every((id) => state().sidebar.pinned.find((e) => e.id === id).parent === folder), "tabs lost their folder");
+    void below;
+  },
+  async "folder-out-and-delete"() {
+    const { folder, a, b } = folderIDs;
+    await command(`rowaction outfolder ${a}`);
+    await until("out", () => state().sidebar.pinned.find((e) => e.id === a)?.parent === null);
+    await command(`rowaction nestfolder ${folder}`);
+    const nested = await until("nested", () => state().sidebar.pinned.find((e) => e.kind === "folder" && e.parent === folder));
+    await command(`rowaction deletefolder ${folder}`);
+    await until("deleted", () => !state().sidebar.pinned.some((e) => e.id === folder));
+    const pinned = state().sidebar.pinned;
+    assert(pinned.find((e) => e.id === b).parent === null, "the deleted folder's tab didn't move up");
+    assert(pinned.find((e) => e.id === nested.id).parent === null, "the deleted folder's folder didn't move up");
+    await command(`rowaction infolder ${b} ${nested.id}`);
+    await until("kept a folder for restore", () => state().sidebar.pinned.find((e) => e.id === b)?.parent === nested.id);
+  },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]
       .find((e) => e.id === state().activeEntry).url;
@@ -633,7 +721,7 @@ const checks = {
     await sleep(400);
     await command("state");
     assert(state().sidebar.peeking, "the forced sidebar hid when the pointer left");
-    const reopen = state().sidebar.favorites[0]?.id ?? state().sidebar.pinned[0]?.id;
+    const reopen = state().sidebar.favorites[0]?.id ?? state().sidebar.pinned.find((e) => e.kind !== "folder")?.id;
     await command(`row ${reopen}`);
     await until("a tab is open", () => state().active !== null);
     await command("pointer 600 300");
@@ -711,7 +799,7 @@ const checks = {
     assert(state().fullScreen === false, "a background test instance went full screen");
     const after = state().sidebar;
     assert(JSON.stringify(after.favorites.map((e) => e.id)) === JSON.stringify(before.favorites.map((e) => e.id)), "favorites differ");
-    assert(JSON.stringify(after.pinned.map((e) => [e.id, e.pinnedURL])) === JSON.stringify(before.pinned.map((e) => [e.id, e.pinnedURL])), "pinned differ");
+    assert(JSON.stringify(after.pinned.map((e) => [e.id, e.pinnedURL, e.parent, e.title])) === JSON.stringify(before.pinned.map((e) => [e.id, e.pinnedURL, e.parent, e.title])), "pinned differ");
     assert(JSON.stringify(after.today.map((e) => e.id)) === JSON.stringify(before.today.map((e) => e.id)), "today differs");
     await until("active entry restored and loaded", () => state().activeEntry === savedActive && state().active !== null && oneVisibleActive());
     const notActive = [...after.favorites, ...after.pinned, ...after.today].filter((e) => e.id !== savedActive);

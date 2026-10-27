@@ -5,6 +5,8 @@ final class SidebarEntry: Codable {
     case favorite
     case pinned
     case today
+    /// A folder in the pinned section: no page of its own, a title, and the pinned items whose `parentID` is its id.
+    case folder
   }
 
   let id: UUID
@@ -14,9 +16,23 @@ final class SidebarEntry: Codable {
   var title: String
   var lastActive: Date
   var tab: ArdiaCoreTab?
+  /// The pinned folder this item sits in; nil at the top level (and for favorites and today's tabs).
+  var parentID: UUID?
+  /// For folders: whether its items show. Optional so older files still load.
+  var isOpen: Bool?
 
   private enum CodingKeys: String, CodingKey {
-    case id, kind, pinnedURL, url, title, lastActive
+    case id, kind, pinnedURL, url, title, lastActive, parentID, isOpen
+  }
+
+  var isFolder: Bool { kind == .folder }
+
+  static func folder(_ title: String, in parent: UUID?) -> SidebarEntry {
+    let folder = SidebarEntry(kind: .folder, url: "", title: title)
+    folder.pinnedURL = nil
+    folder.parentID = parent
+    folder.isOpen = true
+    return folder
   }
 
   init(kind: Kind, url: String, title: String = "") {
@@ -93,6 +109,68 @@ final class SidebarState: Codable {
     if activeEntryID == entry.id { activeEntryID = nil }
   }
 
+  // MARK: Pinned folders
+
+  /// `pinned` holds folders and tabs in tree order: each folder is followed by everything inside it.
+  func depth(of entry: SidebarEntry) -> Int {
+    var depth = 0
+    var parent = entry.parentID
+    while let id = parent, let folder = pinned.first(where: { $0.id == id }), depth < 64 {
+      depth += 1
+      parent = folder.parentID
+    }
+    return depth
+  }
+
+  func isInside(_ entry: SidebarEntry, _ folder: SidebarEntry) -> Bool {
+    var parent = entry.parentID
+    var steps = 0
+    while let id = parent, steps < 64 {
+      if id == folder.id { return true }
+      parent = pinned.first { $0.id == id }?.parentID
+      steps += 1
+    }
+    return false
+  }
+
+  /// The entry and, for a folder, everything inside it.
+  func block(of entry: SidebarEntry) -> [SidebarEntry] {
+    guard entry.isFolder else { return [entry] }
+    return [entry] + pinned.filter { isInside($0, entry) }
+  }
+
+  /// Rebuilds a valid tree from parent links, keeping the order items appear in: drops links to missing folders or
+  /// to non-folders, breaks cycles, and puts every folder's items right after it.
+  func normalizePinned() {
+    let folders = Set(pinned.filter(\.isFolder).map(\.id))
+    for entry in pinned {
+      if entry.kind != .pinned && !entry.isFolder { entry.parentID = nil }
+      if let parent = entry.parentID, !folders.contains(parent) || parent == entry.id { entry.parentID = nil }
+    }
+    for entry in pinned where entry.parentID != nil {
+      var seen: Set<UUID> = [entry.id]
+      var parent = entry.parentID
+      while let id = parent {
+        if !seen.insert(id).inserted {
+          entry.parentID = nil
+          break
+        }
+        parent = pinned.first { $0.id == id }?.parentID
+      }
+    }
+    var children: [UUID?: [SidebarEntry]] = [:]
+    for entry in pinned { children[entry.parentID, default: []].append(entry) }
+    var ordered: [SidebarEntry] = []
+    func add(_ parent: UUID?) {
+      for entry in children[parent] ?? [] {
+        ordered.append(entry)
+        if entry.isFolder { add(entry.id) }
+      }
+    }
+    add(nil)
+    pinned = ordered
+  }
+
   func archiveStaleToday(now: Date = Date()) {
     today.removeAll { !$0.isLive && $0.id != activeEntryID && now.timeIntervalSince($0.lastActive) > Self.todayLifetime }
   }
@@ -108,8 +186,10 @@ final class SidebarStore {
   }
 
   func load() -> SidebarState? {
-    guard let data = try? Data(contentsOf: url) else { return nil }
-    return try? JSONDecoder().decode(SidebarState.self, from: data)
+    guard let data = try? Data(contentsOf: url),
+          let state = try? JSONDecoder().decode(SidebarState.self, from: data) else { return nil }
+    state.normalizePinned()
+    return state
   }
 
   func save(_ state: SidebarState) {

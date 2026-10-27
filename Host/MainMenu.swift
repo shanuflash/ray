@@ -21,6 +21,7 @@ enum MainMenu {
       item("Close Tab", #selector(AppController.closeTab(_:)), "w", target: target),
       .separator(),
       item("Pin Tab", #selector(AppController.togglePin(_:)), "d", target: target),
+      item("New Folder", #selector(AppController.newFolder(_:)), "n", [.command, .option], target: target),
       item("Back to Pinned URL", #selector(AppController.backToPinned(_:)), nil, target: target),
       item("Clear Today's Tabs", #selector(AppController.clearToday(_:)), nil, target: target),
     ]))

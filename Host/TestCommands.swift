@@ -80,13 +80,30 @@ enum TestCommands {
     let parts = argument.split(separator: " ").map(String.init)
     let actions: [String: SidebarRowAction] = [
       "pin": .pin, "unpin": .unpin, "favorite": .addToFavorites, "unfavorite": .removeFromFavorites,
-      "back": .backToPinned, "close": .close, "unload": .unload,
+      "back": .backToPinned, "close": .close, "unload": .unload, "newfolder": .newFolder,
+      "nestfolder": .newNestedFolder, "togglefolder": .toggleFolder, "outfolder": .removeFromFolder,
+      "deletefolder": .deleteFolder,
     ]
-    guard parts.count == 2, let action = actions[parts[0]], let id = UUID(uuidString: parts[1]),
+    guard parts.count >= 2, let id = UUID(uuidString: parts[1]),
           let controller = AppController.shared.current, let entry = controller.state.entry(id: id) else {
-      return "usage: rowaction <action> <id>"
+      return "usage: rowaction <action> <id> [folder id]"
     }
-    controller.perform(action, on: entry)
+    if parts[0] == "infolder", parts.count == 3, let folder = UUID(uuidString: parts[2]) {
+      controller.perform(.moveToFolder(folder), on: entry)
+    } else if let action = actions[parts[0]], parts.count == 2 {
+      controller.perform(action, on: entry)
+    } else {
+      return "usage: rowaction <action> <id> [folder id]"
+    }
+    return "ok"
+  }
+
+  /// `rename <id> <title…>`: what the inline editor commits.
+  private static func rename(_ argument: String) -> String {
+    let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+    guard parts.count == 2, let id = UUID(uuidString: parts[0]), let controller = AppController.shared.current,
+          let entry = controller.state.entry(id: id) else { return "usage: rename <id> <title>" }
+    controller.rename(entry, to: parts[1])
     return "ok"
   }
 
@@ -116,6 +133,8 @@ enum TestCommands {
       }
     case "rowaction":
       result = rowAction(argument)
+    case "rename":
+      result = rename(argument)
     case "pointer":
       let numbers = argument.split(separator: " ").compactMap { Double($0) }
       if numbers.count == 2 {

@@ -2,17 +2,21 @@ import AppKit
 
 enum SidebarRowAction {
   case pin, unpin, addToFavorites, removeFromFavorites, backToPinned, close, unload
+  case toggleFolder, newFolder, newNestedFolder, renameFolder, removeFromFolder, deleteFolder
+  case moveToFolder(UUID)
 }
 
-/// Where a dragged entry lands. The index counts the section without the dragged entry.
+/// Where a dragged entry lands. Indexes count the section without the dragged entry (for a folder, without
+/// everything inside it too); `pinned` also says which folder it lands in, `folder` drops into one at its end.
 enum SidebarDropTarget: Equatable {
-  case favorites(Int), pinned(Int), today(Int)
+  case favorites(Int), pinned(Int, parent: UUID?), folder(UUID), today(Int)
 }
 
 protocol SidebarViewDelegate: AnyObject {
   func sidebar(_ sidebar: SidebarView, select entry: SidebarEntry)
   func sidebar(_ sidebar: SidebarView, perform action: SidebarRowAction, on entry: SidebarEntry)
   func sidebar(_ sidebar: SidebarView, move entry: SidebarEntry, to target: SidebarDropTarget)
+  func sidebar(_ sidebar: SidebarView, rename entry: SidebarEntry, to title: String)
   func sidebarNewTab(_ sidebar: SidebarView)
   func sidebarOpenAddress(_ sidebar: SidebarView)
   func sidebarToggle(_ sidebar: SidebarView)
@@ -135,6 +139,8 @@ final class SidebarView: NSView {
   private var landing: [UUID: NSRect] = [:]
   private var autoscroll: CADisplayLink?
   private static let liftDistance: CGFloat = 4
+  private static let folderIndent: CGFloat = 16
+  private var pendingRename: UUID?
   private static let scrollEdge: CGFloat = 28
 
   var isDragging: Bool { drag?.lifted == true }
@@ -217,8 +223,9 @@ final class SidebarView: NSView {
       tile.menu = menu(for: entry)
     }
     for (row, entry) in zip(pinnedRows + todayRows, pinned + today) {
-      row.show(entry, icon: delegate?.sidebarIcon(for: entry), selected: entry === active)
+      row.show(entry, icon: entry.isFolder ? nil : delegate?.sidebarIcon(for: entry), selected: entry === active)
       row.onClick = { [weak self] part in self?.clicked(entry, part: part) }
+      row.onDoubleClick = entry.isFolder ? { [weak self] in self?.beginRename(entry) } : nil
       row.onPointer = { [weak self, weak row] event in
         if let self, let row { self.pointer(event, on: row, entry: entry) }
       }
@@ -232,7 +239,7 @@ final class SidebarView: NSView {
   }
 
   func refresh(_ entry: SidebarEntry) {
-    let icon = delegate?.sidebarIcon(for: entry)
+    let icon = entry.isFolder ? nil : delegate?.sidebarIcon(for: entry)
     if let index = favorites.firstIndex(where: { $0 === entry }) {
       tiles[index].show(entry, icon: icon, selected: entry === active)
     } else if let index = pinned.firstIndex(where: { $0 === entry }) {
@@ -288,10 +295,10 @@ final class SidebarView: NSView {
       if let gap { list.insert(nil, at: min(gap, list.count)) }
       return list
     }
-    var favoriteGap: Int?, pinnedGap: Int?, todayGap: Int?
+    var favoriteGap: Int?, todayGap: Int?
     switch target {
     case .favorites(let index): favoriteGap = index
-    case .pinned(let index): pinnedGap = index
+    case .pinned, .folder: break
     case .today(let index): todayGap = index
     case nil: break
     }
@@ -302,7 +309,24 @@ final class SidebarView: NSView {
     let favoriteBand = favoriteGap != nil && noFavorites
     let favoritesLit = favoriteGap != nil && !noFavorites && dragged?.kind != .favorite
     let tileSlots = slots(tiles, favorites, gap: favoritesLit ? nil : favoriteGap)
-    let pinnedSlots = slots(pinnedRows, pinned, gap: pinnedGap)
+    let pinnedRest = visiblePinned(without: dragged)
+    var pinnedGapSlot: Int?
+    var litFolder: UUID?
+    switch target {
+    case .pinned(let index, _): pinnedGapSlot = pinnedRest.filter { $0.index < index }.count
+    case .folder(let id): litFolder = id
+    default: break
+    }
+    let rowFor = Dictionary(zip(pinned.map(\.id), pinnedRows), uniquingKeysWith: { first, _ in first })
+    let shownPinned = Set(pinnedRest.map { ObjectIdentifier($0.entry) })
+    for (row, entry) in zip(pinnedRows, pinned) {
+      row.isHidden = !shownPinned.contains(ObjectIdentifier(entry)) && entry !== dragged
+      row.dropTarget = entry.id == litFolder
+    }
+    var pinnedSlots: [(SidebarRowView, SidebarEntry, Int)?] = pinnedRest.compactMap { item in
+      rowFor[item.entry.id].map { ($0, item.entry, item.depth) }
+    }
+    if let pinnedGapSlot { pinnedSlots.insert(nil, at: min(pinnedGapSlot, pinnedSlots.count)) }
     let todaySlots = slots(todayRows, today, gap: todayGap)
 
     let columns = tileSlots.isEmpty ? 1 : min(tileSlots.count, 4)
@@ -328,7 +352,11 @@ final class SidebarView: NSView {
     place(scrollView, NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y - inset)), entry: nil)
     var rowY: CGFloat = 0
     for slot in pinnedSlots {
-      if case let (row, entry)? = slot { place(row, NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight), entry: entry) }
+      if case let (row, entry, depth)? = slot {
+        // Each folder level steps in 16 pt, as Arc's and Ardia's folders do.
+        let indent = CGFloat(depth) * Self.folderIndent
+        place(row, NSRect(x: inset + indent, y: rowY, width: width - indent, height: Self.rowHeight), entry: entry)
+      }
       rowY += Self.rowHeight
     }
     separator.isHidden = pinnedSlots.isEmpty
@@ -345,6 +373,49 @@ final class SidebarView: NSView {
     }
     content.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(rowY + inset, scrollView.frame.height))
     landing = [:]
+  }
+
+  /// The pinned rows that show, in order, with their depth and their index in the pinned list without `dragged`
+  /// (and, for a dragged folder, without what's inside it). A closed folder hides what's inside, except the active
+  /// tab, which stays in sight as Ardia and Crest keep it.
+  private func visiblePinned(without dragged: SidebarEntry?) -> [(index: Int, entry: SidebarEntry, depth: Int)] {
+    let byID = Dictionary(pinned.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    func ancestors(_ entry: SidebarEntry) -> [SidebarEntry] {
+      var list: [SidebarEntry] = []
+      var parent = entry.parentID
+      while let id = parent, let folder = byID[id], list.count < 64 {
+        list.append(folder)
+        parent = folder.parentID
+      }
+      return list
+    }
+    var result: [(index: Int, entry: SidebarEntry, depth: Int)] = []
+    var index = 0
+    for entry in pinned {
+      let chain = ancestors(entry)
+      if let dragged, entry === dragged || chain.contains(where: { $0 === dragged }) { continue }
+      defer { index += 1 }
+      if entry !== active, chain.contains(where: { !($0.isOpen ?? true) }) { continue }
+      result.append((index, entry, chain.count))
+    }
+    return result
+  }
+
+  /// Starts renaming a folder in place (a new folder starts this way).
+  func beginRename(_ entry: SidebarEntry) {
+    pendingRename = entry.id
+    DispatchQueue.main.async { [weak self] in
+      guard let self, self.pendingRename == entry.id else { return }
+      self.pendingRename = nil
+      self.layoutSubtreeIfNeeded()
+      guard let index = self.pinned.firstIndex(where: { $0 === entry }), index < self.pinnedRows.count else { return }
+      let row = self.pinnedRows[index]
+      row.scrollToVisible(row.bounds)
+      row.beginRename { [weak self] name in
+        guard let self, let name else { return }
+        self.delegate?.sidebar(self, rename: entry, to: name)
+      }
+    }
   }
 
   /// Shows a drop hint at a frame (appearing in place, then following the layout), or hides it.
@@ -389,6 +460,11 @@ final class SidebarView: NSView {
     case .leftMouseUp:
       guard let drag, drag.view === view else { return }
       drag.pointer = point
+      if !drag.lifted, drag.entry.isFolder {
+        self.drag = nil
+        delegate?.sidebar(self, perform: .toggleFolder, on: drag.entry)
+        return
+      }
       drop(drag)
     default:
       break
@@ -449,6 +525,7 @@ final class SidebarView: NSView {
     guard point.x > -40, point.x < bounds.width + 40 else { return nil }
     let inset = Self.inset
     if point.y < scrollView.frame.minY {
+      if drag.entry.isFolder { return nil }
       let others = favorites.filter { $0 !== drag.entry }.count
       let count = others + 1
       let columns = min(count, 4)
@@ -463,20 +540,57 @@ final class SidebarView: NSView {
     let height = Self.rowHeight
     let centre = convert(point, to: content).y - drag.grab.y + (drag.ghost?.frame.height ?? height) / 2
     let top = centre - height / 2
-    let pinnedCount = pinned.filter { $0 !== drag.entry }.count
+    let rest = visiblePinned(without: drag.entry)
+    let pinnedCount = rest.count
+    let restCount = pinned.count - (pinned.filter { $0 === drag.entry }.count
+      + pinned.filter { drag.entry.isFolder && isInside($0, drag.entry) }.count)
     let todayCount = today.filter { $0 !== drag.entry }.count
     // With nothing pinned, the pinned gap opens once the tab reaches the top half of New Tab; while it's open, all
     // of it down to the divider pins (no flicker at the edge).
-    let pinning: Bool
-    if case .pinned = drag.target { pinning = true } else { pinning = false }
-    let slots = pinnedCount > 0 || pinning ? max(pinnedCount, 1) : 0
+    // While a gap is open in the pinned rows, the divider sits a row lower; measure against where it shows.
+    let pinning: Bool, gapOpen: Bool
+    switch drag.target {
+    case .pinned: (pinning, gapOpen) = (true, true)
+    case .folder: (pinning, gapOpen) = (true, false)
+    default: (pinning, gapOpen) = (false, false)
+    }
+    let slots = pinnedCount + (gapOpen ? 1 : 0)
     let lineY = CGFloat(slots) * height + 12
     let newTabY = slots > 0 ? lineY + 30 - height / 2 : 0
     func index(_ value: CGFloat, _ count: Int) -> Int { min(max(Int((value / height).rounded()), 0), count) }
     let pinLimit = pinnedCount > 0 ? newTabY + height / 2 : pinning ? lineY : height / 2
     if centre < pinLimit {
-      return .pinned(index(top, pinnedCount))
+      // The middle half of a folder row drops into it (Crest's band; Ardia uses the middle two thirds).
+      let over = Int(floor(centre / height))
+      if over >= 0, over < rest.count, rest[over].entry.isFolder,
+         abs(centre - (CGFloat(over) + 0.5) * height) < height / 4 {
+        return .folder(rest[over].entry.id)
+      }
+      let gap = index(top, pinnedCount)
+      let above = gap > 0 ? rest[gap - 1] : nil
+      let below = gap < rest.count ? rest[gap] : nil
+      // Between rows the gap can sit at any level the neighbours allow; how far right the tab is picks it.
+      let deepest = above.map { $0.entry.isFolder && ($0.entry.isOpen ?? true) ? $0.depth + 1 : $0.depth } ?? 0
+      let shallowest = min(below?.depth ?? 0, deepest)
+      let wanted = Int((((drag.ghost?.frame.minX ?? 0) - Self.inset) / Self.folderIndent).rounded())
+      let depth = min(max(wanted, shallowest), deepest)
+      var parent: UUID?
+      if depth > 0, let above {
+        if above.entry.isFolder && depth == above.depth + 1 {
+          parent = above.entry.id
+        } else {
+          var node: SidebarEntry? = above.entry
+          var level = above.depth
+          while let current = node, level >= depth {
+            node = current.parentID.flatMap { id in pinned.first { $0.id == id } }
+            level -= 1
+          }
+          parent = node?.id
+        }
+      }
+      return .pinned(below?.index ?? restCount, parent: parent)
     }
+    if drag.entry.isFolder { return nil }
     return .today(index(top - newTabY - height, todayCount))
   }
 
@@ -526,6 +640,17 @@ final class SidebarView: NSView {
     layoutSubtreeIfNeeded()
   }
 
+  private func isInside(_ entry: SidebarEntry, _ folder: SidebarEntry) -> Bool {
+    var parent = entry.parentID
+    var steps = 0
+    while let id = parent, steps < 64 {
+      if id == folder.id { return true }
+      parent = pinned.first { $0.id == id }?.parentID
+      steps += 1
+    }
+    return false
+  }
+
   private var shownViews: [(NSView, SidebarEntry)] {
     Array(zip(tiles as [NSView], favorites)) + Array(zip(pinnedRows as [NSView], pinned))
       + Array(zip(todayRows as [NSView], today))
@@ -548,6 +673,9 @@ final class SidebarView: NSView {
       let frame = glow.convert(glow.bounds, to: nil)
       frames[name] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
     }
+    frames["hidden"] = shownViews.filter { view, _ in view.isHidden }.map { $0.1.id.uuidString }.joined(separator: ",")
+    frames["litFolder"] = zip(pinnedRows, pinned).first { $0.0.dropTarget }?.1.id.uuidString ?? ""
+    frames["renaming"] = zip(pinnedRows, pinned).first { $0.0.isRenaming }?.1.id.uuidString ?? ""
     frames["alive"] = shownViews.filter { view, _ in
       (view as? SidebarRowView)?.residency.showsDot ?? (view as? FavoriteTileView)?.residency.showsDot ?? false
     }.map { $0.1.id.uuidString }.joined(separator: ",")
@@ -559,6 +687,8 @@ final class SidebarView: NSView {
   }
 
   private func clicked(_ entry: SidebarEntry, part: SidebarRowView.Part) {
+    // A folder opens or closes on release, so pressing one to drag it doesn't toggle it.
+    if entry.isFolder { return }
     if part == .icon, entry.isAwayFromPinned, entry.isLive {
       delegate?.sidebar(self, perform: .backToPinned, on: entry)
     } else {
@@ -578,20 +708,48 @@ final class SidebarView: NSView {
       item.representedObject = RowMenuChoice(action: action, entry: entry)
       menu.addItem(item)
     }
+    func addFolderMenu() {
+      let folders = NSMenu()
+      let fresh = NSMenuItem(title: "New Folder", action: #selector(menuAction(_:)), keyEquivalent: "")
+      fresh.target = self
+      fresh.representedObject = RowMenuChoice(action: .newFolder, entry: entry)
+      folders.addItem(fresh)
+      let choices = pinned.filter { $0.isFolder && $0.id != entry.parentID }
+      if !choices.isEmpty { folders.addItem(.separator()) }
+      for folder in choices {
+        let item = NSMenuItem(title: folder.title, action: #selector(menuAction(_:)), keyEquivalent: "")
+        item.target = self
+        item.indentationLevel = min(depthOf(folder), 8)
+        item.representedObject = RowMenuChoice(action: .moveToFolder(folder.id), entry: entry)
+        folders.addItem(item)
+      }
+      let holder = NSMenuItem(title: "Add to Folder", action: nil, keyEquivalent: "")
+      holder.submenu = folders
+      menu.addItem(holder)
+    }
     switch entry.kind {
     case .today:
       add("Pin Tab", .pin)
       add("Add to Favorites", .addToFavorites)
+      addFolderMenu()
       menu.addItem(.separator())
       add("Close Tab", .close)
     case .pinned:
       if entry.isAwayFromPinned { add("Back to Pinned URL", .backToPinned) }
       add("Add to Favorites", .addToFavorites)
+      addFolderMenu()
+      if entry.parentID != nil { add("Remove from Folder", .removeFromFolder) }
       add("Unpin Tab", .unpin)
       if entry.isLive {
         menu.addItem(.separator())
         add("Close Tab", .unload)
       }
+    case .folder:
+      add("Rename…", .renameFolder)
+      add("New Nested Folder", .newNestedFolder)
+      if entry.parentID != nil { add("Remove from Folder", .removeFromFolder) }
+      menu.addItem(.separator())
+      add("Delete Folder", .deleteFolder)
     case .favorite:
       if entry.isAwayFromPinned { add("Back to Favorite URL", .backToPinned) }
       add("Remove from Favorites", .removeFromFavorites)
@@ -605,7 +763,21 @@ final class SidebarView: NSView {
 
   @objc private func menuAction(_ item: NSMenuItem) {
     guard let choice = item.representedObject as? RowMenuChoice else { return }
+    if case .renameFolder = choice.action {
+      beginRename(choice.entry)
+      return
+    }
     delegate?.sidebar(self, perform: choice.action, on: choice.entry)
+  }
+
+  private func depthOf(_ entry: SidebarEntry) -> Int {
+    var depth = 0
+    var parent = entry.parentID
+    while let id = parent, let folder = pinned.first(where: { $0.id == id }), depth < 64 {
+      depth += 1
+      parent = folder.parentID
+    }
+    return depth
   }
 
   @objc private func toggle() { delegate?.sidebarToggle(self) }
@@ -945,14 +1117,23 @@ final class FavoriteTileView: NSView, Liftable {
   }
 }
 
-final class SidebarRowView: NSView, Liftable {
+final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   enum Part { case icon, body }
 
   let residency = TabResidency()
 
   var onClick: ((Part) -> Void)?
+  var onDoubleClick: (() -> Void)?
   var onPointer: ((NSEvent) -> Void)?
   private var lifted = false
+  private let chevron = NSImageView()
+  private(set) var isFolderRow = false
+  private var editor: NSTextField?
+  private var onRenamed: ((String?) -> Void)?
+  /// Lit while a dragged tab would drop into this folder.
+  var dropTarget = false {
+    didSet { if oldValue != dropTarget { needsDisplay = true } }
+  }
   var onClose: (() -> Void)?
   private let icon = NSImageView()
   private let slash = NSTextField(labelWithString: "/")
@@ -989,7 +1170,12 @@ final class SidebarRowView: NSView, Liftable {
     closeButton.target = self
     closeButton.action = #selector(close)
     closeButton.refusesFirstResponder = true
-    [icon, slash, title, subtitle, closeButton].forEach(addSubview)
+    chevron.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)
+    chevron.symbolConfiguration = .init(pointSize: 9, weight: .semibold)
+    chevron.contentTintColor = .tertiaryLabelColor
+    chevron.isHidden = true
+    chevron.wantsLayer = true
+    [icon, slash, title, subtitle, closeButton, chevron].forEach(addSubview)
     addTrackingArea(NSTrackingArea(
       rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
@@ -1001,11 +1187,13 @@ final class SidebarRowView: NSView, Liftable {
   override var mouseDownCanMoveWindow: Bool { false }
 
   override func updateLayer() {
-    let color: NSColor = lifted ? SidebarColors.lifted : selected ? SidebarColors.selected
-      : hovered ? SidebarColors.hover : .clear
+    let color: NSColor = dropTarget ? NSColor.controlAccentColor.withAlphaComponent(0.22)
+      : lifted ? SidebarColors.lifted : selected ? SidebarColors.selected : hovered ? SidebarColors.hover : .clear
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     fill.backgroundColor = color.cgColor
+    fill.borderWidth = dropTarget ? 1 : 0
+    fill.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.65).cgColor
     Lift.shadow(fill, lifted, radius: 8)
     CATransaction.commit()
   }
@@ -1018,6 +1206,7 @@ final class SidebarRowView: NSView, Liftable {
   // Only the close button handles its own clicks; the icon and labels would keep a drag for themselves.
   override func hitTest(_ point: NSPoint) -> NSView? {
     guard let hit = super.hitTest(point) else { return nil }
+    if let editor, hit === editor || hit.isDescendant(of: editor) { return hit }
     return hit === closeButton || hit.isDescendant(of: closeButton) ? hit : self
   }
 
@@ -1036,6 +1225,10 @@ final class SidebarRowView: NSView, Liftable {
   }
 
   override func mouseDown(with event: NSEvent) {
+    if event.clickCount == 2, let onDoubleClick {
+      onDoubleClick()
+      return
+    }
     onPointer?(event)
     let point = convert(event.locationInWindow, from: nil)
     onClick?(point.x < title.frame.minX - 2 ? .icon : .body)
@@ -1070,6 +1263,12 @@ final class SidebarRowView: NSView, Liftable {
   }
 
   func show(_ entry: SidebarEntry, icon image: NSImage?, selected: Bool) {
+    if entry.isFolder {
+      showFolder(entry)
+      return
+    }
+    isFolderRow = false
+    chevron.isHidden = true
     self.selected = selected
     away = entry.isAwayFromPinned && entry.isLive
     closable = entry.kind == .today || entry.isLive
@@ -1092,6 +1291,79 @@ final class SidebarRowView: NSView, Liftable {
     needsDisplay = true
   }
 
+  /// A pinned folder: folder icon, its name, and a chevron that points down while it's open.
+  private func showFolder(_ entry: SidebarEntry) {
+    isFolderRow = true
+    selected = false
+    away = false
+    closable = false
+    let open = entry.isOpen ?? true
+    icon.image = NSImage(systemSymbolName: open ? "folder" : "folder.fill", accessibilityDescription: "Folder")
+    icon.contentTintColor = .secondaryLabelColor
+    icon.alphaValue = 1
+    residency.show(entry, in: self)
+    slash.isHidden = true
+    title.stringValue = entry.title
+    title.textColor = .labelColor
+    subtitle.isHidden = true
+    chevron.isHidden = false
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    chevron.layer?.setAffineTransform(.identity)
+    CATransaction.commit()
+    chevron.image = NSImage(systemSymbolName: open ? "chevron.down" : "chevron.right", accessibilityDescription: nil)
+    toolTip = nil
+    updateClose()
+    needsLayout = true
+    needsDisplay = true
+  }
+
+  /// Edits the title in place: Return keeps it, Escape or an empty name keeps the old one.
+  func beginRename(_ done: @escaping (String?) -> Void) {
+    editor?.removeFromSuperview()
+    let field = NSTextField(string: title.stringValue)
+    field.font = title.font
+    field.isBordered = false
+    field.drawsBackground = false
+    field.focusRingType = .none
+    field.delegate = self
+    field.frame = title.frame.insetBy(dx: -2, dy: 0)
+    addSubview(field)
+    editor = field
+    onRenamed = done
+    title.isHidden = true
+    window?.makeFirstResponder(field)
+    field.currentEditor()?.selectAll(nil)
+  }
+
+  var isRenaming: Bool { editor != nil }
+
+  private func endRename(_ name: String?) {
+    guard let editor else { return }
+    self.editor = nil
+    editor.removeFromSuperview()
+    title.isHidden = false
+    let done = onRenamed
+    onRenamed = nil
+    done?(name)
+  }
+
+  func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+    if selector == #selector(NSResponder.cancelOperation(_:)) {
+      endRename(nil)
+      return true
+    }
+    if selector == #selector(NSResponder.insertNewline(_:)) {
+      endRename(editor?.stringValue)
+      return true
+    }
+    return false
+  }
+
+  func controlTextDidEndEditing(_ notification: Notification) {
+    endRename(editor?.stringValue)
+  }
+
   private func updateClose() {
     closeButton.isHidden = isNewTab || !closable || !(hovered || selected)
   }
@@ -1109,7 +1381,9 @@ final class SidebarRowView: NSView, Liftable {
     slash.frame = NSRect(x: 28, y: mid - 11, width: 10, height: 22)
     let textX: CGFloat = away ? 41 : 35
     closeButton.frame = NSRect(x: bounds.width - 30, y: mid - 11, width: 22, height: 22)
-    let textWidth = (closeButton.isHidden ? bounds.width - 10 : closeButton.frame.minX - 4) - textX
+    chevron.frame = NSRect(x: bounds.width - 26, y: mid - 7, width: 14, height: 14)
+    let trailing = isFolderRow ? chevron.frame.minX - 4 : closeButton.isHidden ? bounds.width - 10 : closeButton.frame.minX - 4
+    let textWidth = trailing - textX
     if subtitle.isHidden {
       title.frame = NSRect(x: textX, y: mid - 8.5, width: textWidth, height: 20)
     } else {

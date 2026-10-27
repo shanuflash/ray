@@ -173,7 +173,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   func restore(startURL: String?) {
-    if let entry = activeEntry ?? state.today.first ?? state.pinned.first {
+    if let entry = activeEntry ?? state.today.first ?? state.pinned.first(where: { !$0.isFolder }) {
       select(entry)
     } else if let startURL {
       openToday(startURL, after: nil, foreground: true)
@@ -262,6 +262,10 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   func select(_ entry: SidebarEntry) {
+    if entry.isFolder {
+      perform(.toggleFolder, on: entry)
+      return
+    }
     load(entry, foreground: true)
     guard let tab = entry.tab, !tab.closed else { return }
     pages.show(tab)
@@ -321,12 +325,49 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       return
     case .pin:
       guard entry.kind == .today else { return }
-      move(entry, to: .pinned(state.pinned.count))
+      move(entry, to: .pinned(state.pinned.count, parent: nil))
       return
     case .unpin:
       guard entry.kind == .pinned else { return }
       move(entry, to: .today(0))
       return
+    case .renameFolder:
+      sidebar.beginRename(entry)
+      return
+    case .toggleFolder:
+      guard entry.isFolder else { return }
+      entry.isOpen = !(entry.isOpen ?? true)
+    case .newFolder:
+      // Around this tab: a new folder where it is, with the tab inside, named and ready to rename.
+      let folder = SidebarEntry.folder("New Folder", in: entry.kind == .pinned ? entry.parentID : nil)
+      let at = entry.kind == .pinned ? state.pinned.firstIndex { $0 === entry } ?? state.pinned.count : state.pinned.count
+      state.pinned.insert(folder, at: at)
+      move(entry, to: .folder(folder.id))
+      sidebar.beginRename(folder)
+      return
+    case .newNestedFolder:
+      guard entry.isFolder else { return }
+      let folder = SidebarEntry.folder("New Folder", in: entry.id)
+      entry.isOpen = true
+      state.pinned.append(folder)
+      state.normalizePinned()
+      changed("sidebar")
+      sidebar.beginRename(folder)
+      return
+    case .moveToFolder(let id):
+      move(entry, to: .folder(id))
+      return
+    case .removeFromFolder:
+      guard let parentID = entry.parentID, let parent = state.entry(id: parentID) else { return }
+      let end = (state.pinned.firstIndex { $0 === parent } ?? 0) + state.block(of: parent).count
+      move(entry, to: .pinned(end, parent: parent.parentID))
+      return
+    case .deleteFolder:
+      // As in Crest: the folder goes, what was inside moves up a level.
+      guard entry.isFolder else { return }
+      for child in state.pinned where child.parentID == entry.id { child.parentID = entry.parentID }
+      state.pinned.removeAll { $0 === entry }
+      state.normalizePinned()
     case .addToFavorites:
       guard entry.kind != .favorite else { return }
       move(entry, to: .favorites(state.favorites.count))
@@ -345,21 +386,35 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     changed("sidebar")
   }
 
-  /// Moves an entry to a section and place; pinning keeps the page it's on as its pinned URL.
+  /// Moves an entry to a section and place; pinning keeps the page it's on as its pinned URL. A folder moves with
+  /// everything inside it, and only within the pinned section.
   func move(_ entry: SidebarEntry, to target: SidebarDropTarget) {
     guard state.entry(id: entry.id) === entry else { return }
+    let block = entry.kind == .pinned || entry.isFolder ? state.block(of: entry) : [entry]
+    var parent: UUID?
+    switch target {
+    case .pinned(_, let id): parent = id
+    case .folder(let id): parent = id
+    case .favorites, .today:
+      if entry.isFolder { return }
+    }
+    if let parent, parent == entry.id || block.contains(where: { $0.id == parent }) { return }
+    if let parent, state.pinned.first(where: { $0.id == parent })?.isFolder != true { return }
     state.favorites.removeAll { $0 === entry }
-    state.pinned.removeAll { $0 === entry }
+    state.pinned.removeAll { item in block.contains { $0 === item } }
     state.today.removeAll { $0 === entry }
+    entry.parentID = nil
     switch target {
     case .favorites(let index):
       if entry.pinnedURL == nil { entry.pinnedURL = entry.currentURL }
       entry.kind = .favorite
       state.favorites.insert(entry, at: min(index, state.favorites.count))
-    case .pinned(let index):
-      if entry.pinnedURL == nil { entry.pinnedURL = entry.currentURL }
-      entry.kind = .pinned
-      state.pinned.insert(entry, at: min(index, state.pinned.count))
+    case .pinned(let index, let parent):
+      pin(block, at: index, in: parent)
+    case .folder(let id):
+      let folder = state.pinned.first { $0.id == id }!
+      folder.isOpen = true
+      pin(block, at: (state.pinned.firstIndex { $0 === folder } ?? 0) + state.block(of: folder).count, in: id)
     case .today(let index):
       entry.kind = .today
       entry.pinnedURL = nil
@@ -368,7 +423,33 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     changed("sidebar")
   }
 
-    func togglePin() {
+  private func pin(_ block: [SidebarEntry], at index: Int, in parent: UUID?) {
+    guard let entry = block.first else { return }
+    if !entry.isFolder {
+      if entry.pinnedURL == nil { entry.pinnedURL = entry.currentURL }
+      entry.kind = .pinned
+    }
+    entry.parentID = parent
+    state.pinned.insert(contentsOf: block, at: min(index, state.pinned.count))
+    state.normalizePinned()
+  }
+
+  /// File › New Folder: an empty folder at the end of the pinned tabs, named and ready to rename.
+  func newFolder() {
+    let folder = SidebarEntry.folder("New Folder", in: nil)
+    state.pinned.append(folder)
+    changed("sidebar")
+    sidebar.beginRename(folder)
+  }
+
+  func rename(_ entry: SidebarEntry, to title: String) {
+    let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard entry.isFolder, state.entry(id: entry.id) === entry else { return }
+    entry.title = title.isEmpty ? "New Folder" : String(title.prefix(200))
+    changed("sidebar")
+  }
+
+  func togglePin() {
     guard let entry = activeEntry else { return }
     perform(entry.kind == .today ? .pin : .unpin, on: entry)
   }
@@ -393,7 +474,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   func selectTab(number: Int) {
-    let entries = state.allEntries
+    let entries = state.allEntries.filter { !$0.isFolder }
     guard !entries.isEmpty else { return }
     select(number >= 9 ? entries[entries.count - 1] : entries[min(number, entries.count) - 1])
   }
@@ -637,6 +718,10 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     move(entry, to: target)
   }
 
+  func sidebar(_ sidebar: SidebarView, rename entry: SidebarEntry, to title: String) {
+    rename(entry, to: title)
+  }
+
   func sidebarNewTab(_ sidebar: SidebarView) { beginNewTab() }
   func sidebarOpenAddress(_ sidebar: SidebarView) { focusAddress() }
   func sidebarToggle(_ sidebar: SidebarView) { toggleSidebar() }
@@ -768,6 +853,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
         "id": entry.id.uuidString, "kind": entry.kind.rawValue, "title": entry.displayTitle,
         "url": entry.currentURL, "pinnedURL": entry.pinnedURL ?? NSNull(), "live": entry.isLive,
         "away": entry.isAwayFromPinned, "tab": entry.isLive ? Int(entry.tab!.tabId) : NSNull(),
+        "parent": entry.parentID?.uuidString ?? NSNull(), "open": entry.isOpen ?? NSNull(),
       ]
     }
     let state: [String: Any] = [
