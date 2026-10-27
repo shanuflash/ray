@@ -191,8 +191,8 @@ final class SidebarView: NSView {
     let inset = Self.inset
     let width = bounds.width - inset * 2
     let rowCenter = trafficLightsCenterY
-    toggleButton.frame = NSRect(x: reservesTrafficLights ? 72 : inset + 4, y: rowCenter - 14, width: 28, height: 28)
-    reloadButton.frame = NSRect(x: bounds.width - inset - 28 - 4, y: rowCenter - 14, width: 28, height: 28)
+    toggleButton.frame = NSRect(x: reservesTrafficLights ? 70 : 13, y: rowCenter - 16, width: 32, height: 32)
+    reloadButton.frame = NSRect(x: bounds.width - inset - 32 - 2, y: rowCenter - 16, width: 32, height: 32)
     forwardButton.frame = reloadButton.frame.offsetBy(dx: -34, dy: 0)
     backButton.frame = forwardButton.frame.offsetBy(dx: -34, dy: 0)
 
@@ -298,7 +298,7 @@ final class SidebarView: NSView {
   }
 
   private static func iconButton(_ symbol: String) -> NSButton {
-    let button = NSButton()
+    let button = HoverIconButton()
     button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
     button.symbolConfiguration = .init(pointSize: 15, weight: .medium)
     button.isBordered = false
@@ -307,6 +307,38 @@ final class SidebarView: NSView {
     button.contentTintColor = .secondaryLabelColor
     button.refusesFirstResponder = true
     return button
+  }
+}
+
+final class HoverIconButton: NSButton {
+  private var hovered = false
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.cornerRadius = 8
+    layer?.cornerCurve = .continuous
+    addTrackingArea(NSTrackingArea(
+      rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var wantsUpdateLayer: Bool { true }
+  override var mouseDownCanMoveWindow: Bool { false }
+
+  override func updateLayer() {
+    layer?.backgroundColor = (hovered && isEnabled ? SidebarColors.fill : .clear).cgColor
+  }
+
+  override func mouseEntered(with event: NSEvent) {
+    hovered = true
+    needsDisplay = true
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    hovered = false
+    needsDisplay = true
   }
 }
 
@@ -332,7 +364,7 @@ final class AddressPill: NSView {
     layer?.cornerRadius = 10
     layer?.cornerCurve = .continuous
     label.font = .systemFont(ofSize: 15)
-    label.textColor = .labelColor
+    label.textColor = .secondaryLabelColor
     label.lineBreakMode = .byTruncatingHead
     securityIcon.image = NSImage(systemSymbolName: "lock.slash.fill", accessibilityDescription: "Not secure")
     securityIcon.symbolConfiguration = .init(pointSize: 12, weight: .medium)

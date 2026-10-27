@@ -32,6 +32,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private lazy var dockSpring = Spring(value: state.sidebarHidden ? 0 : 1, response: 0.26, dampingRatio: 0.86) {
     [weak self] _ in self?.layout()
   }
+  private static let fullScreenRowCenter: CGFloat = 24
   private static let revealWidth: CGFloat = 14
   private static let outsideReach: CGFloat = 24
   private static let holdSlack: CGFloat = 24
@@ -127,11 +128,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       floating.frame = NSRect(
         x: inset - (width + 24) * (1 - peek), y: inset, width: width, height: bounds.height - inset * 2)
       sidebar.frame = floating.bounds
-      sidebar.trafficLightsCenterY = lights - inset
+      sidebar.trafficLightsCenterY = isFullScreen ? Self.fullScreenRowCenter : lights - inset
       sidebar.reservesTrafficLights = !isFullScreen
     } else {
       sidebar.frame = NSRect(x: -width * (1 - shown), y: 0, width: width, height: bounds.height)
-      sidebar.trafficLightsCenterY = lights
+      sidebar.trafficLightsCenterY = isFullScreen ? Self.fullScreenRowCenter : lights
       sidebar.reservesTrafficLights = !isFullScreen
     }
     let edge = isFullScreen ? margin * shown : margin
