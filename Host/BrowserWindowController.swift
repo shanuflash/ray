@@ -19,7 +19,6 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private let sidebar = SidebarView()
   private let floating = FloatingSidebarFrame()
   private let pages = PageContainerView()
-  private let edge = EdgeHoverZone()
   private var commandBar: CommandBarView?
   private var commandBarMode = CommandBarMode.newTab
   private let history = HistoryCache()
@@ -33,7 +32,13 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private lazy var dockSpring = Spring(value: state.sidebarHidden ? 0 : 1, response: 0.26, dampingRatio: 0.86) {
     [weak self] _ in self?.layout()
   }
-  private lazy var peekSpring = Spring(value: 0, response: 0.24, dampingRatio: 0.84) { [weak self] value in
+  private static let revealWidth: CGFloat = 14
+  private static let outsideReach: CGFloat = 24
+  private static let holdSlack: CGFloat = 24
+  private static let peekInset: CGFloat = 5
+  private static let peekHideDelay: TimeInterval = 0.12
+  private var pointerMonitors: [Any] = []
+  private lazy var peekSpring = Spring(value: 0, response: 0.185, dampingRatio: 0.77) { [weak self] value in
     self?.layout()
     if value <= 0.001, self?.peeking == false { self?.finishPeek() }
   }
@@ -57,9 +62,6 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     coreWindow.activeProfile = profile
     configureWindow()
     sidebar.delegate = self
-    edge.onEnter = { [weak self] in self?.beginPeek() }
-    floating.onExit = { [weak self] in self?.schedulePeekEnd() }
-    floating.onEnter = { [weak self] in self?.peekEndWork?.cancel() }
     let host = coreWindow.hostView
     root.frame = host.bounds
     root.autoresizingMask = [.width, .height]
@@ -67,7 +69,6 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     root.addSubview(pages)
     root.addSubview(sidebar)
     root.addSubview(floating)
-    root.addSubview(edge)
     floating.isHidden = true
     host.addSubview(root)
     NotificationCenter.default.addObserver(
@@ -75,6 +76,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     root.postsFrameChangedNotifications = true
     reloadSidebar()
     layout()
+    installPointerMonitors()
+  }
+
+  deinit {
+    pointerMonitors.forEach(NSEvent.removeMonitor)
   }
 
   private func configureWindow() {
@@ -90,6 +96,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     window.isRestorable = false
     window.animationBehavior = .none
     window.tabbingMode = .disallowed
+    window.acceptsMouseMovedEvents = true
   }
 
   @objc private func hostResized() { layout() }
@@ -109,10 +116,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let lights = trafficLightsCenter
 
     if peeking || peek > 0.001 {
+      let inset = Self.peekInset
       floating.frame = NSRect(
-        x: margin - (width + 24) * (1 - peek), y: margin, width: width, height: bounds.height - margin * 2)
+        x: inset - (width + 24) * (1 - peek), y: inset, width: width, height: bounds.height - inset * 2)
       sidebar.frame = floating.bounds
-      sidebar.trafficLightsCenterY = lights - margin
+      sidebar.trafficLightsCenterY = lights - inset
     } else {
       sidebar.frame = NSRect(x: -width * (1 - shown), y: 0, width: width, height: bounds.height)
       sidebar.trafficLightsCenterY = lights
@@ -120,8 +128,6 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let cardX = max(margin, width * shown)
     pages.frame = NSRect(
       x: cardX, y: margin, width: max(0, bounds.width - cardX - margin), height: max(0, bounds.height - margin * 2))
-    edge.frame = NSRect(x: 0, y: 0, width: 6, height: bounds.height)
-    edge.isHidden = !state.sidebarHidden || peeking
     updateTrafficLights()
   }
 
@@ -346,23 +352,75 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     floating.content = sidebar
     floating.isHidden = false
     root.addSubview(floating, positioned: .above, relativeTo: pages)
+    peekSpring.configure(response: 0.185, dampingRatio: 0.77)
     peekSpring.animate(to: 1, in: root)
     layout()
     logState("peek")
   }
 
   private func schedulePeekEnd() {
-    peekEndWork?.cancel()
-    let work = DispatchWorkItem { [weak self] in self?.endPeek(animated: true) }
+    guard peekEndWork == nil else { return }
+    let work = DispatchWorkItem { [weak self] in
+      self?.peekEndWork = nil
+      self?.endPeek(animated: true)
+    }
     peekEndWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.peekHideDelay, execute: work)
+  }
+
+  private func cancelPeekEnd() {
+    peekEndWork?.cancel()
+    peekEndWork = nil
+  }
+
+  private func installPointerMonitors() {
+    guard !launchedInBackground else { return }
+    let events: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+    if let local = NSEvent.addLocalMonitorForEvents(matching: events, handler: { [weak self] event in
+      self?.pointerMoved(screenPoint: NSEvent.mouseLocation)
+      return event
+    }) {
+      pointerMonitors.append(local)
+    }
+    if let global = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak self] _ in
+      self?.pointerMoved(screenPoint: NSEvent.mouseLocation)
+    }) {
+      pointerMonitors.append(global)
+    }
+  }
+
+  private func pointerMoved(screenPoint: NSPoint) {
+    guard state.sidebarHidden || peeking, window.isVisible, !window.isMiniaturized else { return }
+    let frame = window.frame
+    let point = NSPoint(x: screenPoint.x - frame.minX, y: frame.maxY - screenPoint.y)
+    if point.x < 0 {
+      let under = NSWindow.windowNumber(at: screenPoint, belowWindowWithWindowNumber: 0)
+      if under != window.windowNumber, NSApp.window(withWindowNumber: under) != nil { return }
+    }
+    pointer(at: point, appActive: NSApp.isActive)
+  }
+
+  func pointer(at point: NSPoint, appActive: Bool) {
+    let height = root.bounds.height
+    guard point.y >= 0, point.y < height else {
+      if peeking { schedulePeekEnd() }
+      return
+    }
+    let reach = appActive ? Self.outsideReach : 0
+    if peeking {
+      let holdRight = Self.peekInset + SidebarView.width + Self.holdSlack
+      if point.x >= -reach && point.x < holdRight { cancelPeekEnd() } else { schedulePeekEnd() }
+    } else if point.x >= -reach && point.x < Self.revealWidth {
+      beginPeek()
+    }
   }
 
   func endPeek(animated: Bool) {
-    peekEndWork?.cancel()
+    cancelPeekEnd()
     guard peeking else { return }
     peeking = false
     if animated {
+      peekSpring.configure(response: 0.15, dampingRatio: 1)
       peekSpring.animate(to: 0, in: root)
     } else {
       peekSpring.jump(to: 0)
@@ -631,6 +689,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "cardFrame": NSStringFromRect(pages.frame),
       "windowFrame": NSStringFromRect(window.frame),
       "windowMovable": window.isMovable,
+      "windowVisibleOnScreen": window.occlusionState.contains(.visible),
+      "windowOnActiveSpace": window.isOnActiveSpace,
       "sidebar": [
         "favorites": self.state.favorites.map(describe),
         "pinned": self.state.pinned.map(describe),
@@ -658,24 +718,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 }
 
-final class EdgeHoverZone: NSView {
-  var onEnter: (() -> Void)?
-
-  override init(frame: NSRect) {
-    super.init(frame: frame)
-    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override func mouseEntered(with event: NSEvent) { onEnter?() }
-  override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
 final class FloatingSidebarFrame: NSView {
-  var onEnter: (() -> Void)?
-  var onExit: (() -> Void)?
-
   var content: NSView? {
     didSet {
       oldValue?.removeFromSuperview()
@@ -701,7 +744,6 @@ final class FloatingSidebarFrame: NSView {
       shadow.shadowColor = NSColor.black.withAlphaComponent(0.4)
       return shadow
     }()
-    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -712,7 +754,4 @@ final class FloatingSidebarFrame: NSView {
     layer?.backgroundColor = SidebarColors.background.cgColor
     layer?.borderColor = NSColor.separatorColor.cgColor
   }
-
-  override func mouseEntered(with event: NSEvent) { onEnter?() }
-  override func mouseExited(with event: NSEvent) { onExit?() }
 }

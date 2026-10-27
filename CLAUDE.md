@@ -21,6 +21,7 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
 - `engine.lock`: the pinned prebuilt engine (tree, release, sha256). `scripts/fetch-engine.sh` downloads and checks it.
 - `third_party/ardia/`: read-only reference clone of Ardia at `ardia_tag` (gitignored). Read it for behaviour; don't
   build from it.
+- `third_party/crest/`: read-only reference clone of Crest (gitignored), another native-Mac Chromium browser.
 
 ## Build and run
 - `scripts/build-app.sh` → `build/Lumen.app` (fetches the engine, compiles `Host/`, re-signs the framework ad hoc).
@@ -36,6 +37,9 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   the main menu.
 
 ## Rules
+- Before any design or behaviour decision, check all three references and say what each does: Chromium's source
+  (Chrome's behaviour), Ardia (`third_party/ardia`, same engine) and Crest (`third_party/crest`). None is
+  automatically right; weigh them, and where they disagree pick on evidence. Don't narrate the checking.
 - Never steal focus with test instances: test only through `scripts/run-hidden.sh` / `tests/checks.mjs`
   (`LUMEN_BACKGROUND=1`, own data dir).
 - After a build the user should look at, run `scripts/relaunch.sh` once checks pass: it quits their running Lumen with

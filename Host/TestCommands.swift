@@ -82,6 +82,13 @@ enum TestCommands {
       }
     case "rowaction":
       result = rowAction(argument)
+    case "pointer":
+      let numbers = argument.split(separator: " ").compactMap { Double($0) }
+      if numbers.count == 2 {
+        AppController.shared.current?.pointer(at: NSPoint(x: numbers[0], y: numbers[1]), appActive: true)
+      } else {
+        result = "usage: pointer x y"
+      }
     case "peek":
       if argument == "on" { AppController.shared.current?.beginPeek() } else { AppController.shared.current?.endPeek(animated: true) }
     case "terminate":

@@ -5,8 +5,8 @@ final class Spring: NSObject {
   private(set) var value: CGFloat
   private(set) var target: CGFloat
   private var velocity: CGFloat = 0
-  private let stiffness: CGFloat
-  private let damping: CGFloat
+  private var stiffness: CGFloat
+  private var damping: CGFloat
   private var link: CADisplayLink?
   private var lastTime: CFTimeInterval = 0
   private let apply: (CGFloat) -> Void
@@ -20,6 +20,11 @@ final class Spring: NSObject {
   }
 
   var isMoving: Bool { link != nil }
+
+  func configure(response: CGFloat, dampingRatio: CGFloat) {
+    stiffness = pow(2 * .pi / response, 2)
+    damping = 4 * .pi * dampingRatio / response
+  }
 
   func animate(to newTarget: CGFloat, in view: NSView) {
     target = newTarget

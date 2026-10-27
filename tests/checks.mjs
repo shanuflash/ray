@@ -153,6 +153,11 @@ function oneVisibleActive() {
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
+class Skip extends Error {}
+function needsVisibleWindow() {
+  if (state()?.windowVisibleOnScreen === false)
+    throw new Skip("the test window isn't on the visible desktop (a full-screen Space?), so Chrome hides its pages");
+}
 
 let savedSidebar = null;
 let savedActive = null;
@@ -351,6 +356,8 @@ const checks = {
     await until("devtools closed", () => !state().pages?.devToolsFrame);
   },
   async "switch-back-latency"() {
+    await command("state");
+    needsVisibleWindow();
     const { target, sessionId } = await session(`${origin}/a`);
     await send("Target.activateTarget", { targetId: target.targetId });
     await until("/a active", () => state().active === tabFor("/a")?.id);
@@ -382,6 +389,8 @@ const checks = {
     assert(shownAfter !== null && shownAfter < 50, `page surface took ${shownAfter} ms`);
   },
   async "top-strip-click"() {
+    await command("state");
+    needsVisibleWindow();
     const { target, sessionId } = await session(`${origin}/a`);
     await send("Target.activateTarget", { targetId: target.targetId });
     await until("/a active", () => state().active === tabFor("/a")?.id && oneVisibleActive());
@@ -443,6 +452,35 @@ const checks = {
     await until("sidebar shown", () => !state().sidebar.hidden);
     await until("card back", async () => { await command("state"); return x() > 200; }, 3000, 50);
   },
+  async "peek-zones"() {
+    await command("menu toggleSidebar");
+    await until("hidden", () => state().sidebar.hidden);
+    await sleep(500);
+    await command("pointer 30 300");
+    await sleep(200);
+    await command("state");
+    assert(!state().sidebar.peeking, "30 pt in shouldn't reveal");
+    await command("pointer 12 300");
+    await until("inside strip reveals", () => state().sidebar.peeking);
+    await command("pointer 280 300");
+    await sleep(250);
+    await command("state");
+    assert(state().sidebar.peeking, "within the 24 pt slack it should stay");
+    await command("pointer 320 300");
+    await until("leaving the slack hides", () => !state().sidebar.peeking);
+    await sleep(300);
+    await command("pointer -20 300");
+    await until("outside reach reveals", () => state().sidebar.peeking);
+    await command("pointer 400 300");
+    await until("hides again", () => !state().sidebar.peeking);
+    await sleep(300);
+    await command("pointer -30 300");
+    await sleep(200);
+    await command("state");
+    assert(!state().sidebar.peeking, "beyond 24 pt outside shouldn't reveal");
+    await command("menu toggleSidebar");
+    await until("shown", () => !state().sidebar.hidden);
+  },
   async clear() {
     await command("menu clearToday");
     await until("today cleared", () => state().sidebar.today.length === 0);
@@ -499,6 +537,7 @@ const wanted = process.argv.slice(2);
 const order = Object.keys(checks).filter(
   (name) => !wanted.length || wanted.includes(name) || name === "boot" || name === "quit" || name === "restore");
 let failed = 0;
+let skipped = 0;
 try {
   await connect();
   for (const name of order) {
@@ -507,6 +546,11 @@ try {
       await checks[name]();
       console.log(`ok   ${name} (${Date.now() - started} ms)`);
     } catch (error) {
+      if (error instanceof Skip) {
+        skipped++;
+        console.log(`skip ${name}: ${error.message}`);
+        continue;
+      }
       failed++;
       console.log(`FAIL ${name}: ${error.message}`);
       console.log(`     state: ${JSON.stringify(state())}`);
@@ -523,5 +567,7 @@ try {
   ws?.close();
   server.close();
 }
-console.log(failed ? `${failed} of ${order.length} failed (data: ${dataDir})` : `all ${order.length} passed`);
+const ran = order.length - skipped;
+const skipNote = skipped ? `, ${skipped} skipped` : "";
+console.log(failed ? `${failed} of ${ran} failed${skipNote} (data: ${dataDir})` : `all ${ran} passed${skipNote}`);
 process.exit(failed ? 1 : 0);
