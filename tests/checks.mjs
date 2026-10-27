@@ -136,6 +136,25 @@ async function clickElement(sessionId, selector, modifiers = 0) {
   for (const type of ["mousePressed", "mouseReleased"])
     await send("Input.dispatchMouseEvent", { type, x: box[0], y: box[1], button: "left", clickCount: 1, modifiers }, sessionId);
 }
+function frameOf(id) {
+  const [x, y, w, h] = state().sidebarFrames[id].split(",").map(Number);
+  return { x, y, w, h, cx: x + w / 2, cy: y + h / 2 };
+}
+function layoutOf(sidebar) {
+  return JSON.stringify(["favorites", "pinned", "today"].map((k) => sidebar[k].map((e) => e.id)));
+}
+async function todayTabs(count) {
+  while (state().sidebar.today.length < count) {
+    const n = state().sidebar.today.length;
+    await send("Target.createTarget", { url: `${origin}/c?n=${n}` });
+    await until("today tab", () => state().sidebar.today.length > n);
+  }
+  await settle();
+}
+async function settle() {
+  await sleep(250);
+  await command("state");
+}
 async function command(line) {
   const marker = `[ray-test] ${line} -> `;
   const from = stderr.length;
@@ -445,6 +464,62 @@ const checks = {
     await until("favorite", () => state().sidebar.favorites.some((e) => e.id === id) && !state().sidebar.today.some((e) => e.id === id));
     await command(`row ${id}`);
     await until("favorite active", () => state().activeEntry === id && oneVisibleActive());
+  },
+  async "drag-click-selects"() {
+    await todayTabs(2);
+    const before = state().sidebar;
+    const target = before.today.find((e) => e.id !== state().activeEntry);
+    const f = frameOf(target.id);
+    await command(`drag ${f.cx} ${f.cy} 1 1`);
+    await until("pressed row selected", () => state().activeEntry === target.id);
+    assert(layoutOf(state().sidebar) === layoutOf(before), "a click without a drag moved a row");
+  },
+  async "drag-reorder"() {
+    await todayTabs(3);
+    const [first, , third] = state().sidebar.today;
+    const a = frameOf(first.id), c = frameOf(third.id);
+    await command(`drag ${a.cx} ${a.cy} 0 ${c.cy - a.cy + 4}`);
+    await until("moved below the third", () => state().sidebar.today[2]?.id === first.id);
+    await settle();
+    const moved = frameOf(first.id), was = frameOf(state().sidebar.today[1].id);
+    assert(moved.y > was.y, `dropped row at ${moved.y}, above its neighbour at ${was.y}`);
+  },
+  async "drag-to-pin"() {
+    await todayTabs(2);
+    const entry = state().sidebar.today[0];
+    const pinnedBefore = state().sidebar.pinned.length;
+    const from = frameOf(entry.id), newTab = frameOf("newTab");
+    await command(`drag ${from.cx} ${from.cy} 0 ${newTab.y + 6 - from.cy}`);
+    const pinned = await until("pinned", () => state().sidebar.pinned.find((e) => e.id === entry.id));
+    assert(state().sidebar.pinned.length === pinnedBefore + 1, "pinned count");
+    assert(pinned.pinnedURL === pinned.url, `pinned URL ${pinned.pinnedURL} vs ${pinned.url}`);
+  },
+  async "drag-to-favorite"() {
+    await settle();
+    const entry = state().sidebar.pinned.at(-1);
+    const from = frameOf(entry.id), first = state().sidebar.favorites[0];
+    const listTop = Math.min(...[...state().sidebar.pinned, ...state().sidebar.today].map((e) => frameOf(e.id).y), frameOf("newTab").y);
+    const tile = first ? frameOf(first.id) : { x: 12, cy: listTop - 30 };
+    await command(`drag ${from.cx} ${from.cy} ${tile.x + 4 - from.cx} ${tile.cy - from.cy}`);
+    await until("favorite first", () => state().sidebar.favorites[0]?.id === entry.id);
+    assert(!state().sidebar.pinned.some((e) => e.id === entry.id), "still pinned");
+    assert(state().sidebar.favorites[0].pinnedURL, "favorite lost its URL");
+  },
+  async "drag-out-cancels"() {
+    await settle();
+    const before = layoutOf(state().sidebar);
+    const tile = frameOf(state().sidebar.favorites[0].id);
+    await command(`drag ${tile.cx} ${tile.cy} 700 200`);
+    await settle();
+    assert(layoutOf(state().sidebar) === before, "dropping on the page moved a tab");
+  },
+  async "drag-favorite-to-today"() {
+    const entry = state().sidebar.favorites[0];
+    const tile = frameOf(entry.id), row = frameOf(state().sidebar.today[0].id);
+    await command(`drag ${tile.cx} ${tile.cy} ${row.cx - tile.cx} ${row.cy - tile.cy}`);
+    const today = await until("today", () => state().sidebar.today.find((e) => e.id === entry.id));
+    assert(today.pinnedURL === null, "today tab kept a pinned URL");
+    assert(!state().sidebar.favorites.some((e) => e.id === entry.id), "still a favorite");
   },
   async "sidebar-toggle"() {
     const x = () => Number(state().cardFrame.match(/-?[\d.]+/g)[0]);

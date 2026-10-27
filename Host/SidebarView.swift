@@ -4,9 +4,15 @@ enum SidebarRowAction {
   case pin, unpin, addToFavorites, removeFromFavorites, backToPinned, close, unload
 }
 
+/// Where a dragged entry lands. The index counts the section without the dragged entry.
+enum SidebarDropTarget: Equatable {
+  case favorites(Int), pinned(Int), today(Int)
+}
+
 protocol SidebarViewDelegate: AnyObject {
   func sidebar(_ sidebar: SidebarView, select entry: SidebarEntry)
   func sidebar(_ sidebar: SidebarView, perform action: SidebarRowAction, on entry: SidebarEntry)
+  func sidebar(_ sidebar: SidebarView, move entry: SidebarEntry, to target: SidebarDropTarget)
   func sidebarNewTab(_ sidebar: SidebarView)
   func sidebarOpenAddress(_ sidebar: SidebarView)
   func sidebarToggle(_ sidebar: SidebarView)
@@ -29,6 +35,69 @@ enum SidebarColors {
   static let hover = dynamic(dark: NSColor(white: 1, alpha: 0.06), light: NSColor(white: 0, alpha: 0.05))
   static let lightsIdle = dynamic(dark: NSColor(white: 1, alpha: 0.18), light: NSColor(white: 0, alpha: 0.15))
   static let selected = dynamic(dark: NSColor(white: 1, alpha: 0.14), light: NSColor(white: 1, alpha: 0.85))
+  static let lifted = dynamic(dark: NSColor(white: 0.2, alpha: 1), light: NSColor(white: 1, alpha: 1))
+}
+
+private final class SidebarDrag {
+  let entry: SidebarEntry
+  let view: NSView
+  let press: NSPoint
+  var ghost: NSView?
+  var pointer: NSPoint
+  var grab = NSPoint.zero
+  var lifted = false
+  var target: SidebarDropTarget?
+
+  init(entry: SidebarEntry, view: NSView, press: NSPoint) {
+    self.entry = entry
+    self.view = view
+    self.press = press
+    pointer = press
+  }
+}
+
+/// Neighbours make room and the dropped item settles on a critically damped spring (ω 90 rad/s, about 70 ms),
+/// as Ardia measured Dia's sidebar.
+private enum Slide {
+  static func move(_ view: NSView, to frame: NSRect) {
+    guard view.frame != frame else { return }
+    guard let layer = view.layer else {
+      view.frame = frame
+      return
+    }
+    let source = layer.animation(forKey: "slide.position") != nil ? (layer.presentation() ?? layer) : layer
+    let fromPosition = source.position, fromBounds = source.bounds
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    view.frame = frame
+    CATransaction.commit()
+    add("position", from: NSValue(point: fromPosition), to: NSValue(point: layer.position), on: layer)
+    add("bounds", from: NSValue(rect: fromBounds), to: NSValue(rect: layer.bounds), on: layer)
+  }
+
+  static func stop(_ view: NSView) {
+    view.layer?.removeAnimation(forKey: "slide.position")
+    view.layer?.removeAnimation(forKey: "slide.bounds")
+  }
+
+  private static func add(_ key: String, from: NSValue, to: NSValue, on layer: CALayer) {
+    guard from != to else {
+      layer.removeAnimation(forKey: "slide." + key)
+      return
+    }
+    let animation = CASpringAnimation(keyPath: key)
+    animation.mass = 1
+    animation.stiffness = 8100
+    animation.damping = 180
+    animation.fromValue = from
+    animation.toValue = to
+    animation.duration = animation.settlingDuration
+    layer.add(animation, forKey: "slide." + key)
+  }
+}
+
+private protocol Liftable: NSView {
+  func setLifted(_ lifted: Bool)
 }
 
 final class SidebarView: NSView {
@@ -62,6 +131,14 @@ final class SidebarView: NSView {
   private(set) var today: [SidebarEntry] = []
   private var active: SidebarEntry?
   private var hovering = false
+  private var drag: SidebarDrag?
+  private var pendingShow: (() -> Void)?
+  private var landing: [UUID: NSRect] = [:]
+  private var autoscroll: CADisplayLink?
+  private static let liftDistance: CGFloat = 4
+  private static let scrollEdge: CGFloat = 28
+
+  var isDragging: Bool { drag?.lifted == true }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -141,6 +218,11 @@ final class SidebarView: NSView {
   }
 
   func show(favorites: [SidebarEntry], pinned: [SidebarEntry], today: [SidebarEntry], active: SidebarEntry?) {
+    if isDragging {
+      pendingShow = { [weak self] in self?.show(favorites: favorites, pinned: pinned, today: today, active: active) }
+      return
+    }
+    pendingShow = nil
     self.favorites = favorites
     self.pinned = pinned
     self.today = today
@@ -151,11 +233,17 @@ final class SidebarView: NSView {
     for (tile, entry) in zip(tiles, favorites) {
       tile.show(entry, icon: delegate?.sidebarIcon(for: entry), selected: entry === active)
       tile.onClick = { [weak self] in self?.select(entry) }
+      tile.onPointer = { [weak self, weak tile] event in
+        if let self, let tile { self.pointer(event, on: tile, entry: entry) }
+      }
       tile.menu = menu(for: entry)
     }
     for (row, entry) in zip(pinnedRows + todayRows, pinned + today) {
       row.show(entry, icon: delegate?.sidebarIcon(for: entry), selected: entry === active)
       row.onClick = { [weak self] part in self?.clicked(entry, part: part) }
+      row.onPointer = { [weak self, weak row] event in
+        if let self, let row { self.pointer(event, on: row, entry: entry) }
+      }
       row.onClose = { [weak self] in
         guard let self else { return }
         self.delegate?.sidebar(self, perform: entry.kind == .today ? .close : .unload, on: entry)
@@ -213,39 +301,243 @@ final class SidebarView: NSView {
     addressPill.frame = NSRect(x: inset, y: rowCenter + 24, width: width, height: 36)
     var y = addressPill.frame.maxY + 8
 
-    let columns = favorites.isEmpty ? 1 : min(favorites.count, 4)
-    let rows = favorites.isEmpty ? 0 : Int(ceil(Double(favorites.count) / Double(columns)))
+    let dragged = isDragging ? drag?.entry : nil
+    let target = dragged == nil ? nil : drag?.target
+    func slots<V: NSView>(_ views: [V], _ entries: [SidebarEntry], gap: Int?) -> [(V, SidebarEntry)?] {
+      var list: [(V, SidebarEntry)?] = zip(views, entries).filter { $0.1 !== dragged }
+      if let gap { list.insert(nil, at: min(gap, list.count)) }
+      return list
+    }
+    var favoriteGap: Int?, pinnedGap: Int?, todayGap: Int?
+    switch target {
+    case .favorites(let index): favoriteGap = index
+    case .pinned(let index): pinnedGap = index
+    case .today(let index): todayGap = index
+    case nil: break
+    }
+    let tileSlots = slots(tiles, favorites, gap: favoriteGap)
+    let pinnedSlots = slots(pinnedRows, pinned, gap: pinnedGap)
+    let todaySlots = slots(todayRows, today, gap: todayGap)
+
+    let columns = tileSlots.isEmpty ? 1 : min(tileSlots.count, 4)
+    let rows = tileSlots.isEmpty ? 0 : Int(ceil(Double(tileSlots.count) / Double(columns)))
     let tileWidth = (width - CGFloat(columns - 1) * 8) / CGFloat(columns)
     let tilesHeight = rows == 0 ? 0 : CGFloat(rows) * Self.tileHeight + CGFloat(rows - 1) * 8
-    tilesView.frame = NSRect(x: inset, y: y, width: width, height: tilesHeight)
-    for (index, tile) in tiles.enumerated() {
-      tile.frame = NSRect(
+    place(tilesView, NSRect(x: inset, y: y, width: width, height: tilesHeight), entry: nil)
+    for (index, slot) in tileSlots.enumerated() {
+      guard case let (tile, entry)? = slot else { continue }
+      place(tile, NSRect(
         x: CGFloat(index % columns) * (tileWidth + 8), y: CGFloat(index / columns) * (Self.tileHeight + 8),
-        width: tileWidth, height: Self.tileHeight)
+        width: tileWidth, height: Self.tileHeight), entry: entry)
     }
     if rows > 0 { y += tilesHeight + 10 }
 
-    scrollView.frame = NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y - inset))
+    place(scrollView, NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y - inset)), entry: nil)
     var rowY: CGFloat = 0
-    for row in pinnedRows {
-      row.frame = NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight)
+    for slot in pinnedSlots {
+      if case let (row, entry)? = slot { place(row, NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight), entry: entry) }
       rowY += Self.rowHeight
     }
-    separator.isHidden = pinned.isEmpty
-    if !pinned.isEmpty {
+    separator.isHidden = pinnedSlots.isEmpty
+    if !pinnedSlots.isEmpty {
       let lineY = rowY + 12
       let clearWidth = ceil(clearButton.intrinsicContentSize.width)
       clearButton.frame = NSRect(x: bounds.width - 19 - clearWidth, y: lineY - 9, width: clearWidth, height: 18)
-      separator.frame = NSRect(x: 22, y: lineY, width: max(0, clearButton.frame.minX - 8.5 - 22), height: 1)
+      place(separator, NSRect(x: 22, y: lineY, width: max(0, clearButton.frame.minX - 8.5 - 22), height: 1), entry: nil)
       rowY = lineY + 30 - Self.rowHeight / 2
     }
-    newTabRow.frame = NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight)
+    place(newTabRow, NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight), entry: nil)
     rowY += Self.rowHeight
-    for row in todayRows {
-      row.frame = NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight)
+    for slot in todaySlots {
+      if case let (row, entry)? = slot { place(row, NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight), entry: entry) }
       rowY += Self.rowHeight
     }
     content.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(rowY + inset, scrollView.frame.height))
+    landing = [:]
+  }
+
+  /// Sets a frame: springs there while a drag is lifted, lands from where a dropped item was, else jumps.
+  private func place(_ view: NSView, _ frame: NSRect, entry: SidebarEntry?) {
+    if let entry, let start = landing[entry.id], let parent = view.superview {
+      Slide.stop(view)
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      view.frame = parent.convert(start, from: self)
+      CATransaction.commit()
+      Slide.move(view, to: frame)
+    } else if isDragging {
+      Slide.move(view, to: frame)
+    } else if view.frame != frame {
+      Slide.stop(view)
+      view.frame = frame
+    }
+  }
+
+  // MARK: Drag and drop
+
+  private func pointer(_ event: NSEvent, on view: NSView & Liftable, entry: SidebarEntry) {
+    let point = convert(event.locationInWindow, from: nil)
+    switch event.type {
+    case .leftMouseDown:
+      guard drag == nil else { return }
+      drag = SidebarDrag(entry: entry, view: view, press: point)
+    case .leftMouseDragged:
+      guard let drag, drag.view === view else { return }
+      drag.pointer = point
+      if !drag.lifted {
+        guard hypot(point.x - drag.press.x, point.y - drag.press.y) >= Self.liftDistance, lift(drag) else { return }
+      }
+      follow(drag)
+    case .leftMouseUp:
+      guard let drag, drag.view === view else { return }
+      drag.pointer = point
+      drop(drag)
+    default:
+      break
+    }
+  }
+
+  private func lift(_ drag: SidebarDrag) -> Bool {
+    // The press may have changed the lists (selecting reloads them); only lift what the view still shows.
+    guard shownViews.contains(where: { $0.0 === drag.view && $0.1 === drag.entry }) else {
+      self.drag = nil
+      return false
+    }
+    // The pressed view keeps getting the mouse events (AppKit stops sending them to a view that leaves its
+    // superview), so it stays put, invisible, and a lifted copy follows the pointer above everything.
+    let frame = drag.view.convert(drag.view.bounds, to: self)
+    drag.grab = NSPoint(x: drag.press.x - frame.minX, y: drag.press.y - frame.minY)
+    drag.lifted = true
+    let icon = delegate?.sidebarIcon(for: drag.entry)
+    let ghost: NSView & Liftable
+    if drag.view is FavoriteTileView {
+      let tile = FavoriteTileView()
+      tile.show(drag.entry, icon: icon, selected: drag.entry === active)
+      ghost = tile
+    } else {
+      let row = SidebarRowView()
+      row.show(drag.entry, icon: icon, selected: drag.entry === active)
+      ghost = row
+    }
+    ghost.frame = frame
+    ghost.setLifted(true)
+    addSubview(ghost)
+    drag.ghost = ghost
+    drag.view.alphaValue = 0
+    let link = displayLink(target: self, selector: #selector(autoscrollStep(_:)))
+    link.add(to: .main, forMode: .common)
+    autoscroll = link
+    return true
+  }
+
+  private func follow(_ drag: SidebarDrag) {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    drag.ghost?.setFrameOrigin(NSPoint(x: drag.pointer.x - drag.grab.x, y: drag.pointer.y - drag.grab.y))
+    CATransaction.commit()
+    retarget(drag)
+  }
+
+  private func retarget(_ drag: SidebarDrag) {
+    let target = dropTarget(for: drag)
+    guard target != drag.target else { return }
+    drag.target = target
+    needsLayout = true
+    layoutSubtreeIfNeeded()
+  }
+
+  private func dropTarget(for drag: SidebarDrag) -> SidebarDropTarget? {
+    let point = drag.pointer
+    guard point.x > -40, point.x < bounds.width + 40 else { return nil }
+    let inset = Self.inset
+    if point.y < scrollView.frame.minY {
+      let others = favorites.filter { $0 !== drag.entry }.count
+      let count = others + 1
+      let columns = min(count, 4)
+      let rows = Int(ceil(Double(count) / Double(columns)))
+      let tileWidth = (bounds.width - inset * 2 - CGFloat(columns - 1) * 8) / CGFloat(columns)
+      let column = min(max(Int((point.x - inset) / (tileWidth + 8)), 0), columns - 1)
+      let row = min(max(Int((point.y - tilesView.frame.minY) / (Self.tileHeight + 8)), 0), rows - 1)
+      return .favorites(min(row * columns + column, others))
+    }
+    let height = Self.rowHeight
+    let centre = convert(point, to: content).y - drag.grab.y + (drag.ghost?.frame.height ?? height) / 2
+    let top = centre - height / 2
+    let pinnedCount = pinned.filter { $0 !== drag.entry }.count
+    let todayCount = today.filter { $0 !== drag.entry }.count
+    let newTabY = pinnedCount > 0 ? CGFloat(pinnedCount) * height + 12 + 30 - height / 2 : 0
+    func index(_ value: CGFloat, _ count: Int) -> Int { min(max(Int((value / height).rounded()), 0), count) }
+    if centre < newTabY + height / 2 {
+      return .pinned(index(top, pinnedCount))
+    }
+    return .today(index(top - newTabY - height, todayCount))
+  }
+
+  @objc private func autoscrollStep(_ link: CADisplayLink) {
+    guard let drag, drag.lifted else { return }
+    let frame = scrollView.frame
+    let y = drag.pointer.y
+    guard y >= frame.minY else { return }
+    let speed: CGFloat
+    if y < frame.minY + Self.scrollEdge {
+      speed = -ceil((frame.minY + Self.scrollEdge - y) / 4)
+    } else if y > frame.maxY - Self.scrollEdge {
+      speed = ceil((y - (frame.maxY - Self.scrollEdge)) / 4)
+    } else {
+      return
+    }
+    let clip = scrollView.contentView
+    let limit = max(0, content.frame.height - clip.bounds.height)
+    let next = min(max(clip.bounds.origin.y + speed, 0), limit)
+    guard next != clip.bounds.origin.y else { return }
+    clip.scroll(to: NSPoint(x: 0, y: next))
+    scrollView.reflectScrolledClipView(clip)
+    retarget(drag)
+  }
+
+  private func drop(_ drag: SidebarDrag) {
+    self.drag = nil
+    guard drag.lifted else { return }
+    autoscroll?.invalidate()
+    autoscroll = nil
+    let target = dropTarget(for: drag)
+    var frames: [UUID: NSRect] = [:]
+    for (view, entry) in shownViews where view !== drag.view {
+      guard let parent = view.superview else { continue }
+      let frame = view.layer?.animation(forKey: "slide.position") != nil ? view.layer?.presentation()?.frame : nil
+      frames[entry.id] = convert(frame ?? view.frame, from: parent)
+    }
+    frames[drag.entry.id] = drag.ghost?.frame
+    drag.ghost?.removeFromSuperview()
+    drag.view.alphaValue = 1
+    landing = frames
+    if let target {
+      delegate?.sidebar(self, move: drag.entry, to: target)
+    }
+    pendingShow?()
+    needsLayout = true
+    layoutSubtreeIfNeeded()
+  }
+
+  private var shownViews: [(NSView, SidebarEntry)] {
+    Array(zip(tiles as [NSView], favorites)) + Array(zip(pinnedRows as [NSView], pinned))
+      + Array(zip(todayRows as [NSView], today))
+  }
+
+  /// Frames of the tiles and rows in window coordinates with a top-left origin, for tests.
+  var debugFrames: [String: String] {
+    guard let window, let height = window.contentView?.bounds.height else { return [:] }
+    layoutSubtreeIfNeeded()
+    var frames: [String: String] = [:]
+    for (view, entry) in shownViews {
+      let frame = view.convert(view.bounds, to: nil)
+      frames[entry.id.uuidString] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
+    }
+    frames["newTab"] = {
+      let frame = newTabRow.convert(newTabRow.bounds, to: nil)
+      return String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
+    }()
+    return frames
   }
 
   private func clicked(_ entry: SidebarEntry, part: SidebarRowView.Part) {
@@ -548,10 +840,12 @@ final class AddressPill: NSView {
   }
 }
 
-final class FavoriteTileView: NSView {
+final class FavoriteTileView: NSView, Liftable {
   var onClick: (() -> Void)?
+  var onPointer: ((NSEvent) -> Void)?
   private let icon = NSImageView()
   private var selected = false
+  private var lifted = false
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -568,8 +862,18 @@ final class FavoriteTileView: NSView {
   override var mouseDownCanMoveWindow: Bool { false }
 
   override func updateLayer() {
-    layer?.backgroundColor = (selected ? SidebarColors.selected : SidebarColors.fill).cgColor
+    layer?.backgroundColor = (lifted ? SidebarColors.lifted : selected ? SidebarColors.selected : SidebarColors.fill).cgColor
+    Lift.shadow(layer, lifted, radius: 10)
   }
+
+  func setLifted(_ lifted: Bool) {
+    self.lifted = lifted
+    needsDisplay = true
+  }
+
+  // The icon would take the press and keep the drag for itself.
+  override func hitTest(_ point: NSPoint) -> NSView? { super.hitTest(point) == nil ? nil : self }
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
   override func layout() {
     super.layout()
@@ -577,8 +881,12 @@ final class FavoriteTileView: NSView {
   }
 
   override func mouseDown(with event: NSEvent) {
+    onPointer?(event)
     onClick?()
   }
+
+  override func mouseDragged(with event: NSEvent) { onPointer?(event) }
+  override func mouseUp(with event: NSEvent) { onPointer?(event) }
 
   func show(_ entry: SidebarEntry, icon image: NSImage?, selected: Bool) {
     self.selected = selected
@@ -589,10 +897,12 @@ final class FavoriteTileView: NSView {
   }
 }
 
-final class SidebarRowView: NSView {
+final class SidebarRowView: NSView, Liftable {
   enum Part { case icon, body }
 
   var onClick: ((Part) -> Void)?
+  var onPointer: ((NSEvent) -> Void)?
+  private var lifted = false
   var onClose: (() -> Void)?
   private let icon = NSImageView()
   private let slash = NSTextField(labelWithString: "/")
@@ -640,12 +950,27 @@ final class SidebarRowView: NSView {
   override var mouseDownCanMoveWindow: Bool { false }
 
   override func updateLayer() {
-    let color: NSColor = selected ? SidebarColors.selected : hovered ? SidebarColors.hover : .clear
+    let color: NSColor = lifted ? SidebarColors.lifted : selected ? SidebarColors.selected
+      : hovered ? SidebarColors.hover : .clear
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     fill.backgroundColor = color.cgColor
+    Lift.shadow(fill, lifted, radius: 8)
     CATransaction.commit()
   }
+
+  func setLifted(_ lifted: Bool) {
+    self.lifted = lifted
+    needsDisplay = true
+  }
+
+  // Only the close button handles its own clicks; the icon and labels would keep a drag for themselves.
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    guard let hit = super.hitTest(point) else { return nil }
+    return hit === closeButton || hit.isDescendant(of: closeButton) ? hit : self
+  }
+
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
   override func mouseEntered(with event: NSEvent) {
     hovered = true
@@ -660,9 +985,13 @@ final class SidebarRowView: NSView {
   }
 
   override func mouseDown(with event: NSEvent) {
+    onPointer?(event)
     let point = convert(event.locationInWindow, from: nil)
     onClick?(point.x < title.frame.minX - 2 ? .icon : .body)
   }
+
+  override func mouseDragged(with event: NSEvent) { onPointer?(event) }
+  override func mouseUp(with event: NSEvent) { onPointer?(event) }
 
   override func otherMouseDown(with event: NSEvent) {
     if event.buttonNumber == 2, closable { onClose?() }
@@ -733,5 +1062,16 @@ final class SidebarRowView: NSView {
       title.frame = NSRect(x: textX, y: mid - 16, width: textWidth, height: 18)
       subtitle.frame = NSRect(x: textX, y: mid + 1, width: textWidth, height: 15)
     }
+  }
+}
+
+private enum Lift {
+  static func shadow(_ layer: CALayer?, _ on: Bool, radius: CGFloat) {
+    guard let layer else { return }
+    layer.shadowOpacity = on ? 0.3 : 0
+    layer.shadowRadius = 10
+    layer.shadowOffset = CGSize(width: 0, height: -3)
+    layer.shadowColor = NSColor.black.cgColor
+    layer.shadowPath = on ? CGPath(roundedRect: layer.bounds, cornerWidth: radius, cornerHeight: radius, transform: nil) : nil
   }
 }

@@ -307,23 +307,16 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       return
     case .pin:
       guard entry.kind == .today else { return }
-      state.today.removeAll { $0 === entry }
-      entry.kind = .pinned
-      entry.pinnedURL = entry.currentURL
-      state.pinned.append(entry)
+      move(entry, to: .pinned(state.pinned.count))
+      return
     case .unpin:
       guard entry.kind == .pinned else { return }
-      state.pinned.removeAll { $0 === entry }
-      entry.kind = .today
-      entry.pinnedURL = nil
-      state.today.insert(entry, at: 0)
+      move(entry, to: .today(0))
+      return
     case .addToFavorites:
       guard entry.kind != .favorite else { return }
-      state.pinned.removeAll { $0 === entry }
-      state.today.removeAll { $0 === entry }
-      if entry.pinnedURL == nil { entry.pinnedURL = entry.currentURL }
-      entry.kind = .favorite
-      state.favorites.append(entry)
+      move(entry, to: .favorites(state.favorites.count))
+      return
     case .removeFromFavorites:
       guard entry.kind == .favorite else { return }
       state.favorites.removeAll { $0 === entry }
@@ -338,7 +331,30 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     changed("sidebar")
   }
 
-  func togglePin() {
+  /// Moves an entry to a section and place; pinning keeps the page it's on as its pinned URL.
+  func move(_ entry: SidebarEntry, to target: SidebarDropTarget) {
+    guard state.entry(id: entry.id) === entry else { return }
+    state.favorites.removeAll { $0 === entry }
+    state.pinned.removeAll { $0 === entry }
+    state.today.removeAll { $0 === entry }
+    switch target {
+    case .favorites(let index):
+      if entry.pinnedURL == nil { entry.pinnedURL = entry.currentURL }
+      entry.kind = .favorite
+      state.favorites.insert(entry, at: min(index, state.favorites.count))
+    case .pinned(let index):
+      if entry.pinnedURL == nil { entry.pinnedURL = entry.currentURL }
+      entry.kind = .pinned
+      state.pinned.insert(entry, at: min(index, state.pinned.count))
+    case .today(let index):
+      entry.kind = .today
+      entry.pinnedURL = nil
+      state.today.insert(entry, at: min(index, state.today.count))
+    }
+    changed("sidebar")
+  }
+
+    func togglePin() {
     guard let entry = activeEntry else { return }
     perform(entry.kind == .today ? .pin : .unpin, on: entry)
   }
@@ -396,10 +412,12 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   private func schedulePeekEnd() {
-    guard peekEndWork == nil, !forcedOpen else { return }
+    guard peekEndWork == nil, !forcedOpen, !sidebar.isDragging else { return }
     let work = DispatchWorkItem { [weak self] in
-      self?.peekEndWork = nil
-      self?.endPeek(animated: true)
+      guard let self else { return }
+      self.peekEndWork = nil
+      if self.sidebar.isDragging { return }
+      self.endPeek(animated: true)
     }
     peekEndWork = work
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.peekHideDelay, execute: work)
@@ -588,6 +606,10 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     perform(action, on: entry)
   }
 
+  func sidebar(_ sidebar: SidebarView, move entry: SidebarEntry, to target: SidebarDropTarget) {
+    move(entry, to: target)
+  }
+
   func sidebarNewTab(_ sidebar: SidebarView) { beginNewTab() }
   func sidebarOpenAddress(_ sidebar: SidebarView) { focusAddress() }
   func sidebarToggle(_ sidebar: SidebarView) { toggleSidebar() }
@@ -737,6 +759,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
         window.standardWindowButton($0)?.isHidden ?? true
       },
       "toggleCenter": sidebar.debugToggleCenter,
+      "sidebarFrames": sidebar.debugFrames,
       "sidebar": [
         "favorites": self.state.favorites.map(describe),
         "pinned": self.state.pinned.map(describe),
