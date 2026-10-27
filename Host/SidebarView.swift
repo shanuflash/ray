@@ -186,6 +186,11 @@ final class SidebarView: NSView {
 
   var addressText: String { addressPill.text }
 
+  var debugToggleCenter: String {
+    let frame = toggleButton.convert(toggleButton.bounds, to: nil)
+    return String(format: "%.1f,%.1f", frame.midX, (window?.contentView?.bounds.height ?? 0) - frame.midY)
+  }
+
   func setNewTabActive(_ active: Bool) {
     newTabRow.setSelected(active)
   }
@@ -195,12 +200,12 @@ final class SidebarView: NSView {
     let inset = Self.inset
     let width = bounds.width - inset * 2
     let rowCenter = trafficLightsCenterY
-    toggleButton.frame = NSRect(x: reservesTrafficLights ? 70 : 13, y: rowCenter - 16, width: 32, height: 32)
+    toggleButton.frame = NSRect(x: reservesTrafficLights ? 88 : 13, y: rowCenter - 16, width: 32, height: 32)
     reloadButton.frame = NSRect(x: bounds.width - inset - 32 - 2, y: rowCenter - 16, width: 32, height: 32)
     forwardButton.frame = reloadButton.frame.offsetBy(dx: -34, dy: 0)
     backButton.frame = forwardButton.frame.offsetBy(dx: -34, dy: 0)
 
-    addressPill.frame = NSRect(x: inset, y: rowCenter + 22, width: width, height: 36)
+    addressPill.frame = NSRect(x: inset, y: rowCenter + 24, width: width, height: 36)
     var y = addressPill.frame.maxY + 8
 
     let columns = favorites.isEmpty ? 1 : min(favorites.count, 4)

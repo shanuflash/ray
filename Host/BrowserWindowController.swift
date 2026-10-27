@@ -104,6 +104,9 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     window.animationBehavior = .none
     window.tabbingMode = .disallowed
     window.acceptsMouseMovedEvents = true
+    window.toolbar = NSToolbar(identifier: "ray.titlebar")
+    window.toolbarStyle = .unified
+    window.titlebarSeparatorStyle = .none
   }
 
   @objc private func hostResized() { layout() }
@@ -738,6 +741,13 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowMovable": window.isMovable,
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
+      "trafficLights": [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { kind in
+        window.standardWindowButton(kind).map { button -> String in
+          let frame = button.convert(button.bounds, to: nil)
+          return String(format: "%.1f,%.1f", frame.midX, (window.contentView?.bounds.height ?? 0) - frame.midY)
+        }
+      },
+      "toggleCenter": sidebar.debugToggleCenter,
       "sidebar": [
         "favorites": self.state.favorites.map(describe),
         "pinned": self.state.pinned.map(describe),
