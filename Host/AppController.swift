@@ -51,8 +51,15 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
 
   func engine(_ engine: ArdiaCoreEngine, permissionRequest request: [String: Any], tab: ArdiaCoreTab) {
     guard let id = request["id"] as? String else { return }
-    TestEnvironment.log("permission \(request["type"] ?? "?") dismissed (no prompt UI yet)")
-    ArdiaCoreEngine.resolvePermission(id, result: "dismiss", remember: false)
+    guard let controller = windows.first(where: { $0.owns(tab) }) else {
+      ArdiaCoreEngine.resolvePermission(id, result: "dismiss", remember: false)
+      return
+    }
+    controller.permissions.add(request, tab: tab)
+  }
+
+  func engine(_ engine: ArdiaCoreEngine, permissionRequestDismissed requestId: String) {
+    windows.forEach { $0.permissions.dismissed(requestId) }
   }
 
   func engine(_ engine: ArdiaCoreEngine, extensionInstallPrompt prompt: [String: Any], tab: ArdiaCoreTab?) {

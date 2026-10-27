@@ -148,6 +148,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let bottom = edge.rounded(), top = (bounds.height - edge).rounded()
     pages.frame = NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
     pages.cornerRadius = isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
+    permissions.update()
     if let findBar {
       let size = FindBarView.size
       findBar.frame = NSRect(x: pages.frame.maxX - size.width - 12, y: pages.frame.maxY - size.height - 12,
@@ -234,6 +235,15 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   func pressDownload(_ id: String, keep: Bool) -> Bool {
     downloadsList?.row(for: id)?.press(keep: keep) ?? false
   }
+
+  // MARK: Permission prompts
+
+  private(set) lazy var permissions: PermissionPrompts = {
+    let prompts = PermissionPrompts()
+    prompts.host = { [unowned self] in (self.root, self.pages.frame, self.activeTab) }
+    prompts.onChange = { [weak self] in self?.logState("permission") }
+    return prompts
+  }()
 
   // MARK: Find in page
 
@@ -397,6 +407,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let switched = state.activeEntryID != entry.id
     if switched, findTab != nil, findTab !== tab { closeFind() }
     state.activeEntryID = entry.id
+    if switched { permissions.update() }
     entry.lastActive = Date()
     if commandBar == nil { focusPage(tab) }
     if switched { changed("activate") }
@@ -1009,6 +1020,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
       "fullScreen": isFullScreen,
+      "permission": permissions.shown ?? NSNull(),
       "find": findBar.map { ["text": $0.text, "count": $0.matches.count, "active": $0.matches.active] } ?? NSNull(),
       "downloads": downloads.items.map { [
         "id": $0.id, "filename": $0.filename, "state": $0.state, "dangerous": $0.dangerous, "path": $0.path,

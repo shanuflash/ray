@@ -295,10 +295,43 @@ const checks = {
     assert(oneVisibleActive(), "no visible active tab after close");
   },
   async permission() {
+    // A prompt only shows over its own tab, so bring /a to the front first.
+    const entryFor = (tabId) => ["favorites", "pinned", "today"].flatMap((k) => state().sidebar[k]).find((e) => e.tab === tabId);
+    await command(`row ${entryFor(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
     const { sessionId } = await session("/a");
-    const result = await evaluate(sessionId, `Notification.requestPermission()`);
-    assert(result === "default" || result === "denied", `notification permission answered ${result}`);
-    await until("permission log", () => stderr.includes("[ray] permission"));
+    await evaluate(sessionId, `window.answer = null; Notification.requestPermission().then((r) => window.answer = r); 0`);
+    const shown = await until("prompt", () => state().permission);
+    assert(shown.kinds.includes("notifications"), `kinds ${shown.kinds}`);
+    assert(shown.origin === origin + "/", `origin ${shown.origin}`);
+    assert(await commandResult("perm allow") === "not ready", "Allow took a click in its first half second");
+    await until("ready", async () => { await command("state"); return state().permission?.ready; }, 3000);
+    // Only over its own tab: switching away hides it, coming back shows it again with a fresh half second.
+    const home = state().activeEntry;
+    await send("Target.createTarget", { url: `${origin}/b?perm` });
+    await until("other tab", () => tabFor("/b?perm") && state().active === tabFor("/b?perm").id);
+    await until("hidden", async () => { await command("state"); return state().permission === null; }, 3000);
+    await command(`row ${home}`);
+    await until("back", async () => { await command("state"); return state().permission !== null; }, 3000);
+    assert(state().permission.ready === false, "the prompt came back without its half second");
+    await until("ready again", async () => { await command("state"); return state().permission?.ready; }, 3000);
+    await command("perm block");
+    await until("denied", async () => (await evaluate(sessionId, `window.answer`)) === "denied");
+    assert(await evaluate(sessionId, `Notification.requestPermission()`) === "denied", "Block wasn't remembered");
+    await command("state");
+    assert(state().permission === null, "a remembered answer prompted again");
+  },
+  async "permission-allow"() {
+    await send("Target.createTarget", { url: `${secureOrigin}/b?allow` });
+    const { sessionId } = await session(`${secureOrigin}/b?allow`);
+    await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+    await evaluate(sessionId, `window.answer = null; window.getScreenDetails().then(() => window.answer = "ok", (e) => window.answer = e.name); 0`);
+    const shown = await until("prompt", () => state().permission, 5000);
+    assert(shown.kinds.includes("windowManagement"), `kinds ${shown.kinds}`);
+    await until("ready", async () => { await command("state"); return state().permission?.ready; }, 3000);
+    await command("perm allow");
+    await until("granted", async () => (await evaluate(sessionId, `window.answer`)) === "ok");
+    assert(await evaluate(sessionId, `navigator.permissions.query({ name: "window-management" }).then((p) => p.state)`) === "granted", "not remembered");
   },
   async "address-new-tab"() {
     const before = state().tabs.length;

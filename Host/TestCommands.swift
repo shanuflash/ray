@@ -166,6 +166,8 @@ enum TestCommands {
       result = extensionPrompt(argument)
     case "extclose":
       AppController.shared.current?.extensions.closePopup()
+    case "perm":
+      if AppController.shared.current?.permissions.press(argument) != true { result = "not ready" }
     case "dlopen":
       AppController.shared.current?.showDownloads()
     case "dl":
