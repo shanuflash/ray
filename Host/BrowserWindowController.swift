@@ -78,7 +78,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     NotificationCenter.default.addObserver(
       self, selector: #selector(hostResized), name: NSView.frameDidChangeNotification, object: root)
     for name in [NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification] {
-      NotificationCenter.default.addObserver(self, selector: #selector(hostResized), name: name, object: window)
+      NotificationCenter.default.addObserver(self, selector: #selector(fullScreenChanged), name: name, object: window)
     }
     root.postsFrameChangedNotifications = true
     reloadSidebar()
@@ -107,6 +107,13 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   @objc private func hostResized() { layout() }
+
+  @objc private func fullScreenChanged() {
+    layout()
+    guard !closing, state.fullScreen != isFullScreen else { return }
+    state.fullScreen = isFullScreen
+    store.save(state)
+  }
 
   private var isFullScreen: Bool { window.styleMask.contains(.fullScreen) }
 
@@ -151,9 +158,16 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   func present(background: Bool) {
     window.center()
     if background {
+      // Test instances never go full screen: it would take over a Space in front of the user.
       coreWindow.showInactive()
     } else {
       window.makeKeyAndOrderFront(nil)
+      if state.fullScreen == true {
+        DispatchQueue.main.async { [weak self] in
+          guard let self, !self.isFullScreen else { return }
+          self.window.toggleFullScreen(nil)
+        }
+      }
     }
     layout()
   }
@@ -754,6 +768,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowMovable": window.isMovable,
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
+      "fullScreen": isFullScreen,
       "realLightsHidden": [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
         window.standardWindowButton($0)?.isHidden ?? true
       },

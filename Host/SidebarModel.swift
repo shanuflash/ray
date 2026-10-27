@@ -73,6 +73,8 @@ final class SidebarState: Codable {
   var today: [SidebarEntry] = []
   var activeEntryID: UUID?
   var sidebarHidden = false
+  /// Whether the window was full screen, to reopen that way. Optional so older files still load.
+  var fullScreen: Bool?
 
   var allEntries: [SidebarEntry] { favorites + pinned + today }
 
