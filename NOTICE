@@ -1,0 +1,10 @@
+Ray
+
+Ray is licensed under the GNU General Public License, version 3 (see LICENSE).
+
+It includes and builds against third-party work:
+- vendor/ardiacore/ArdiaCore.h, the public API of ArdiaCore, from Ardia (https://github.com/mantrakp04/ardia),
+  Copyright 2026 Mantra Patel, Apache License 2.0 (see LICENSE.Apache-2.0).
+- At build time, Ardia's prebuilt engine (Chromium Framework.framework), pinned in engine.lock: Chromium
+  (BSD-3-Clause and others), Helium (GPL-3.0, The Helium Authors), ungoogled-chromium (BSD-3-Clause) and Ardia's
+  engine layer. Its corresponding source is linked from the Ardia release named in engine.lock.
