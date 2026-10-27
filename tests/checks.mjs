@@ -18,6 +18,7 @@ const pages = {
          <button id=open onclick="window.open('/c')">open</button>`,
   "/b": `<title>Page B</title><p>b</p>`,
   "/c": `<title>Page C</title><button id=close onclick="window.close()">close</button>`,
+  "/h": `<title>Hist Page</title><p>history</p>`,
 };
 const server = createServer((req, res) => {
   const body = pages[new URL(req.url, "http://x").pathname];
@@ -223,11 +224,50 @@ const checks = {
     const before = state().tabs.length;
     const active = state().active;
     await command("menu newTab");
+    await until("bar open", () => state().commandBar);
     await command("type something");
     await command("escape");
-    await sleep(300);
+    await until("bar closed", () => state().commandBar === null);
     assert(state().tabs.length === before, "Esc opened a tab");
     assert(state().active === active, "Esc changed the active tab");
+  },
+  async "bar-lists-tabs"() {
+    await command("menu newTab");
+    const bar = await until("bar rows", () => state().commandBar?.rows.length && state().commandBar);
+    assert(bar.mode === "newTab", `mode ${bar.mode}`);
+    assert(bar.rows.every((r) => r.kind === "tab"), `rows ${JSON.stringify(bar.rows)}`);
+    assert(bar.rows.length === Math.min(8, state().tabs.length - 1), `expected the other tabs, got ${bar.rows.length}`);
+    await command("escape");
+  },
+  async "bar-switch-to-tab"() {
+    const before = state().tabs.length;
+    await command("menu newTab");
+    await command("type Page B");
+    const bar = await until("tab row", () => state().commandBar?.rows.some((r) => r.kind === "tab") && state().commandBar);
+    assert(bar.rows[0].kind === "search", `first row ${bar.rows[0].kind}`);
+    const tabRow = bar.rows.findIndex((r) => r.kind === "tab");
+    for (let i = 0; i < tabRow; i++) await command("down");
+    await command("enter");
+    await until("bar closed", () => state().commandBar === null);
+    assert(state().tabs.length === before, "switching opened a tab");
+    const active = state().tabs.find((t) => t.id === state().active);
+    assert(active.title === "Page B" && oneVisibleActive(), `active is ${active.title}`);
+  },
+  async "bar-history"() {
+    const { sessionId } = await session("/a");
+    await evaluate(sessionId, `location.href = ${JSON.stringify(origin + "/h")}`);
+    await until("on /h", () => tabFor("/h"));
+    await evaluate((await session("/h")).sessionId, `location.href = ${JSON.stringify(origin + "/a")}`);
+    await until("back on /a", () => !tabFor("/h"));
+    await command("menu newTab");
+    await command("type Hist");
+    const bar = await until("history row", () => state().commandBar?.rows.some((r) => r.kind === "history" && r.title === "Hist Page") && state().commandBar);
+    const row = bar.rows.findIndex((r) => r.kind === "history" && r.title === "Hist Page");
+    const before = state().tabs.length;
+    for (let i = 0; i < row; i++) await command("down");
+    await command("enter");
+    const opened = await until("history opened in new tab", () => state().tabs.length === before + 1 && tabFor("/h"));
+    await until("active", () => state().active === opened.id);
   },
   async "address-navigate"() {
     const before = state().tabs.length;

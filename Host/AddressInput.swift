@@ -20,6 +20,10 @@ enum AddressInput {
     return searchTemplate.replacingOccurrences(of: "%s", with: query)
   }
 
+  static func isSearch(_ url: String) -> Bool {
+    url.hasPrefix(searchTemplate.replacingOccurrences(of: "%s", with: ""))
+  }
+
   static func display(for url: String) -> String {
     guard var components = URLComponents(string: url), components.host != nil else { return url }
     components.user = nil

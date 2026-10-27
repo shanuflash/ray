@@ -1,6 +1,13 @@
 import AppKit
 
-final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCoreTabDelegate, SidebarViewDelegate {
+final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCoreTabDelegate, SidebarViewDelegate,
+  CommandBarDelegate
+{
+  enum CommandBarMode: String {
+    case newTab
+    case currentTab
+  }
+
   let coreWindow: ArdiaCoreWindow
   let profile: ArdiaCoreProfile
   var onClose: (() -> Void)?
@@ -10,7 +17,9 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private let pages = PageContainerView()
   private(set) var tabs: [ArdiaCoreTab] = []
   private(set) var activeTab: ArdiaCoreTab?
-  private var openingNewTab = false
+  private var commandBar: CommandBarView?
+  private var commandBarMode = CommandBarMode.newTab
+  private let history = HistoryCache()
 
   var window: NSWindow { coreWindow.window }
 
@@ -93,7 +102,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     coreWindow.activate(tab)
     let changed = activeTab !== tab
     activeTab = tab
-    if !sidebar.isEditingAddress { focusPage(tab) }
+    if commandBar == nil { focusPage(tab) }
     if changed {
       sidebar.select(tab)
       sidebar.showAddress(AddressInput.display(for: tab.url))
@@ -109,6 +118,12 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "event": event,
       "active": activeTab.map { Int($0.tabId) } ?? NSNull(),
       "address": sidebar.addressField.stringValue,
+      "commandBar": commandBar.map { bar in
+        [
+          "mode": commandBarMode.rawValue, "query": bar.field.stringValue, "selected": bar.selectedIndex,
+          "rows": bar.suggestions.map { ["kind": $0.kindName, "title": $0.title] },
+        ] as [String: Any]
+      } ?? NSNull(),
       "tabs": tabs.map { tab in
         [
           "id": Int(tab.tabId), "url": tab.url, "title": tab.title,
@@ -142,14 +157,40 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   func beginNewTab() {
-    openingNewTab = true
-    sidebar.addressField.stringValue = ""
-    focusAddress()
+    openCommandBar(.newTab, query: "")
   }
 
   func focusAddress() {
-    window.makeFirstResponder(sidebar.addressField)
-    sidebar.addressField.currentEditor()?.selectAll(nil)
+    openCommandBar(.currentTab, query: activeTab?.url ?? "")
+  }
+
+  private func openCommandBar(_ mode: CommandBarMode, query: String) {
+    commandBarMode = activeTab == nil ? .newTab : mode
+    let bar = commandBar ?? CommandBarView(frame: root.bounds)
+    if commandBar == nil {
+      bar.autoresizingMask = [.width, .height]
+      bar.delegate = self
+      root.addSubview(bar)
+      commandBar = bar
+    }
+    bar.present(query: query)
+    refreshSuggestions()
+    history.refresh(profile: profile) { [weak self] in self?.refreshSuggestions() }
+  }
+
+  private func refreshSuggestions() {
+    guard let bar = commandBar else { return }
+    let query = commandBarMode == .currentTab && bar.field.stringValue == activeTab?.url ? "" : bar.field.stringValue
+    bar.show(Suggestions.build(query: query, tabs: tabs, active: activeTab, history: history.entries))
+    logState("commandBar")
+  }
+
+  private func closeCommandBar(focus: Bool) {
+    guard let bar = commandBar else { return }
+    commandBar = nil
+    bar.removeFromSuperview()
+    if focus, let tab = activeTab { focusPage(tab) }
+    logState("commandBar")
   }
 
   func toggleDevTools() {
@@ -165,12 +206,26 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   func sidebarNewTab(_ sidebar: SidebarView) { beginNewTab() }
 
-  func sidebar(_ sidebar: SidebarView, submitAddress text: String) {
-    guard let url = AddressInput.url(for: text) else { return }
-    let newTab = openingNewTab || activeTab == nil
-    openingNewTab = false
-    window.makeFirstResponder(nil)
-    if newTab {
+  func sidebarOpenAddress(_ sidebar: SidebarView) { focusAddress() }
+
+  // MARK: CommandBarDelegate
+
+  func commandBar(_ bar: CommandBarView, queryChanged query: String) {
+    refreshSuggestions()
+  }
+
+  func commandBar(_ bar: CommandBarView, choose suggestion: Suggestion) {
+    let mode = commandBarMode
+    closeCommandBar(focus: false)
+    let url: String
+    switch suggestion.kind {
+    case .tab(let tab):
+      activate(tab)
+      return
+    case .url(let target), .search(let target), .history(let target):
+      url = target
+    }
+    if mode == .newTab || activeTab == nil {
       openTab(url, foreground: true)
     } else if let tab = activeTab {
       tab.loadURL(url, userInitiated: true)
@@ -179,11 +234,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     }
   }
 
-  func sidebarCancelAddress(_ sidebar: SidebarView) {
-    openingNewTab = false
-    window.makeFirstResponder(nil)
-    sidebar.showAddress(activeTab.map { AddressInput.display(for: $0.url) } ?? "")
-    if let tab = activeTab { focusPage(tab) }
+  func commandBarDismiss(_ bar: CommandBarView) {
+    closeCommandBar(focus: true)
   }
 
   // MARK: ArdiaCoreWindowDelegate

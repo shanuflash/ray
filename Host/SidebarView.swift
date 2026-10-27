@@ -4,21 +4,18 @@ protocol SidebarViewDelegate: AnyObject {
   func sidebar(_ sidebar: SidebarView, didSelect tab: ArdiaCoreTab)
   func sidebar(_ sidebar: SidebarView, close tab: ArdiaCoreTab)
   func sidebarNewTab(_ sidebar: SidebarView)
-  func sidebar(_ sidebar: SidebarView, submitAddress text: String)
-  func sidebarCancelAddress(_ sidebar: SidebarView)
+  func sidebarOpenAddress(_ sidebar: SidebarView)
 }
 
 final class AddressField: NSTextField {
-  var onFocus: (() -> Void)?
+  var onClick: (() -> Void)?
 
-  override func becomeFirstResponder() -> Bool {
-    let became = super.becomeFirstResponder()
-    if became { onFocus?() }
-    return became
+  override func mouseDown(with event: NSEvent) {
+    onClick?()
   }
 }
 
-final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
   static let width: CGFloat = 260
   private static let topInset: CGFloat = 40
 
@@ -40,9 +37,12 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate, NST
     addressField.lineBreakMode = .byTruncatingHead
     addressField.cell?.isScrollable = true
     addressField.cell?.usesSingleLineMode = true
-    addressField.delegate = self
-    addressField.onFocus = { [weak self] in
-      DispatchQueue.main.async { self?.addressField.currentEditor()?.selectAll(nil) }
+    addressField.isEditable = false
+    addressField.isSelectable = false
+    addressField.refusesFirstResponder = true
+    addressField.onClick = { [weak self] in
+      guard let self else { return }
+      self.delegate?.sidebarOpenAddress(self)
     }
     addSubview(addressField)
 
@@ -114,11 +114,8 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate, NST
   }
 
   func showAddress(_ text: String) {
-    guard addressField.currentEditor() == nil else { return }
     addressField.stringValue = text
   }
-
-  var isEditingAddress: Bool { addressField.currentEditor() != nil }
 
   func numberOfRows(in tableView: NSTableView) -> Int { tabs.count }
 
@@ -132,19 +129,6 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate, NST
   func tableViewSelectionDidChange(_ notification: Notification) {
     guard !applyingSelection, tableView.selectedRow >= 0, tableView.selectedRow < tabs.count else { return }
     delegate?.sidebar(self, didSelect: tabs[tableView.selectedRow])
-  }
-
-  func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
-    switch selector {
-    case #selector(NSResponder.insertNewline(_:)):
-      delegate?.sidebar(self, submitAddress: textView.string)
-      return true
-    case #selector(NSResponder.cancelOperation(_:)):
-      delegate?.sidebarCancelAddress(self)
-      return true
-    default:
-      return false
-    }
   }
 
   @objc private func newTab() { delegate?.sidebarNewTab(self) }
