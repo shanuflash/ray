@@ -155,7 +155,7 @@ function assert(condition, message) {
 }
 class Skip extends Error {}
 function needsVisibleWindow() {
-  if (state()?.windowVisibleOnScreen === false)
+  if (state()?.windowVisibleOnScreen === false || state()?.windowOnActiveSpace === false)
     throw new Skip("the test window isn't on the visible desktop (a full-screen Space?), so Chrome hides its pages");
 }
 
@@ -384,6 +384,10 @@ const checks = {
       }, 2000, 2);
       if (result.startsWith("RenderWidgetHostViewCocoa")) shownAfter = Date.now() - started;
       else await sleep(2);
+    }
+    if (shownAfter === null) {
+      await command("state");
+      needsVisibleWindow();
     }
     console.log(`     page input surface shown ${shownAfter} ms after switching back`);
     assert(shownAfter !== null && shownAfter < 50, `page surface took ${shownAfter} ms`);

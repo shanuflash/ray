@@ -38,7 +38,8 @@ final class SidebarView: NSView {
   private static let separatorHeight: CGFloat = 28
 
   weak var delegate: SidebarViewDelegate?
-  var trafficLightsCenterY: CGFloat = 20 { didSet { needsLayout = true } }
+  var trafficLightsCenterY: CGFloat = 20 { didSet { if oldValue != trafficLightsCenterY { needsLayout = true } } }
+  var reservesTrafficLights = true { didSet { if oldValue != reservesTrafficLights { needsLayout = true } } }
 
   private let toggleButton = SidebarView.iconButton("sidebar.left")
   private let backButton = SidebarView.iconButton("arrow.left")
@@ -190,7 +191,7 @@ final class SidebarView: NSView {
     let inset = Self.inset
     let width = bounds.width - inset * 2
     let rowCenter = trafficLightsCenterY
-    toggleButton.frame = NSRect(x: 72, y: rowCenter - 14, width: 28, height: 28)
+    toggleButton.frame = NSRect(x: reservesTrafficLights ? 72 : inset + 4, y: rowCenter - 14, width: 28, height: 28)
     reloadButton.frame = NSRect(x: bounds.width - inset - 28 - 4, y: rowCenter - 14, width: 28, height: 28)
     forwardButton.frame = reloadButton.frame.offsetBy(dx: -34, dy: 0)
     backButton.frame = forwardButton.frame.offsetBy(dx: -34, dy: 0)

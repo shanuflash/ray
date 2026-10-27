@@ -73,6 +73,9 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     host.addSubview(root)
     NotificationCenter.default.addObserver(
       self, selector: #selector(hostResized), name: NSView.frameDidChangeNotification, object: root)
+    for name in [NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification] {
+      NotificationCenter.default.addObserver(self, selector: #selector(hostResized), name: name, object: window)
+    }
     root.postsFrameChangedNotifications = true
     reloadSidebar()
     layout()
@@ -101,10 +104,14 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   @objc private func hostResized() { layout() }
 
+  private var isFullScreen: Bool { window.styleMask.contains(.fullScreen) }
+
   private var trafficLightsCenter: CGFloat {
-    guard let button = window.standardWindowButton(.closeButton), let content = window.contentView else { return 20 }
+    guard !isFullScreen, let button = window.standardWindowButton(.closeButton), let content = window.contentView
+    else { return 20 }
     let frame = button.convert(button.bounds, to: nil)
-    return content.bounds.height - frame.midY
+    let center = content.bounds.height - frame.midY
+    return center > 0 && center < 60 ? center : 20
   }
 
   private func layout() {
@@ -121,9 +128,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
         x: inset - (width + 24) * (1 - peek), y: inset, width: width, height: bounds.height - inset * 2)
       sidebar.frame = floating.bounds
       sidebar.trafficLightsCenterY = lights - inset
+      sidebar.reservesTrafficLights = !isFullScreen
     } else {
       sidebar.frame = NSRect(x: -width * (1 - shown), y: 0, width: width, height: bounds.height)
       sidebar.trafficLightsCenterY = lights
+      sidebar.reservesTrafficLights = !isFullScreen
     }
     let cardX = max(margin, width * shown)
     pages.frame = NSRect(
@@ -432,6 +441,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     guard !peeking, sidebar.superview !== root else { return }
     floating.isHidden = true
     sidebar.removeFromSuperview()
+    sidebar.layer?.cornerRadius = 0
+    sidebar.layer?.masksToBounds = false
     root.addSubview(sidebar, positioned: .above, relativeTo: pages)
     layout()
   }
@@ -719,12 +730,18 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 }
 
 final class FloatingSidebarFrame: NSView {
+  private static let radius: CGFloat = 12
+
   var content: NSView? {
     didSet {
       oldValue?.removeFromSuperview()
       if let content {
         content.frame = bounds
         content.autoresizingMask = [.width, .height]
+        content.wantsLayer = true
+        content.layer?.cornerRadius = Self.radius
+        content.layer?.cornerCurve = .continuous
+        content.layer?.masksToBounds = true
         addSubview(content)
       }
     }
@@ -733,17 +750,13 @@ final class FloatingSidebarFrame: NSView {
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    layer?.cornerRadius = 12
+    layer?.cornerRadius = Self.radius
     layer?.cornerCurve = .continuous
     layer?.masksToBounds = false
     layer?.borderWidth = 1
-    shadow = {
-      let shadow = NSShadow()
-      shadow.shadowBlurRadius = 24
-      shadow.shadowOffset = NSSize(width: 0, height: -6)
-      shadow.shadowColor = NSColor.black.withAlphaComponent(0.4)
-      return shadow
-    }()
+    layer?.shadowColor = NSColor.black.cgColor
+    layer?.shadowRadius = 20
+    layer?.shadowOffset = CGSize(width: 0, height: -6)
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -751,7 +764,20 @@ final class FloatingSidebarFrame: NSView {
   override var wantsUpdateLayer: Bool { true }
 
   override func updateLayer() {
+    let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     layer?.backgroundColor = SidebarColors.background.cgColor
-    layer?.borderColor = NSColor.separatorColor.cgColor
+    layer?.borderColor = (dark ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.1)).cgColor
+    layer?.shadowOpacity = dark ? 0.5 : 0.18
+  }
+
+  override func layout() {
+    super.layout()
+    layer?.shadowPath = CGPath(
+      roundedRect: bounds, cornerWidth: Self.radius, cornerHeight: Self.radius, transform: nil)
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    needsDisplay = true
   }
 }
