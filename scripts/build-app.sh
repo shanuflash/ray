@@ -13,13 +13,13 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks" "$app/Contents/Resourc
 cp -cR "$fw_src" "$app/Contents/Frameworks/"
 fw_version=$(ls "$app/Contents/Frameworks/$fw_name.framework/Versions" | grep -v Current)
 
-xcrun clang++ -std=c++20 -O2 -arch arm64 -mmacosx-version-min=14.0 -fobjc-arc \
-  -I"$root/vendor/ardiacore" \
-  "$root"/Host/*.mm \
-  "$app/Contents/Frameworks/$fw_name.framework/Versions/$fw_version/$fw_name" \
-  -Wl,-rpath,@executable_path/../Frameworks \
-  -framework AppKit \
+xcrun swiftc -O -target arm64-apple-macos14.0 -swift-version 5 \
+  -import-objc-header "$root/Host/Bridging.h" -Xcc -I"$root/vendor/ardiacore" \
+  "$root"/Host/*.swift \
+  -Xlinker "$app/Contents/Frameworks/$fw_name.framework/Versions/$fw_version/$fw_name" \
+  -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
   -o "$app/Contents/MacOS/Lumen"
+cp "$root"/Resources/* "$app/Contents/Resources/"
 
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

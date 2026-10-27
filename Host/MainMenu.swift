@@ -1,0 +1,94 @@
+import AppKit
+
+enum MainMenu {
+  static func install(target: AppController) {
+    let main = NSMenu()
+
+    main.addItem(submenu("Lumen", [
+      item("About Lumen", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), nil, target: NSApp),
+      .separator(),
+      item("Hide Lumen", #selector(NSApplication.hide(_:)), "h", target: NSApp),
+      item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option], target: NSApp),
+      item("Show All", #selector(NSApplication.unhideAllApplications(_:)), nil, target: NSApp),
+      .separator(),
+      item("Quit Lumen", #selector(AppController.quit(_:)), "q", target: target),
+    ]))
+
+    main.addItem(submenu("File", [
+      item("New Tab", #selector(AppController.newTab(_:)), "t", target: target),
+      item("Open Location…", #selector(AppController.focusAddress(_:)), "l", target: target),
+      .separator(),
+      item("Close Tab", #selector(AppController.closeTab(_:)), "w", target: target),
+    ]))
+
+    main.addItem(submenu("Edit", [
+      item("Undo", Selector(("undo:")), "z"),
+      item("Redo", Selector(("redo:")), "z", [.command, .shift]),
+      .separator(),
+      item("Cut", #selector(NSText.cut(_:)), "x"),
+      item("Copy", #selector(NSText.copy(_:)), "c"),
+      item("Paste", #selector(NSText.paste(_:)), "v"),
+      item("Paste and Match Style", #selector(NSTextView.pasteAsPlainText(_:)), "v", [.command, .option, .shift]),
+      item("Select All", #selector(NSText.selectAll(_:)), "a"),
+    ]))
+
+    main.addItem(submenu("View", [
+      item("Reload Page", #selector(AppController.reload(_:)), "r", target: target),
+      item("Force Reload Page", #selector(AppController.reloadIgnoringCache(_:)), "r", [.command, .shift], target: target),
+      .separator(),
+      item("Developer Tools", #selector(AppController.toggleDevTools(_:)), "i", [.command, .option], target: target),
+      .separator(),
+      item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
+    ]))
+
+    main.addItem(submenu("History", [
+      item("Back", #selector(AppController.goBack(_:)), "[", target: target),
+      item("Forward", #selector(AppController.goForward(_:)), "]", target: target),
+    ]))
+
+    var tabItems: [NSMenuItem] = [
+      item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+      item("Zoom", #selector(NSWindow.performZoom(_:)), nil),
+      .separator(),
+      item("Show Next Tab", #selector(AppController.nextTab(_:)), "]", [.command, .shift], target: target),
+      item("Show Previous Tab", #selector(AppController.previousTab(_:)), "[", [.command, .shift], target: target),
+      item("Show Next Tab", #selector(AppController.nextTab(_:)), "\t", [.control], target: target, alternate: true),
+      item("Show Previous Tab", #selector(AppController.previousTab(_:)), "\t", [.control, .shift], target: target, alternate: true),
+      .separator(),
+    ]
+    for number in 1...9 {
+      let entry = item(number == 9 ? "Last Tab" : "Tab \(number)", #selector(AppController.selectTab(_:)), "\(number)", target: target)
+      entry.tag = number
+      tabItems.append(entry)
+    }
+    let window = submenu("Window", tabItems)
+    main.addItem(window)
+
+    NSApp.mainMenu = main
+    NSApp.windowsMenu = window.submenu
+  }
+
+  private static func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
+    let menu = NSMenu(title: title)
+    items.forEach(menu.addItem)
+    let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+    holder.submenu = menu
+    return holder
+  }
+
+  private static func item(
+    _ title: String,
+    _ action: Selector,
+    _ key: String?,
+    _ modifiers: NSEvent.ModifierFlags = [.command],
+    target: AnyObject? = nil,
+    alternate: Bool = false
+  ) -> NSMenuItem {
+    let entry = NSMenuItem(title: title, action: action, keyEquivalent: key ?? "")
+    entry.keyEquivalentModifierMask = key == nil ? [] : modifiers
+    entry.target = target
+    entry.isHidden = alternate
+    entry.allowsKeyEquivalentWhenHidden = alternate
+    return entry
+  }
+}

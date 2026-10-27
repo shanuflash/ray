@@ -4,7 +4,11 @@ A macOS (14+, Apple Silicon) Chromium browser with Arc's sidebar, pinned tabs an
 Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of truth for decisions.
 
 ## Layout
-- `Host/`: the native app (ObjC++ today; Swift/AppKit UI arrives in M1–M2).
+- `Host/`: the native app in Swift + AppKit. `Bridging.h` exposes the engine API. `BrowserWindowController` owns a
+  window's tabs; `SidebarView` is the address field and tab list; `PageContainerView` shows one page at a time
+  (others stay attached but hidden, with `noteShown(byHost:)`); `MainMenu` + `Shortcuts` do key routing.
+- `Resources/page_script.js`: runs in every frame; iframes return on its first line. Only `hello` today.
+- `tests/`: `checks.mjs` (DevTools + `[lumen-state]` log checks on a hidden instance), `AddressInputTests.swift`.
 - `vendor/ardiacore/ArdiaCore.h`: the engine's public API, copied from Ardia at the tag in `engine.lock`. Must match
   the engine binary; update both together.
 - `engine.lock`: the pinned prebuilt engine (tree, release, sha256). `scripts/fetch-engine.sh` downloads and checks it.
@@ -14,6 +18,15 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
 ## Build and run
 - `scripts/build-app.sh` → `build/Lumen.app` (fetches the engine, compiles `Host/`, re-signs the framework ad hoc).
 - `scripts/run-hidden.sh <throwaway data dir> [port] [url]` launches hidden and prints DevTools' page list.
+- `scripts/test.sh [check …]`: address-parsing unit tests, then `tests/checks.mjs` (hidden instance, own data dir,
+  local fixture pages). Add a check for every behaviour you add or fix.
+- Engine delegate methods are `@optional`: a Swift name that's slightly off compiles with only a "nearly matches"
+  warning and is never called. Treat those warnings as errors.
+
+## Key routing
+- `preHandleKeyEvent` runs only Chrome's reserved set (`Shortcuts.isReserved`: ⌘T ⌘W ⌘N ⌘Q ⇧⌘T ⇧⌘W ⇧⌘N ⇧⌘[ ⇧⌘]
+  ⌃Tab) before the page. Everything else reaches the page first; `handleKeyEvent` (page didn't use it) sends it to
+  the main menu.
 
 ## Rules
 - Never steal focus: test only through `scripts/run-hidden.sh` (`open -g -n`, `LUMEN_BACKGROUND=1`).
