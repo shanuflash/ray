@@ -21,6 +21,7 @@ const pages = {
   "/b": `<title>Page B</title><p>b</p>`,
   "/c": `<title>Page C</title><button id=close onclick="window.close()">close</button>`,
   "/h": `<title>Hist Page</title><p>history</p>`,
+  "/find": `<title>Find</title><p>banana one</p><p>apple</p><p>banana two</p><p>banana three</p>`,
   "/search": `<title>Search</title><p>results</p>`,
   "/long": `<title>Long</title><style>body{margin:0;font:16px/1.6 sans-serif}p{margin:0 16px 12px}</style>` +
     Array.from({ length: 120 }, (_, i) => `<p id=p${i}>Paragraph ${i}: the quick brown fox jumps over the lazy dog, again and again, to make lines wrap differently at different widths.</p>`).join(""),
@@ -734,6 +735,24 @@ const checks = {
     assert(item.state !== "finished", "an insecure download finished");
     await sleep(500);
     assert(!existsSync(join(dataDir, "Downloads", "held.txt")), "an insecure download was saved");
+  },
+  async "find-in-page"() {
+    await send("Target.createTarget", { url: `${origin}/find` });
+    await until("find page", () => tabFor("/find") && state().active === tabFor("/find").id);
+    const { sessionId } = await session("/find");
+    await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+    await command("key f cmd");
+    await until("bar open", () => state().find);
+    await command("type banana");
+    await until("three matches", () => state().find?.count === 3 && state().find.active === 1, 5000);
+    await command("enter");
+    await until("second", () => state().find?.active === 2);
+    await command("key g cmd");
+    await until("third", () => state().find?.active === 3);
+    await command("key g cmd shift");
+    await until("back to second", () => state().find?.active === 2);
+    await command("escape");
+    await until("closed", () => state().find === null);
   },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]

@@ -1,8 +1,7 @@
 import AppKit
 
 final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCoreTabDelegate, SidebarViewDelegate,
-  CommandBarDelegate
-{
+  CommandBarDelegate, FindBarDelegate {
   enum CommandBarMode: String {
     case newTab
     case currentTab
@@ -149,6 +148,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let bottom = edge.rounded(), top = (bounds.height - edge).rounded()
     pages.frame = NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
     pages.cornerRadius = isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
+    if let findBar {
+      let size = FindBarView.size
+      findBar.frame = NSRect(x: pages.frame.maxX - size.width - 12, y: pages.frame.maxY - size.height - 12,
+                             width: size.width, height: size.height)
+    }
     updateTrafficLights()
   }
 
@@ -230,6 +234,48 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   func pressDownload(_ id: String, keep: Bool) -> Bool {
     downloadsList?.row(for: id)?.press(keep: keep) ?? false
   }
+
+  // MARK: Find in page
+
+  private var findBar: FindBarView?
+  private weak var findTab: ArdiaCoreTab?
+
+  func showFind() {
+    guard let tab = activeTab else { return }
+    if findTab !== tab { closeFind() }
+    let bar = findBar ?? FindBarView(frame: .zero)
+    if findBar == nil {
+      bar.delegate = self
+      root.addSubview(bar, positioned: .above, relativeTo: pages)
+      findBar = bar
+      layout()
+    }
+    findTab = tab
+    bar.focus()
+    logState("find")
+  }
+
+  func findAgain(forward: Bool) {
+    guard let findBar, findTab === activeTab, !findBar.text.isEmpty else { return showFind() }
+    forward ? findBar.findNext() : findBar.findPrevious()
+  }
+
+  func closeFind() {
+    guard let findBar else { return }
+    findTab?.stopFinding()
+    findBar.removeFromSuperview()
+    self.findBar = nil
+    let tab = findTab
+    findTab = nil
+    if let tab, tab === activeTab { focusPage(tab) }
+    logState("find")
+  }
+
+  func findBar(_ bar: FindBarView, find text: String, forward: Bool) {
+    findTab?.find(text, forward: forward)
+  }
+
+  func findBarClose(_ bar: FindBarView) { closeFind() }
 
   func present(background: Bool) {
     extensions.refresh()
@@ -349,6 +395,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     pages.show(tab)
     coreWindow.activate(tab)
     let switched = state.activeEntryID != entry.id
+    if switched, findTab != nil, findTab !== tab { closeFind() }
     state.activeEntryID = entry.id
     entry.lastActive = Date()
     if commandBar == nil { focusPage(tab) }
@@ -906,6 +953,12 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     logState(event)
   }
 
+  func tab(_ tab: ArdiaCoreTab, didFindMatches count: Int32, active: Int32, final: Bool) {
+    guard tab === findTab, let findBar else { return }
+    findBar.setMatches(Int(count), active: Int(active))
+    if final { logState("find") }
+  }
+
   func tabDidChangeTitle(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "title") }
   func tabDidChangeURL(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "url") }
   func tabDidChangeFavicon(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "favicon") }
@@ -956,6 +1009,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
       "fullScreen": isFullScreen,
+      "find": findBar.map { ["text": $0.text, "count": $0.matches.count, "active": $0.matches.active] } ?? NSNull(),
       "downloads": downloads.items.map { [
         "id": $0.id, "filename": $0.filename, "state": $0.state, "dangerous": $0.dangerous, "path": $0.path,
         "keepReady": downloadsList?.row(for: $0.id)?.keepReady ?? false,

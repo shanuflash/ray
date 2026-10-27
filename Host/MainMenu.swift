@@ -37,6 +37,10 @@ enum MainMenu {
       item("Select All", #selector(NSText.selectAll(_:)), "a"),
       .separator(),
       item("Copy URL", #selector(AppController.copyURL(_:)), "c", [.command, .shift], target: target),
+      .separator(),
+      item("Find…", #selector(AppController.find(_:)), "f", target: target),
+      item("Find Next", #selector(AppController.findNext(_:)), "g", target: target),
+      item("Find Previous", #selector(AppController.findPrevious(_:)), "g", [.command, .shift], target: target),
     ]))
 
     main.addItem(submenu("View", [
