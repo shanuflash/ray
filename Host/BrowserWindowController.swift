@@ -39,7 +39,10 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private static let peekInset: CGFloat = 5
   private static let peekHideDelay: TimeInterval = 0.12
   private var pointerMonitors: [Any] = []
-  private lazy var peekSpring = Spring(value: 0, response: 0.185, dampingRatio: 0.77) { [weak self] value in
+  private static let peekResponse: CGFloat = 0.14
+  private static let peekDamping: CGFloat = 0.805
+  private lazy var peekSpring = Spring(value: 0, response: Self.peekResponse, dampingRatio: Self.peekDamping) {
+    [weak self] value in
     self?.layout()
     if value <= 0.001, self?.peeking == false { self?.finishPeek() }
   }
@@ -126,7 +129,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     if peeking || peek > 0.001 {
       let inset = Self.peekInset
       floating.frame = NSRect(
-        x: inset - (width + 24) * (1 - peek), y: inset, width: width, height: bounds.height - inset * 2)
+        x: inset - (width + 12) * (1 - peek), y: inset, width: width, height: bounds.height - inset * 2)
       sidebar.frame = floating.bounds
       sidebar.trafficLightsCenterY = isFullScreen ? Self.fullScreenRowCenter : lights - inset
       sidebar.reservesTrafficLights = !isFullScreen
@@ -374,7 +377,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     floating.content = sidebar
     floating.isHidden = false
     root.addSubview(floating, positioned: .above, relativeTo: pages)
-    peekSpring.configure(response: 0.185, dampingRatio: 0.77)
+    peekSpring.configure(response: Self.peekResponse, dampingRatio: Self.peekDamping)
     peekSpring.animate(to: 1, in: root)
     layout()
     logState("peek")
