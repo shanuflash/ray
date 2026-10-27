@@ -13,6 +13,10 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate {
   func engineDidStart() {
     guard let engine = ArdiaCoreEngine.shared else { return }
     NSLog("[lumen] engine started (Chromium %@)", engine.chromiumVersion)
+    if let major = engine.chromiumVersion.split(separator: ".").first {
+      SearchSuggestions.userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        + "(KHTML, like Gecko) Chrome/\(major).0.0.0 Safari/537.36"
+    }
     if let script = Bundle.main.url(forResource: "page_script", withExtension: "js"),
        let source = try? String(contentsOf: script, encoding: .utf8) {
       engine.pageScript = source
@@ -22,6 +26,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate {
     let controller = makeWindow(profile: engine.defaultProfile)
     controller.openTab(environment["LUMEN_START_URL"] ?? "https://example.com", foreground: true)
     controller.present(background: launchedInBackground)
+    controller.searches.warm()
   }
 
   func engineWillShutDown() {

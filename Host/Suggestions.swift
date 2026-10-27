@@ -89,44 +89,76 @@ final class FaviconCache {
 final class SearchSuggestions {
   static let endpoint = environment["LUMEN_SUGGEST_URL"]
     ?? "https://suggestqueries.google.com/complete/search?client=firefox&q=%s"
+  static var userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+  private static let minimumInterval: TimeInterval = 0.1
+  private static let warmInterval: TimeInterval = 30
 
+  private let session: URLSession = {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.httpCookieAcceptPolicy = .never
+    configuration.httpShouldSetCookies = false
+    configuration.timeoutIntervalForRequest = 5
+    configuration.httpMaximumConnectionsPerHost = 4
+    return URLSession(configuration: configuration)
+  }()
   private var cache: [String: [String]] = [:]
-  private var latest: (query: String, results: [String]) = ("", [])
-  private var pending: DispatchWorkItem?
-  private var task: URLSessionDataTask?
+  private var shown: (query: String, results: [String]) = ("", [])
+  private var lastRequest = Date.distantPast
+  private var scheduled: DispatchWorkItem?
+  private var wanted = ""
 
   func current(for query: String) -> [String] {
     let key = query.lowercased()
     if let exact = cache[key] { return exact }
-    guard !latest.query.isEmpty, key.hasPrefix(latest.query) else { return [] }
-    return latest.results.filter { $0.lowercased().hasPrefix(key) }
+    guard !shown.query.isEmpty, key.hasPrefix(shown.query) else { return [] }
+    return shown.results.filter { $0.lowercased().hasPrefix(key) }
+  }
+
+  func warm() {
+    guard Date().timeIntervalSince(lastRequest) > Self.warmInterval else { return }
+    lastRequest = Date()
+    send("", then: nil)
   }
 
   func fetch(_ query: String, then done: @escaping () -> Void) {
-    pending?.cancel()
     let key = query.lowercased()
+    wanted = key
+    scheduled?.cancel()
     guard !key.isEmpty, cache[key] == nil else { return }
-    let work = DispatchWorkItem { [weak self] in self?.request(key, then: done) }
-    pending = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+    let wait = Self.minimumInterval - Date().timeIntervalSince(lastRequest)
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.wanted == key else { return }
+      self.lastRequest = Date()
+      self.send(key, then: done)
+    }
+    scheduled = work
+    if wait <= 0 {
+      work.perform()
+    } else {
+      DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
+    }
   }
 
-  private func request(_ key: String, then done: @escaping () -> Void) {
-    task?.cancel()
+  private func send(_ key: String, then done: (() -> Void)?) {
     let encoded = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))) ?? key
     guard let url = URL(string: Self.endpoint.replacingOccurrences(of: "%s", with: encoded)) else { return }
-    task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-      guard let data,
+    var request = URLRequest(url: url)
+    request.assumesHTTP3Capable = true
+    request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+    request.setValue(Locale.preferredLanguages.prefix(3).joined(separator: ","), forHTTPHeaderField: "Accept-Language")
+    session.dataTask(with: request) { [weak self] data, _, _ in
+      guard let done, let data,
             let json = try? JSONSerialization.jsonObject(with: data) as? [Any],
             json.count > 1, let list = json[1] as? [String] else { return }
       DispatchQueue.main.async {
         guard let self else { return }
         self.cache[key] = list
-        self.latest = (key, list)
-        done()
+        if self.wanted.hasPrefix(key), key.count >= self.shown.query.count || !self.wanted.hasPrefix(self.shown.query) {
+          self.shown = (key, list)
+        }
+        if self.wanted.hasPrefix(key) { done() }
       }
-    }
-    task?.resume()
+    }.resume()
   }
 }
 

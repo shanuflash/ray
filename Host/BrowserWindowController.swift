@@ -20,7 +20,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private var commandBar: CommandBarView?
   private var commandBarMode = CommandBarMode.newTab
   private let history = HistoryCache()
-  private let searches = SearchSuggestions()
+  let searches = SearchSuggestions()
   private let favicons = FaviconCache()
 
   var window: NSWindow { coreWindow.window }
@@ -177,6 +177,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       root.addSubview(bar)
       commandBar = bar
     }
+    searches.warm()
     bar.present(query: query)
     refreshSuggestions()
     history.refresh(profile: profile) { [weak self] in self?.refreshSuggestions() }
