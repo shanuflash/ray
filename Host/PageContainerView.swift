@@ -12,7 +12,7 @@ final class PageContainerView: NSView {
     layer?.cornerRadius = Self.radius
     layer?.cornerCurve = .continuous
     layer?.masksToBounds = true
-    layer?.backgroundColor = NSColor.white.cgColor
+    layer?.backgroundColor = NSColor.clear.cgColor
     progressLayer.backgroundColor = NSColor.controlAccentColor.cgColor
     progressLayer.opacity = 0
     progressLayer.zPosition = 10
@@ -77,6 +77,7 @@ final class PageContainerView: NSView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     shown = tab
+    updateBackground()
     tab.view.isHidden = false
     tab.noteShown(byHost: true)
     hideGeneration[tab.tabId, default: 0] += 1
@@ -98,6 +99,14 @@ final class PageContainerView: NSView {
     shown = nil
     setDevTools(nil)
     updateProgressHidden()
+    updateBackground()
+  }
+
+  private func updateBackground() {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    layer?.backgroundColor = shown == nil ? NSColor.clear.cgColor : NSColor.white.cgColor
+    CATransaction.commit()
   }
 
   private func updateProgressHidden() {

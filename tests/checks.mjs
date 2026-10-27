@@ -488,6 +488,23 @@ const checks = {
   async clear() {
     await command("menu clearToday");
     await until("today cleared", () => state().sidebar.today.length === 0);
+    await command("menu toggleSidebar");
+    await until("hidden", () => state().sidebar.hidden);
+    for (const e of [...state().sidebar.favorites, ...state().sidebar.pinned].filter((e) => e.live)) {
+      await command("rowaction unload " + e.id);
+    }
+    await until("nothing open forces the sidebar out", () => state().active === null && state().sidebar.peeking);
+    await command("pointer 600 300");
+    await sleep(400);
+    await command("state");
+    assert(state().sidebar.peeking, "the forced sidebar hid when the pointer left");
+    const reopen = state().sidebar.favorites[0]?.id ?? state().sidebar.pinned[0]?.id;
+    await command(`row ${reopen}`);
+    await until("a tab is open", () => state().active !== null);
+    await command("pointer 600 300");
+    await until("sidebar hides again", () => !state().sidebar.peeking);
+    await command("menu toggleSidebar");
+    await until("shown", () => !state().sidebar.hidden);
     assert(state().tabs.length === state().sidebar.pinned.filter((e) => e.live).length + state().sidebar.favorites.filter((e) => e.live).length, "today tabs still loaded");
   },
   async quit() {

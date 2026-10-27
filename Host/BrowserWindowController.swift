@@ -199,8 +199,23 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     sidebar.setNavigation(canGoBack: activeTab?.canGoBack ?? false, canGoForward: activeTab?.canGoForward ?? false)
   }
 
+  private var forcedOpen: Bool { state.sidebarHidden && activeEntry.map { !$0.isLive } ?? true }
+
+  private func updateForcedPeek() {
+    if forcedOpen {
+      if !peeking { beginPeek() }
+    } else if peeking, peekForced {
+      peekForced = false
+      schedulePeekEnd()
+    }
+    peekForced = forcedOpen
+  }
+
+  private var peekForced = false
+
   private func changed(_ event: String) {
     guard !closing else { return }
+    updateForcedPeek()
     reloadSidebar()
     store.save(state)
     logState(event)
@@ -362,9 +377,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   func toggleSidebar() {
     endPeek(animated: false)
+    peekForced = false
     state.sidebarHidden.toggle()
     dockSpring.animate(to: state.sidebarHidden ? 0 : 1, in: root)
     layout()
+    updateForcedPeek()
     store.save(state)
     logState("sidebar")
   }
@@ -384,7 +401,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   private func schedulePeekEnd() {
-    guard peekEndWork == nil else { return }
+    guard peekEndWork == nil, !forcedOpen else { return }
     let work = DispatchWorkItem { [weak self] in
       self?.peekEndWork = nil
       self?.endPeek(animated: true)

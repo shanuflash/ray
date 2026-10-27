@@ -134,7 +134,7 @@ final class SidebarView: NSView {
   }
 
   private func updateClear() {
-    clearButton.isHidden = !hovering || today.isEmpty
+    clearButton.isHidden = !hovering || today.isEmpty || pinned.isEmpty
   }
 
   func show(favorites: [SidebarEntry], pinned: [SidebarEntry], today: [SidebarEntry], active: SidebarEntry?) {
@@ -216,11 +216,14 @@ final class SidebarView: NSView {
       row.frame = NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight)
       rowY += Self.rowHeight
     }
-    let lineY = rowY + 12
-    let clearWidth = ceil(clearButton.intrinsicContentSize.width)
-    clearButton.frame = NSRect(x: bounds.width - 19 - clearWidth, y: lineY - 9, width: clearWidth, height: 18)
-    separator.frame = NSRect(x: 22, y: lineY, width: max(0, clearButton.frame.minX - 8.5 - 22), height: 1)
-    rowY = lineY + 30 - Self.rowHeight / 2
+    separator.isHidden = pinned.isEmpty
+    if !pinned.isEmpty {
+      let lineY = rowY + 12
+      let clearWidth = ceil(clearButton.intrinsicContentSize.width)
+      clearButton.frame = NSRect(x: bounds.width - 19 - clearWidth, y: lineY - 9, width: clearWidth, height: 18)
+      separator.frame = NSRect(x: 22, y: lineY, width: max(0, clearButton.frame.minX - 8.5 - 22), height: 1)
+      rowY = lineY + 30 - Self.rowHeight / 2
+    }
     newTabRow.frame = NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight)
     rowY += Self.rowHeight
     for row in todayRows {
@@ -356,6 +359,7 @@ final class AddressPill: NSView {
   var onClick: (() -> Void)?
   private let label = NSTextField(labelWithString: "")
   private let securityIcon = NSImageView()
+  private let searchIcon = NSImageView()
   private(set) var text = ""
 
   override init(frame: NSRect) {
@@ -369,6 +373,10 @@ final class AddressPill: NSView {
     securityIcon.image = NSImage(systemSymbolName: "lock.slash.fill", accessibilityDescription: "Not secure")
     securityIcon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
     securityIcon.contentTintColor = .systemRed
+    searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+    searchIcon.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
+    searchIcon.contentTintColor = .tertiaryLabelColor
+    addSubview(searchIcon)
     addSubview(securityIcon)
     addSubview(label)
   }
@@ -389,8 +397,11 @@ final class AddressPill: NSView {
     let components = URLComponents(string: url)
     let host = components?.host ?? ""
     text = host.isEmpty ? url : (host.hasPrefix("www.") ? String(host.dropFirst(4)) : host)
-    label.stringValue = text
-    securityIcon.isHidden = components?.scheme != "http"
+    let empty = text.isEmpty
+    label.stringValue = empty ? "Search or Enter URL…" : text
+    label.textColor = empty ? .tertiaryLabelColor : .secondaryLabelColor
+    searchIcon.isHidden = !empty
+    securityIcon.isHidden = empty || components?.scheme != "http"
     needsLayout = true
   }
 
@@ -398,7 +409,8 @@ final class AddressPill: NSView {
     super.layout()
     let mid = bounds.height / 2
     securityIcon.frame = NSRect(x: 12, y: mid - 8, width: 16, height: 16)
-    let x: CGFloat = securityIcon.isHidden ? 14 : 36
+    searchIcon.frame = securityIcon.frame
+    let x: CGFloat = securityIcon.isHidden && searchIcon.isHidden ? 14 : 36
     label.frame = NSRect(x: x, y: mid - 10, width: bounds.width - x - 12, height: 20)
   }
 }
