@@ -120,10 +120,8 @@ final class SidebarView: NSView {
   private let content = FlippedView()
   private let separator = NSView()
   private let newTabRow = SidebarRowView()
-  private let pinHint = DropHintView(symbol: "pin", title: "Pin tab")
   private let favoriteHint = DropHintView(symbol: "star", title: "Add to Favorites", inset: 0)
   private let favoritesGlow = DropHintView(symbol: nil, title: "", inset: 0)
-  private let pinnedGlow = DropHintView(symbol: nil, title: "")
 
   private var tiles: [FavoriteTileView] = []
   private var pinnedRows: [SidebarRowView] = []
@@ -175,14 +173,10 @@ final class SidebarView: NSView {
       self.delegate?.sidebarNewTab(self)
     }
     content.addSubview(newTabRow)
-    pinHint.isHidden = true
-    content.addSubview(pinHint)
     favoriteHint.isHidden = true
     tilesView.addSubview(favoriteHint)
     favoritesGlow.isHidden = true
     tilesView.addSubview(favoritesGlow, positioned: .below, relativeTo: nil)
-    pinnedGlow.isHidden = true
-    content.addSubview(pinnedGlow, positioned: .below, relativeTo: nil)
     updateColors()
   }
 
@@ -298,16 +292,14 @@ final class SidebarView: NSView {
     case .today(let index): todayGap = index
     case nil: break
     }
-    // As in Arc: moving within a section opens a gap; moving into another section lights that section up (accent
-    // tint and border) and appends. An empty section has nothing to light, so aiming at it opens one lit slot:
-    // "Add to Favorites" below the address field, "Pin tab" above the divider.
+    // Rows open a gap where the tab will land, pinned or not; with nothing pinned, the gap opens above a divider.
+    // Favorites, as in Arc, light up as a whole when a tab comes from elsewhere and take it at the end; with no
+    // favorites, aiming above the list opens one lit "Add to Favorites" tile.
     let noFavorites = !favorites.contains { $0 !== dragged }
     let favoriteBand = favoriteGap != nil && noFavorites
     let favoritesLit = favoriteGap != nil && !noFavorites && dragged?.kind != .favorite
     let tileSlots = slots(tiles, favorites, gap: favoritesLit ? nil : favoriteGap)
-    let pinBand = pinnedGap != nil && !pinned.contains { $0 !== dragged }
-    let pinnedLit = pinnedGap != nil && !pinBand && dragged?.kind != .pinned
-    let pinnedSlots = slots(pinnedRows, pinned, gap: pinBand || pinnedLit ? nil : pinnedGap)
+    let pinnedSlots = slots(pinnedRows, pinned, gap: pinnedGap)
     let todaySlots = slots(todayRows, today, gap: todayGap)
 
     let columns = tileSlots.isEmpty ? 1 : min(tileSlots.count, 4)
@@ -332,15 +324,11 @@ final class SidebarView: NSView {
 
     place(scrollView, NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y - inset)), entry: nil)
     var rowY: CGFloat = 0
-    show(pinHint, at: pinBand ? NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight) : nil)
-    if pinBand { rowY += Self.rowHeight }
-    show(pinnedGlow, at: pinnedLit
-      ? NSRect(x: inset - 4, y: 0, width: width + 8, height: CGFloat(pinnedSlots.count) * Self.rowHeight) : nil)
     for slot in pinnedSlots {
       if case let (row, entry)? = slot { place(row, NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight), entry: entry) }
       rowY += Self.rowHeight
     }
-    separator.isHidden = pinnedSlots.isEmpty && !pinBand
+    separator.isHidden = pinnedSlots.isEmpty
     if !separator.isHidden {
       let lineY = rowY + 12
       place(separator, NSRect(x: 22, y: lineY, width: max(0, bounds.width - 44), height: 1), entry: nil)
@@ -474,7 +462,7 @@ final class SidebarView: NSView {
     let top = centre - height / 2
     let pinnedCount = pinned.filter { $0 !== drag.entry }.count
     let todayCount = today.filter { $0 !== drag.entry }.count
-    // With nothing pinned, the pin slot opens once the tab reaches the top half of New Tab; while it's open, all
+    // With nothing pinned, the pinned gap opens once the tab reaches the top half of New Tab; while it's open, all
     // of it down to the divider pins (no flicker at the edge).
     let pinning: Bool
     if case .pinned = drag.target { pinning = true } else { pinning = false }
@@ -484,7 +472,6 @@ final class SidebarView: NSView {
     func index(_ value: CGFloat, _ count: Int) -> Int { min(max(Int((value / height).rounded()), 0), count) }
     let pinLimit = pinnedCount > 0 ? newTabY + height / 2 : pinning ? lineY : height / 2
     if centre < pinLimit {
-      if drag.entry.kind != .pinned { return .pinned(pinnedCount) }
       return .pinned(index(top, pinnedCount))
     }
     return .today(index(top - newTabY - height, todayCount))
@@ -550,15 +537,11 @@ final class SidebarView: NSView {
       let frame = view.convert(view.bounds, to: nil)
       frames[entry.id.uuidString] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
     }
-    if !pinHint.isHidden {
-      let frame = pinHint.convert(pinHint.bounds, to: nil)
-      frames["pinHint"] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
-    }
     if !favoriteHint.isHidden {
       let frame = favoriteHint.convert(favoriteHint.bounds, to: nil)
       frames["favoriteHint"] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
     }
-    for (name, glow) in [("favoritesGlow", favoritesGlow), ("pinnedGlow", pinnedGlow)] where !glow.isHidden {
+    for (name, glow) in [("favoritesGlow", favoritesGlow)] where !glow.isHidden {
       let frame = glow.convert(glow.bounds, to: nil)
       frames[name] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
     }
@@ -1117,8 +1100,8 @@ private enum Lift {
   }
 }
 
-/// Where a drag would land, lit Arc's way (accent tint and border): a whole section, or the one slot an empty
-/// section opens (pinned tabs, favorites).
+/// Where a drag would land in favorites, lit Arc's way (accent tint and border): all of them, or the one tile that
+/// opens when there are none.
 final class DropHintView: NSView {
   private let outline = CAShapeLayer()
   private let label: NSTextField

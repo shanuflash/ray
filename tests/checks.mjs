@@ -3,7 +3,7 @@
 //   node tests/checks.mjs [check …]      (build first: scripts/build-app.sh)
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtempSync, readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -501,23 +501,14 @@ const checks = {
     await command(`press ${from.cx} ${from.cy}`);
     await command(`move ${from.cx} ${from.cy + 10}`);
     await settle();
-    if (pinnedBefore === 0) {
-      assert(!("pinHint" in state().sidebarFrames), "pin slot open while over today's tabs");
-      const newTab = frameOf("newTab");
-      await command(`move ${from.cx} ${newTab.y + 8}`);
-      await settle();
-      const hint = frameOf("pinHint");
-      await command(`move ${from.cx} ${hint.cy + 10}`);
-      await settle();
-      assert("pinHint" in state().sidebarFrames, "pin slot closed with the tab over it");
-      await command(`release ${from.cx} ${hint.cy + 10}`);
-    } else {
-      const newTab = frameOf("newTab");
-      await command(`move ${from.cx} ${newTab.y - 20}`);
-      await settle();
-      assert("pinnedGlow" in state().sidebarFrames, "pinned tabs not lit with a tab dragged into them");
-      await command(`release ${from.cx} ${newTab.y - 20}`);
-    }
+    const newTab = frameOf("newTab");
+    const aim = pinnedBefore === 0 ? newTab.y + 8 : newTab.y - 20;
+    await command(`move ${from.cx} ${aim}`);
+    await settle();
+    const moved = frameOf("newTab");
+    assert(moved.y > newTab.y + 30, `no gap opened above New Tab (${newTab.y} -> ${moved.y})`);
+    assert(!("pinHint" in state().sidebarFrames || "pinnedGlow" in state().sidebarFrames), "a pin box showed");
+    await command(`release ${from.cx} ${aim}`);
     const pinned = await until("pinned", () => state().sidebar.pinned.find((e) => e.id === entry.id));
     assert(state().sidebar.pinned.length === pinnedBefore + 1, "pinned count");
     assert(pinned.pinnedURL === pinned.url, `pinned URL ${pinned.pinnedURL} vs ${pinned.url}`);
@@ -691,9 +682,15 @@ const checks = {
     const before = savedSidebar;
     assert(before, "no sidebar state before quitting");
     ws?.close();
+    // Remembered full screen must not apply to a hidden test instance.
+    const file = join(dataDir, "Sidebar.json");
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), fullScreen: true }));
     launch();
     await connect();
     await until("restored", () => state()?.sidebar && state().sidebar.pinned.length === before.pinned.length);
+    await sleep(300);
+    await command("state");
+    assert(state().fullScreen === false, "a background test instance went full screen");
     const after = state().sidebar;
     assert(JSON.stringify(after.favorites.map((e) => e.id)) === JSON.stringify(before.favorites.map((e) => e.id)), "favorites differ");
     assert(JSON.stringify(after.pinned.map((e) => [e.id, e.pinnedURL])) === JSON.stringify(before.pinned.map((e) => [e.id, e.pinnedURL])), "pinned differ");
