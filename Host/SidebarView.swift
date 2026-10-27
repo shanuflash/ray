@@ -35,7 +35,6 @@ final class SidebarView: NSView {
   static let rowHeight: CGFloat = 41
   private static let inset: CGFloat = 8
   private static let tileHeight: CGFloat = 46
-  private static let separatorHeight: CGFloat = 28
 
   weak var delegate: SidebarViewDelegate?
   var trafficLightsCenterY: CGFloat = 20 { didSet { if oldValue != trafficLightsCenterY { needsLayout = true } } }
@@ -217,10 +216,11 @@ final class SidebarView: NSView {
       row.frame = NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight)
       rowY += Self.rowHeight
     }
-    separator.frame = NSRect(x: 18, y: rowY + Self.separatorHeight / 2, width: bounds.width - 36 - 64, height: 1)
-    clearButton.frame = NSRect(
-      x: bounds.width - 18 - 60, y: rowY + Self.separatorHeight / 2 - 9, width: 60, height: 18)
-    rowY += Self.separatorHeight
+    let lineY = rowY + 12
+    let clearWidth = ceil(clearButton.intrinsicContentSize.width)
+    clearButton.frame = NSRect(x: bounds.width - 19 - clearWidth, y: lineY - 9, width: clearWidth, height: 18)
+    separator.frame = NSRect(x: 22, y: lineY, width: max(0, clearButton.frame.minX - 8.5 - 22), height: 1)
+    rowY = lineY + 30 - Self.rowHeight / 2
     newTabRow.frame = NSRect(x: inset, y: rowY, width: width, height: Self.rowHeight)
     rowY += Self.rowHeight
     for row in todayRows {
@@ -561,7 +561,7 @@ final class SidebarRowView: NSView {
     let mid = bounds.height / 2
     icon.frame = NSRect(x: 8, y: mid - 10, width: 20, height: 20)
     slash.frame = NSRect(x: 30, y: mid - 11, width: 10, height: 22)
-    let textX: CGFloat = away ? 44 : 37
+    let textX: CGFloat = isNewTab ? 34 : away ? 44 : 37
     closeButton.frame = NSRect(x: bounds.width - 30, y: mid - 11, width: 22, height: 22)
     let textWidth = (closeButton.isHidden ? bounds.width - 10 : closeButton.frame.minX - 4) - textX
     if subtitle.isHidden {
