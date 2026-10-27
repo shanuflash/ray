@@ -42,6 +42,20 @@ enum TestCommands {
     return "ok"
   }
 
+  private static func rowAction(_ argument: String) -> String {
+    let parts = argument.split(separator: " ").map(String.init)
+    let actions: [String: SidebarRowAction] = [
+      "pin": .pin, "unpin": .unpin, "favorite": .addToFavorites, "unfavorite": .removeFromFavorites,
+      "back": .backToPinned, "close": .close, "unload": .unload,
+    ]
+    guard parts.count == 2, let action = actions[parts[0]], let id = UUID(uuidString: parts[1]),
+          let controller = AppController.shared.current, let entry = controller.state.entry(id: id) else {
+      return "usage: rowaction <action> <id>"
+    }
+    controller.perform(action, on: entry)
+    return "ok"
+  }
+
   private static func run(_ line: String) {
     let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
     guard let command = parts.first else { return }
@@ -62,6 +76,30 @@ enum TestCommands {
       if let editor { editor.doCommand(by: #selector(NSResponder.moveDown(_:))) } else { result = "no editor" }
     case "up":
       if let editor { editor.doCommand(by: #selector(NSResponder.moveUp(_:))) } else { result = "no editor" }
+    case "row":
+      if let id = UUID(uuidString: argument), AppController.shared.current?.selectEntry(id: id) == true {} else {
+        result = "no entry"
+      }
+    case "rowaction":
+      result = rowAction(argument)
+    case "peek":
+      if argument == "on" { AppController.shared.current?.beginPeek() } else { AppController.shared.current?.endPeek(animated: true) }
+    case "terminate":
+      NSApp.terminate(nil)
+    case "state":
+      AppController.shared.current?.logState("probe")
+    case "hit":
+      let numbers = argument.split(separator: " ").compactMap { Double($0) }
+      if let window, let frameView = window.contentView?.superview, numbers.count == 2 {
+        let point = NSPoint(x: numbers[0], y: frameView.bounds.height - numbers[1])
+        var chain: [String] = []
+        var view = frameView.hitTest(point)
+        while let current = view, chain.count < 6 {
+          chain.append(String(describing: type(of: current)))
+          view = current.superview
+        }
+        result = chain.joined(separator: " < ")
+      }
     case "drag":
       result = drag(argument, in: window)
     default:

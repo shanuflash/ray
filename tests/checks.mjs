@@ -39,40 +39,52 @@ const dataDir = mkdtempSync(join(tmpdir(), "lumen-checks-"));
 const crashesBefore = crashReports();
 let stderr = "";
 let states = [];
-const child = spawn(join(app, "Contents/MacOS/Lumen"), [], {
-  env: {
-    ...process.env,
-    LUMEN_BACKGROUND: "1",
-    LUMEN_LOG_STATE: "1",
-    LUMEN_TEST_COMMANDS: "1",
-    LUMEN_SUGGEST_URL: `${origin}/suggest?q=%s`,
-    LUMEN_SEARCH_URL: `${origin}/search?q=%s`,
-    LUMEN_DATA_DIR: dataDir,
-    LUMEN_REMOTE_DEBUGGING_PORT: String(port),
-    LUMEN_START_URL: `${origin}/a`,
-  },
-  stdio: ["pipe", "ignore", "pipe"],
-});
-child.stdin.on("error", () => {});
-child.stderr.setEncoding("utf8");
-child.stderr.on("data", (chunk) => {
-  stderr += chunk;
-  for (const line of chunk.split("\n")) {
-    const at = line.indexOf("[lumen-state] ");
-    if (at >= 0) states.push(JSON.parse(line.slice(at + 14)));
-  }
-});
+let child;
 let exitCode = null;
-const exited = new Promise((r) => child.on("exit", (code, signal) => r((exitCode = code ?? signal))));
+let exited;
+
+function launch() {
+  stderr = "";
+  states = [];
+  exitCode = null;
+  let partial = "";
+  child = spawn(join(app, "Contents/MacOS/Lumen"), [], {
+    env: {
+      ...process.env,
+      LUMEN_BACKGROUND: "1",
+      LUMEN_LOG_STATE: "1",
+      LUMEN_TEST_COMMANDS: "1",
+      LUMEN_SUGGEST_URL: `${origin}/suggest?q=%s`,
+      LUMEN_SEARCH_URL: `${origin}/search?q=%s`,
+      LUMEN_DATA_DIR: dataDir,
+      LUMEN_REMOTE_DEBUGGING_PORT: String(port),
+      LUMEN_START_URL: `${origin}/a`,
+    },
+    stdio: ["pipe", "ignore", "pipe"],
+  });
+  child.stdin.on("error", () => {});
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+    const lines = (partial + chunk).split("\n");
+    partial = lines.pop();
+    for (const line of lines) {
+      const at = line.indexOf("[lumen-state] ");
+      if (at >= 0) states.push(JSON.parse(line.slice(at + 14)));
+    }
+  });
+  exited = new Promise((r) => child.on("exit", (code, signal) => r((exitCode = code ?? signal))));
+}
+launch();
 
 const state = () => states.at(-1);
-async function until(what, fn, ms = 8000) {
+async function until(what, fn, ms = 8000, every = 100) {
   const end = Date.now() + ms;
   for (;;) {
     const value = await fn();
     if (value) return value;
     if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
-    await sleep(100);
+    await sleep(every);
   }
 }
 
@@ -142,6 +154,9 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+let savedSidebar = null;
+let savedActive = null;
+
 const checks = {
   async boot() {
     await until("first tab", () => tabFor("/a"));
@@ -157,7 +172,7 @@ const checks = {
     await until("url /b", () => state().tabs.length === 1 && tabFor("/b"));
     await evaluate(sessionId, `history.back()`);
     await until("back to /a", () => state().tabs.length === 1 && tabFor("/a"));
-    assert(state().address.includes("/a"), `address shows ${state().address}`);
+    assert(state().address === "127.0.0.1", `address shows ${state().address}`);
   },
   async "target-blank"() {
     const before = state().tabs.length;
@@ -335,12 +350,47 @@ const checks = {
     await command("menu toggleDevTools");
     await until("devtools closed", () => !state().pages?.devToolsFrame);
   },
+  async "switch-back-latency"() {
+    const { target, sessionId } = await session(`${origin}/a`);
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    if (process.env.NO_NAV !== "1") {
+      await evaluate(sessionId, `location.href = ${JSON.stringify(origin + "/b#nav1")}`);
+      await until("nav1", () => tabFor("#nav1"));
+      await evaluate((await session("#nav1")).sessionId, `location.href = ${JSON.stringify(origin + "/a")}`);
+      await until("back on /a", () => !tabFor("#nav1"));
+    }
+    await send("Target.createTarget", { url: `${origin}/c#other` });
+    await until("other active", () => state().active === tabFor("#other")?.id);
+    await sleep(Number(process.env.HIDDEN_FOR ?? 1500));
+    const again = await session(`${origin}/a`);
+    const started = Date.now();
+    await send("Target.activateTarget", { targetId: again.target.targetId });
+    let shownAfter = null;
+    for (let i = 0; i < 100 && shownAfter === null; i++) {
+      const marker = `[lumen-test] hit 400 14 -> `;
+      const from = stderr.length;
+      child.stdin.write("hit 400 14\n");
+      const result = await until("hit", () => {
+        const at = stderr.indexOf(marker, from);
+        return at >= 0 ? stderr.slice(at + marker.length).split("\n")[0] : null;
+      }, 2000, 2);
+      if (result.startsWith("RenderWidgetHostViewCocoa")) shownAfter = Date.now() - started;
+      else await sleep(2);
+    }
+    console.log(`     page input surface shown ${shownAfter} ms after switching back`);
+    assert(shownAfter !== null && shownAfter < 50, `page surface took ${shownAfter} ms`);
+  },
   async "top-strip-click"() {
     const { target, sessionId } = await session(`${origin}/a`);
     await send("Target.activateTarget", { targetId: target.targetId });
     await until("/a active", () => state().active === tabFor("/a")?.id && oneVisibleActive());
     await evaluate(sessionId, `window.__downs = []; addEventListener("mousedown", (e) => __downs.push([e.clientX, e.clientY]), true); true`);
     const frame = state().windowFrame;
+    await sleep(Number(process.env.STRIP_WAIT ?? 300));
+    child.stdin.write("hit 400 14\n");
+    await sleep(100);
+    console.log("     hit:", (stderr.match(/\[lumen-test\] hit 400 14 -> (.*)/) || [])[1], "pages:", JSON.stringify(state().pages));
     await command("drag 400 14 120 60");
     await sleep(300);
     const downs = await evaluate(sessionId, `JSON.stringify(window.__downs)`);
@@ -349,14 +399,94 @@ const checks = {
     await command("escape");
     assert(state().windowMovable === true, "window left unmovable after the drag");
   },
+  async "pin-unload-restore"() {
+    const id = state().activeEntry;
+    await command(`rowaction pin ${id}`);
+    const pinned = await until("pinned", () => state().sidebar.pinned.find((e) => e.id === id));
+    assert(pinned.pinnedURL === pinned.url, `pinned URL ${pinned.pinnedURL} vs ${pinned.url}`);
+    const { sessionId } = await session(pinned.url);
+    await evaluate(sessionId, `location.href = ${JSON.stringify(origin + "/b#away")}`);
+    await until("away from pinned", () => state().sidebar.pinned.find((e) => e.id === id)?.away);
+    await command(`rowaction back ${id}`);
+    await until("back to pinned", () => !state().sidebar.pinned.find((e) => e.id === id)?.away);
+    const liveBefore = state().tabs.length;
+    await command("menu closeTab");
+    const unloaded = await until("unloaded", () => {
+      const e = state().sidebar.pinned.find((e) => e.id === id);
+      return e && !e.live && e;
+    });
+    assert(unloaded.url === unloaded.pinnedURL, `unloaded at ${unloaded.url}`);
+    assert(state().tabs.length === liveBefore - 1, "the tab wasn't closed");
+    await command(`row ${id}`);
+    await until("reloaded and active", () => state().sidebar.pinned.find((e) => e.id === id)?.live && state().activeEntry === id);
+    assert(oneVisibleActive(), "pinned tab not shown");
+  },
+  async favorites() {
+    const id = state().sidebar.today[0].id;
+    await command(`rowaction favorite ${id}`);
+    await until("favorite", () => state().sidebar.favorites.some((e) => e.id === id) && !state().sidebar.today.some((e) => e.id === id));
+    await command(`row ${id}`);
+    await until("favorite active", () => state().activeEntry === id && oneVisibleActive());
+  },
+  async "sidebar-toggle"() {
+    const x = () => Number(state().cardFrame.match(/-?[\d.]+/g)[0]);
+    assert(x() > 200, `card starts at ${x()}`);
+    await command("menu toggleSidebar");
+    await until("sidebar hidden", () => state().sidebar.hidden);
+    await until("card slid left", async () => { await command("state"); return x() < 20; }, 3000, 50);
+    await command("peek on");
+    await until("peeking", () => state().sidebar.peeking);
+    assert(x() < 20, "peeking moved the page");
+    await command("peek off");
+    await until("peek ended", () => !state().sidebar.peeking);
+    await command("menu toggleSidebar");
+    await until("sidebar shown", () => !state().sidebar.hidden);
+    await until("card back", async () => { await command("state"); return x() > 200; }, 3000, 50);
+  },
+  async clear() {
+    await command("menu clearToday");
+    await until("today cleared", () => state().sidebar.today.length === 0);
+    assert(state().tabs.length === state().sidebar.pinned.filter((e) => e.live).length + state().sidebar.favorites.filter((e) => e.live).length, "today tabs still loaded");
+  },
   async quit() {
-    send("Browser.close").catch(() => {});
+    savedSidebar = state().sidebar;
+    savedActive = state().activeEntry;
+    child.stdin.write("menu quit\n");
     await Promise.race([exited, sleep(15000)]);
     assert(exitCode !== null, "didn't exit within 15 s");
     const prefs = JSON.parse(readFileSync(join(dataDir, "Chromium/Default/Preferences"), "utf8"));
     assert(prefs.profile?.exit_type === "Normal", `exit_type ${prefs.profile?.exit_type}`);
     const added = crashReports().filter((f) => !crashesBefore.includes(f));
     assert(added.length === 0, `new crash reports: ${added.join(", ")}`);
+  },
+  async restore() {
+    const before = savedSidebar;
+    assert(before, "no sidebar state before quitting");
+    ws?.close();
+    launch();
+    await connect();
+    await until("restored", () => state()?.sidebar && state().sidebar.pinned.length === before.pinned.length);
+    const after = state().sidebar;
+    assert(JSON.stringify(after.favorites.map((e) => e.id)) === JSON.stringify(before.favorites.map((e) => e.id)), "favorites differ");
+    assert(JSON.stringify(after.pinned.map((e) => [e.id, e.pinnedURL])) === JSON.stringify(before.pinned.map((e) => [e.id, e.pinnedURL])), "pinned differ");
+    assert(JSON.stringify(after.today.map((e) => e.id)) === JSON.stringify(before.today.map((e) => e.id)), "today differs");
+    await until("active entry restored and loaded", () => state().activeEntry === savedActive && state().active !== null && oneVisibleActive());
+    const notActive = [...after.favorites, ...after.pinned, ...after.today].filter((e) => e.id !== savedActive);
+    assert(notActive.every((e) => !e.live), "restored tabs other than the active one loaded at launch");
+    const sidebarBefore = state().sidebar;
+    const activeBefore = state().activeEntry;
+    child.stdin.write("terminate\n");
+    await Promise.race([exited, sleep(15000)]);
+    assert(exitCode !== null, "NSApp.terminate (Dock / AppleScript quit) didn't quit");
+    ws?.close();
+    launch();
+    await connect();
+    await until("restored after a Dock-style quit", () => state()?.sidebar && state().activeEntry === activeBefore && oneVisibleActive());
+    const again = state().sidebar;
+    assert(JSON.stringify([...again.favorites, ...again.pinned, ...again.today].map((e) => e.id)) ===
+      JSON.stringify([...sidebarBefore.favorites, ...sidebarBefore.pinned, ...sidebarBefore.today].map((e) => e.id)), "entries lost on a Dock-style quit");
+    child.stdin.write("menu quit\n");
+    await Promise.race([exited, sleep(15000)]);
   },
 };
 
@@ -366,7 +496,8 @@ function crashReports() {
 }
 
 const wanted = process.argv.slice(2);
-const order = Object.keys(checks).filter((name) => !wanted.length || wanted.includes(name) || name === "boot" || name === "quit");
+const order = Object.keys(checks).filter(
+  (name) => !wanted.length || wanted.includes(name) || name === "boot" || name === "quit" || name === "restore");
 let failed = 0;
 try {
   await connect();

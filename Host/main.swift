@@ -22,18 +22,22 @@ var engineArguments = [
   "--profile-directory=Default",
   "--use-mock-keychain",
   "--disable-stack-profiler",
-  "--disable-features=MacAppCodeSignClone,DevToolsAcceptDebuggingConnections,AutofillAiWalletPrivatePasses",
+  "--disable-features=MacAppCodeSignClone,DevToolsAcceptDebuggingConnections,AutofillAiWalletPrivatePasses"
+    + (launchedInBackground ? ",MacWebContentsOcclusion" : ""),
   "--enable-features=WebContentsDiscard,"
     + "ImprovedStartupBestEffortDelay:StartupDelayStopOnLoadingTimedOut/true,"
     + "CPUMeasurementInFreezingPolicy:freezing_visible_protection_time/0s,"
     + "InfiniteTabsFreezing:ardia_unconnected_unfreeze_interval/600s,"
     + "ThrottleMainFrameTo60Hz,UrgentMainFrameForInput",
 ]
+if environment["LUMEN_ENGINE_FEATURES"] == "none" {
+  engineArguments.removeAll { $0.hasPrefix("--enable-features=") }
+}
 if let port = environment["LUMEN_REMOTE_DEBUGGING_PORT"] {
   engineArguments += ["--remote-debugging-port=\(port)", "--remote-allow-origins=*"]
 }
 if launchedInBackground {
-  engineArguments += ["--mute-audio", "--disable-modal-animations"]
+  engineArguments += ["--mute-audio", "--disable-modal-animations", "--disable-backgrounding-occluded-windows"]
 }
 
 let argv = engineArguments.map { UnsafePointer<CChar>(strdup($0)!) }

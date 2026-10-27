@@ -26,6 +26,11 @@ final class PageContainerView: NSView {
   var debugState: [String: Any] {
     let page = shown?.view
     var state: [String: Any] = ["pageFrame": page.map { NSStringFromRect($0.frame) } ?? ""]
+    if let page {
+      state["pageSubviews"] = page.subviews.map {
+        "\(type(of: $0)) \(NSStringFromRect($0.frame)) hidden=\($0.isHidden)"
+      }
+    }
     if let devTools, devTools.superview === self {
       state["devToolsFrame"] = NSStringFromRect(devTools.frame)
       if let page, let pageIndex = subviews.firstIndex(of: page), let devIndex = subviews.firstIndex(of: devTools) {
@@ -70,6 +75,20 @@ final class PageContainerView: NSView {
     layoutPages()
     CATransaction.commit()
     updateProgress(for: tab)
+  }
+
+  func showNothing() {
+    if let shown, shown.view.superview === self {
+      shown.view.isHidden = true
+      noteHiddenLater(shown)
+    }
+    shown = nil
+    setDevTools(nil)
+    updateProgressHidden()
+  }
+
+  private func updateProgressHidden() {
+    progressLayer.opacity = 0
   }
 
   func setDevTools(_ view: NSView?) {

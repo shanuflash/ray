@@ -1,6 +1,6 @@
 import AppKit
 
-final class AppController: NSObject, ArdiaCoreEngineDelegate {
+final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDelegate {
   static let shared = AppController()
 
   private(set) var windows: [BrowserWindowController] = []
@@ -21,15 +21,17 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate {
        let source = try? String(contentsOf: script, encoding: .utf8) {
       engine.pageScript = source
     }
+    NSApp.delegate = self
     MainMenu.install(target: self)
     TestCommands.start()
     let controller = makeWindow(profile: engine.defaultProfile)
-    controller.openTab(environment["LUMEN_START_URL"] ?? "https://example.com", foreground: true)
     controller.present(background: launchedInBackground)
+    controller.restore(startURL: environment["LUMEN_START_URL"])
     controller.searches.warm()
   }
 
   func engineWillShutDown() {
+    if !quitting { windows.forEach { $0.prepareForQuit() } }
     quitting = true
   }
 
@@ -49,7 +51,8 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate {
   }
 
   private func makeWindow(profile: ArdiaCoreProfile) -> BrowserWindowController {
-    let controller = BrowserWindowController(profile: profile)
+    let controller = BrowserWindowController(
+      profile: profile, store: SidebarStore(directory: (dataDirectory as NSString).deletingLastPathComponent))
     controller.onClose = { [weak self, weak controller] in
       guard let self, let controller else { return }
       self.windows.removeAll { $0 === controller }
@@ -62,12 +65,26 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate {
   @objc func quit(_ sender: Any?) {
     guard !quitting else { return }
     quitting = true
+    windows.forEach { $0.prepareForQuit() }
     ArdiaCoreEngine.shared?.quit()
   }
 
+  func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    if quitting { return .terminateNow }
+    windows.forEach { $0.prepareForQuit() }
+    DispatchQueue.main.async { [weak self] in self?.quit(nil) }
+    return .terminateCancel
+  }
+
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
   @objc func newTab(_ sender: Any?) { current?.beginNewTab() }
   @objc func focusAddress(_ sender: Any?) { current?.focusAddress() }
-  @objc func closeTab(_ sender: Any?) { current?.closeActiveTab() }
+  @objc func closeTab(_ sender: Any?) { current?.closeActive() }
+  @objc func toggleSidebar(_ sender: Any?) { current?.toggleSidebar() }
+  @objc func togglePin(_ sender: Any?) { current?.togglePin() }
+  @objc func backToPinned(_ sender: Any?) { current?.backToPinned() }
+  @objc func clearToday(_ sender: Any?) { current?.clearToday() }
   @objc func reload(_ sender: Any?) { current?.activeTab?.reload() }
   @objc func reloadIgnoringCache(_ sender: Any?) { current?.activeTab?.reloadIgnoringCache() }
   @objc func goBack(_ sender: Any?) { current?.activeTab?.goBack() }

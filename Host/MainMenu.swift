@@ -19,6 +19,10 @@ enum MainMenu {
       item("Open Location…", #selector(AppController.focusAddress(_:)), "l", target: target),
       .separator(),
       item("Close Tab", #selector(AppController.closeTab(_:)), "w", target: target),
+      .separator(),
+      item("Pin Tab", #selector(AppController.togglePin(_:)), "d", target: target),
+      item("Back to Pinned URL", #selector(AppController.backToPinned(_:)), nil, target: target),
+      item("Clear Today's Tabs", #selector(AppController.clearToday(_:)), nil, target: target),
     ]))
 
     main.addItem(submenu("Edit", [
@@ -33,6 +37,8 @@ enum MainMenu {
     ]))
 
     main.addItem(submenu("View", [
+      item("Toggle Sidebar", #selector(AppController.toggleSidebar(_:)), "s", target: target),
+      .separator(),
       item("Reload Page", #selector(AppController.reload(_:)), "r", target: target),
       item("Force Reload Page", #selector(AppController.reloadIgnoringCache(_:)), "r", [.command, .shift], target: target),
       .separator(),

@@ -8,41 +8,73 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     case currentTab
   }
 
+  private static let margin: CGFloat = 8
+  private static let logsState = environment["LUMEN_LOG_STATE"] == "1"
+
   let coreWindow: ArdiaCoreWindow
   let profile: ArdiaCoreProfile
   var onClose: (() -> Void)?
 
   private let root = WindowDragArea()
   private let sidebar = SidebarView()
+  private let floating = FloatingSidebarFrame()
   private let pages = PageContainerView()
-  private(set) var tabs: [ArdiaCoreTab] = []
-  private(set) var activeTab: ArdiaCoreTab?
+  private let edge = EdgeHoverZone()
   private var commandBar: CommandBarView?
   private var commandBarMode = CommandBarMode.newTab
   private let history = HistoryCache()
   let searches = SearchSuggestions()
   private let favicons = FaviconCache()
+  private let store: SidebarStore
+  private(set) var state: SidebarState
+  private var loadingEntry: SidebarEntry?
+  private var peeking = false
+  private var peekEndWork: DispatchWorkItem?
+  private lazy var dockSpring = Spring(value: state.sidebarHidden ? 0 : 1, response: 0.26, dampingRatio: 0.86) {
+    [weak self] _ in self?.layout()
+  }
+  private lazy var peekSpring = Spring(value: 0, response: 0.24, dampingRatio: 0.84) { [weak self] value in
+    self?.layout()
+    if value <= 0.001, self?.peeking == false { self?.finishPeek() }
+  }
 
   var window: NSWindow { coreWindow.window }
 
-  init(profile: ArdiaCoreProfile) {
+  var activeEntry: SidebarEntry? { state.activeEntryID.flatMap(state.entry(id:)) }
+
+  var activeTab: ArdiaCoreTab? { activeEntry.flatMap { $0.isLive ? $0.tab : nil } }
+
+  var tabs: [ArdiaCoreTab] { state.allEntries.compactMap { $0.isLive ? $0.tab : nil } }
+
+  init(profile: ArdiaCoreProfile, store: SidebarStore) {
     self.profile = profile
+    self.store = store
+    state = store.load() ?? SidebarState()
+    state.archiveStaleToday()
     coreWindow = ArdiaCoreWindow(contentRect: NSRect(x: 0, y: 0, width: 1360, height: 860))
     super.init()
     coreWindow.delegate = self
     coreWindow.activeProfile = profile
     configureWindow()
     sidebar.delegate = self
+    edge.onEnter = { [weak self] in self?.beginPeek() }
+    floating.onExit = { [weak self] in self?.schedulePeekEnd() }
+    floating.onEnter = { [weak self] in self?.peekEndWork?.cancel() }
     let host = coreWindow.hostView
     root.frame = host.bounds
     root.autoresizingMask = [.width, .height]
-    root.addSubview(sidebar)
+    root.wantsLayer = true
     root.addSubview(pages)
+    root.addSubview(sidebar)
+    root.addSubview(floating)
+    root.addSubview(edge)
+    floating.isHidden = true
     host.addSubview(root)
-    layout()
     NotificationCenter.default.addObserver(
       self, selector: #selector(hostResized), name: NSView.frameDidChangeNotification, object: root)
     root.postsFrameChangedNotifications = true
+    reloadSidebar()
+    layout()
   }
 
   private func configureWindow() {
@@ -53,7 +85,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     window.titleVisibility = .hidden
     window.title = "Lumen"
     window.minSize = NSSize(width: 720, height: 460)
-    window.backgroundColor = .windowBackgroundColor
+    window.backgroundColor = SidebarColors.background
     window.isReleasedWhenClosed = false
     window.isRestorable = false
     window.animationBehavior = .none
@@ -62,13 +94,42 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   @objc private func hostResized() { layout() }
 
+  private var trafficLightsCenter: CGFloat {
+    guard let button = window.standardWindowButton(.closeButton), let content = window.contentView else { return 20 }
+    let frame = button.convert(button.bounds, to: nil)
+    return content.bounds.height - frame.midY
+  }
+
   private func layout() {
     let bounds = root.bounds
-    let margin: CGFloat = 8
-    sidebar.frame = NSRect(x: 0, y: 0, width: SidebarView.width, height: bounds.height)
+    let margin = Self.margin
+    let width = SidebarView.width
+    let shown = dockSpring.value
+    let peek = peekSpring.value
+    let lights = trafficLightsCenter
+
+    if peeking || peek > 0.001 {
+      floating.frame = NSRect(
+        x: margin - (width + 24) * (1 - peek), y: margin, width: width, height: bounds.height - margin * 2)
+      sidebar.frame = floating.bounds
+      sidebar.trafficLightsCenterY = lights - margin
+    } else {
+      sidebar.frame = NSRect(x: -width * (1 - shown), y: 0, width: width, height: bounds.height)
+      sidebar.trafficLightsCenterY = lights
+    }
+    let cardX = max(margin, width * shown)
     pages.frame = NSRect(
-      x: SidebarView.width, y: margin,
-      width: max(0, bounds.width - SidebarView.width - margin), height: max(0, bounds.height - margin * 2))
+      x: cardX, y: margin, width: max(0, bounds.width - cardX - margin), height: max(0, bounds.height - margin * 2))
+    edge.frame = NSRect(x: 0, y: 0, width: 6, height: bounds.height)
+    edge.isHidden = !state.sidebarHidden || peeking
+    updateTrafficLights()
+  }
+
+  private func updateTrafficLights() {
+    let visible = !state.sidebarHidden || peeking || dockSpring.isMoving
+    for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+      window.standardWindowButton(kind)?.isHidden = !visible
+    }
   }
 
   func present(background: Bool) {
@@ -78,106 +139,257 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     } else {
       window.makeKeyAndOrderFront(nil)
     }
+    layout()
   }
 
-  @discardableResult
-  func openTab(_ url: String, foreground: Bool) -> ArdiaCoreTab {
-    let tab = coreWindow.openTab(url, profile: profile, foreground: foreground)
-    adopt(tab, after: foreground ? activeTab : tabs.last)
-    if foreground { activate(tab) }
-    return tab
-  }
-
-  private func adopt(_ tab: ArdiaCoreTab, after anchor: ArdiaCoreTab?) {
-    guard !tabs.contains(where: { $0 === tab }) else { return }
-    tab.delegate = self
-    let index = anchor.flatMap { a in tabs.firstIndex { $0 === a } }.map { $0 + 1 } ?? tabs.count
-    tabs.insert(tab, at: index)
-    pages.attach(tab)
-    sidebar.setTabs(tabs, active: activeTab)
-    logState("insert")
-  }
-
-  func activate(_ tab: ArdiaCoreTab) {
-    guard tabs.contains(where: { $0 === tab }) else { return }
-    pages.show(tab)
-    coreWindow.activate(tab)
-    let changed = activeTab !== tab
-    activeTab = tab
-    if commandBar == nil { focusPage(tab) }
-    if changed {
-      sidebar.select(tab)
-      sidebar.showAddress(AddressInput.display(for: tab.url))
-      logState("activate")
+  func restore(startURL: String?) {
+    if let entry = activeEntry ?? state.today.first ?? state.pinned.first {
+      select(entry)
+    } else if let startURL {
+      openToday(startURL, after: nil, foreground: true)
+    } else {
+      beginNewTab()
     }
   }
 
-  private static let logsState = environment["LUMEN_LOG_STATE"] == "1"
+  private var closing = false
 
-  private func logState(_ event: String) {
-    guard Self.logsState else { return }
-    let state: [String: Any] = [
-      "event": event,
-      "active": activeTab.map { Int($0.tabId) } ?? NSNull(),
-      "address": sidebar.addressField.stringValue,
-      "pages": pages.debugState,
-      "windowFrame": NSStringFromRect(window.frame),
-      "windowMovable": window.isMovable,
-      "commandBar": commandBar.map { bar in
-        [
-          "mode": commandBarMode.rawValue, "query": bar.field.stringValue, "selected": bar.selectedIndex,
-          "rowsFullyVisible": bar.rowsFullyVisible,
-          "rows": bar.suggestions.map { ["kind": $0.kindName, "title": $0.title] },
-        ] as [String: Any]
-      } ?? NSNull(),
-      "tabs": tabs.map { tab in
-        [
-          "id": Int(tab.tabId), "url": tab.url, "title": tab.title,
-          "visible": !tab.view.isHidden && tab.view.superview != nil,
-        ] as [String: Any]
-      },
-    ]
-    guard let data = try? JSONSerialization.data(withJSONObject: state),
-          let json = String(data: data, encoding: .utf8) else { return }
-    FileHandle.standardError.write("[lumen-state] \(json)\n".data(using: .utf8)!)
+  func prepareForQuit() {
+    guard !closing else { return }
+    store.saveNow(state)
+    closing = true
   }
 
-  func pageContains(windowPoint point: NSPoint) -> Bool {
-    pages.bounds.contains(pages.convert(point, from: nil)) && commandBar == nil
+  // MARK: Entries
+
+  private func reloadSidebar() {
+    sidebar.show(favorites: state.favorites, pinned: state.pinned, today: state.today, active: activeEntry)
+    sidebar.showAddress(activeEntry)
+    sidebar.setNavigation(canGoBack: activeTab?.canGoBack ?? false, canGoForward: activeTab?.canGoForward ?? false)
   }
 
-  var debugWindowFrame: String { NSStringFromRect(window.frame) }
-
-  private func focusPage(_ tab: ArdiaCoreTab) {
-    window.makeFirstResponder(tab.view)
-    tab.focus()
+  private func changed(_ event: String) {
+    guard !closing else { return }
+    reloadSidebar()
+    store.save(state)
+    logState(event)
   }
 
-  func closeActiveTab() {
-    activeTab?.close()
+  @discardableResult
+  func openToday(_ url: String, after opener: SidebarEntry?, foreground: Bool) -> SidebarEntry {
+    let entry = SidebarEntry(kind: .today, url: url)
+    insertToday(entry, after: opener)
+    load(entry, foreground: foreground)
+    if foreground { select(entry) } else { changed("insert") }
+    return entry
+  }
+
+  private func insertToday(_ entry: SidebarEntry, after opener: SidebarEntry?) {
+    if let opener, opener.kind == .today, let index = state.today.firstIndex(where: { $0 === opener }) {
+      state.today.insert(entry, at: index + 1)
+    } else {
+      state.today.insert(entry, at: 0)
+    }
+  }
+
+  private func load(_ entry: SidebarEntry, foreground: Bool) {
+    guard !entry.isLive else { return }
+    loadingEntry = entry
+    let tab = coreWindow.openTab(entry.url, profile: profile, foreground: foreground)
+    loadingEntry = nil
+    if entry.tab !== tab { bind(entry, tab) }
+  }
+
+  private func bind(_ entry: SidebarEntry, _ tab: ArdiaCoreTab) {
+    entry.tab = tab
+    tab.delegate = self
+    pages.attach(tab)
+  }
+
+  func select(_ entry: SidebarEntry) {
+    load(entry, foreground: true)
+    guard let tab = entry.tab, !tab.closed else { return }
+    pages.show(tab)
+    coreWindow.activate(tab)
+    let switched = state.activeEntryID != entry.id
+    state.activeEntryID = entry.id
+    entry.lastActive = Date()
+    if commandBar == nil { focusPage(tab) }
+    if switched { changed("activate") }
+  }
+
+  func selectEntry(id: UUID) -> Bool {
+    guard let entry = state.entry(id: id) else { return false }
+    select(entry)
+    return true
+  }
+
+  private func showNothing() {
+    state.activeEntryID = nil
+    pages.showNothing()
+    changed("activate")
+  }
+
+  private func activateNeighbor(of index: Int, in list: [SidebarEntry]) {
+    let candidates = list.indices.sorted { abs($0 - index) < abs($1 - index) }.map { list[$0] }
+    if let next = candidates.first(where: { $0.isLive }) ?? state.allEntries.first(where: { $0.isLive }) {
+      select(next)
+    } else {
+      showNothing()
+    }
+  }
+
+  func closeActive() {
+    guard let entry = activeEntry else { return }
+    if entry.isLive {
+      entry.tab?.close()
+    } else if entry.kind == .today {
+      state.remove(entry)
+      changed("remove")
+    }
+  }
+
+  func perform(_ action: SidebarRowAction, on entry: SidebarEntry) {
+    switch action {
+    case .close, .unload:
+      if entry.isLive {
+        entry.tab?.close()
+      } else if entry.kind == .today {
+        state.remove(entry)
+        changed("remove")
+      }
+      return
+    case .backToPinned:
+      if let target = entry.pinnedURL, let tab = entry.tab, entry.isLive {
+        tab.loadURL(target, userInitiated: true)
+      }
+      return
+    case .pin:
+      guard entry.kind == .today else { return }
+      state.today.removeAll { $0 === entry }
+      entry.kind = .pinned
+      entry.pinnedURL = entry.currentURL
+      state.pinned.append(entry)
+    case .unpin:
+      guard entry.kind == .pinned else { return }
+      state.pinned.removeAll { $0 === entry }
+      entry.kind = .today
+      entry.pinnedURL = nil
+      state.today.insert(entry, at: 0)
+    case .addToFavorites:
+      guard entry.kind != .favorite else { return }
+      state.pinned.removeAll { $0 === entry }
+      state.today.removeAll { $0 === entry }
+      if entry.pinnedURL == nil { entry.pinnedURL = entry.currentURL }
+      entry.kind = .favorite
+      state.favorites.append(entry)
+    case .removeFromFavorites:
+      guard entry.kind == .favorite else { return }
+      state.favorites.removeAll { $0 === entry }
+      if entry.isLive {
+        entry.kind = .today
+        entry.pinnedURL = nil
+        state.today.insert(entry, at: 0)
+      } else if state.activeEntryID == entry.id {
+        state.activeEntryID = nil
+      }
+    }
+    changed("sidebar")
+  }
+
+  func togglePin() {
+    guard let entry = activeEntry else { return }
+    perform(entry.kind == .today ? .pin : .unpin, on: entry)
+  }
+
+  func backToPinned() {
+    guard let entry = activeEntry else { return }
+    perform(.backToPinned, on: entry)
+  }
+
+  func clearToday() {
+    for entry in state.today {
+      if entry.isLive { entry.tab?.close() } else { state.remove(entry) }
+    }
+    changed("clear")
   }
 
   func cycleTab(by step: Int) {
-    guard !tabs.isEmpty else { return }
-    let index = activeTab.flatMap { a in tabs.firstIndex { $0 === a } } ?? 0
-    activate(tabs[(index + step + tabs.count) % tabs.count])
+    let live = state.allEntries.filter { $0.isLive }
+    guard !live.isEmpty else { return }
+    let index = live.firstIndex { $0.id == state.activeEntryID } ?? 0
+    select(live[(index + step + live.count) % live.count])
   }
 
   func selectTab(number: Int) {
-    guard !tabs.isEmpty else { return }
-    activate(number >= 9 ? tabs[tabs.count - 1] : tabs[min(number, tabs.count) - 1])
+    let entries = state.allEntries
+    guard !entries.isEmpty else { return }
+    select(number >= 9 ? entries[entries.count - 1] : entries[min(number, entries.count) - 1])
   }
+
+  // MARK: Sidebar visibility
+
+  func toggleSidebar() {
+    endPeek(animated: false)
+    state.sidebarHidden.toggle()
+    dockSpring.animate(to: state.sidebarHidden ? 0 : 1, in: root)
+    layout()
+    store.save(state)
+    logState("sidebar")
+  }
+
+  func beginPeek() {
+    guard state.sidebarHidden, !peeking else { return }
+    peekEndWork?.cancel()
+    peeking = true
+    sidebar.removeFromSuperview()
+    floating.content = sidebar
+    floating.isHidden = false
+    root.addSubview(floating, positioned: .above, relativeTo: pages)
+    peekSpring.animate(to: 1, in: root)
+    layout()
+    logState("peek")
+  }
+
+  private func schedulePeekEnd() {
+    peekEndWork?.cancel()
+    let work = DispatchWorkItem { [weak self] in self?.endPeek(animated: true) }
+    peekEndWork = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+  }
+
+  func endPeek(animated: Bool) {
+    peekEndWork?.cancel()
+    guard peeking else { return }
+    peeking = false
+    if animated {
+      peekSpring.animate(to: 0, in: root)
+    } else {
+      peekSpring.jump(to: 0)
+    }
+    logState("peek")
+  }
+
+  private func finishPeek() {
+    guard !peeking, sidebar.superview !== root else { return }
+    floating.isHidden = true
+    sidebar.removeFromSuperview()
+    root.addSubview(sidebar, positioned: .above, relativeTo: pages)
+    layout()
+  }
+
+  // MARK: Command bar
 
   func beginNewTab() {
     openCommandBar(.newTab, query: "")
   }
 
   func focusAddress() {
-    openCommandBar(.currentTab, query: activeTab?.url ?? "")
+    openCommandBar(.currentTab, query: activeEntry?.currentURL ?? "")
   }
 
   private func openCommandBar(_ mode: CommandBarMode, query: String) {
-    commandBarMode = activeTab == nil ? .newTab : mode
+    commandBarMode = activeEntry == nil ? .newTab : mode
     let bar = commandBar ?? CommandBarView(frame: root.bounds)
     if commandBar == nil {
       bar.autoresizingMask = [.width, .height]
@@ -194,7 +406,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   private func refreshSuggestions() {
     guard let bar = commandBar else { return }
-    let query = commandBarMode == .currentTab && bar.field.stringValue == activeTab?.url ? "" : bar.field.stringValue
+    let query =
+      commandBarMode == .currentTab && bar.field.stringValue == activeEntry?.currentURL ? "" : bar.field.stringValue
     let wantsSearches = Suggestions.wantsSearchSuggestions(for: query)
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     let rows = Suggestions.build(
@@ -224,23 +437,6 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     logState("commandBar")
   }
 
-  func toggleDevTools() {
-    guard let tab = activeTab else { return }
-    if tab.devToolsView == nil { tab.showDevTools() } else { tab.closeDevTools() }
-  }
-
-  // MARK: SidebarViewDelegate
-
-  func sidebar(_ sidebar: SidebarView, didSelect tab: ArdiaCoreTab) { activate(tab) }
-
-  func sidebar(_ sidebar: SidebarView, close tab: ArdiaCoreTab) { tab.close() }
-
-  func sidebarNewTab(_ sidebar: SidebarView) { beginNewTab() }
-
-  func sidebarOpenAddress(_ sidebar: SidebarView) { focusAddress() }
-
-  // MARK: CommandBarDelegate
-
   func commandBar(_ bar: CommandBarView, queryChanged query: String) {
     refreshSuggestions()
     requestSearchSuggestions()
@@ -252,16 +448,15 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let url: String
     switch suggestion.kind {
     case .tab(let tab):
-      activate(tab)
+      if let entry = state.entry(for: tab) { select(entry) }
       return
     case .url(let target), .search(let target), .history(let target):
       url = target
     }
     if mode == .newTab || activeTab == nil {
-      openTab(url, foreground: true)
+      openToday(url, after: nil, foreground: true)
     } else if let tab = activeTab {
       tab.loadURL(url, userInitiated: true)
-      sidebar.showAddress(AddressInput.display(for: url))
       focusPage(tab)
     }
   }
@@ -270,31 +465,92 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     closeCommandBar(focus: true)
   }
 
+  // MARK: Pages
+
+  func pageContains(windowPoint point: NSPoint) -> Bool {
+    pages.bounds.contains(pages.convert(point, from: nil)) && commandBar == nil
+  }
+
+  private func focusPage(_ tab: ArdiaCoreTab) {
+    window.makeFirstResponder(tab.view)
+    tab.focus()
+  }
+
+  func toggleDevTools() {
+    guard let tab = activeTab else { return }
+    if tab.devToolsView == nil { tab.showDevTools() } else { tab.closeDevTools() }
+  }
+
+  // MARK: SidebarViewDelegate
+
+  func sidebar(_ sidebar: SidebarView, select entry: SidebarEntry) { select(entry) }
+
+  func sidebar(_ sidebar: SidebarView, perform action: SidebarRowAction, on entry: SidebarEntry) {
+    perform(action, on: entry)
+  }
+
+  func sidebarNewTab(_ sidebar: SidebarView) { beginNewTab() }
+  func sidebarOpenAddress(_ sidebar: SidebarView) { focusAddress() }
+  func sidebarToggle(_ sidebar: SidebarView) { toggleSidebar() }
+  func sidebarBack(_ sidebar: SidebarView) { activeTab?.goBack() }
+  func sidebarForward(_ sidebar: SidebarView) { activeTab?.goForward() }
+  func sidebarReload(_ sidebar: SidebarView) { activeTab?.reload() }
+  func sidebarClearToday(_ sidebar: SidebarView) { clearToday() }
+
+  func sidebarIcon(for entry: SidebarEntry) -> NSImage? {
+    if entry.isLive, let icon = entry.tab?.favicon { return icon }
+    let page = entry.pinnedURL ?? entry.url
+    if let icon = favicons.image(for: page) ?? favicons.image(for: entry.url) { return icon }
+    favicons.load([page, entry.url], profile: profile) { [weak self] in self?.reloadSidebar() }
+    return nil
+  }
+
   // MARK: ArdiaCoreWindowDelegate
 
   func window(_ window: ArdiaCoreWindow, didInsert tab: ArdiaCoreTab, opener: ArdiaCoreTab?, disposition: String) {
-    let known = tabs.contains { $0 === tab }
-    adopt(tab, after: opener ?? activeTab)
     NSLog("[lumen] tab %d inserted (%@)", tab.tabId, disposition)
-    if !known && disposition != "background_tab" { activate(tab) }
+    if state.entry(for: tab) != nil { return }
+    if let entry = loadingEntry, entry.tab == nil {
+      bind(entry, tab)
+      return
+    }
+    let entry = SidebarEntry(kind: .today, url: tab.url)
+    bind(entry, tab)
+    insertToday(entry, after: opener.flatMap(state.entry(for:)))
+    if disposition == "background_tab" {
+      changed("insert")
+    } else {
+      select(entry)
+    }
   }
 
   func window(_ window: ArdiaCoreWindow, didRemove tab: ArdiaCoreTab) {
-    guard let index = tabs.firstIndex(where: { $0 === tab }) else { return }
-    tabs.remove(at: index)
+    guard let entry = state.entry(for: tab) else { return }
+    if closing {
+      pages.detach(tab)
+      if tab.delegate === self { tab.delegate = nil }
+      return
+    }
+    let list = state.allEntries
+    let index = list.firstIndex { $0 === entry } ?? 0
     pages.detach(tab)
     if tab.delegate === self { tab.delegate = nil }
-    if activeTab === tab {
-      activeTab = nil
-      if !tabs.isEmpty { activate(tabs[min(index, tabs.count - 1)]) }
+    entry.remember()
+    entry.tab = nil
+    let wasActive = state.activeEntryID == entry.id
+    if entry.kind == .today {
+      state.remove(entry)
+    } else if let pinnedURL = entry.pinnedURL {
+      entry.url = pinnedURL
     }
-    sidebar.setTabs(tabs, active: activeTab)
-    logState("remove")
-    if tabs.isEmpty { coreWindow.close() }
+    if wasActive {
+      activateNeighbor(of: index, in: state.allEntries)
+    }
+    changed("remove")
   }
 
   func window(_ window: ArdiaCoreWindow, didActivate tab: ArdiaCoreTab) {
-    if activeTab !== tab { activate(tab) }
+    if let entry = state.entry(for: tab), entry.id != state.activeEntryID { select(entry) }
   }
 
   func window(_ window: ArdiaCoreWindow, devToolsDidChangeFor tab: ArdiaCoreTab, view devToolsView: NSView?) {
@@ -311,25 +567,29 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   func windowShouldClose(_ window: ArdiaCoreWindow) -> Bool {
+    prepareForQuit()
     DispatchQueue.main.async { [weak self] in self?.onClose?() }
     return true
   }
 
   // MARK: ArdiaCoreTabDelegate
 
-  func tabDidChangeTitle(_ tab: ArdiaCoreTab) {
-    sidebar.refresh(tab)
+  private func tabChanged(_ tab: ArdiaCoreTab, event: String) {
+    guard !closing, let entry = state.entry(for: tab) else { return }
+    entry.remember()
+    sidebar.refresh(entry)
+    if entry.id == state.activeEntryID {
+      sidebar.showAddress(entry)
+      sidebar.setNavigation(canGoBack: tab.canGoBack, canGoForward: tab.canGoForward)
+    }
+    store.save(state)
+    logState(event)
   }
 
-  func tabDidChangeURL(_ tab: ArdiaCoreTab) {
-    sidebar.refresh(tab)
-    if tab === activeTab { sidebar.showAddress(AddressInput.display(for: tab.url)) }
-    logState("url")
-  }
-
-  func tabDidChangeFavicon(_ tab: ArdiaCoreTab) {
-    sidebar.refresh(tab)
-  }
+  func tabDidChangeTitle(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "title") }
+  func tabDidChangeURL(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "url") }
+  func tabDidChangeFavicon(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "favicon") }
+  func tabDidChangeNavigationState(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "navigation") }
 
   func tabDidChangeLoading(_ tab: ArdiaCoreTab) {
     pages.updateProgress(for: tab)
@@ -350,4 +610,109 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   ) {
     if kind == "hello" && main { NSLog("[lumen] page channel ready in tab %d (%@)", tab.tabId, origin) }
   }
+
+  // MARK: State log
+
+  func logState(_ event: String) {
+    guard Self.logsState else { return }
+    func describe(_ entry: SidebarEntry) -> [String: Any] {
+      [
+        "id": entry.id.uuidString, "kind": entry.kind.rawValue, "title": entry.displayTitle,
+        "url": entry.currentURL, "pinnedURL": entry.pinnedURL ?? NSNull(), "live": entry.isLive,
+        "away": entry.isAwayFromPinned, "tab": entry.isLive ? Int(entry.tab!.tabId) : NSNull(),
+      ]
+    }
+    let state: [String: Any] = [
+      "event": event,
+      "active": activeTab.map { Int($0.tabId) } ?? NSNull(),
+      "activeEntry": self.state.activeEntryID?.uuidString ?? NSNull(),
+      "address": sidebar.addressText,
+      "pages": pages.debugState,
+      "cardFrame": NSStringFromRect(pages.frame),
+      "windowFrame": NSStringFromRect(window.frame),
+      "windowMovable": window.isMovable,
+      "sidebar": [
+        "favorites": self.state.favorites.map(describe),
+        "pinned": self.state.pinned.map(describe),
+        "today": self.state.today.map(describe),
+        "hidden": self.state.sidebarHidden,
+        "peeking": peeking,
+      ] as [String: Any],
+      "commandBar": commandBar.map { bar in
+        [
+          "mode": commandBarMode.rawValue, "query": bar.field.stringValue, "selected": bar.selectedIndex,
+          "rowsFullyVisible": bar.rowsFullyVisible,
+          "rows": bar.suggestions.map { ["kind": $0.kindName, "title": $0.title] },
+        ] as [String: Any]
+      } ?? NSNull(),
+      "tabs": tabs.map { tab in
+        [
+          "id": Int(tab.tabId), "url": tab.url, "title": tab.title,
+          "visible": !tab.view.isHidden && tab.view.superview != nil,
+        ] as [String: Any]
+      },
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: state),
+          let json = String(data: data, encoding: .utf8) else { return }
+    FileHandle.standardError.write("[lumen-state] \(json)\n".data(using: .utf8)!)
+  }
+}
+
+final class EdgeHoverZone: NSView {
+  var onEnter: (() -> Void)?
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override func mouseEntered(with event: NSEvent) { onEnter?() }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+final class FloatingSidebarFrame: NSView {
+  var onEnter: (() -> Void)?
+  var onExit: (() -> Void)?
+
+  var content: NSView? {
+    didSet {
+      oldValue?.removeFromSuperview()
+      if let content {
+        content.frame = bounds
+        content.autoresizingMask = [.width, .height]
+        addSubview(content)
+      }
+    }
+  }
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.cornerRadius = 12
+    layer?.cornerCurve = .continuous
+    layer?.masksToBounds = false
+    layer?.borderWidth = 1
+    shadow = {
+      let shadow = NSShadow()
+      shadow.shadowBlurRadius = 24
+      shadow.shadowOffset = NSSize(width: 0, height: -6)
+      shadow.shadowColor = NSColor.black.withAlphaComponent(0.4)
+      return shadow
+    }()
+    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var wantsUpdateLayer: Bool { true }
+
+  override func updateLayer() {
+    layer?.backgroundColor = SidebarColors.background.cgColor
+    layer?.borderColor = NSColor.separatorColor.cgColor
+  }
+
+  override func mouseEntered(with event: NSEvent) { onEnter?() }
+  override func mouseExited(with event: NSEvent) { onExit?() }
 }
