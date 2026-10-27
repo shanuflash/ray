@@ -41,8 +41,6 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate, NST
     addressField.cell?.isScrollable = true
     addressField.cell?.usesSingleLineMode = true
     addressField.delegate = self
-    addressField.target = self
-    addressField.action = #selector(submitAddress)
     addressField.onFocus = { [weak self] in
       DispatchQueue.main.async { self?.addressField.currentEditor()?.selectAll(nil) }
     }
@@ -136,15 +134,17 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate, NST
     delegate?.sidebar(self, didSelect: tabs[tableView.selectedRow])
   }
 
-  @objc private func submitAddress() {
-    guard addressField.currentEditor() != nil else { return }
-    delegate?.sidebar(self, submitAddress: addressField.stringValue)
-  }
-
   func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
-    guard selector == #selector(NSResponder.cancelOperation(_:)) else { return false }
-    delegate?.sidebarCancelAddress(self)
-    return true
+    switch selector {
+    case #selector(NSResponder.insertNewline(_:)):
+      delegate?.sidebar(self, submitAddress: textView.string)
+      return true
+    case #selector(NSResponder.cancelOperation(_:)):
+      delegate?.sidebarCancelAddress(self)
+      return true
+    default:
+      return false
+    }
   }
 
   @objc private func newTab() { delegate?.sidebarNewTab(self) }

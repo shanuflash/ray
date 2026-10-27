@@ -18,6 +18,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate {
       engine.pageScript = source
     }
     MainMenu.install(target: self)
+    TestCommands.start()
     let controller = makeWindow(profile: engine.defaultProfile)
     controller.openTab(environment["LUMEN_START_URL"] ?? "https://example.com", foreground: true)
     controller.present(background: launchedInBackground)

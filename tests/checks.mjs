@@ -36,12 +36,14 @@ const child = spawn(join(app, "Contents/MacOS/Lumen"), [], {
     ...process.env,
     LUMEN_BACKGROUND: "1",
     LUMEN_LOG_STATE: "1",
+    LUMEN_TEST_COMMANDS: "1",
     LUMEN_DATA_DIR: dataDir,
     LUMEN_REMOTE_DEBUGGING_PORT: String(port),
     LUMEN_START_URL: `${origin}/a`,
   },
-  stdio: ["ignore", "ignore", "pipe"],
+  stdio: ["pipe", "ignore", "pipe"],
 });
+child.stdin.on("error", () => {});
 child.stderr.setEncoding("utf8");
 child.stderr.on("data", (chunk) => {
   stderr += chunk;
@@ -108,6 +110,16 @@ async function clickElement(sessionId, selector, modifiers = 0) {
   const box = await evaluate(sessionId, `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
   for (const type of ["mousePressed", "mouseReleased"])
     await send("Input.dispatchMouseEvent", { type, x: box[0], y: box[1], button: "left", clickCount: 1, modifiers }, sessionId);
+}
+async function command(line) {
+  const marker = `[lumen-test] ${line} -> `;
+  const from = stderr.length;
+  child.stdin.write(line + "\n");
+  const result = await until(`command ${line}`, () => {
+    const at = stderr.indexOf(marker, from);
+    return at >= 0 ? stderr.slice(at + marker.length).split("\n")[0] : null;
+  });
+  assert(result === "ok", `${line}: ${result}`);
 }
 const tabFor = (urlPart) => state()?.tabs.find((t) => t.url.includes(urlPart));
 const visibleTabs = () => state()?.tabs.filter((t) => t.visible) ?? [];
@@ -198,6 +210,44 @@ const checks = {
     const result = await evaluate(sessionId, `Notification.requestPermission()`);
     assert(result === "default" || result === "denied", `notification permission answered ${result}`);
     await until("permission log", () => stderr.includes("[lumen] permission"));
+  },
+  async "address-new-tab"() {
+    const before = state().tabs.length;
+    await command("menu newTab");
+    await command(`type ${origin}/b#typed`);
+    await command("enter");
+    const opened = await until("typed tab", () => state().tabs.length === before + 1 && tabFor("#typed"));
+    await until("typed tab active", () => state().active === opened.id && oneVisibleActive());
+  },
+  async "address-cancel"() {
+    const before = state().tabs.length;
+    const active = state().active;
+    await command("menu newTab");
+    await command("type something");
+    await command("escape");
+    await sleep(300);
+    assert(state().tabs.length === before, "Esc opened a tab");
+    assert(state().active === active, "Esc changed the active tab");
+  },
+  async "address-navigate"() {
+    const before = state().tabs.length;
+    const active = state().active;
+    await command("menu focusAddress");
+    await command(`type ${origin}/c#navigated`);
+    await command("enter");
+    await until("active tab navigated", () => state().tabs.find((t) => t.id === active)?.url.includes("#navigated"));
+    assert(state().tabs.length === before, "navigating opened a tab");
+  },
+  async "address-javascript"() {
+    const active = state().active;
+    const url = state().tabs.find((t) => t.id === active).url;
+    await command("menu focusAddress");
+    await command("type javascript:document.title='pwned'");
+    await command("enter");
+    await sleep(500);
+    assert(state().tabs.find((t) => t.id === active).url === url, "javascript: changed the page");
+    assert(!state().tabs.some((t) => t.title === "pwned"), "javascript: ran");
+    await command("escape");
   },
   async quit() {
     send("Browser.close").catch(() => {});

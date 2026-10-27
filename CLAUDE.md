@@ -9,6 +9,9 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   (others stay attached but hidden, with `noteShown(byHost:)`); `MainMenu` + `Shortcuts` do key routing.
 - `Resources/page_script.js`: runs in every frame; iframes return on its first line. Only `hello` today.
 - `tests/`: `checks.mjs` (DevTools + `[lumen-state]` log checks on a hidden instance), `AddressInputTests.swift`.
+- `Host/TestCommands.swift`: with `LUMEN_TEST_COMMANDS=1`, stdin lines drive the real UI (`menu <action>`,
+  `type <text>`, `enter`, `escape`) through the same code paths as the keyboard. DevTools can't reach native UI, so
+  checks for the sidebar and address field go through this.
 - `vendor/ardiacore/ArdiaCore.h`: the engine's public API, copied from Ardia at the tag in `engine.lock`. Must match
   the engine binary; update both together.
 - `engine.lock`: the pinned prebuilt engine (tree, release, sha256). `scripts/fetch-engine.sh` downloads and checks it.
