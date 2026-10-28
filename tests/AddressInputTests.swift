@@ -14,6 +14,15 @@ let cases: [(String, String?)] = [
   ("chrome://settings", "chrome://settings"),
   ("ray://settings", "chrome://settings"),
   ("RAY://settings/help", "chrome://settings/help"),
+  ("ray://settings/search", "chrome://settings/"),
+  ("chrome://settings/search", "chrome://settings/"),
+  ("RAY://Settings/Search/", "chrome://settings/"),
+  ("ray://settings/searchEngines", "chrome://settings/"),
+  ("chrome://settings/searchEngines?x=1", "chrome://settings/"),
+  ("chrome://settings/?search=theme", "chrome://settings/?search=theme"),
+  ("chrome://settings/privacy", "chrome://settings/privacy"),
+  ("chrome://settings/searchEngines/x", "chrome://settings/searchEngines/x"),
+  ("chrome://extensions/search", "chrome://extensions/search"),
   ("ray://extensions", "chrome://extensions"),
   ("about:blank", "about:blank"),
   ("file:///tmp/a.html", "file:///tmp/a.html"),
@@ -125,6 +134,19 @@ for (input, expected) in paneCases where AddressInput.nativeSettingsPane(for: in
   failures += 1
   print("FAIL nativeSettingsPane(\(input)) = \(AddressInput.nativeSettingsPane(for: input) ?? "nil"), want \(expected ?? "nil")")
 }
+// The Search engine page is gone from the settings page: its addresses (and only those) are "removed".
+let removedCases: [(String, Bool)] = [
+  ("chrome://settings/search", true), ("ray://settings/search", true), ("RAY://Settings/SearchEngines/", true),
+  ("chrome://settings/searchEngines#x", true), (" chrome://settings/search ", true),
+  ("chrome://settings", false), ("chrome://settings/", false), ("chrome://settings/?search=a", false),
+  ("chrome://settings/privacy", false), ("chrome://settings/searchEngines/x", false), ("chrome://settings/searching", false),
+  ("chrome://extensions/search", false), ("https://settings/search", false), ("https://example.com/settings/search", false),
+  ("chrome://user@settings/search", false), ("", false),
+]
+for (input, expected) in removedCases where AddressInput.isRemovedSettingsPage(input) != expected {
+  failures += 1
+  print("FAIL isRemovedSettingsPage(\(input)) want \(expected)")
+}
 // Text on an accent fill is white or black, whichever has the higher WCAG contrast ratio against it.
 let foregroundCases: [(String, Bool)] = [
   ("#FFFFFF", false), ("#000000", true), ("#FFD60A", false), ("#F2B01E", false), ("#1A1A8C", true),
@@ -147,6 +169,6 @@ where (ProfileColor.parse(text) != nil) != valid {
   failures += 1
   print("FAIL parse(\(text)) validity")
 }
-let total = foregroundCases.count + 7 + paneCases.count + cases.count + displayCases.count + pillCases.count + autocompleteCases.count + lookCases.count
+let total = removedCases.count + foregroundCases.count + 7 + paneCases.count + cases.count + displayCases.count + pillCases.count + autocompleteCases.count + lookCases.count
 print(failures == 0 ? "all \(total) passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)

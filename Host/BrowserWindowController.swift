@@ -1461,6 +1461,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       leaveNativeSettings(tab, entry, pane: pane)
       return
     }
+    // The settings page has no Search engine section any more: wherever the address came from, it shows the page itself.
+    if !closing, AddressInput.isRemovedSettingsPage(tab.url) {
+      tab.loadURL(AddressInput.settingsHome, userInitiated: true)
+      return
+    }
     tabChanged(tab, event: "url")
   }
   func tabDidChangeFavicon(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "favicon") }
@@ -1701,7 +1706,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
         [
           "mode": commandBarMode.rawValue, "query": bar.field.stringValue, "selected": bar.selectedIndex,
           "rowsFullyVisible": bar.rowsFullyVisible,
-          "rows": bar.suggestions.map { ["kind": $0.kindName, "title": $0.title] },
+          "rows": bar.suggestions.map { ["kind": $0.kindName, "title": $0.title, "detail": $0.detail] },
         ] as [String: Any]
       } ?? NSNull(),
       "tabs": tabs.map { tab in

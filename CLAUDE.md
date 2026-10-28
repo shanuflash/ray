@@ -53,9 +53,10 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
 - `Spring`: a CADisplayLink spring. `dockSpring` (⌘S) and `peekSpring` drive `layout()` every frame.
 - `Branding/Ray.icon` (Icon Composer; `actool` builds Assets.car + Ray.icns) and `tools/rebrand-pak.py` (renames
   "Ardia" to "Ray" and swaps Ardia's logos in the engine's .pak files at build time) and
-  `tools/trim-settings-pak.py` (takes Profiles and Appearance and behavior out of the engine's chrome://settings page in
-  `resources.pak`, also at build time; Ray's own Settings window has them, and `AddressInput.nativeSettingsPane` sends
-  those addresses there).
+  `tools/trim-settings-pak.py` (takes Profiles, Appearance and behavior and Search engine out of the engine's chrome://settings page in
+  `resources.pak`, also at build time; Ray's own Settings window has the first two, and `AddressInput.nativeSettingsPane`
+  sends those addresses there. Search is a fixed Google, so `/search` and `/searchEngines` have no pane:
+  `AddressInput.isRemovedSettingsPage` sends them to plain chrome://settings/).
 - `Resources/page_script.js`: runs in every frame; iframes return on its first line. Only `hello` today.
 - `tests/`: `checks.mjs` (DevTools + `[ray-state]` log checks on a hidden instance), `AddressInputTests.swift`,
   `affected.mjs` (which checks each file or `// MARK:` section can affect) and `changed.mjs` (diff → checks).
@@ -142,7 +143,7 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   patterns, and the build stops with a message naming the pattern when one moves. On an engine bump, run the build, and
   if it stops, re-read `shared.rollup.js` (the resource that holds `function createPageVisibility()`; decompress it
   from resources.pak) and fix the patterns, then run `settings-trimmed`. The bare `/` route's top-level page must be one
-  that draws on `/` (Search engine); Privacy draws nothing there.
+  that draws on `/` (Performance); Privacy draws nothing there.
 - Shifted menu key equivalents must be uppercase ("C" for ⇧⌘C); real and synthetic ⇧-keys arrive uppercase.
 - Chrome's window swallows reserved shortcuts (⌘W with no tab) before the menu sees them: `AppController` routes
   `Shortcuts.isReserved` keys to the main menu from an app-local keyDown monitor. A menu item that

@@ -18,7 +18,9 @@ enum AddressInput {
     if let colon = text.firstIndex(of: ":") {
       let scheme = text[..<colon].lowercased()
       if scheme == "javascript" { return nil }
-      if passThroughSchemes.contains(scheme) && !looksLikeHostAndPort(text) { return text }
+      if passThroughSchemes.contains(scheme) && !looksLikeHostAndPort(text) {
+        return isRemovedSettingsPage(text) ? settingsHome : text
+      }
     }
     if !text.contains(" "), let host = hostPart(of: text), isHost(host) {
       return (isLocal(host) ? "http://" : "https://") + text
@@ -37,16 +39,34 @@ enum AddressInput {
     "googleservices": "appearance", "signout": "appearance", "importdata": "appearance",
   ]
 
-  /// The pane of Ray's own Settings window that a `chrome://settings/<page>` (or `ray://`) address stands for; Chrome's
-  /// other settings pages still load as they are. The address is a URL the engine or `url(for:)` gave, never
-  /// something a page said about itself.
-  static func nativeSettingsPane(for url: String) -> String? {
+  /// Settings pages that are gone from the engine's page (tools/trim-settings-pak.py) with nothing of Ray's to stand in
+  /// for them: Search engine (`/search`, `/searchEngines`), because Ray searches with a fixed Google. An address to one
+  /// of them goes to the settings page itself, never to a page that would only show something else.
+  private static let removedSettingsPaths: Set<String> = ["search", "searchengines"]
+
+  /// What follows `chrome://settings/` in a `chrome://` or `ray://` settings address (lowercased, no slashes at the
+  /// ends), or nil for any other address. The address is a URL the engine or `url(for:)` gave, never something a page
+  /// said about itself.
+  private static func settingsPath(of url: String) -> String? {
     guard let components = URLComponents(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
           let scheme = components.scheme?.lowercased(), scheme == "chrome" || scheme == internalScheme,
           components.host?.lowercased() == "settings", components.user == nil, components.password == nil
     else { return nil }
-    let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
-    return nativeSettingsPaths[path]
+    return components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+  }
+
+  /// The pane of Ray's own Settings window that a `chrome://settings/<page>` (or `ray://`) address stands for; Chrome's
+  /// other settings pages still load as they are.
+  static func nativeSettingsPane(for url: String) -> String? {
+    settingsPath(of: url).flatMap { nativeSettingsPaths[$0] }
+  }
+
+  /// Where the settings page goes for a page it no longer has (see `removedSettingsPaths`).
+  static let settingsHome = "chrome://settings/"
+
+  /// Whether `url` is one of the settings pages the engine's page no longer has.
+  static func isRemovedSettingsPage(_ url: String) -> Bool {
+    settingsPath(of: url).map { removedSettingsPaths.contains($0) } ?? false
   }
 
   static func isSearch(_ url: String) -> Bool {

@@ -499,6 +499,21 @@ const checks = {
     await until("search tab", () => state().tabs.length === before + 1 &&
       state().tabs.find((t) => t.id === state().active && t.url.startsWith(`${origin}/search?q=zzq`) && t.url.includes("one")));
   },
+  async "bar-search-google"() {
+    // Search is a fixed Google (the engine's default can't be changed from Ray): the bar says so, and a search goes
+    // to the template (here the RAY_SEARCH_URL fixture), not to anything the engine reports.
+    await command("menu newTab");
+    await command("type fixed engine");
+    const bar = await until("search row", () => state().commandBar?.query === "fixed engine" && state().commandBar.rows[0]?.kind === "search" && state().commandBar);
+    assert(bar.rows[0].detail === "Search Google", `the search row says ${JSON.stringify(bar.rows[0])}`);
+    const before = state().tabs.length;
+    await command("enter");
+    const tab = await until("search tab", () => state().tabs.length === before + 1 &&
+      state().tabs.find((t) => t.id === state().active && t.url === `${origin}/search?q=fixed%20engine`));
+    assert(tab, "the search didn't go to the template");
+    await command(`rowaction close ${entryOfTab(tab.id).id}`);
+    await until("search tab closed", () => state().tabs.length === before);
+  },
   async "devtools-docked"() {
     await command("menu toggleDevTools");
     const pages = await until("devtools docked", () => state().pages?.devToolsFrame && state().pages);
@@ -1641,8 +1656,8 @@ const checks = {
     await command(`row ${entryOfTab(tabFor("/a").id).id}`);
   },
   async "settings-trimmed"() {
-    // The engine's settings page has no Profiles or Appearance and behavior (tools/trim-settings-pak.py): Ray's own
-    // Settings window has them.
+    // The engine's settings page has no Profiles, Appearance and behavior or Search engine (tools/trim-settings-pak.py):
+    // Ray's own Settings window has the first two, and Ray searches with a fixed Google.
     await resetSettings();
     await closeSettingsWindow().catch(() => {});
     const tabCount = state().tabs.length;
@@ -1659,32 +1674,51 @@ const checks = {
         views: [...main.shadowRoot.querySelectorAll("[slot=view]")].map((v) => v.id),
         last: main.lastRoute_ && main.lastRoute_.path,
         removed: deep(document, "settings-appearance-page-index, settings-appearance-page, settings-people-page-index, settings-people-page, settings-manage-profile").length,
+        searchPage: deep(document, "settings-search-page-index, settings-search-page, settings-search-engines-page, settings-search-engines-list").length,
+        path: location.pathname,
+        shown: (() => { const v = [...main.shadowRoot.querySelectorAll("[slot=view]")].find((e) => e.classList.contains("active") && getComputedStyle(e).display !== "none"); const rows = v ? deep(v, "settings-toggle-button, cr-link-row").filter((e) => e.offsetHeight > 20) : []; return v ? { id: v.id, rows: rows.length } : null; })(),
       };
     })()`);
     const found = await read();
     const shownMenu = found.menu.filter((m) => m.shown);
-    for (const gone of ["people", "appearance"])
+    for (const gone of ["people", "appearance", "search"])
       assert(!found.menu.some((m) => m.id === gone || m.href === `/${gone}`), `the settings menu still has ${gone}: ${JSON.stringify(found.menu.map((m) => m.id))}`);
-    for (const label of ["Profiles", "Appearance and behavior"])
+    for (const label of ["Profiles", "Appearance and behavior", "Search engine"])
       assert(!found.menu.some((m) => m.text === label), `the settings menu still says ${label}`);
-    assert(shownMenu.length >= 8 && ["privacy", "search", "system"].every((id) => shownMenu.some((m) => m.id === id)),
+    assert(shownMenu.length >= 8 && ["privacy", "performance", "system"].every((id) => shownMenu.some((m) => m.id === id)),
       `the rest of the menu went too: ${JSON.stringify(shownMenu.map((m) => m.id))}`);
-    assert(!found.views.includes("people") && !found.views.includes("appearance"), `sections on the page: ${found.views}`);
-    assert(found.views.includes("privacy") && found.views.includes("search"), `other sections went: ${found.views}`);
+    assert(!["people", "appearance", "search"].some((id) => found.views.includes(id)), `sections on the page: ${found.views}`);
+    assert(found.views.includes("privacy") && found.views.includes("performance"), `other sections went: ${found.views}`);
     assert(found.removed === 0, `${found.removed} Appearance or Profiles elements on the page`);
-    assert(found.last && found.last !== "/appearance" && found.last !== "/people", `the page opened on ${found.last}`);
+    assert(found.searchPage === 0, `${found.searchPage} Search engine elements on the page`);
+    // The bare address lands on Performance (the first page after Privacy that draws on the bare route) and it has content.
+    assert(found.last === "/performance", `the page opened on ${found.last}`);
+    await until("the landing page drawn", async () => { const r = await read(); return r.shown?.id === "performance" && r.shown.rows > 0; }, 8000);
     if (process.env.SNAP_DIR) {
       // The section's rows load when the page is idle; a picture is only worth taking once they're there.
       await until("rows drawn", async () => (await evaluate(sid, `(() => { ${deep} return deep(document, "cr-link-row").length > 0; })()`)) === true, 8000).catch(() => {});
       const shot = await send("Page.captureScreenshot", { format: "png" }, sid);
       writeFileSync(join(process.env.SNAP_DIR, "settings-trimmed.png"), Buffer.from(shot.data, "base64"));
     }
-    // Search can't bring them back.
-    for (const query of ["theme", "profile", "bookmarks bar"]) {
-      await evaluate(sid, `(async () => { ${deep} await deep(document, "settings-main")[0].searchContents(${JSON.stringify(query)}); })()`);
-      const result = await read();
-      assert(result.removed === 0 && !result.views.includes("people") && !result.views.includes("appearance"), `searching "${query}" brought them back`);
+    // Typing in the page's own search field: how many matches it reports, and what is stamped afterwards.
+    const searchFor = async (query) => {
+      const detail = await evaluate(sid, `(async () => { ${deep}
+        const field = deep(document, "cr-toolbar-search-field")[0];
+        const done = new Promise((res) => document.addEventListener("search-finished", (e) => res(e.detail.matchCount), { once: true }));
+        field.setValue(${JSON.stringify(query)});
+        return await Promise.race([done, new Promise((r) => setTimeout(() => r("timeout"), 5000))]);
+      })()`);
+      return { matches: detail, ...(await read()) };
+    };
+    // Search can't bring them back, and the removed section has nothing for it to find.
+    assert((await searchFor("memory saver")).matches > 0, "settings search finds nothing for a setting that is there");
+    for (const query of ["theme", "profile", "bookmarks bar", "search engine", "default search engine", "manage search engines"]) {
+      const result = await searchFor(query);
+      assert(result.matches !== "timeout", `searching "${query}" never finished`);
+      assert(result.removed === 0 && result.searchPage === 0 && !["people", "appearance", "search"].some((id) => result.views.includes(id)), `searching "${query}" brought them back`);
+      if (query.includes("search engine")) assert(result.matches === 0, `searching "${query}" found ${result.matches} matches`);
     }
+    await searchFor("");
     // A navigation to the Profiles page opens Ray's window and the tab goes back to the settings page it came from.
     const settingsTab = state().active;
     await evaluate(sid, `location.href = "chrome://settings/people"`);
@@ -1692,6 +1726,28 @@ const checks = {
     await until("tab left Profiles", async () => { await command("state"); return !state().tabs.some((t) => t.url.includes("/people")); }, 6000);
     await closeSettingsWindow();
     await until("tab back on the settings page", async () => { await command("state"); return state().tabs.find((t) => t.id === settingsTab)?.url === "chrome://settings/"; }, 6000);
+    // Search engine is gone with no window to stand in for it: its addresses show the settings page itself, in the same
+    // tab, from a navigation in the page and typed (ray:// or chrome://).
+    const noSearchPage = async (why) => {
+      await command("state");
+      assert(state().tabs.length === tabCount + 1 && !state().tabs.some((t) => /\/search/i.test(t.url)), `${why}: ${state().tabs.map((t) => t.url)}`);
+      assert(!state().settingsWindow.open, `${why} opened Ray's Settings window`);
+      const r = await read();
+      assert(r.searchPage === 0 && !r.views.includes("search") && r.last === "/performance", `${why} shows ${r.last} ${r.views}`);
+    };
+    for (const path of ["/searchEngines", "/search"]) {
+      await evaluate(sid, `location.href = "chrome://settings${path}"`);
+      await until(`tab left ${path}`, async () => { await command("state"); return state().tabs.find((t) => t.id === settingsTab)?.url === "chrome://settings/"; }, 6000);
+      await until(`settings page back after ${path}`, async () => (await read().catch(() => null))?.menu.length > 0, 10000);
+      await sleep(500);
+      await noSearchPage(`navigating to ${path}`);
+    }
+    for (const typed of ["ray://settings/search", "chrome://settings/searchEngines"]) {
+      await goTo(typed);
+      await sleep(1500);
+      await until(`settings page back after ${typed}`, async () => (await read().catch(() => null))?.menu.length > 0, 10000);
+      await noSearchPage(`typing ${typed}`);
+    }
     await command(`rowaction close ${entryOfTab(settingsTab).id}`);
     await until("settings tab closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === settingsTab); });
     // Typed, it opens the window and loads nothing.
