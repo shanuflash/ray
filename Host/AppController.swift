@@ -32,10 +32,31 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     MainMenu.install(target: self)
     installReservedKeyRouting()
     TestCommands.start()
+    openMainWindow(startURL: TestEnvironment["RAY_START_URL"])
+  }
+
+  /// The normal window, from Sidebar.json; Ray keeps one, since there's one sidebar session.
+  @discardableResult
+  private func openMainWindow(startURL: String? = nil) -> BrowserWindowController? {
+    if let open = windows.first(where: { !$0.isPrivate }) {
+      if !launchedInBackground { open.window.makeKeyAndOrderFront(nil) }
+      return open
+    }
+    guard let engine = ArdiaCoreEngine.shared else { return nil }
     let controller = makeWindow(profile: engine.defaultProfile)
     controller.present(background: launchedInBackground)
-    controller.restore(startURL: TestEnvironment["RAY_START_URL"])
+    controller.restore(startURL: startURL)
     controller.searches.warm()
+    return controller
+  }
+
+  /// File › New Window (⌘N): the normal window, opened again if it was closed, else brought forward.
+  @objc func newWindow(_ sender: Any?) { openMainWindow() }
+
+  /// Clicking the Dock icon with no window open brings the normal window back (Ray keeps running without one).
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    if !windows.contains(where: { $0.window.isVisible }) { openMainWindow() }
+    return true
   }
 
   /// Chrome's reserved shortcuts (⌘W, ⌘T, ⌘N, …) go to Ray's menu before Chrome's window can take them. With a page
@@ -64,6 +85,8 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   func engineWindowForNewBrowser(of profile: ArdiaCoreProfile, type: String) -> ArdiaCoreWindow? {
     guard type == "normal" || type == "popup" else { return nil }
     if let window = windows.first(where: { $0.profile === profile }) { return window.coreWindow }
+    // A link from another app while no window is open brings the normal window back for it.
+    if !profile.offTheRecord, profile === ArdiaCoreEngine.shared?.defaultProfile { return openMainWindow()?.coreWindow }
     // A private page opened from elsewhere (say "Open Link in Incognito Window") gets a private window of its own,
     // never a normal one.
     if profile.offTheRecord, let main = windows.first(where: { !$0.isPrivate })?.profile {
@@ -125,10 +148,10 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     let directory = profile.offTheRecord ? nil : (dataDirectory as NSString).deletingLastPathComponent
     let controller = BrowserWindowController(
       profile: profile, mainProfile: main ?? profile, store: SidebarStore(directory: directory))
+    // Closing the last window leaves Ray running, as Mac apps do; the Dock icon or ⌘N bring the window back.
     controller.onClose = { [weak self, weak controller] in
       guard let self, let controller else { return }
       self.windows.removeAll { $0 === controller }
-      if self.windows.isEmpty { self.quit(nil) }
     }
     windows.append(controller)
     return controller

@@ -1043,6 +1043,19 @@ const checks = {
     await settle();
     assert(state().sidebar.pinned.length + state().sidebar.favorites.length === count, "importing twice added duplicates");
   },
+  async "close-last-window"() {
+    // Closing the only window leaves Ray running; the Dock icon brings it back with its tabs.
+    const ids = (sidebar) => JSON.stringify(["favorites", "pinned", "today"].map((k) => sidebar[k].map((e) => e.id)));
+    await command("state");
+    const before = ids(state().sidebar);
+    const count = states.length;
+    await command("closewindow");
+    await sleep(2000);
+    assert(exitCode === null, "Ray quit when its last window closed");
+    await command("reopen");
+    await until("window back", async () => { await command("state"); return states.length > count + 1 && state().sidebar; }, 8000);
+    assert(ids(state().sidebar) === before, "the reopened window lost tabs");
+  },
   async quit() {
     savedSidebar = state().sidebar;
     savedActive = state().activeEntry;

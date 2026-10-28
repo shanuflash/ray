@@ -173,6 +173,8 @@ enum TestCommands {
       if AppController.shared.current?.answerArcImport(argument == "accept") != true { result = "no prompt" }
     case "closewindow":
       AppController.shared.current?.window.performClose(nil)
+    case "reopen":
+      _ = AppController.shared.applicationShouldHandleReopen(NSApp, hasVisibleWindows: false)
     case "perm":
       if AppController.shared.current?.permissions.press(argument) != true { result = "not ready" }
     case "aboutsnap":
