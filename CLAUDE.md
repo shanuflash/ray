@@ -64,8 +64,10 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
 ## Testing
 - Per change: `scripts/build-app.sh && scripts/test.sh --changed`. It runs the unit tests, then only the checks the
   working tree's diff (plus untracked files) can affect, printing the reason per file. `--changed <base>` diffs
-  against another commit. Run the whole suite (`scripts/test.sh`) before a push, and whenever `--changed` says
-  "all" anyway.
+  against another commit. The whole suite (`scripts/test.sh`) runs only before a push, never per change: the user
+  asked for this and gets annoyed by repeated full runs. If `--changed` says "all" for a small edit, the map is too
+  coarse: give the file or section its own entry instead of running everything. Running checks by name skips their
+  setup: `needs` in `tests/affected.mjs` lists them (`--changed` adds them itself).
 - Keep `tests/affected.mjs` honest: a new Host file, a new `// MARK:` section in a big file, or a new check gets its
   entry in the same change. Unmapped files run everything (safe, slow). A section runs from its MARK to the next
   MARK or top-level declaration. Changes inside a check in `checks.mjs` run that check; changes to shared helpers

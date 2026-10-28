@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { areas } from "./affected.mjs";
+import { areas, needs } from "./affected.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const base = process.argv[2] ?? "HEAD";
@@ -101,4 +101,5 @@ for (const file of files) {
   }
 }
 
+for (const name of [...selected]) for (const setup of needs[name] ?? []) selected.add(setup);
 console.log(all ? "all" : [...selected].join(" "));

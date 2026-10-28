@@ -100,3 +100,14 @@ export const areas = {
   ".gitignore": [],
   // tests/checks.mjs is handled in changed.mjs: the checks whose bodies changed, or all if shared code changed.
 };
+
+// Checks that build on what an earlier check left (the folder checks use the folder folder-create makes): selecting
+// one also runs these, in suite order.
+export const needs = {
+  "folder-toggle": ["folder-create"],
+  "folder-rename": ["folder-create"],
+  "folder-animation": ["folder-create"],
+  "folder-drag-in": ["folder-create"],
+  "folder-drag-folder": ["folder-create"],
+  "folder-out-and-delete": ["folder-create"],
+};
