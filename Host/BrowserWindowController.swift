@@ -167,15 +167,14 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       // The address bar sits above the card, at the window's top edge, across the card's width.
       let height = PageToolbarView.height
       toolbar.frame = NSRect(x: left, y: bounds.height - height, width: max(0, right - left), height: height)
-      toolbar.showsSidebarButton = state.sidebarHidden && !peeking
-      // In full screen with the sidebar away, keep clear of the window buttons that slide in at the top left.
-      toolbar.leadingInset = isFullScreen && left < 80 ? 70 : 0
+      toolbar.showsNavigation = state.sidebarHidden
       top = (bounds.height - height).rounded()
     }
     pages.frame = NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
     pages.cornerRadius = isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
     permissions.update()
     layoutToast()
+    layoutSiteControls()
     if let findBar {
       let size = FindBarView.size
       findBar.frame = NSRect(x: pages.frame.maxX - size.width - 12, y: pages.frame.maxY - size.height - 12,
@@ -447,6 +446,157 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   func findBarClose(_ bar: FindBarView) { closeFind() }
 
+  // MARK: Site controls
+
+  private var siteControls: SiteControlsView?
+  private var siteControlsMonitor: Any?
+  /// Where popovers from the panel's actions (share, an extension's popup) hang once the panel has gone: the
+  /// panel's top right, under the sliders button.
+  private let siteAnchor = NSView()
+
+  func toggleSiteControls() {
+    siteControls == nil ? showSiteControls() : closeSiteControls()
+  }
+
+  func showSiteControls() {
+    guard siteControls == nil, let entry = activeEntry, entry.isLive, let tab = entry.tab, !tab.closed else { return }
+    extensions.refresh()
+    let enabled = extensions.items.filter(\.enabled)
+    let states = tab.actionStates(forExtensions: enabled.map(\.id))
+    let items = enabled.map { item -> SiteControlsView.Extension in
+      let state = states[item.id] as? [String: Any]
+      return .init(id: item.id, name: item.name,
+                   icon: (state?["icon"] as? String).flatMap(ExtensionsController.image(fromDataURL:)),
+                   enabled: state?["enabled"] as? Bool ?? true)
+    }
+    let level = tab.securityInfo["level"] as? String ?? "none"
+    let isInternal = URLComponents(string: tab.url)?.scheme.map { ["chrome", AddressInput.internalScheme].contains($0) } ?? false
+    let panel = SiteControlsView(
+      origin: tab.committedOrigin, profile: profile, security: level, isInternal: isInternal, extensions: items,
+      zoom: tab.zoomFactor, resetZoom: { [weak tab] in tab?.zoomFactor = 1 })
+    panel.onAction = { [weak self, weak tab] action in
+      guard let self, let tab, !tab.closed else { return }
+      self.siteControlsAction(action, tab: tab)
+    }
+    panel.onClose = { [weak self] in self?.closeSiteControls() }
+    if siteAnchor.superview !== root { root.addSubview(siteAnchor) }
+    root.addSubview(panel, positioned: .below, relativeTo: floating)
+    siteControls = panel
+    toolbar.siteButton.isHeld = true
+    layoutSiteControls()
+    panel.animateIn()
+    // A click anywhere else in the window, or Escape, closes it. App-local: only Ray's own events.
+    siteControlsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) {
+      [weak self] event in
+      guard let self, let panel = self.siteControls else { return event }
+      if event.type == .keyDown {
+        guard event.keyCode == 53, event.window === self.window else { return event }
+        self.closeSiteControls()
+        return nil
+      }
+      guard event.window === self.window else { return event }
+      let point = self.root.convert(event.locationInWindow, from: nil)
+      let button = self.toolbar.siteButton
+      let onButton = self.toolbarShown && button.convert(button.bounds, to: self.root).contains(point)
+      if !panel.frame.contains(point) && !onButton { self.closeSiteControls() }
+      return event
+    }
+    logState("siteControls")
+  }
+
+  func closeSiteControls() {
+    guard let panel = siteControls else { return }
+    siteControls = nil
+    if let siteControlsMonitor { NSEvent.removeMonitor(siteControlsMonitor) }
+    siteControlsMonitor = nil
+    toolbar.siteButton.isHeld = false
+    panel.dismiss()
+    logState("siteControls")
+  }
+
+  /// Under the sliders button, its right edge on the button's; with the address bar off, the page's top right.
+  private func layoutSiteControls() {
+    let size = siteControls?.frame.size ?? NSSize(width: SiteControlsView.width, height: 0)
+    let right = toolbarShown ? toolbar.frame.maxX - 4 : pages.frame.maxX - 8
+    let top = toolbarShown ? toolbar.frame.minY - 2 : pages.frame.maxY - 8
+    siteAnchor.frame = NSRect(x: right - 28, y: top - 1, width: 28, height: 1)
+    siteControls?.frame = NSRect(x: right - size.width, y: top - size.height, width: size.width, height: size.height)
+  }
+
+  private func siteControlsAction(_ action: SiteControlsView.Action, tab: ArdiaCoreTab) {
+    let origin = siteControls?.origin
+    closeSiteControls()
+    switch action {
+    case .share:
+      guard let url = URL(string: tab.url), !tab.url.isEmpty else { return }
+      NSSharingServicePicker(items: [url]).show(relativeTo: siteAnchor.bounds, of: siteAnchor, preferredEdge: .minY)
+    case .copyLink: copyURL()
+    case .find: showFind()
+    case .cast:
+      if !tab.showCastDialog() { showToast("Casting isn't available on this page") }
+    case .addExtension: openToday("https://chromewebstore.google.com/category/extensions", after: nil, foreground: true)
+    case .runExtension(let id): extensions.run(id, on: tab, anchor: siteAnchor)
+    case .siteSettings:
+      guard let origin, let site = origin.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return }
+      openToday("chrome://settings/content/siteDetails?site=\(site)", after: activeEntry, foreground: true)
+    case .developerTools: toggleDevTools()
+    case .clearData:
+      guard let origin, let host = URLComponents(string: origin)?.host else { return }
+      let alert = NSAlert()
+      alert.messageText = "Clear cookies and site data for \(host)?"
+      alert.informativeText = "You'll be signed out of this site, and anything it keeps on your Mac will be deleted."
+      alert.addButton(withTitle: "Cancel")
+      alert.addButton(withTitle: "Clear").hasDestructiveAction = true
+      alert.beginSheetModal(for: window) { [weak self, weak tab] response in
+        guard response == .alertSecondButtonReturn, let self else { return }
+        EngineCalls.call("ac_site_data_clear", profile: self.profile, args: ["origin": origin]) { [weak self] _ in
+          tab?.reload()
+          self?.showToast("Cleared Site Data")
+        }
+      }
+    }
+  }
+
+  /// For tests: presses one of the panel's tiles, or sets a permission through it.
+  func siteControlsCommand(_ words: [String]) -> Bool {
+    guard let panel = siteControls else { return false }
+    switch words.first {
+    case "press": return words.count == 2 && panel.press(words[1])
+    case "set":
+      guard words.count == 3 else { return false }
+      panel.set(words[1], to: words[2]) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self?.logState("siteControls") }
+      }
+      return true
+    default: return false
+    }
+  }
+
+  /// For tests: draws the open panel into PNGs (light and dark), to look at its design.
+  func snapshotSiteControls(to path: String) -> Bool {
+    guard let panel = siteControls else { return false }
+    for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+      let old = panel.appearance
+      panel.appearance = NSAppearance(named: appearance)
+      panel.layoutSubtreeIfNeeded()
+      panel.displayIfNeeded()
+      defer { panel.appearance = old }
+      guard let rep = panel.bitmapImageRepForCachingDisplay(in: panel.bounds) else { return false }
+      panel.cacheDisplay(in: panel.bounds, to: rep)
+      let image = NSImage(size: panel.bounds.size)
+      image.lockFocus()
+      panel.effectiveAppearance.performAsCurrentDrawingAppearance { PanelColors.background.setFill() }
+      NSBezierPath(roundedRect: NSRect(origin: .zero, size: panel.bounds.size), xRadius: 14, yRadius: 14).fill()
+      rep.draw(in: NSRect(origin: .zero, size: panel.bounds.size))
+      image.unlockFocus()
+      guard let tiff = image.tiffRepresentation,
+            let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return false }
+      guard (try? png.write(to: URL(fileURLWithPath: path.replacingOccurrences(of: ".png", with: "-\(name).png")))) != nil
+      else { return false }
+    }
+    return true
+  }
+
   @objc private func windowBecameKey() { AppController.shared.noteFocused(self) }
 
   func present(background: Bool) {
@@ -528,6 +678,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   func toolbarReload(_ toolbar: PageToolbarView) { activeTab?.reload() }
   func toolbarEditAddress(_ toolbar: PageToolbarView) { focusAddress() }
   func toolbarCopyLink(_ toolbar: PageToolbarView) { copyURL() }
+  func toolbarSiteControls(_ toolbar: PageToolbarView) { toggleSiteControls() }
 
   private var forcedOpen: Bool { state.sidebarHidden && activeEntry.map { !$0.isLive } ?? true }
 
@@ -593,6 +744,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     coreWindow.activate(tab)
     let switched = state.activeEntryID != entry.id
     if switched, findTab != nil, findTab !== tab { closeFind() }
+    if switched { closeSiteControls() }
     state.activeEntryID = entry.id
     if switched { permissions.update() }
     entry.lastActive = Date()
@@ -826,7 +978,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     sidebar.removeFromSuperview()
     floating.content = sidebar
     floating.isHidden = false
-    root.addSubview(floating, positioned: .above, relativeTo: pages)
+    // Over the address bar too: a peeking sidebar covers everything at its edge.
+    root.addSubview(floating, positioned: .above, relativeTo: toolbar)
     peekSpring.configure(response: Self.peekResponse, dampingRatio: Self.peekDamping)
     peekSpring.animate(to: 1, in: root)
     layout()
@@ -911,7 +1064,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     sidebar.removeFromSuperview()
     sidebar.layer?.cornerRadius = 0
     sidebar.layer?.masksToBounds = false
-    root.addSubview(sidebar, positioned: .above, relativeTo: pages)
+    root.addSubview(sidebar, positioned: .above, relativeTo: toolbar)
     layout()
   }
 
@@ -1153,6 +1306,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     entry.remember()
     sidebar.refresh(entry)
     if entry.id == state.activeEntryID {
+      // A navigation to another site leaves the panel showing the old one's settings.
+      if let panel = siteControls, panel.origin != tab.committedOrigin { closeSiteControls() }
       sidebar.showAddress(entry)
       sidebar.setNavigation(canGoBack: tab.canGoBack, canGoForward: tab.canGoForward)
       updateToolbar()
@@ -1219,7 +1374,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "fullScreen": isFullScreen,
       "toolbar": toolbarShown ? [
         "address": toolbar.addressText, "frame": NSStringFromRect(toolbar.frame),
-        "sidebarButton": state.sidebarHidden && !peeking,
+        "navigation": state.sidebarHidden,
       ] as [String: Any] : NSNull(),
       "private": isPrivate,
       "arcImport": arcImportShown ?? NSNull(),
@@ -1243,6 +1398,9 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       }(),
       "extensions": extensions.items.map { ["id": $0.id, "name": $0.name, "enabled": $0.enabled] },
       "extensionPopup": extensions.popupURL ?? NSNull(),
+      "siteControls": siteControls?.state ?? NSNull(),
+      "sidebarOverToolbar": (root.subviews.firstIndex(of: sidebar.superview === root ? sidebar : floating) ?? -1)
+        > (root.subviews.firstIndex(of: toolbar) ?? 0),
       "installPrompt": extensions.promptState ?? NSNull(),
       "displayAsleep": CGDisplayIsAsleep(window.screen?.displayID ?? CGMainDisplayID()) != 0,
       "pasteboard": Self.pasteboard.string(forType: .string) ?? NSNull(),

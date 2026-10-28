@@ -216,6 +216,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   @objc func importFromArc(_ sender: Any?) { current?.importFromArc() }
   @objc func showDownloads(_ sender: Any?) { current?.toggleDownloads() }
   @objc func toggleToolbar(_ sender: Any?) { current?.toggleToolbar() }
+  @objc func toggleSiteControls(_ sender: Any?) { current?.toggleSiteControls() }
   @objc func find(_ sender: Any?) { current?.showFind() }
   @objc func findNext(_ sender: Any?) { current?.findAgain(forward: true) }
   @objc func findPrevious(_ sender: Any?) { current?.findAgain(forward: false) }

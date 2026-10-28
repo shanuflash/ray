@@ -9,6 +9,9 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   (others stay attached but hidden, with `noteShown(byHost:)`); `MainMenu` + `Shortcuts` do key routing.
 - `CommandBarView` + `Suggestions`: the Arc-style command bar (⌘T new tab, ⌘L / clicking the sidebar address =
   current tab). Rows: autocompleted host match, typed URL or search, open tabs ("Switch to Tab"), history.
+- `PageToolbar`: Dia's address bar above the page (View › Show Address Bar on Page); back/forward/reload only while
+  the sidebar is hidden. Its sliders button opens `SiteControls`: quick actions, extension tiles, the site's
+  permissions (`ac_site_settings_*`, keyed by the tab's `committedOrigin`) and the connection state.
 - `EngineCalls`: calls the engine's exported `ac_*` C functions (`dlsym`, JSON in, JSON reply), e.g.
   `ac_history_query`. Their arguments are in `third_party/ardia/engine/chromium/src/chrome/browser/ardia/ac_*.cc`.
   `EngineEvents` is the one engine event sink (`downloads.changed`, …), handed out by topic.

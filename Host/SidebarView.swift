@@ -1023,6 +1023,8 @@ final class WindowLightButton: NSView {
 
 final class HoverIconButton: NSButton {
   private var hovered = false
+  /// Keeps the hover fill while what the button opens is showing.
+  var isHeld = false { didSet { needsDisplay = true } }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -1039,7 +1041,7 @@ final class HoverIconButton: NSButton {
   override var mouseDownCanMoveWindow: Bool { false }
 
   override func updateLayer() {
-    layer?.backgroundColor = (hovered && isEnabled ? SidebarColors.fill : .clear).cgColor
+    layer?.backgroundColor = ((hovered || isHeld) && isEnabled ? SidebarColors.fill : .clear).cgColor
   }
 
   override func mouseEntered(with event: NSEvent) {

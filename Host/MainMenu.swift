@@ -50,6 +50,7 @@ enum MainMenu {
     main.addItem(submenu("View", [
       item("Toggle Sidebar", #selector(AppController.toggleSidebar(_:)), "s", target: target),
       item("Show Address Bar on Page", #selector(AppController.toggleToolbar(_:)), nil, target: target),
+      item("Site Controls", #selector(AppController.toggleSiteControls(_:)), nil, target: target),
       .separator(),
       item("Reload Page", #selector(AppController.reload(_:)), "r", target: target),
       item("Force Reload Page", #selector(AppController.reloadIgnoringCache(_:)), "r", [.command, .shift], target: target),

@@ -7,10 +7,12 @@ protocol PageToolbarDelegate: AnyObject {
   func toolbarReload(_ toolbar: PageToolbarView)
   func toolbarEditAddress(_ toolbar: PageToolbarView)
   func toolbarCopyLink(_ toolbar: PageToolbarView)
+  func toolbarSiteControls(_ toolbar: PageToolbarView)
 }
 
-/// The address bar above the page, as in Dia: back, forward and reload, the page's address (click to edit, like
-/// ⌘L), and a copy-link button. With the sidebar hidden, a sidebar button leads. The sidebar's own address field
+/// The address bar above the page, as in Dia: the page's address (click to edit, like ⌘L), a copy-link button and
+/// the site controls (sliders) button. With the sidebar hidden, a sidebar button, back, forward and reload lead; a
+/// docked sidebar has its own, so they're not repeated here. The sidebar's own address field
 /// shows regardless; View › Show Address Bar on Page turns this one off.
 final class PageToolbarView: NSView {
   static let height: CGFloat = 40
@@ -21,16 +23,16 @@ final class PageToolbarView: NSView {
   private let forwardButton = PageToolbarView.button("chevron.right", "Forward")
   private let reloadButton = PageToolbarView.button("arrow.clockwise", "Reload")
   private let copyButton = PageToolbarView.button("link", "Copy Link")
+  /// Opens the site controls panel, which hangs below it.
+  let siteButton = PageToolbarView.button("slider.horizontal.3", "Site Controls")
   private let address = ToolbarAddressView()
 
-  /// Leading space kept clear (the window buttons, when the toolbar reaches the window's left edge).
-  var leadingInset: CGFloat = 0 {
-    didSet { if oldValue != leadingInset { needsLayout = true } }
-  }
-
-  var showsSidebarButton = false {
+  /// The sidebar button and back, forward and reload: shown while the sidebar is hidden (peeking included, so the
+  /// bar stays still as the sidebar slides over).
+  var showsNavigation = false {
     didSet {
-      sidebarButton.isHidden = !showsSidebarButton
+      guard oldValue != showsNavigation else { return }
+      for button in [sidebarButton, backButton, forwardButton, reloadButton] { button.isHidden = !showsNavigation }
       needsLayout = true
     }
   }
@@ -39,13 +41,13 @@ final class PageToolbarView: NSView {
     super.init(frame: frame)
     for (button, action) in [
       (sidebarButton, #selector(toggleSidebar)), (backButton, #selector(back)), (forwardButton, #selector(forward)),
-      (reloadButton, #selector(reload)), (copyButton, #selector(copyLink)),
+      (reloadButton, #selector(reload)), (copyButton, #selector(copyLink)), (siteButton, #selector(siteControls)),
     ] {
       button.target = self
       button.action = action
       addSubview(button)
     }
-    sidebarButton.isHidden = true
+    for button in [sidebarButton, backButton, forwardButton, reloadButton] { button.isHidden = true }
     address.onClick = { [weak self] in
       guard let self else { return }
       self.delegate?.toolbarEditAddress(self)
@@ -64,6 +66,7 @@ final class PageToolbarView: NSView {
     forwardButton.isEnabled = canGoForward
     reloadButton.isEnabled = !url.isEmpty
     copyButton.isHidden = url.isEmpty
+    siteButton.isHidden = url.isEmpty
     needsLayout = true
   }
 
@@ -74,21 +77,23 @@ final class PageToolbarView: NSView {
   @objc private func forward() { delegate?.toolbarForward(self) }
   @objc private func reload() { delegate?.toolbarReload(self) }
   @objc private func copyLink() { delegate?.toolbarCopyLink(self) }
+  @objc private func siteControls() { delegate?.toolbarSiteControls(self) }
 
   override func layout() {
     super.layout()
     let mid = bounds.height / 2
-    var x = leadingInset + 4
+    var x: CGFloat = 4
     for button in [sidebarButton, backButton, forwardButton, reloadButton] where !button.isHidden {
       button.frame = NSRect(x: x, y: mid - 14, width: 28, height: 28)
       x += button === sidebarButton ? 36 : 30
     }
-    copyButton.frame = NSRect(x: bounds.width - 4 - 28, y: mid - 14, width: 28, height: 28)
+    siteButton.frame = NSRect(x: bounds.width - 4 - 28, y: mid - 14, width: 28, height: 28)
+    copyButton.frame = NSRect(x: siteButton.frame.minX - 30, y: mid - 14, width: 28, height: 28)
     let right = copyButton.isHidden ? bounds.width - 4 : copyButton.frame.minX - 6
     address.frame = NSRect(x: x + 4, y: mid - 14, width: max(0, right - x - 4), height: 28)
   }
 
-  private static func button(_ symbol: String, _ label: String) -> NSButton {
+  private static func button(_ symbol: String, _ label: String) -> HoverIconButton {
     let button = HoverIconButton()
     button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
     button.symbolConfiguration = .init(pointSize: 13, weight: .medium)

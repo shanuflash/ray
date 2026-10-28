@@ -885,6 +885,46 @@ const checks = {
     await command("menu toggleToolbar");
     await until("bar on", async () => { await command("state"); return state().toolbar !== null; });
   },
+  async "site-controls"() {
+    // The sliders button's panel: the site is the engine's committed origin, permissions go through the engine,
+    // and a tile, Escape or a tab switch closes it.
+    const entryFor = (tabId) => ["favorites", "pinned", "today"].flatMap((k) => state().sidebar[k]).find((e) => e.tab === tabId);
+    await command(`row ${entryFor(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
+    const panel = () => state().siteControls;
+    const open = async () => {
+      await command("menu toggleSiteControls");
+      await until("panel open", async () => { await command("state"); return panel() !== null; });
+    };
+    const setting = (title) => panel()?.settings.find((s) => s.title === title)?.value;
+    await open();
+    assert(panel().origin === origin, `panel's site is ${panel().origin}`);
+    assert(panel().security === "Not Secure", `an http page says ${panel().security}`);
+    assert(panel().tiles.join() === "share,copyLink,find,cast", `tiles ${panel().tiles}`);
+    await until("pop-ups row", async () => { await command("state"); return setting("Pop-ups and Redirects") === "Blocked"; });
+    if (process.env.SNAP_DIR) await command(`sitesnap ${join(process.env.SNAP_DIR, "site-controls.png")}`);
+    await command("site set camera allow");
+    await until("camera allowed", async () => { await command("state"); return setting("Camera") === "Allowed"; });
+    await command("site set camera default");
+    await until("camera back to default", async () => { await command("state"); return setting("Camera") === undefined; });
+    await command("site press copyLink");
+    await until("copied, panel gone", async () => { await command("state"); return panel() === null && state().pasteboard === `${origin}/a`; });
+    await open();
+    await command("key esc keywin");
+    await until("escape closes", async () => { await command("state"); return panel() === null; });
+    if (!tabFor("/b")) {
+      await command("menu newTab");
+      await command(`type ${origin}/b`);
+      await command("enter");
+      await until("/b open", () => tabFor("/b"));
+    }
+    await command(`row ${entryFor(tabFor("/a").id).id}`);
+    await until("/a active again", () => state().active === tabFor("/a").id);
+    await open();
+    await command(`row ${entryFor(tabFor("/b").id).id}`);
+    await until("tab switch closes", async () => { await command("state"); return panel() === null; });
+    await command(`row ${entryFor(tabFor("/a").id).id}`);
+  },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]
       .find((e) => e.id === state().activeEntry).url;
@@ -904,6 +944,7 @@ const checks = {
     await command("peek on");
     await until("peeking", () => state().sidebar.peeking);
     assert(x() < 20, "peeking moved the page");
+    assert(state().sidebarOverToolbar === true, "the peeking sidebar is under the address bar");
     await command("peek off");
     await until("peek ended", () => !state().sidebar.peeking);
     await command("menu toggleSidebar");

@@ -46,7 +46,7 @@ enum TestCommands {
     return "ok"
   }
 
-  private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45]
+  private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53]
 
   /// `press x y`, `move x y`, `release x y`: one mouse drag in steps, so checks can look at it mid-way.
   private static func mouse(_ type: NSEvent.EventType, _ argument: String, in window: NSWindow?) -> String {
@@ -187,6 +187,12 @@ enum TestCommands {
            (try? png.write(to: URL(fileURLWithPath: argument))) != nil { result = "ok" }
         panel.close()
       }
+    case "site":
+      if AppController.shared.current?.siteControlsCommand(argument.split(separator: " ").map(String.init)) != true {
+        result = "no panel"
+      }
+    case "sitesnap":
+      if AppController.shared.current?.snapshotSiteControls(to: argument) != true { result = "no panel" }
     case "toolbarsnap":
       if AppController.shared.current?.snapshotToolbar(to: argument) != true { result = "no toolbar" }
     case "dlsnap":
