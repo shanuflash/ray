@@ -751,6 +751,7 @@ const checks = {
   },
   async downloads() {
     const { sessionId } = await session(state().tabs.find((t) => t.active)?.url ?? "/a");
+    await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
     await evaluate(sessionId, `(() => { const a = document.createElement("a"); a.href = "/files/notes.txt"; a.click(); })()`);
     const item = await until("finished", () => state().downloads.find((d) => d.filename === "notes.txt" && d.state === "finished"), 15000);
     assert(item.path.startsWith(join(dataDir, "Downloads")), `saved to ${item.path}`);
@@ -793,8 +794,8 @@ const checks = {
       .find((e) => e.id === state().activeEntry).url;
     await command("key c cmd shift");
     await until("copied", () => state().pasteboard === url);
-    assert(state().addressShown === "Copied URL", `address shows ${state().addressShown}`);
-    await until("address back", async () => { await command("state"); return state().addressShown !== "Copied URL"; }, 3000);
+    assert(state().toast === "Copied Current URL", `toast says ${state().toast}`);
+    await until("toast gone", async () => { await command("state"); return state().toast === ""; }, 5000);
   },
   async "sidebar-toggle"() {
     await needsFrames();

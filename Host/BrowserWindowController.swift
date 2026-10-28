@@ -149,6 +149,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     pages.frame = NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
     pages.cornerRadius = isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
     permissions.update()
+    layoutToast()
     if let findBar {
       let size = FindBarView.size
       findBar.frame = NSRect(x: pages.frame.maxX - size.width - 12, y: pages.frame.maxY - size.height - 12,
@@ -193,9 +194,9 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     }
     if newlyWaiting {
       // A held download needs an answer: open the list where it can be given.
-      if sidebar.window != nil, !state.sidebarHidden || peeking { showDownloads() } else { sidebar.flashAddress("Download needs your OK") }
+      if sidebar.window != nil, !state.sidebarHidden || peeking { showDownloads() } else { showToast("A download needs your OK") }
     } else if let started = items.first, started.active, items.count == 1 || downloadsPopover == nil, started.received == 0 {
-      sidebar.flashAddress("Downloading \(started.filename)")
+      showToast("Downloading \(started.filename)", symbol: "arrow.down.circle") { [weak self] in self?.showDownloads() }
     }
     logState("downloads")
   }
@@ -322,6 +323,26 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     prompts.onChange = { [weak self] in self?.logState("permission") }
     return prompts
   }()
+
+  // MARK: Toast
+
+  private lazy var toast = ToastView()
+
+  func showToast(_ message: String, symbol: String? = nil, action: (() -> Void)? = nil) {
+    if toast.superview !== root { root.addSubview(toast, positioned: .above, relativeTo: nil) }
+    toast.show(message, symbol: symbol, action: action)
+    layoutToast()
+    logState("toast")
+  }
+
+  /// Top right of the page card, 8 pt in (below the find bar while that's open).
+  private func layoutToast() {
+    guard toast.superview != nil else { return }
+    let size = toast.fit(max(120, pages.frame.width - 16))
+    let below = findBar.map { $0.frame.height + 8 } ?? 0
+    toast.frame = NSRect(x: pages.frame.maxX - size.width - 8, y: pages.frame.maxY - size.height - 8 - below,
+                         width: size.width, height: size.height)
+  }
 
   // MARK: Find in page
 
@@ -812,13 +833,17 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     openCommandBar(.currentTab, query: activeEntry?.currentURL ?? "")
   }
 
-  /// ⇧⌘C, as in Arc and Chrome: the current page's full URL to the clipboard, and a moment of "Copied URL".
+  /// ⇧⌘C, as in Arc and Chrome: the current page's full URL to the clipboard, and Arc's "Copied Current URL" toast
+  /// with a share button.
   func copyURL() {
     guard let url = activeEntry?.currentURL, !url.isEmpty else { return }
     let pasteboard = Self.pasteboard
     pasteboard.clearContents()
     pasteboard.setString(url, forType: .string)
-    sidebar.flashAddress("Copied URL")
+    showToast("Copied Current URL", symbol: "square.and.arrow.up") { [weak self] in
+      guard let self, let link = URL(string: url) else { return }
+      NSSharingServicePicker(items: [link]).show(relativeTo: self.toast.bounds, of: self.toast, preferredEdge: .minY)
+    }
     logState("copyURL")
   }
 
@@ -1111,7 +1136,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "installPrompt": extensions.promptState ?? NSNull(),
       "displayAsleep": CGDisplayIsAsleep(window.screen?.displayID ?? CGMainDisplayID()) != 0,
       "pasteboard": Self.pasteboard.string(forType: .string) ?? NSNull(),
-      "addressShown": sidebar.addressLabel,
+      "toast": toast.message,
       "realLightsHidden": [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
         window.standardWindowButton($0)?.isHidden ?? true
       },

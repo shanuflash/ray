@@ -278,10 +278,8 @@ final class SidebarView: NSView {
 
   var addressText: String { addressPill.text }
 
-  func flashAddress(_ message: String) { addressPill.flash(message) }
   func setExtensionsShown(_ shown: Bool) { addressPill.extensionsShown = shown }
   var extensionsAnchor: NSView { addressPill.extensionsButton }
-  var addressLabel: String { addressPill.shownText }
 
   var debugToggleCenter: String {
     let frame = toggleButton.convert(toggleButton.bounds, to: nil)
@@ -1054,34 +1052,7 @@ final class AddressPill: NSView {
 
   @objc private func showExtensions() { onExtensions?(extensionsButton) }
 
-  private var flashMessage: String?
-  private var flashGeneration = 0
-  private var lastShown = (url: "", security: String?.none)
-  var shownText: String { label.stringValue }
-
-  /// Shows a short message in place of the address for a moment (updates meanwhile land underneath), then the
-  /// address again.
-  func flash(_ message: String) {
-    flashGeneration += 1
-    let generation = flashGeneration
-    flashMessage = message
-    show(url: lastShown.url, security: lastShown.security)
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-      guard let self, self.flashGeneration == generation else { return }
-      self.flashMessage = nil
-      self.show(url: self.lastShown.url, security: self.lastShown.security)
-    }
-  }
-
   func show(url: String, security: String?) {
-    lastShown = (url, security)
-    defer {
-      if let flashMessage {
-        label.stringValue = flashMessage
-        label.textColor = .labelColor
-        label.lineBreakMode = .byTruncatingTail
-      }
-    }
     let components = URLComponents(string: url)
     let hasHost = !(components?.host ?? "").isEmpty
     text = AddressInput.pillText(for: url)
