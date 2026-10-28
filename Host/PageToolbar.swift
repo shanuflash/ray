@@ -32,15 +32,16 @@ final class PageToolbarView: NSView {
   let siteButton = PageToolbarView.button("slider.horizontal.3", "Site Controls")
   private let address = ToolbarAddressView()
 
-  /// The sidebar button and back, forward and reload: shown while the sidebar is hidden (peeking included, so the
-  /// bar stays still as the sidebar slides over).
-  var showsNavigation = false {
+  /// How far the sidebar button and back, forward and reload are in: 1 while the sidebar is hidden (peeking
+  /// included, so the bar stays still as the sidebar slides over), 0 while it's docked. The window sets it from the
+  /// sidebar's own spring every frame, so the buttons fade in and the address slides over as the sidebar goes.
+  var navigation: CGFloat = 0 {
     didSet {
-      guard oldValue != showsNavigation else { return }
-      for button in [sidebarButton, backButton, forwardButton, reloadButton] { button.isHidden = !showsNavigation }
-      needsLayout = true
+      navigation = min(1, max(0, navigation))
+      if navigation != oldValue { needsLayout = true }
     }
   }
+  var showsNavigation: Bool { navigation > 0.5 }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -88,10 +89,14 @@ final class PageToolbarView: NSView {
   override func layout() {
     super.layout()
     let size = Self.buttonSize, top = Self.buttonTop
+    let progress = navigation
     for (button, center) in zip([sidebarButton, backButton, forwardButton, reloadButton], Self.centers) {
-      button.frame = NSRect(x: center - size / 2, y: top, width: size, height: size)
+      // They drift in from a little to the left as they fade, following the sidebar out.
+      button.frame = NSRect(x: (center - size / 2 - 14 * (1 - progress)).rounded(), y: top, width: size, height: size)
+      button.alphaValue = progress * progress
+      button.isHidden = progress < 0.01
     }
-    let left: CGFloat = showsNavigation ? 145 : 8
+    let left = (8 + (145 - 8) * progress).rounded()
     siteButton.frame = NSRect(x: bounds.width - 8 - size, y: top, width: size, height: size)
     copyButton.frame = NSRect(x: siteButton.frame.minX - size + 2, y: top, width: size, height: size)
     let right = copyButton.isHidden ? bounds.width - 12 : copyButton.frame.minX - 4

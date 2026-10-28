@@ -19,6 +19,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private let floating = FloatingSidebarFrame()
   private let pages = PageContainerView()
   private let toolbar = PageToolbarView()
+  /// For tests: frames laid out mid-way through the last sidebar toggle, with the address bar's buttons part way in.
+  private var navigationSteps = 0
   var toolbarShown: Bool { state.pageToolbar ?? true }
   private var commandBar: CommandBarView?
   private var commandBarMode = CommandBarMode.newTab
@@ -167,7 +169,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       // The address bar sits above the card, at the window's top edge, across the card's width.
       let height = PageToolbarView.height
       toolbar.frame = NSRect(x: left, y: bounds.height - height, width: max(0, right - left), height: height)
-      toolbar.showsNavigation = state.sidebarHidden
+      toolbar.navigation = 1 - shown
+      if toolbar.navigation > 0.05 && toolbar.navigation < 0.95 { navigationSteps += 1 }
       top = (bounds.height - height).rounded()
     }
     pages.frame = NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
@@ -964,6 +967,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     endPeek(animated: false)
     peekForced = false
     state.sidebarHidden.toggle()
+    navigationSteps = 0
     dockSpring.animate(to: state.sidebarHidden ? 0 : 1, in: root)
     layout()
     updateForcedPeek()
@@ -1375,7 +1379,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "fullScreen": isFullScreen,
       "toolbar": toolbarShown ? [
         "address": toolbar.addressText, "frame": NSStringFromRect(toolbar.frame), "field": toolbar.addressDebug,
-        "navigation": state.sidebarHidden,
+        "navigation": toolbar.showsNavigation, "navigationProgress": toolbar.navigation, "navigationSteps": navigationSteps,
       ] as [String: Any] : NSNull(),
       "private": isPrivate,
       "arcImport": arcImportShown ?? NSNull(),

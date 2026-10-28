@@ -984,6 +984,10 @@ const checks = {
     await command("menu toggleSidebar");
     await until("sidebar hidden", () => state().sidebar.hidden);
     await until("card slid left", async () => { await command("state"); return x() < 20; }, 3000, 50);
+    // The address bar's buttons ride the sidebar's spring in, rather than popping in when it's gone.
+    await until("buttons in", async () => { await command("state"); return state().toolbar.navigationProgress === 1; }, 3000, 50);
+    assert(state().toolbar.navigationSteps >= 3, `the address bar's buttons came in over ${state().toolbar.navigationSteps} frames`);
+    assert(state().toolbar.navigationProgress === 1, `buttons stopped at ${state().toolbar.navigationProgress}`);
     await command("peek on");
     await until("peeking", () => state().sidebar.peeking);
     assert(x() < 20, "peeking moved the page");
