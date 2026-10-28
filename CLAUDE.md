@@ -52,6 +52,9 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   only in the test app; checks and `run-hidden.sh` use it, `relaunch.sh` opens the real one.
 - Quit the user's Ray before building: macOS App Management blocks rewriting a running bundle (EPERM, a half-built
   app, a broken icon). `osascript -e 'tell application id "<CFBundleIdentifier of build/Ray.app>" to quit'`.
+- While the user is trying a build, don't quit their Ray to test the next change: build and test in a temporary
+  worktree (`git worktree add --detach .claude/worktrees/<name> HEAD`, `git diff | git -C <wt> apply`), commit in
+  the main checkout, and relaunch only when they're ready.
 - `scripts/run-hidden.sh <throwaway data dir> [port] [url]` launches hidden and prints DevTools' page list.
 - `scripts/test.sh [check …]`: address-parsing unit tests, then `tests/checks.mjs` (hidden instance, own data dir,
   local fixture pages). Add a check for every behaviour you add or fix.
