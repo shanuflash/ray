@@ -931,6 +931,12 @@ const checks = {
       assert(field.look === "local" && field.icon === false, `${name} field warns on a local page: ${JSON.stringify(field)}`);
       assert(Math.abs(field.textOffset) <= 0.5, `${name} text is ${field.textOffset} pt off the middle`);
     }
+    // The full address by default (host, then path in grey); View › Show Full Address off leaves the host alone.
+    assert(state().toolbar.field.shown === origin.replace("http://", "") + "/a", `the bar shows ${state().toolbar.field.shown}`);
+    await command("menu toggleFullAddress");
+    await until("host only", async () => { await command("state"); return state().toolbar.field.shown === origin.replace("http://", ""); });
+    await command("menu toggleFullAddress");
+    await until("full again", async () => { await command("state"); return state().toolbar.field.shown.endsWith("/a"); });
     const cardTop = () => { const [, y, , h] = state().cardFrame.match(/-?[\d.]+/g).map(Number); return y + h; };
     const withBar = cardTop();
     await command("menu toggleToolbar");

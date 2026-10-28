@@ -91,6 +91,10 @@ final class PageToolbarView: NSView {
   }
 
   var addressText: String { address.text }
+  var showsFullAddress: Bool {
+    get { address.showsFullAddress }
+    set { address.showsFullAddress = newValue }
+  }
   var addressDebug: [String: Any] {
     address.debug.merging(["stopButton": isStopping]) { _, new in new }
   }
@@ -188,13 +192,20 @@ private final class ToolbarAddressView: NSView {
 
   private var parts = (host: "", trail: "")
 
-  /// The host in medium weight, as Ardia and Dia show it; the rest of the address in grey only while hovered.
+  /// View › Show Full Address (on unless turned off): the path and query after the host, in grey. Off, they show
+  /// only while hovered, as in Dia.
+  var showsFullAddress = true {
+    didSet { if oldValue != showsFullAddress { render() } }
+  }
+
+  /// The host in medium weight, as Ardia and Dia show it, then the rest of the address in grey. The host always
+  /// comes first and a long address loses its end, never the host.
   private func render() {
     let font = NSFont.systemFont(ofSize: 13)
     let shown = NSMutableAttributedString(string: parts.host, attributes: [
       .font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.labelColor,
     ])
-    if hovered, !parts.trail.isEmpty {
+    if hovered || showsFullAddress, !parts.trail.isEmpty {
       shown.append(NSAttributedString(string: parts.trail, attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]))
     }
     let style = NSMutableParagraphStyle()
@@ -209,6 +220,7 @@ private final class ToolbarAddressView: NSView {
     layoutSubtreeIfNeeded()
     return [
       "look": "\(look)", "icon": !securityIcon.isHidden, "textOffset": label.frame.midY - bounds.midY,
+      "shown": label.attributedStringValue.string,
       "loading": wash.loading, "progress": wash.progress, "wash": wash.active, "washFinishing": wash.finishing,
       "washFraction": wash.fraction,
       "progressSteps": wash.steps,
@@ -236,7 +248,8 @@ private final class ToolbarAddressView: NSView {
     needsLayout = true
   }
 
-  /// Host (without www.) and path, as Dia shows it; built-in pages as ray://.
+  /// Host (without www.) and the path and query, as Dia shows it; built-in pages as ray://. The path stays
+  /// percent-encoded, so lookalike characters can't pass for something else.
   static func parts(for url: String) -> (host: String, trail: String) {
     guard !url.isEmpty else { return ("", "") }
     let shown = AddressInput.display(for: url)
@@ -247,7 +260,8 @@ private final class ToolbarAddressView: NSView {
     let bareHost = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     let port = components.port.map { ":\($0)" } ?? ""
     let path = components.percentEncodedPath == "/" ? "" : components.percentEncodedPath
-    return (bareHost + port, path)
+    let query = components.percentEncodedQuery.map { "?\($0)" } ?? ""
+    return (bareHost + port, path.isEmpty && !query.isEmpty ? "/" + query : path + query)
   }
 
   override func layout() {

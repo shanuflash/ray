@@ -167,6 +167,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let bottom = edge.rounded()
     var top = (bounds.height - edge).rounded()
     toolbar.isHidden = !toolbarShown
+    toolbar.showsFullAddress = fullAddressShown
     pages.showsProgress = !toolbarShown
     if toolbarShown {
       // The address bar sits above the card, at the window's top edge, across the card's width.
@@ -959,6 +960,16 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private func updateToolbarLoading() {
     let tab = activeTab
     toolbar.showLoading(tab?.loading ?? false, progress: tab?.progress ?? 0, tab: tab.map { Int($0.tabId) } ?? -1)
+  }
+
+  var fullAddressShown: Bool { state.fullAddress ?? true }
+
+  /// View › Show Full Address.
+  func toggleFullAddress() {
+    state.fullAddress = !fullAddressShown
+    toolbar.showsFullAddress = fullAddressShown
+    store.save(state)
+    logState("toolbar")
   }
 
   /// View › Show Address Bar on Page.

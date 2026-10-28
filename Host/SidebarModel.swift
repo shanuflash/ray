@@ -93,6 +93,9 @@ final class SidebarState: Codable {
   var fullScreen: Bool?
   /// View › Show Address Bar on Page (on unless turned off).
   var pageToolbar: Bool?
+  /// View › Show Full Address (on unless turned off): the page address bar shows the path and query, not just the
+  /// host.
+  var fullAddress: Bool?
 
   var allEntries: [SidebarEntry] { favorites + pinned + today }
 

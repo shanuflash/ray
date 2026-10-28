@@ -216,6 +216,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   @objc func importFromArc(_ sender: Any?) { current?.importFromArc() }
   @objc func showDownloads(_ sender: Any?) { current?.toggleDownloads() }
   @objc func toggleToolbar(_ sender: Any?) { current?.toggleToolbar() }
+  @objc func toggleFullAddress(_ sender: Any?) { current?.toggleFullAddress() }
   @objc func toggleSiteControls(_ sender: Any?) { current?.toggleSiteControls() }
   @objc func find(_ sender: Any?) { current?.showFind() }
   @objc func findNext(_ sender: Any?) { current?.findAgain(forward: true) }
@@ -243,6 +244,9 @@ extension AppController: NSMenuItemValidation {
     case #selector(toggleToolbar(_:)):
       item.state = current?.toolbarShown == true ? .on : .off
       return current != nil
+    case #selector(toggleFullAddress(_:)):
+      item.state = current?.fullAddressShown == true ? .on : .off
+      return current?.toolbarShown == true
     case #selector(closeTab(_:)):
       // With no tab open, ⌘W closes the window, as in Chrome and Arc.
       item.title = current?.activeEntry == nil ? "Close Window" : "Close Tab"

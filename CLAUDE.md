@@ -11,7 +11,8 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   current tab). Rows: autocompleted host match, typed URL or search, open tabs ("Switch to Tab"), history.
 - `PageToolbar`: Dia's address bar above the page (View › Show Address Bar on Page). Geometry is Ardia's
   (`third_party/ardia/apps/browser/src/components/ui/theme.ts` `layout`, `components/toolbar/Toolbar.tsx`): 41 pt,
-  buttons centred at 21/56/92/127, address from 145; host only, path on hover. The sidebar/back/forward/reload
+  buttons centred at 21/56/92/127, address from 145; the host in medium weight, then path and query in grey
+  (View › Show Full Address; off, they show on hover). The sidebar/back/forward/reload
   buttons ride the sidebar's dock spring in while the sidebar is hidden. Its sliders button opens `SiteControls`:
   quick actions, extension tiles, the site's permissions (`ac_site_settings_*`, keyed by the tab's
   `committedOrigin`) and the connection state.
@@ -111,8 +112,9 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
   needs them. Treat every message as untrusted: check kind, types and sizes; never act on it across tabs.
 - **URLs from anywhere** (address field, command bar, history, suggestions, drag and drop, `Sidebar.json`, popups) go
   through `AddressInput`. Never load `javascript:`. Load `data:`/`file:` only when the user typed it.
-- **Address display:** host only, elided from the start, `user:pass@` hidden, port shown; never show page-controlled
-  text where the address goes.
+- **Address display:** the host leads and stands out (any path after it is grey and is what gets cut when long),
+  long hosts elided from the start, `user:pass@` hidden, port shown, paths kept percent-encoded; never show
+  page-controlled text where the address goes.
 - **Prompts** (permissions, external apps, downloads, extension installs, password save): deny or close by default,
   show the full origin, ignore clicks for the first 0.5 s, never auto-accept, never show over another tab's page.
 - **No string-built code:** JSON through `JSONSerialization` only (`EngineCalls`); never build JS for
