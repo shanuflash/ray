@@ -11,6 +11,17 @@ version=0.0.1
 identity=${RAY_SIGN_IDENTITY:--}
 sign() { codesign --force --timestamp=none --sign "$identity" "$@" 2>/dev/null; }
 
+# Ray's icon at the sizes the engine's logo slots use, rendered once per change of the icon.
+logos="$root/build/logos"
+ictool="$(xcode-select -p)/../Applications/Icon Composer.app/Contents/Executables/ictool"
+if [ ! -f "$logos/ray-256.png" ] || [ -n "$(find "$root/Branding/Ray.icon" -newer "$logos/ray-256.png" -print -quit)" ]; then
+  mkdir -p "$logos"
+  for size in 16 22 24 32 44 64 128 256; do
+    "$ictool" "$root/Branding/Ray.icon" --export-image --output-file "$logos/ray-$size.png" --platform macOS \
+      --rendition Default --width "$size" --height "$size" --scale 1 >/dev/null
+  done
+fi
+
 build() {
   local app="$1" id="$2" name="$3"
   shift 3
@@ -19,9 +30,10 @@ build() {
   cp -cR "$fw_src" "$app/Contents/Frameworks/"
   local fw_version
   fw_version=$(ls "$app/Contents/Frameworks/$fw_name.framework/Versions" | grep -v Current)
-  # The engine's own pages call the browser "Ardia"; its string files say "Ray" instead.
-  python3 -I "$root/tools/rebrand-pak.py" \
-    "$app/Contents/Frameworks/$fw_name.framework/Versions/$fw_version/Resources"/*.lproj/locale.pak
+  # The engine's own pages call the browser "Ardia" and show its logo; they say "Ray" and show Ray's icon instead.
+  local res="$app/Contents/Frameworks/$fw_name.framework/Versions/$fw_version/Resources"
+  python3 -I "$root/tools/rebrand-pak.py" --logos "$logos" \
+    "$res"/*.lproj/locale.pak "$res/chrome_100_percent.pak" "$res/chrome_200_percent.pak" "$res/resources.pak"
 
   xcrun swiftc -O -target arm64-apple-macos14.0 -swift-version 5 "$@" \
     -import-objc-header "$root/Host/Bridging.h" -Xcc -I"$root/vendor/ardiacore" \
