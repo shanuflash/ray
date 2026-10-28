@@ -51,6 +51,7 @@ enum MainMenu {
       item("Reload Page", #selector(AppController.reload(_:)), "r", target: target),
       item("Force Reload Page", #selector(AppController.reloadIgnoringCache(_:)), "r", [.command, .shift], target: target),
       .separator(),
+      item("Downloads", #selector(AppController.showDownloads(_:)), "l", [.command, .option], target: target),
       item("Developer Tools", #selector(AppController.toggleDevTools(_:)), "i", [.command, .option], target: target),
       .separator(),
       item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),

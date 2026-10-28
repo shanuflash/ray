@@ -15,6 +15,7 @@ final class DownloadsController {
     let speed: Double
     let dangerous: Bool
     let error: String?
+    let started: Double
 
     init?(_ info: [String: Any]) {
       guard let id = info["id"] as? String else { return nil }
@@ -31,6 +32,7 @@ final class DownloadsController {
       speed = info["speed"] as? Double ?? 0
       dangerous = info["dangerous"] as? Bool ?? false
       error = info["error"] as? String
+      started = info["startTime"] as? Double ?? 0
     }
 
     var active: Bool { state == "downloading" }
@@ -39,7 +41,7 @@ final class DownloadsController {
     var fraction: Double { total > 0 ? min(max(received / total, 0), 1) : 0 }
   }
 
-  /// Newest first; only this session's downloads (the list starts empty, as Arc's does).
+  /// Newest first: the profile's download history, then this session's as they come.
   private(set) var items: [Item] = []
   var onChange: ((_ newlyWaiting: Bool) -> Void)?
   private let profile: ArdiaCoreProfile
@@ -63,11 +65,25 @@ final class DownloadsController {
       self.items.removeAll { $0.id == id }
       self.onChange?(false)
     }
-    // The engine starts watching downloads on its first downloads call.
-    EngineCalls.call("ac_downloads_list", profile: profile) { _ in }
+    // The engine starts watching downloads on its first downloads call. Chrome reads its download history in the
+    // background at launch, so ask again a little later too.
+    loadHistory()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.loadHistory() }
     if let folder = TestEnvironment["RAY_DOWNLOADS_DIR"] {
       EngineCalls.call("ac_downloads_set_settings", profile: profile,
                        args: ["folder": folder, "askWhereToSave": false]) { _ in }
+    }
+  }
+
+  /// Merges the engine's full list (history included) into ours.
+  func loadHistory() {
+    EngineCalls.call("ac_downloads_list", profile: profile) { [weak self] reply in
+      guard let self, let list = reply?["downloads"] as? [[String: Any]] else { return }
+      let known = Set(self.items.map(\.id))
+      let history = list.compactMap(Item.init).filter { !known.contains($0.id) }
+      guard !history.isEmpty else { return }
+      self.items = (self.items + history).sorted { $0.started > $1.started }
+      self.onChange?(false)
     }
   }
 
