@@ -16,6 +16,7 @@ enum MainMenu {
 
     main.addItem(submenu("File", [
       item("New Tab", #selector(AppController.newTab(_:)), "t", target: target),
+      item("New Private Window", #selector(AppController.newPrivateWindow(_:)), "n", [.command, .shift], target: target),
       item("Open Location…", #selector(AppController.focusAddress(_:)), "l", target: target),
       .separator(),
       item("Close Tab", #selector(AppController.closeTab(_:)), "w", target: target),

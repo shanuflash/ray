@@ -834,6 +834,35 @@ const checks = {
     if (!process.env.SNAP_DIR) return;
     await command(`aboutsnap ${join(process.env.SNAP_DIR, "about.png")}`);
   },
+  async "privacy-usage-descriptions"() {
+    // macOS kills an app that touches the camera, microphone or location without saying why in its Info.plist.
+    const plist = readFileSync(join(app, "Contents/Info.plist"), "utf8");
+    for (const key of ["NSCameraUsageDescription", "NSMicrophoneUsageDescription", "NSLocationUsageDescription", "NSBluetoothAlwaysUsageDescription"])
+      assert(plist.includes(`<key>${key}</key>`), `Info.plist lacks ${key}`);
+  },
+  async "private-window"() {
+    const mainEntry = state().activeEntry;
+    await command("menu newPrivateWindow");
+    await until("private window", () => state().private === true && state().commandBar);
+    await command(`type ${origin}/b?private`);
+    await command("enter");
+    await until("private page", () => state().private === true && state().tabs.some((t) => t.url.includes("/b?private")));
+    assert(state().sidebar.favorites.length === 0 && state().sidebar.pinned.length === 0, "a private window started with saved tabs");
+    // Cookies set in the private window stay there, on the same site.
+    const priv = await session("/b?private");
+    await until("loaded", async () => (await evaluate(priv.sessionId, `document.readyState`)) === "complete");
+    await evaluate(priv.sessionId, `document.cookie = "private_marker=1; path=/"`);
+    const normal = await session("/a");
+    const normalCookies = await evaluate(normal.sessionId, `document.cookie`);
+    assert(!normalCookies.includes("private_marker"), `a private cookie reached a normal window: ${normalCookies}`);
+    await sleep(800);
+    const saved = existsSync(join(dataDir, "Sidebar.json")) ? readFileSync(join(dataDir, "Sidebar.json"), "utf8") : "";
+    assert(!saved.includes("b?private"), "a private tab was saved to Sidebar.json");
+    await command("closewindow");
+    await until("back to the normal window", async () => { await command("state"); return state().private === false; }, 5000);
+    await until("private page gone", async () => !(await targets()).some((t) => t.url.includes("/b?private")), 8000);
+    assert(state().activeEntry === mainEntry, "the normal window changed while the private one was open");
+  },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]
       .find((e) => e.id === state().activeEntry).url;

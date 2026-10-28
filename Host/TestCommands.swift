@@ -168,6 +168,8 @@ enum TestCommands {
       AppController.shared.current?.extensions.closePopup()
     case "arcimport":
       if AppController.shared.current?.answerArcImport(argument == "accept") != true { result = "no prompt" }
+    case "closewindow":
+      AppController.shared.current?.window.performClose(nil)
     case "perm":
       if AppController.shared.current?.permissions.press(argument) != true { result = "not ready" }
     case "aboutsnap":

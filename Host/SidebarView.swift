@@ -41,6 +41,8 @@ enum SidebarColors {
   static let lightsIdle = dynamic(dark: NSColor(white: 1, alpha: 0.18), light: NSColor(white: 0, alpha: 0.15))
   static let selected = dynamic(dark: NSColor(white: 1, alpha: 0.14), light: NSColor(white: 1, alpha: 0.85))
   static let lifted = dynamic(dark: NSColor(white: 0.2, alpha: 1), light: NSColor(white: 1, alpha: 1))
+  /// A private window's sidebar: near-black with a purple cast.
+  static let privateBackground = NSColor(srgbRed: 0.105, green: 0.078, blue: 0.157, alpha: 1)
 }
 
 private final class SidebarDrag {
@@ -121,6 +123,14 @@ final class SidebarView: NSView {
   private let forwardButton = SidebarView.iconButton("arrow.right")
   private let reloadButton = SidebarView.iconButton("arrow.clockwise")
   private let downloadsButton = SidebarView.iconButton("arrow.down.circle")
+  private let privateBadge = PrivateBadge()
+  /// A private window: shows the Private badge next to the sidebar button.
+  var isPrivate = false {
+    didSet {
+      privateBadge.isHidden = !isPrivate
+      needsLayout = true
+    }
+  }
   private let downloadsRing = CAShapeLayer()
   private let addressPill = AddressPill()
   private let tilesView = FlippedView()
@@ -169,6 +179,8 @@ final class SidebarView: NSView {
     downloadsButton.layer?.addSublayer(downloadsRing)
     [windowLights, toggleButton, downloadsButton, backButton, forwardButton, reloadButton, addressPill, tilesView, scrollView]
       .forEach(addSubview)
+    privateBadge.isHidden = true
+    addSubview(privateBadge)
 
     addressPill.onClick = { [weak self] in
       guard let self else { return }
@@ -297,6 +309,8 @@ final class SidebarView: NSView {
     windowLights.isHidden = !reservesTrafficLights
     windowLights.frame = NSRect(x: 14, y: rowCenter - 8, width: WindowLights.width, height: 16)
     toggleButton.frame = NSRect(x: reservesTrafficLights ? 88 : 13, y: rowCenter - 16, width: 32, height: 32)
+    let badgeWidth = privateBadge.fittingSize.width
+    privateBadge.frame = NSRect(x: toggleButton.frame.maxX + 4, y: rowCenter - 11, width: badgeWidth, height: 22)
     reloadButton.frame = NSRect(x: bounds.width - inset - 32 - 2, y: rowCenter - 16, width: 32, height: 32)
     forwardButton.frame = reloadButton.frame.offsetBy(dx: -34, dy: 0)
     backButton.frame = forwardButton.frame.offsetBy(dx: -34, dy: 0)
@@ -1629,5 +1643,36 @@ final class TabResidency {
     dot.opacity = value
     CATransaction.commit()
     dot.add(fade, forKey: "fade")
+  }
+}
+
+/// "Private", with glasses, in a small capsule in a private window's top row.
+final class PrivateBadge: NSView {
+  private let icon = NSImageView()
+  private let label = NSTextField(labelWithString: "Private")
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.cornerRadius = 11
+    layer?.backgroundColor = NSColor(srgbRed: 0.62, green: 0.48, blue: 1, alpha: 0.18).cgColor
+    icon.image = NSImage(systemSymbolName: "eyeglasses", accessibilityDescription: nil)
+    icon.symbolConfiguration = .init(pointSize: 11, weight: .semibold)
+    icon.contentTintColor = NSColor(srgbRed: 0.78, green: 0.7, blue: 1, alpha: 1)
+    label.font = .systemFont(ofSize: 12, weight: .semibold)
+    label.textColor = NSColor(srgbRed: 0.85, green: 0.8, blue: 1, alpha: 1)
+    addSubview(icon)
+    addSubview(label)
+    setAccessibilityLabel("Private window")
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var fittingSize: NSSize { NSSize(width: 8 + 18 + 4 + ceil(label.intrinsicContentSize.width) + 9, height: 22) }
+
+  override func layout() {
+    super.layout()
+    icon.frame = NSRect(x: 8, y: (bounds.height - 14) / 2, width: 18, height: 14)
+    label.frame = NSRect(x: 30, y: (bounds.height - 16) / 2, width: bounds.width - 36, height: 16)
   }
 }

@@ -16,6 +16,7 @@ final class DownloadsController {
     let dangerous: Bool
     let error: String?
     let started: Double
+    let offTheRecord: Bool
 
     init?(_ info: [String: Any]) {
       guard let id = info["id"] as? String else { return nil }
@@ -33,6 +34,7 @@ final class DownloadsController {
       dangerous = info["dangerous"] as? Bool ?? false
       error = info["error"] as? String
       started = info["startTime"] as? Double ?? 0
+      offTheRecord = info["offTheRecord"] as? Bool ?? false
     }
 
     var active: Bool { state == "downloading" }
@@ -45,9 +47,14 @@ final class DownloadsController {
   private(set) var items: [Item] = []
   var onChange: ((_ newlyWaiting: Bool) -> Void)?
   private let profile: ArdiaCoreProfile
+  /// A private window lists only private downloads and a normal one only normal ones, never each other's.
+  private let offTheRecord: Bool
 
-  init(profile: ArdiaCoreProfile) {
+  /// `profile` is the normal profile (the engine's download calls work on it and report private downloads with an
+  /// offTheRecord flag).
+  init(profile: ArdiaCoreProfile, offTheRecord: Bool) {
     self.profile = profile
+    self.offTheRecord = offTheRecord
     EngineEvents.on("downloads.changed") { [weak self] payload in
       guard let self, self.isOurs(payload), let item = (payload["download"] as? [String: Any]).flatMap(Item.init) else {
         return
@@ -69,7 +76,7 @@ final class DownloadsController {
     // background at launch, so ask again a little later too.
     loadHistory()
     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.loadHistory() }
-    if let folder = TestEnvironment["RAY_DOWNLOADS_DIR"] {
+    if let folder = TestEnvironment["RAY_DOWNLOADS_DIR"], !offTheRecord {
       EngineCalls.call("ac_downloads_set_settings", profile: profile,
                        args: ["folder": folder, "askWhereToSave": false]) { _ in }
     }
@@ -80,7 +87,7 @@ final class DownloadsController {
     EngineCalls.call("ac_downloads_list", profile: profile) { [weak self] reply in
       guard let self, let list = reply?["downloads"] as? [[String: Any]] else { return }
       let known = Set(self.items.map(\.id))
-      let history = list.compactMap(Item.init).filter { !known.contains($0.id) }
+      let history = list.compactMap(Item.init).filter { !known.contains($0.id) && $0.offTheRecord == self.offTheRecord }
       guard !history.isEmpty else { return }
       self.items = (self.items + history).sorted { $0.started > $1.started }
       self.onChange?(false)
@@ -88,7 +95,10 @@ final class DownloadsController {
   }
 
   private func isOurs(_ payload: [String: Any]) -> Bool {
-    (payload["profile"] as? String).map { $0 == profile.path } ?? true
+    guard (payload["profile"] as? String).map({ $0 == profile.path }) ?? true else { return false }
+    let fromPrivate = (payload["offTheRecord"] as? Bool ?? false)
+      || ((payload["download"] as? [String: Any])?["offTheRecord"] as? Bool ?? false)
+    return fromPrivate == offTheRecord
   }
 
   func keep(_ id: String) { call("ac_downloads_keep", id) }

@@ -177,22 +177,24 @@ final class SidebarState: Codable {
 }
 
 final class SidebarStore {
-  private let url: URL
+  /// Nil for a private window: nothing is read or written.
+  private let url: URL?
   private var pending: DispatchWorkItem?
   private let queue = DispatchQueue(label: "ray.sidebar.store", qos: .utility)
 
-  init(directory: String) {
-    url = URL(fileURLWithPath: directory).appendingPathComponent("Sidebar.json")
+  init(directory: String?) {
+    url = directory.map { URL(fileURLWithPath: $0).appendingPathComponent("Sidebar.json") }
   }
 
   func load() -> SidebarState? {
-    guard let data = try? Data(contentsOf: url),
+    guard let url, let data = try? Data(contentsOf: url),
           let state = try? JSONDecoder().decode(SidebarState.self, from: data) else { return nil }
     state.normalizePinned()
     return state
   }
 
   func save(_ state: SidebarState) {
+    guard url != nil else { return }
     pending?.cancel()
     let work = DispatchWorkItem { [weak self] in self?.write(state, now: false) }
     pending = work
@@ -206,9 +208,9 @@ final class SidebarStore {
   }
 
   private func write(_ state: SidebarState, now: Bool) {
+    guard let url else { return }
     state.allEntries.forEach { $0.remember() }
     guard let data = try? JSONEncoder().encode(state) else { return }
-    let url = self.url
     if now {
       queue.sync { try? data.write(to: url, options: .atomic) }
     } else {

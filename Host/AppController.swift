@@ -42,7 +42,15 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
 
   func engineWindowForNewBrowser(of profile: ArdiaCoreProfile, type: String) -> ArdiaCoreWindow? {
     guard type == "normal" || type == "popup" else { return nil }
-    return (windows.first { $0.profile === profile } ?? current)?.coreWindow
+    if let window = windows.first(where: { $0.profile === profile }) { return window.coreWindow }
+    // A private page opened from elsewhere (say "Open Link in Incognito Window") gets a private window of its own,
+    // never a normal one.
+    if profile.offTheRecord, let main = windows.first(where: { !$0.isPrivate })?.profile {
+      let controller = makeWindow(profile: profile, main: main)
+      controller.present(background: launchedInBackground)
+      return controller.coreWindow
+    }
+    return current?.coreWindow
   }
 
   func engineIsReservedKeyEvent(_ event: NSEvent) -> Bool {
@@ -79,9 +87,23 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     return true
   }
 
-  private func makeWindow(profile: ArdiaCoreProfile) -> BrowserWindowController {
+  /// File › New Private Window (⇧⌘N): a window on the profile's off-the-record side. Nothing it does is saved, and
+  /// its cookies and history go when the last private window closes.
+  @objc func newPrivateWindow(_ sender: Any?) {
+    guard let engine = ArdiaCoreEngine.shared else { return }
+    let main = current.map { $0.mainProfile } ?? engine.defaultProfile
+    engine.offTheRecordProfile(for: main) { [weak self] profile, _ in
+      guard let self, let profile else { return }
+      let controller = self.makeWindow(profile: profile, main: main)
+      controller.present(background: launchedInBackground)
+      controller.restore(startURL: nil)
+    }
+  }
+
+  private func makeWindow(profile: ArdiaCoreProfile, main: ArdiaCoreProfile? = nil) -> BrowserWindowController {
+    let directory = profile.offTheRecord ? nil : (dataDirectory as NSString).deletingLastPathComponent
     let controller = BrowserWindowController(
-      profile: profile, store: SidebarStore(directory: (dataDirectory as NSString).deletingLastPathComponent))
+      profile: profile, mainProfile: main ?? profile, store: SidebarStore(directory: directory))
     controller.onClose = { [weak self, weak controller] in
       guard let self, let controller else { return }
       self.windows.removeAll { $0 === controller }

@@ -57,8 +57,13 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   var tabs: [ArdiaCoreTab] { state.allEntries.compactMap { $0.isLive ? $0.tab : nil } }
 
-  init(profile: ArdiaCoreProfile, store: SidebarStore) {
+  /// The normal profile behind this window: itself, or for a private window the profile it's the private side of.
+  let mainProfile: ArdiaCoreProfile
+  var isPrivate: Bool { profile.offTheRecord }
+
+  init(profile: ArdiaCoreProfile, mainProfile: ArdiaCoreProfile, store: SidebarStore) {
     self.profile = profile
+    self.mainProfile = mainProfile
     self.store = store
     state = store.load() ?? SidebarState()
     state.archiveStaleToday()
@@ -98,9 +103,15 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     if window.frame != frame { window.setFrame(frame, display: false) }
     window.titlebarAppearsTransparent = true
     window.titleVisibility = .hidden
-    window.title = "Ray"
+    window.title = isPrivate ? "Ray — Private" : "Ray"
+    if isPrivate {
+      // Private windows are always dark and purple-tinted, with a Private badge, as Arc and Chrome mark theirs.
+      window.appearance = NSAppearance(named: .darkAqua)
+      sidebar.isPrivate = true
+      floating.isPrivate = true
+    }
     window.minSize = NSSize(width: 720, height: 460)
-    window.backgroundColor = SidebarColors.background
+    window.backgroundColor = isPrivate ? SidebarColors.privateBackground : SidebarColors.background
     window.isReleasedWhenClosed = false
     window.isRestorable = false
     window.animationBehavior = .none
@@ -176,7 +187,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }()
 
   private(set) lazy var downloads: DownloadsController = {
-    let controller = DownloadsController(profile: profile)
+    let controller = DownloadsController(profile: mainProfile, offTheRecord: isPrivate)
     controller.onChange = { [weak self] newlyWaiting in self?.downloadsChanged(newlyWaiting: newlyWaiting) }
     return controller
   }()
@@ -886,7 +897,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     sidebar.setNewTabActive(commandBarMode == .newTab)
     bar.present(query: query)
     refreshSuggestions()
-    history.refresh(profile: profile) { [weak self] in self?.refreshSuggestions() }
+    // A private window doesn't suggest from your history.
+    if !isPrivate { history.refresh(profile: profile) { [weak self] in self?.refreshSuggestions() } }
   }
 
   private func refreshSuggestions() {
@@ -1145,6 +1157,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
       "fullScreen": isFullScreen,
+      "private": isPrivate,
       "arcImport": arcImportShown ?? NSNull(),
       "permission": permissions.shown ?? NSNull(),
       "find": findBar.map { bar -> [String: Any] in
@@ -1239,9 +1252,13 @@ final class FloatingSidebarFrame: NSView {
 
   override var wantsUpdateLayer: Bool { true }
 
+  var isPrivate = false {
+    didSet { needsDisplay = true }
+  }
+
   override func updateLayer() {
     let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    layer?.backgroundColor = SidebarColors.background.cgColor
+    layer?.backgroundColor = (isPrivate ? SidebarColors.privateBackground : SidebarColors.background).cgColor
     layer?.borderColor = (dark ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.1)).cgColor
     layer?.shadowOpacity = dark ? 0.18 : 0.12
   }
