@@ -220,6 +220,7 @@ async function needsFrames() {
 
 let savedSidebar = null;
 let folderIDs = {};
+let downloadedName = null;
 let savedActive = null;
 
 const checks = {
@@ -758,6 +759,7 @@ const checks = {
     assert(existsSync(item.path), "no file on disk");
     await command("dlopen");
     await until("list open", () => state().downloadsOpen);
+    downloadedName = item.filename;
   },
   async "download-insecure-blocked"() {
     // A file over plain HTTP from a secure page never lands (the engine cancels Chrome's insecure download).
@@ -788,6 +790,23 @@ const checks = {
     await until("back to second", () => state().find?.active === 2);
     await command("escape");
     await until("closed", () => state().find === null);
+    // The bar's buttons take clicks, even after a toast has come and gone in the same corner.
+    await command("key c cmd shift");
+    await until("toast", () => state().toast !== "");
+    await until("toast gone", async () => { await command("state"); return state().toast === ""; }, 5000);
+    await sleep(400);
+    await command("key f cmd");
+    await until("open again", () => state().find);
+    await command("type banana");
+    await until("matches again", () => state().find?.count === 3, 5000);
+    const [fx, fy, fw, fh] = state().find.frame.split(",").map(Number);
+    const before = state().find.active;
+    await command(`press ${fx + fw - 47} ${fy + fh / 2}`);
+    await command(`release ${fx + fw - 47} ${fy + fh / 2}`);
+    await until("next by click", async () => { await command("state"); return state().find?.active === before % 3 + 1; }, 3000);
+    await command(`press ${fx + fw - 19} ${fy + fh / 2}`);
+    await command(`release ${fx + fw - 19} ${fy + fh / 2}`);
+    await until("closed by click", async () => { await command("state"); return state().find === null; }, 3000);
   },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]
@@ -795,6 +814,7 @@ const checks = {
     await command("key c cmd shift");
     await until("copied", () => state().pasteboard === url);
     assert(state().toast === "Copied Current URL", `toast says ${state().toast}`);
+    assert(state().toastTruncated === false, "the toast cut its message short");
     await until("toast gone", async () => { await command("state"); return state().toast === ""; }, 5000);
   },
   async "sidebar-toggle"() {
@@ -995,6 +1015,8 @@ const checks = {
     await until("active entry restored and loaded", () => state().activeEntry === savedActive && state().active !== null && oneVisibleActive());
     const notActive = [...after.favorites, ...after.pinned, ...after.today].filter((e) => e.id !== savedActive);
     assert(notActive.every((e) => !e.live), "restored tabs other than the active one loaded at launch");
+    // Downloads from before the restart are still listed, so the list can be opened again.
+    if (downloadedName) await until("download history", () => state().downloads.some((d) => d.filename === downloadedName), 5000);
     const sidebarBefore = state().sidebar;
     const activeBefore = state().activeEntry;
     child.stdin.write("terminate\n");

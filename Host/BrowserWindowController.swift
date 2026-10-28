@@ -203,6 +203,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   func showDownloads() {
     guard downloadsPopover == nil else { return }
+    downloads.loadHistory()
     layoutIfNeededForDownloads()
     let list = DownloadsListView(frame: .zero)
     list.controller = downloads
@@ -1125,7 +1126,12 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "fullScreen": isFullScreen,
       "arcImport": arcImportShown ?? NSNull(),
       "permission": permissions.shown ?? NSNull(),
-      "find": findBar.map { ["text": $0.text, "count": $0.matches.count, "active": $0.matches.active] } ?? NSNull(),
+      "find": findBar.map { bar -> [String: Any] in
+        let frame = bar.convert(bar.bounds, to: nil)
+        let height = window.contentView?.bounds.height ?? 0
+        return ["text": bar.text, "count": bar.matches.count, "active": bar.matches.active,
+                "frame": String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)]
+      } ?? NSNull(),
       "downloads": downloads.items.map { [
         "id": $0.id, "filename": $0.filename, "state": $0.state, "dangerous": $0.dangerous, "path": $0.path,
         "keepReady": downloadsList?.row(for: $0.id)?.keepReady ?? false,
@@ -1137,6 +1143,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "displayAsleep": CGDisplayIsAsleep(window.screen?.displayID ?? CGMainDisplayID()) != 0,
       "pasteboard": Self.pasteboard.string(forType: .string) ?? NSNull(),
       "toast": toast.message,
+      "toastTruncated": toast.truncated,
       "realLightsHidden": [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
         window.standardWindowButton($0)?.isHidden ?? true
       },
