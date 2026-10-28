@@ -34,7 +34,8 @@ var engineArguments = [
     + "ImprovedStartupBestEffortDelay:StartupDelayStopOnLoadingTimedOut/true,"
     + "CPUMeasurementInFreezingPolicy:freezing_visible_protection_time/0s,"
     + "InfiniteTabsFreezing:ardia_unconnected_unfreeze_interval/600s,"
-    + "ThrottleMainFrameTo60Hz,UrgentMainFrameForInput",
+    // No ThrottleMainFrameTo60Hz (Ardia's battery choice): pages keep the display's full 120 Hz, as in Chrome.
+    + "UrgentMainFrameForInput",
 ]
 if TestEnvironment["RAY_ENGINE_FEATURES"] == "none" {
   engineArguments.removeAll { $0.hasPrefix("--enable-features=") }
