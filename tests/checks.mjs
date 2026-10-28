@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Drives a hidden build/Ray.app over DevTools and Ray's [ray-state] log.
 //   node tests/checks.mjs [check …]      (build first: scripts/build-app.sh)
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { createServer as createSecureServer } from "node:https";
 import { execFileSync } from "node:child_process";
@@ -1154,6 +1154,20 @@ const checks = {
     await until("back to the normal window", async () => { await command("state"); return state().private === false; }, 5000);
     await until("private page gone", async () => !(await targets()).some((t) => t.url.includes("/b?private")), 8000);
     assert(state().activeEntry === mainEntry, "the normal window changed while the private one was open");
+  },
+  async "test-app-needs-data-dir"() {
+    // A test instance with no (or an empty) RAY_DATA_DIR must refuse to start rather than open the user's profile.
+    // CFFIXED_USER_HOME points the home folder at a scratch dir, so even a regression here can't reach real data.
+    const home = mkdtempSync(join(tmpdir(), "ray-nohome-"));
+    for (const value of [undefined, ""]) {
+      const env = { ...process.env, CFFIXED_USER_HOME: home, RAY_BACKGROUND: "1" };
+      delete env.RAY_DATA_DIR;
+      if (value !== undefined) env.RAY_DATA_DIR = value;
+      const result = spawnSync(join(app, "Contents/MacOS/Ray"), [], { env, encoding: "utf8", timeout: 15000 });
+      assert(result.status === 2, `test app started without RAY_DATA_DIR=${JSON.stringify(value)} (status ${result.status})`);
+      assert(/needs RAY_DATA_DIR/.test(result.stderr), `no refusal message: ${result.stderr.slice(0, 200)}`);
+    }
+    assert(!existsSync(join(home, "Library/Application Support/Ray")), "the test app made a profile in the home folder");
   },
   async "page-toolbar"() {
     // The address bar above the page shows host and path, and View › Show Address Bar on Page turns it off.

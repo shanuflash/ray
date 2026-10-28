@@ -4,6 +4,12 @@ let environment = ProcessInfo.processInfo.environment
 let launchedInBackground = TestEnvironment["RAY_BACKGROUND"] == "1"
 
 let dataDirectory: String = {
+  // The test app never falls back to the default data dir: an unset or empty RAY_DATA_DIR would put a test
+  // instance on the user's real profile.
+  if TestEnvironment.isTestBuild, (TestEnvironment["RAY_DATA_DIR"] ?? "").isEmpty {
+    FileHandle.standardError.write("[ray] test build needs RAY_DATA_DIR (a throwaway folder); refusing to start\n".data(using: .utf8)!)
+    exit(2)
+  }
   let base = TestEnvironment["RAY_DATA_DIR"].flatMap { $0.isEmpty ? nil : $0 }
     ?? (NSHomeDirectory() as NSString).appendingPathComponent("Library/Application Support/Ray")
   return (base as NSString).appendingPathComponent("Chromium")
