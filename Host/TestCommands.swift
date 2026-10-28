@@ -51,11 +51,13 @@ enum TestCommands {
   /// `press x y`, `move x y`, `release x y`: one mouse drag in steps, so checks can look at it mid-way.
   private static func mouse(_ type: NSEvent.EventType, _ argument: String, in window: NSWindow?) -> String {
     let numbers = argument.split(separator: " ").compactMap { Double($0) }
-    guard let window, let content = window.contentView, numbers.count == 2 else { return "usage: press|move|release x y" }
+    guard let window, let content = window.contentView, numbers.count == 2 || numbers.count == 3 else {
+      return "usage: press|move|release x y [clickCount]"
+    }
     guard let event = NSEvent.mouseEvent(
       with: type, location: NSPoint(x: numbers[0], y: content.bounds.height - numbers[1]), modifierFlags: [],
       timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
-      eventNumber: 0, clickCount: 1, pressure: 1) else { return "no event" }
+      eventNumber: 0, clickCount: numbers.count == 3 ? Int(numbers[2]) : 1, pressure: 1) else { return "no event" }
     NSApp.sendEvent(event)
     return "ok"
   }
@@ -85,7 +87,7 @@ enum TestCommands {
       "pin": .pin, "unpin": .unpin, "favorite": .addToFavorites, "unfavorite": .removeFromFavorites,
       "back": .backToPinned, "close": .close, "unload": .unload, "newfolder": .newFolder,
       "nestfolder": .newNestedFolder, "togglefolder": .toggleFolder, "outfolder": .removeFromFolder,
-      "deletefolder": .deleteFolder,
+      "deletefolder": .deleteFolder, "renamefolder": .renameFolder,
     ]
     guard parts.count >= 2, let id = UUID(uuidString: parts[1]),
           let controller = AppController.shared.current, let entry = controller.state.entry(id: id) else {
@@ -209,6 +211,13 @@ enum TestCommands {
       } else {
         result = "usage: dl keep|discard <id>"
       }
+    case "hover":
+      let numbers = argument.split(separator: " ").compactMap { Double($0) }
+      if numbers.count == 2 { AppController.shared.current?.hoverSidebar(at: NSPoint(x: numbers[0], y: numbers[1])) } else {
+        result = "usage: hover x y"
+      }
+    case "renamedone":
+      if AppController.shared.current?.pressRenameDone() != true { result = "not renaming" }
     case "pointer":
       let numbers = argument.split(separator: " ").compactMap { Double($0) }
       if numbers.count == 2 {

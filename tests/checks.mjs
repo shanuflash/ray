@@ -664,6 +664,41 @@ const checks = {
     assert(today.pinnedURL === null, "today tab kept a pinned URL");
     assert(!state().sidebar.favorites.some((e) => e.id === entry.id), "still a favorite");
   },
+  async "tile-hover"() {
+    await todayTabs(2);
+    const [fav, other] = state().sidebar.today;
+    await command(`rowaction favorite ${fav.id}`);
+    await until("favorited", () => state().sidebar.favorites.some((e) => e.id === fav.id));
+    await command(`row ${other.id}`);
+    await until("other active", () => state().activeEntry === other.id);
+    await settle();
+    assert(state().sidebarFrames.tilesTracked === "1", "a tile has no tracking area");
+    assert(state().sidebarFrames.hoveredTile === "" && state().sidebarFrames.hoverShown === "", "a tile showed hover with no pointer");
+    const fades = Number(state().sidebarFrames.hoverFades);
+    const tile = frameOf(fav.id), row = frameOf(other.id);
+    await command(`hover ${tile.cx} ${tile.cy}`);
+    await command("state");
+    assert(state().sidebarFrames.hoveredTile === fav.id, `hovered ${state().sidebarFrames.hoveredTile}`);
+    assert(state().sidebarFrames.hoverShown === fav.id, "the hovered tile didn't brighten");
+    assert(Number(state().sidebarFrames.hoverFades) === fades + 1, "the hover didn't fade in");
+    const lit = frameOf(fav.id);
+    assert(lit.x === tile.x && lit.y === tile.y && lit.w === tile.w && lit.h === tile.h, "hover moved the tile");
+    await command(`hover ${row.cx} ${row.cy}`);
+    await command("state");
+    assert(state().sidebarFrames.hoveredTile === "" && state().sidebarFrames.hoverShown === "", "hover stayed after the pointer left");
+    assert(Number(state().sidebarFrames.hoverFades) === fades + 2, "the hover didn't fade out");
+    // A selected tile keeps its look: hover doesn't brighten it.
+    await command(`row ${fav.id}`);
+    await until("tile active", () => state().activeEntry === fav.id);
+    await command(`hover ${tile.cx} ${tile.cy}`);
+    await command("state");
+    assert(state().sidebarFrames.hoveredTile === fav.id, "a selected tile ignored the pointer");
+    assert(state().sidebarFrames.hoverShown === "", "hover brightened the selected tile");
+    await command(`hover ${row.cx} ${row.cy}`);
+    await command(`row ${other.id}`);
+    await command(`rowaction unfavorite ${fav.id}`);
+    await until("unfavorited", () => !state().sidebar.favorites.some((e) => e.id === fav.id));
+  },
   async "folder-create"() {
     await todayTabs(3);
     for (let i = 0; i < 2; i++) {
@@ -698,6 +733,48 @@ const checks = {
     assert(!state().sidebarFrames.hidden.includes(a), "the active tab hid inside a closed folder");
     await command(`row ${folder}`);
     await until("open again", () => state().sidebar.pinned.find((e) => e.id === folder)?.open === true);
+  },
+  async "folder-rename"() {
+    const { folder } = folderIDs;
+    const folderRow = () => state().sidebar.pinned.find((e) => e.id === folder);
+    await settle();
+    // A double click is two single clicks (each toggles the folder); it never starts a rename.
+    const f = frameOf(folder);
+    await command(`press ${f.cx} ${f.cy} 1`);
+    await command(`release ${f.cx} ${f.cy} 1`);
+    await until("first click closed it", async () => { await command("state"); return folderRow().open === false; });
+    await command(`press ${f.cx} ${f.cy} 2`);
+    await command(`release ${f.cx} ${f.cy} 2`);
+    await until("second click opened it", async () => { await command("state"); return folderRow().open === true; });
+    await new Promise((r) => setTimeout(r, 400));
+    await command("state");
+    assert(state().sidebarFrames.renaming === "", `a double click started renaming ${state().sidebarFrames.renaming}`);
+    assert(!("renameDone" in state().sidebarFrames), "a Done button showed without a rename");
+    // Rename comes from the row's menu; Done commits.
+    await command(`rowaction renamefolder ${folder}`);
+    await until("renaming", async () => { await command("state"); return state().sidebarFrames.renaming === folder; }, 3000);
+    const [dx, dy, dw, dh] = state().sidebarFrames.renameDone.split(",").map(Number);
+    const row = frameOf(folder);
+    assert(dw >= 30 && dw <= 70 && dh >= 14 && dh <= 26, `Done button is ${dw}x${dh}`);
+    assert(dx >= row.x + row.w / 2 && dx + dw <= row.x + row.w, `Done at ${dx} outside the row's end (${row.x}..${row.x + row.w})`);
+    assert(Math.abs(dy + dh / 2 - row.cy) <= 1.5, `Done at ${dy + dh / 2}, row middle ${row.cy}`);
+    await command("type Work Done");
+    await command("renamedone");
+    await until("committed by Done", async () => { await command("state"); return folderRow().title === "Work Done" && state().sidebarFrames.renaming === ""; });
+    assert(!("renameDone" in state().sidebarFrames), "the Done button stayed after committing");
+    // Escape cancels.
+    await command(`rowaction renamefolder ${folder}`);
+    await until("renaming again", async () => { await command("state"); return state().sidebarFrames.renaming === folder; }, 3000);
+    await command("type Nope");
+    await command("escape");
+    await until("cancelled", async () => { await command("state"); return state().sidebarFrames.renaming === ""; });
+    assert(folderRow().title === "Work Done", `escape kept ${folderRow().title}`);
+    // Enter commits.
+    await command(`rowaction renamefolder ${folder}`);
+    await until("renaming a third time", async () => { await command("state"); return state().sidebarFrames.renaming === folder; }, 3000);
+    await command("type Work");
+    await command("enter");
+    await until("committed by Enter", async () => { await command("state"); return folderRow().title === "Work"; });
   },
   async "folder-drag-in"() {
     const { folder, b } = folderIDs;

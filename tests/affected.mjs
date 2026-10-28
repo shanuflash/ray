@@ -40,7 +40,7 @@ export const areas = {
     "find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Extensions and downloads": ["extensions", "extension-prompt", "downloads",
     "download-insecure-blocked", "site-controls"],
-  "Host/BrowserWindowController.swift#Test snapshots": [],
+  "Host/BrowserWindowController.swift#Test snapshots": ["folder-rename", "tile-hover"],
   "Host/BrowserWindowController.swift#Arc import": ["arc-import"],
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
   "Host/BrowserWindowController.swift#Toast": ["copy-url"],
@@ -75,7 +75,7 @@ export const areas = {
   "Host/Toast.swift": ["copy-url"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
-  "Host/TestCommands.swift": [],
+  "Host/TestCommands.swift": ["folder-rename", "tile-hover"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

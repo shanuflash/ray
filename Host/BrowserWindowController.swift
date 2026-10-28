@@ -310,6 +310,12 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     downloadsList?.row(for: id)?.press(keep: keep) ?? false
   }
 
+  /// For tests: the pointer over a point of the window, as the sidebar's tracking areas would see it.
+  func hoverSidebar(at point: NSPoint) { sidebar.debugHover(at: point) }
+
+  /// For tests: Done in the open folder rename.
+  func pressRenameDone() -> Bool { sidebar.debugPressRenameDone() }
+
   // MARK: Arc import
 
   private var arcPrompt: (alert: NSAlert, data: ArcImport)?

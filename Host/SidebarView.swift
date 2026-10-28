@@ -37,6 +37,8 @@ enum SidebarColors {
 
   static let background = dynamic(dark: NSColor(white: 0.075, alpha: 1), light: NSColor(white: 0.9, alpha: 1))
   static let fill = dynamic(dark: NSColor(white: 1, alpha: 0.08), light: NSColor(white: 0, alpha: 0.06))
+  /// Laid over a favorites tile's own fill while the pointer is on it (the tile brightens, nothing moves).
+  static let tileHover = dynamic(dark: NSColor(white: 1, alpha: 0.07), light: NSColor(white: 0, alpha: 0.05))
   static let hover = dynamic(dark: NSColor(white: 1, alpha: 0.06), light: NSColor(white: 0, alpha: 0.05))
   static let lightsIdle = dynamic(dark: NSColor(white: 1, alpha: 0.18), light: NSColor(white: 0, alpha: 0.15))
   static let selected = dynamic(dark: NSColor(white: 1, alpha: 0.14), light: NSColor(white: 1, alpha: 0.85))
@@ -253,7 +255,6 @@ final class SidebarView: NSView {
     for (row, entry) in zip(pinnedRows + todayRows, pinned + today) {
       row.show(entry, icon: entry.isFolder ? nil : delegate?.sidebarIcon(for: entry), selected: entry === active)
       row.onClick = { [weak self] part in self?.clicked(entry, part: part) }
-      row.onDoubleClick = entry.isFolder ? { [weak self] in self?.beginRename(entry) } : nil
       row.onPointer = { [weak self, weak row] event in
         if let self, let row { self.pointer(event, on: row, entry: entry) }
       }
@@ -456,7 +457,7 @@ final class SidebarView: NSView {
     return result
   }
 
-  /// Starts renaming a folder in place (a new folder starts this way).
+  /// Starts renaming a folder in place (a new folder starts this way; the row's menu has Rename…, a double click does not).
   func beginRename(_ entry: SidebarEntry) {
     pendingRename = entry.id
     DispatchQueue.main.async { [weak self] in
@@ -731,6 +732,13 @@ final class SidebarView: NSView {
     frames["hidden"] = shownViews.filter { view, _ in view.isHidden }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["litFolder"] = zip(pinnedRows, pinned).first { $0.0.dropTarget }?.1.id.uuidString ?? ""
     frames["renaming"] = zip(pinnedRows, pinned).first { $0.0.isRenaming }?.1.id.uuidString ?? ""
+    if let done = pinnedRows.lazy.compactMap({ $0.doneButtonFrame }).first {
+      frames["renameDone"] = String(format: "%.1f,%.1f,%.1f,%.1f", done.minX, height - done.maxY, done.width, done.height)
+    }
+    frames["hoveredTile"] = zip(tiles, favorites).first { $0.0.hovered }?.1.id.uuidString ?? ""
+    frames["hoverShown"] = zip(tiles, favorites).filter { $0.0.hoverShown }.map { $0.1.id.uuidString }.joined(separator: ",")
+    frames["hoverFades"] = String(FavoriteTileView.fadesStarted)
+    frames["tilesTracked"] = tiles.allSatisfy { tile in tile.trackingAreas.contains { $0.owner === tile } } ? "1" : "0"
     frames["alive"] = shownViews.filter { view, _ in
       (view as? SidebarRowView)?.residency.showsDot ?? (view as? FavoriteTileView)?.residency.showsDot ?? false
     }.map { $0.1.id.uuidString }.joined(separator: ",")
@@ -739,6 +747,24 @@ final class SidebarView: NSView {
       return String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
     }()
     return frames
+  }
+
+  /// For tests: what the tracking areas would report with the pointer at a point (window coordinates, top-left origin).
+  func debugHover(at point: NSPoint) {
+    guard let window, let height = window.contentView?.bounds.height else { return }
+    layoutSubtreeIfNeeded()
+    for tile in tiles {
+      let frame = tile.convert(tile.bounds, to: nil)
+      let inside = point.x >= frame.minX && point.x < frame.maxX && point.y >= height - frame.maxY && point.y < height - frame.minY
+      tile.setHovered(inside)
+    }
+  }
+
+  /// For tests: a click on the open rename field's Done button.
+  func debugPressRenameDone() -> Bool {
+    guard let row = pinnedRows.first(where: { $0.isRenaming }) else { return false }
+    row.pressDone()
+    return true
   }
 
   private func clicked(_ entry: SidebarEntry, part: SidebarRowView.Part) {
@@ -1183,14 +1209,26 @@ final class FavoriteTileView: NSView, Liftable {
   private let icon = NSImageView()
   private var selected = false
   private var lifted = false
+  private(set) var hovered = false
+  /// The hover brightening: a layer over the tile's fill whose opacity fades (0.12 s) with the pointer.
+  private let hoverFill = CALayer()
+  static let hoverFade: CFTimeInterval = 0.12
+  /// Fades begun, for tests (a fade is too short to catch mid-way).
+  static var fadesStarted = 0
 
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
     layer?.cornerRadius = 10
     layer?.cornerCurve = .continuous
+    hoverFill.cornerRadius = 10
+    hoverFill.cornerCurve = .continuous
+    hoverFill.opacity = 0
+    layer?.addSublayer(hoverFill)
     icon.imageScaling = .scaleProportionallyUpOrDown
     addSubview(icon)
+    addTrackingArea(NSTrackingArea(
+      rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -1200,23 +1238,57 @@ final class FavoriteTileView: NSView, Liftable {
 
   override func updateLayer() {
     layer?.backgroundColor = (lifted ? SidebarColors.lifted : selected ? SidebarColors.selected : SidebarColors.fill).cgColor
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    hoverFill.backgroundColor = SidebarColors.tileHover.cgColor
+    CATransaction.commit()
     Lift.shadow(layer, lifted, radius: 10)
   }
+
+  override func layout() {
+    super.layout()
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    hoverFill.frame = bounds
+    CATransaction.commit()
+    icon.frame = NSRect(x: (bounds.width - 20) / 2, y: (bounds.height - 20) / 2, width: 20, height: 20)
+    residency.placeDot(at: CGPoint(x: bounds.midX, y: 6))
+  }
+
+  /// Whether the brightening is (fading) in: only for a tile that is neither selected nor being dragged.
+  var hoverShown: Bool { hoverFill.opacity > 0.5 }
+
+  func setHovered(_ on: Bool) {
+    hovered = on
+    updateHover()
+  }
+
+  private func updateHover() {
+    let target: Float = hovered && !selected && !lifted ? 1 : 0
+    guard hoverFill.opacity != target else { return }
+    let from = hoverFill.presentation()?.opacity ?? hoverFill.opacity
+    hoverFill.opacity = target
+    let fade = CABasicAnimation(keyPath: "opacity")
+    fade.fromValue = from
+    fade.toValue = target
+    fade.duration = Self.hoverFade
+    fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+    hoverFill.add(fade, forKey: "hover")
+    Self.fadesStarted += 1
+  }
+
+  override func mouseEntered(with event: NSEvent) { setHovered(true) }
+  override func mouseExited(with event: NSEvent) { setHovered(false) }
 
   func setLifted(_ lifted: Bool) {
     self.lifted = lifted
     needsDisplay = true
+    updateHover()
   }
 
   // The icon would take the press and keep the drag for itself.
   override func hitTest(_ point: NSPoint) -> NSView? { super.hitTest(point) == nil ? nil : self }
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-  override func layout() {
-    super.layout()
-    icon.frame = NSRect(x: (bounds.width - 20) / 2, y: (bounds.height - 20) / 2, width: 20, height: 20)
-    residency.placeDot(at: CGPoint(x: bounds.midX, y: 6))
-  }
 
   override func mouseDown(with event: NSEvent) {
     onPointer?(event)
@@ -1235,6 +1307,7 @@ final class FavoriteTileView: NSView, Liftable {
     residency.show(entry, in: self)
     toolTip = entry.displayTitle
     needsDisplay = true
+    updateHover()
   }
 }
 
@@ -1244,12 +1317,13 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   let residency = TabResidency()
 
   var onClick: ((Part) -> Void)?
-  var onDoubleClick: (() -> Void)?
   var onPointer: ((NSEvent) -> Void)?
   private var lifted = false
   private let chevron = NSImageView()
   private(set) var isFolderRow = false
   private var editor: NSTextField?
+  /// The "Done" button at the end of the field while renaming.
+  private let doneButton = NSButton()
   private var onRenamed: ((String?) -> Void)?
   /// Lit while a dragged tab would drop into this folder.
   var dropTarget = false {
@@ -1296,6 +1370,18 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     chevron.contentTintColor = .tertiaryLabelColor
     chevron.isHidden = true
     chevron.wantsLayer = true
+    doneButton.title = "Done"
+    doneButton.font = .systemFont(ofSize: 11, weight: .medium)
+    doneButton.isBordered = false
+    doneButton.bezelStyle = .inline
+    doneButton.wantsLayer = true
+    doneButton.layer?.cornerRadius = 6
+    doneButton.layer?.cornerCurve = .continuous
+    doneButton.layer?.backgroundColor = SidebarColors.fill.cgColor
+    doneButton.contentTintColor = .labelColor
+    doneButton.target = self
+    doneButton.action = #selector(pressDone)
+    doneButton.refusesFirstResponder = true
     [icon, slash, title, subtitle, closeButton, chevron].forEach(addSubview)
     addTrackingArea(NSTrackingArea(
       rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
@@ -1314,6 +1400,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     CATransaction.setDisableActions(true)
     fill.backgroundColor = color.cgColor
     fill.borderWidth = dropTarget ? 1 : 0
+    doneButton.layer?.backgroundColor = SidebarColors.fill.cgColor
     fill.borderColor = ProfileColor.accent.withAlphaComponent(0.65).cgColor
     Lift.shadow(fill, lifted, radius: 8)
     CATransaction.commit()
@@ -1328,6 +1415,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   override func hitTest(_ point: NSPoint) -> NSView? {
     guard let hit = super.hitTest(point) else { return nil }
     if let editor, hit === editor || hit.isDescendant(of: editor) { return hit }
+    if hit === doneButton { return hit }
     return hit === closeButton || hit.isDescendant(of: closeButton) ? hit : self
   }
 
@@ -1346,10 +1434,6 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   }
 
   override func mouseDown(with event: NSEvent) {
-    if event.clickCount == 2, let onDoubleClick {
-      onDoubleClick()
-      return
-    }
     onPointer?(event)
     let point = convert(event.locationInWindow, from: nil)
     onClick?(point.x < title.frame.minX - 2 ? .icon : .body)
@@ -1427,7 +1511,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     title.stringValue = entry.title
     title.textColor = .labelColor
     subtitle.isHidden = true
-    chevron.isHidden = false
+    chevron.isHidden = editor != nil
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     chevron.layer?.setAffineTransform(.identity)
@@ -1453,17 +1537,33 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     editor = field
     onRenamed = done
     title.isHidden = true
+    chevron.isHidden = true
+    addSubview(doneButton)
+    needsLayout = true
+    layoutSubtreeIfNeeded()
     window?.makeFirstResponder(field)
     field.currentEditor()?.selectAll(nil)
   }
 
   var isRenaming: Bool { editor != nil }
 
+  /// The Done button's frame in window coordinates (top-left origin is the caller's job), nil when not renaming.
+  var doneButtonFrame: NSRect? { editor == nil ? nil : doneButton.convert(doneButton.bounds, to: nil) }
+
+  /// What a click on Done does: keeps the typed name. For tests too.
+  @objc func pressDone() {
+    guard editor != nil else { return }
+    endRename(editor?.stringValue)
+  }
+
   private func endRename(_ name: String?) {
     guard let editor else { return }
     self.editor = nil
     editor.removeFromSuperview()
+    doneButton.removeFromSuperview()
     title.isHidden = false
+    chevron.isHidden = !isFolderRow
+    needsLayout = true
     let done = onRenamed
     onRenamed = nil
     done?(name)
@@ -1503,7 +1603,9 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     let textX: CGFloat = away ? 41 : 35
     closeButton.frame = NSRect(x: bounds.width - 30, y: mid - 11, width: 22, height: 22)
     chevron.frame = NSRect(x: bounds.width - 26, y: mid - 7, width: 14, height: 14)
-    let trailing = isFolderRow ? chevron.frame.minX - 4 : closeButton.isHidden ? bounds.width - 10 : closeButton.frame.minX - 4
+    let doneWidth: CGFloat = 44
+    doneButton.frame = NSRect(x: bounds.width - doneWidth - 8, y: mid - 10, width: doneWidth, height: 20)
+    let trailing = editor != nil ? doneButton.frame.minX - 4 : isFolderRow ? chevron.frame.minX - 4 : closeButton.isHidden ? bounds.width - 10 : closeButton.frame.minX - 4
     let textWidth = trailing - textX
     if subtitle.isHidden {
       title.frame = NSRect(x: textX, y: mid - 8.5, width: textWidth, height: 20)
@@ -1511,6 +1613,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
       title.frame = NSRect(x: textX, y: mid - 15, width: textWidth, height: 18)
       subtitle.frame = NSRect(x: textX, y: mid + 1.5, width: textWidth, height: 14)
     }
+    editor?.frame = title.frame.insetBy(dx: -2, dy: 0)
   }
 }
 
