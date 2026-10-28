@@ -492,6 +492,9 @@ final class DownloadsPanelView: NSView {
     needsDisplay = true
   }
 
+  /// Presses on the card's empty space stay with it (otherwise they'd fall through to the window and drag it).
+  override func mouseDown(with event: NSEvent) {}
+
   var wantedHeight: CGFloat { list.fittingSize.height }
 
   override func layout() {
