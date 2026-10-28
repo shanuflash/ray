@@ -12,14 +12,34 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
 - `PageToolbar`: Dia's address bar above the page (View › Show Address Bar on Page). Geometry is Ardia's
   (`third_party/ardia/apps/browser/src/components/ui/theme.ts` `layout`, `components/toolbar/Toolbar.tsx`): 41 pt,
   buttons centred at 21/56/92/127, address from 145; the host in medium weight, then path and query in grey
-  (View › Show Full Address; off, they show on hover). The sidebar/back/forward/reload
+  (View › Show Full Address, the same setting as Settings › Minimal URL, inverted; minimal shows them on hover). The sidebar/back/forward/reload
   buttons ride the sidebar's dock spring in while the sidebar is hidden. Its sliders button opens `SiteControls`:
   quick actions, extension tiles, the site's permissions (`ac_site_settings_*`, keyed by the tab's
   `committedOrigin`) and the connection state.
 - `ConnectionLook` (in `AddressInput.swift`): the security icon for both address fields and the panel's footer.
 - `ProfileColor`: the profile's colour, which every accent in Ray's UI uses (loading wash, progress, drop targets,
-  selection, "on" states). Default: Dia's lavender; profiles and their settings come later. Never use
-  `NSColor.controlAccentColor` (`scripts/test.sh` fails on it). `LoadingTint` uses Dia's measured lilac-to-lavender
+  selection, "on" states, Settings' switches). Default: Dia's lavender; Settings › Theme sets it (`apply(hex:)`,
+  posts `didChange`, and each window redraws its views and re-tints the wash, page line and downloads ring).
+  `foreground(on:)` is the white or black with the higher WCAG contrast on a fill: use it for any text or icon on an
+  accent fill. Never use `NSColor.controlAccentColor` (`scripts/test.sh` fails on it).
+- `RaySettings`: the app-wide settings, `Settings.json` in the data dir next to `Sidebar.json` (Codable, saved 0.2 s
+  after a change and on quit, `didChange` carries the changed `RaySetting` keys). `apply(key, text)` is the one call
+  the window's controls and the test command `setting` both make. Private windows read it, never write to it (their
+  zoomed hosts stay in memory). Also holds the hosts the user zoomed (see Page zoom below) and the Settings
+  window's frame.
+- `SettingsWindow`: Ray's own Settings window (⌘, in the Ray menu, `ray://settings/appearance`; one pane, Appearance:
+  grouped rows, `RaySwitch` in the profile's colour, swatches plus a custom colour via NSColorPanel, a zoom popup, an
+  "All Settings…" link to `ray://settings`). `AddressInput.nativeSettingsPane(for:)` recognises the Appearance
+  address: typed or chosen ones open the window and never load; Chrome's page navigating itself there goes back.
+  Settings that act elsewhere: minimal URL and loading progress (`PageToolbar`, `PageContainerView.showsProgress`),
+  new tab position (`insertToday`), ⌃Tab in recent order (`cycleTabWithControl`, settled by a `flagsChanged` monitor
+  when Control is released), ⇧⌘C and ⌘S (`MainMenu.applyShortcutSettings` removes their key equivalents so the page
+  gets the keys), and page zoom.
+- Page zoom: the engine keeps zoom per host and `tab.zoomFactor = x` writes that host's level, so Ray applies the
+  default zoom itself: on a committed navigation (next run-loop turn, after the engine's own zoom) to a host the user
+  hasn't zoomed, and on every tab when the default changes. `tabDidChangeZoom` on a settled host that isn't the
+  default marks the host as user-zoomed (⌘+ / ⌘−); levels already in the engine's host map at first launch are
+  adopted as the user's (`ac_zoom_list`, once). Site controls' Reset un-marks the host. `LoadingTint` uses Dia's measured lilac-to-lavender
   ramp for the default and builds the same shape around any other colour.
 - `EngineCalls`: calls the engine's exported `ac_*` C functions (`dlsym`, JSON in, JSON reply), e.g.
   `ac_history_query`. Their arguments are in `third_party/ardia/engine/chromium/src/chrome/browser/ardia/ac_*.cc`.
@@ -38,7 +58,10 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   `affected.mjs` (which checks each file or `// MARK:` section can affect) and `changed.mjs` (diff → checks).
 - `Host/TestCommands.swift`: with `RAY_TEST_COMMANDS=1`, stdin lines drive the real UI (`menu <action>`,
   `type <text>`, `enter`, `escape`) through the same code paths as the keyboard. DevTools can't reach native UI, so
-  checks for the sidebar and address field go through this.
+  checks for the sidebar and address field go through this. Settings: `setting <name> <value>` (same call as the
+  window's controls), `settings open|close|link|press <control> [n]|snap <path>`, `zoom in|out|reset`, and
+  `key tab ctrl keywin` / `key ctrlup` for ⌃Tab walks. The state log has `settings`, `settingsWindow`, `menuKeys`,
+  `recentOrder`, `tabCycle` and each tab's `zoom`.
 - `vendor/ardiacore/ArdiaCore.h`: the engine's public API, copied from Ardia at the tag in `engine.lock`. Must match
   the engine binary; update both together.
 - `engine.lock`: the pinned prebuilt engine (tree, release, sha256). `scripts/fetch-engine.sh` downloads and checks it.
@@ -134,7 +157,7 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
 - **Every security-relevant behaviour gets a check** in `tests/checks.mjs`.
 
 ## Key routing
-- `preHandleKeyEvent` runs only Chrome's reserved set (`Shortcuts.isReserved`: ⌘T ⌘W ⌘N ⌘Q ⇧⌘T ⇧⌘W ⇧⌘N ⇧⌘[ ⇧⌘]
+- `preHandleKeyEvent` runs only Chrome's reserved set (`Shortcuts.isReserved`: ⌘T ⌘W ⌘N ⌘Q ⌘, ⇧⌘T ⇧⌘W ⇧⌘N ⇧⌘[ ⇧⌘]
   ⌃Tab) before the page. Everything else reaches the page first; `handleKeyEvent` (page didn't use it) sends it to
   the main menu.
 

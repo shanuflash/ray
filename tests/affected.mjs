@@ -17,6 +17,10 @@ const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-
 const pageSurface = ["switch-back-latency", "top-strip-click", "toggle-keeps-page-still", "activate-target",
   "devtools-docked", "background-tab"];
 
+const settings = ["settings-window", "settings-minimal-url", "settings-loading-progress", "settings-theme",
+  "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling",
+  "settings-shortcuts", "settings-routes", "settings-persist"];
+
 export const areas = {
   // Central: windows, menus, key routing, saved state, the engine bridge.
   "Host/AppController.swift": "all",
@@ -55,7 +59,9 @@ export const areas = {
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",
   "Host/BrowserWindowController.swift#ArdiaCoreWindowDelegate": [...pages, "private-window", "close-last-window"],
   "Host/BrowserWindowController.swift#ArdiaCoreTabDelegate": [...pages, ...permissions, "page-toolbar", "page-loading",
-    "site-controls", "find-in-page"],
+    "site-controls", "find-in-page", "settings-zoom", "settings-routes"],
+  "Host/BrowserWindowController.swift#Settings": [...settings, "page-toolbar", "page-loading"],
+  "Host/BrowserWindowController.swift#Page zoom": ["settings-zoom", "settings-private-zoom", "settings-window", "site-controls"],
   "Host/BrowserWindowController.swift#State log": [],
 
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
@@ -67,6 +73,8 @@ export const areas = {
   "Host/SidebarView.swift#Downloads panel": ["downloads"],
 
   "Host/AddressInput.swift": [...commandBar, "page-toolbar", "site-controls"],
+  "Host/RaySettings.swift": "all",
+  "Host/SettingsWindow.swift": settings,
   "Host/ArcImport.swift": ["arc-import"],
   "Host/CommandBarView.swift": commandBar,
   "Host/Suggestions.swift": commandBar,

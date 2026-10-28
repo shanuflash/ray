@@ -96,6 +96,49 @@ for (level, url, expected) in lookCases where ConnectionLook.of(level: level, ur
   failures += 1
   print("FAIL look(\(level ?? "nil"), \(url)) = \(ConnectionLook.of(level: level, url: url)), want \(expected)")
 }
-let total = cases.count + displayCases.count + pillCases.count + autocompleteCases.count + lookCases.count
+// ray://settings/appearance and chrome://settings/appearance open the native Settings window; nothing else does.
+let paneCases: [(String, String?)] = [
+  ("chrome://settings/appearance", "appearance"),
+  ("ray://settings/appearance", "appearance"),
+  ("RAY://Settings/Appearance/", "appearance"),
+  ("chrome://settings/appearance?x=1#y", "appearance"),
+  ("chrome://settings", nil),
+  ("chrome://settings/", nil),
+  ("chrome://settings/privacy", nil),
+  ("chrome://settings/appearance/fonts", nil),
+  ("chrome://extensions/appearance", nil),
+  ("https://settings/appearance", nil),
+  ("https://example.com/settings/appearance", nil),
+  ("chrome://user@settings/appearance", nil),
+  ("javascript:alert(1)", nil),
+  ("", nil),
+]
+for (input, expected) in paneCases where AddressInput.nativeSettingsPane(for: input) != expected {
+  failures += 1
+  print("FAIL nativeSettingsPane(\(input)) = \(AddressInput.nativeSettingsPane(for: input) ?? "nil"), want \(expected ?? "nil")")
+}
+// Text on an accent fill is white or black, whichever has the higher WCAG contrast ratio against it.
+let foregroundCases: [(String, Bool)] = [
+  ("#FFFFFF", false), ("#000000", true), ("#FFD60A", false), ("#F2B01E", false), ("#1A1A8C", true),
+  ("#8257E5", true), ("#A486F0", false), ("#2F6BEA", true), ("#777777", false), ("#767676", false), ("#757575", true),
+]
+for (hex, white) in foregroundCases {
+  guard let c = ProfileColor.parse(hex) else { failures += 1; print("FAIL parse(\(hex))"); continue }
+  if ProfileColor.prefersWhite(c.r, c.g, c.b) != white {
+    failures += 1
+    print("FAIL prefersWhite(\(hex)) = \(!white), want \(white)")
+  }
+  // The choice is the better of the two ratios, never the worse.
+  let l = ProfileColor.luminance(c.r, c.g, c.b)
+  let chosen = ProfileColor.contrast(white ? 1 : 0, l), other = ProfileColor.contrast(white ? 0 : 1, l)
+  if chosen < other { failures += 1; print("FAIL \(hex) picked the lower contrast (\(chosen) < \(other))") }
+}
+if abs(ProfileColor.contrast(1, 0) - 21) > 0.001 { failures += 1; print("FAIL white on black isn't 21:1") }
+for (text, valid) in [("#8257E5", true), ("#fff", false), ("8257E5", false), ("#GGGGGG", false), ("", false), ("#8257E5FF", false)]
+where (ProfileColor.parse(text) != nil) != valid {
+  failures += 1
+  print("FAIL parse(\(text)) validity")
+}
+let total = foregroundCases.count + 7 + paneCases.count + cases.count + displayCases.count + pillCases.count + autocompleteCases.count + lookCases.count
 print(failures == 0 ? "all \(total) passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)

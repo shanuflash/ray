@@ -252,6 +252,37 @@ let savedSidebar = null;
 let folderIDs = {};
 let downloadedName = null;
 let savedActive = null;
+let savedSettings = null;
+
+// Settings window checks: helpers.
+const localOrigin = origin.replace("127.0.0.1", "localhost");
+const raytestOrigin = origin.replace("127.0.0.1", "ray.test");
+const allEntries = () => ["favorites", "pinned", "today"].flatMap((k) => state().sidebar[k]).filter((e) => e.kind !== "folder");
+const entryOfTab = (tabId) => allEntries().find((e) => e.tab === tabId);
+const activeTabState = () => state().tabs.find((t) => t.id === state().active);
+const activeZoom = () => activeTabState()?.zoom;
+const near = (a, b) => Math.abs(a - b) < 0.01;
+/** Types an address into the command bar (⌘L: the current tab; ⌘T: a new one). */
+async function goTo(url, newTab = false) {
+  await command(newTab ? "menu newTab" : "menu focusAddress");
+  await command(`type ${url}`);
+  await command("enter");
+}
+async function setSetting(name, value) {
+  await command(`setting ${name} ${value}`);
+  await command("state");
+}
+async function closeSettingsWindow() {
+  await command("settings close");
+  await until("settings window closed", async () => { await command("state"); return state().settingsWindow.open === false; });
+}
+/** Each setting back to its default, so a check leaves nothing for the next. */
+async function resetSettings() {
+  for (const [name, value] of [["minimalURL", "off"], ["loadingProgress", "on"], ["theme", "default"], ["defaultZoom", "1"],
+    ["newTabNextToActive", "off"], ["recentTabCycling", "on"], ["copyLinkShortcut", "on"], ["sidebarShortcut", "on"]])
+    await command(`setting ${name} ${value}`);
+  await command("state");
+}
 
 const checks = {
   async boot() {
@@ -1209,6 +1240,368 @@ const checks = {
     assert(state().toastTruncated === false, "the toast cut its message short");
     await until("toast gone", async () => { await command("state"); return state().toast === ""; }, 5000);
   },
+  // Settings window and the settings behind it. Each check puts every setting back to its default.
+  async "settings-window"() {
+    await resetSettings();
+    await command("menu showSettings");
+    await until("settings window", async () => { await command("state"); return state().settingsWindow.open; });
+    const win = () => state().settingsWindow;
+    const c = () => win().controls;
+    assert(win().title === "Settings" && win().pane === "appearance", `window ${JSON.stringify(win())}`);
+    assert(state().menuKeys.settings === ",", `Settings… answers to ${state().menuKeys.settings}`);
+    const [, , width, height] = win().frame.match(/-?[\d.]+/g).map(Number);
+    assert(width === 640 && height >= 560 && height < 620, `the window is ${width} x ${height}`);
+    // The defaults, as the controls show them.
+    assert(c().minimalURL === false && c().loadingProgress === true && c().newTabNextToActive === false &&
+      c().recentTabCycling === true && c().copyLinkShortcut === true && c().sidebarShortcut === true, `switches ${JSON.stringify(c())}`);
+    assert(c().zoom === "100%" && c().zoomLevels.length === 17 && c().zoomLevels[0] === "25%" && c().zoomLevels.at(-1) === "500%", `zoom ${c().zoomLevels}`);
+    assert(c().swatch === "default" && c().swatches === 9 && c().swatchSelected === 0, `swatches ${c().swatch} ${c().swatches} ${c().swatchSelected}`);
+    assert(c().allSettingsLink === "All Settings…", `link ${c().allSettingsLink}`);
+    // A control changes the setting, and a setting changed anywhere else shows in the control.
+    await command("settings press minimalURL");
+    await until("switch changed the setting", async () => { await command("state"); return state().settings.minimalURL === true; });
+    await setSetting("minimalURL", "off");
+    await until("control follows the setting", async () => { await command("state"); return c().minimalURL === false; });
+    await command("settings press swatch 3");
+    await until("swatch chose Green", async () => { await command("state"); return state().settings.theme.setting === "#3EA64A" && c().swatchSelected === 3; });
+    await command("settings press zoom 9");
+    await until("popup chose 125%", async () => { await command("state"); return state().settings.defaultZoom === 1.25 && c().zoom === "125%"; });
+    await setSetting("defaultZoom", "1");
+    await resetSettings();
+    // Only one window, however it's opened.
+    await command("menu showSettings");
+    await command("settings open");
+    await command("state");
+    assert(win().windows === 1, `${win().windows} Settings windows`);
+    if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings.png")}`);
+    await closeSettingsWindow();
+    // Its frame is remembered, in Settings.json next to Sidebar.json.
+    const file = join(dataDir, "Settings.json");
+    await until("frame saved", () => existsSync(file) && JSON.parse(readFileSync(file, "utf8")).windowFrame, 4000);
+  },
+  async "settings-minimal-url"() {
+    await resetSettings();
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
+    const host = origin.replace("http://", "");
+    const shown = () => state().toolbar.field.shown;
+    await until("full address by default", async () => { await command("state"); return shown() === `${host}/a`; });
+    await setSetting("minimalURL", "on");
+    await until("host only", async () => { await command("state"); return shown() === host; });
+    // View › Show Full Address is the same setting.
+    await command("menu toggleFullAddress");
+    await until("full again from the menu", async () => { await command("state"); return shown() === `${host}/a` && state().settings.minimalURL === false; });
+    await command("menu toggleFullAddress");
+    await until("host only from the menu", async () => { await command("state"); return shown() === host && state().settings.minimalURL === true; });
+    await resetSettings();
+    await until("full again", async () => { await command("state"); return shown() === `${host}/a`; });
+  },
+  async "settings-loading-progress"() {
+    await resetSettings();
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
+    // `silent`: nothing is meant to show of the load (no address bar, progress off), so just give it time.
+    const loadSlow = async (tag, silent = false) => {
+      const from = states.length;
+      await goTo(`${origin}/slow?${tag}`);
+      if (silent) {
+        await sleep(2600);
+      } else {
+        await until("loading", () => states.slice(from).find((s) => s.toolbar?.field?.stopButton || s.pages?.progressLine), 5000, 25);
+        await until("loaded", async () => { await command("state"); return state().toolbar?.field.stopButton === false || (state().toolbar === null && !state().pages.progressLine); }, 8000);
+      }
+      await command("state");
+      return states.slice(from);
+    };
+    // On (the default): the address bar's wash shows during the load.
+    let seen = await loadSlow("on");
+    assert(seen.some((s) => s.toolbar?.field?.wash), "no wash with loading progress on");
+    // Off: the load still shows as a stop button, but nothing is drawn for it, in the bar or on the page.
+    await setSetting("loadingProgress", "off");
+    seen = await loadSlow("off");
+    assert(seen.some((s) => s.toolbar?.field?.stopButton), "the stop button went away with progress off");
+    assert(!seen.some((s) => s.toolbar?.field?.wash), "a wash showed with loading progress off");
+    assert(!seen.some((s) => s.pages?.progressLine), "the page's load line showed with loading progress off");
+    // With the address bar off the page draws its own thin line instead; progress off stops that too.
+    await command("menu toggleToolbar");
+    await until("bar off", async () => { await command("state"); return state().toolbar === null; });
+    seen = await loadSlow("page-off", true);
+    assert(!seen.some((s) => s.pages?.progressLine), "the page's load line showed with loading progress off and no address bar");
+    await setSetting("loadingProgress", "on");
+    seen = await loadSlow("page-on");
+    assert(seen.some((s) => s.pages?.progressLine), "no page load line with progress on and no address bar");
+    await command("menu toggleToolbar");
+    await until("bar on", async () => { await command("state"); return state().toolbar !== null; });
+    await goTo(`${origin}/a`);
+    await until("/a again", () => tabFor("/a"));
+    await resetSettings();
+  },
+  async "settings-theme"() {
+    await resetSettings();
+    const theme = () => state().settings.theme;
+    assert(theme().setting === "default" && theme().accent === "#8257E5" && theme().accentDark === "#A486F0", `default theme ${JSON.stringify(theme())}`);
+    // White or black text, whichever has the higher contrast: the lavender is dark enough for white in light mode,
+    // light enough for black in dark mode.
+    assert(theme().foreground === "white" && theme().foregroundDark === "black", `default foreground ${JSON.stringify(theme())}`);
+    const defaultWash = state().toolbar.field.washColor;
+    await setSetting("theme", "#FFD60A");
+    assert(theme().setting === "#FFD60A" && theme().accent === "#FFD60A" && theme().accentDark === "#FFD60A", `yellow ${JSON.stringify(theme())}`);
+    assert(theme().foreground === "black" && theme().foregroundDark === "black", `a light colour should have black text: ${JSON.stringify(theme())}`);
+    // Everything drawn with the accent follows at once.
+    assert(state().pages.progressColor === "#FFD60A", `the page's load line is ${state().pages.progressColor}`);
+    const yellowWash = state().toolbar.field.washColor;
+    assert(yellowWash !== defaultWash, "the loading wash kept the old colour");
+    await setSetting("theme", "#14146E");
+    assert(theme().foreground === "white" && theme().foregroundDark === "white", `a dark colour should have white text: ${JSON.stringify(theme())}`);
+    assert(state().pages.progressColor === "#14146E" && state().toolbar.field.washColor !== yellowWash, "the accent didn't follow the new colour");
+    // The window shows it: a colour that is no swatch is the custom one; a preset's own swatch is selected.
+    await command("settings open");
+    await until("window open", async () => { await command("state"); return state().settingsWindow.open; });
+    assert(state().settingsWindow.controls.swatch === "#14146E" && state().settingsWindow.controls.swatchSelected === 8, `custom ${JSON.stringify(state().settingsWindow.controls)}`);
+    await setSetting("theme", "#12A594");
+    await until("preset selected", async () => { await command("state"); return state().settingsWindow.controls.swatchSelected === 2; });
+    await closeSettingsWindow();
+    // A value that isn't a colour is refused.
+    const refused = await commandResult("setting theme red");
+    assert(refused.startsWith("usage"), `setting theme red -> ${refused}`);
+    assert(state().settings.theme.setting === "#12A594", "a bad colour changed the theme");
+    await setSetting("theme", "default");
+    // (The page's line is drawn in the window's own appearance, light or dark.)
+    assert(theme().accent === "#8257E5" && [theme().accent, theme().accentDark].includes(state().pages.progressColor), `back to default: ${JSON.stringify(theme())} ${state().pages.progressColor}`);
+    assert(state().toolbar.field.washColor === defaultWash, "the wash didn't come back to the default");
+  },
+  async "settings-zoom"() {
+    await resetSettings();
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
+    const { sessionId } = await session("/a");
+    const dpr = async () => evaluate(sessionId, `window.devicePixelRatio`);
+    const base = await dpr();
+    let zoomed = 0;
+    assert(near(activeZoom(), 1), `starts at ${activeZoom()}`);
+    // The default applies to the page on screen, and the page really is scaled by it.
+    await setSetting("defaultZoom", "1.25");
+    await until("default applied", async () => { await command("state"); return near(activeZoom(), 1.25); });
+    await until("page scaled", async () => near((await dpr()) / base, 1.25));
+    // A site the user zooms keeps its own level; a site they haven't gets the default on its navigation.
+    await goTo(`${localOrigin}/b`, true);
+    await until("localhost, default zoom", async () => { await command("state"); return activeTabState()?.url.startsWith(localOrigin) && near(activeZoom(), 1.25); });
+    await command("zoom in");
+    await until("user zoomed localhost", async () => { await command("state"); return (activeZoom() > 1.26 && (zoomed = activeZoom())) && state().settings.zoomedHosts.includes("localhost"); });
+    await setSetting("defaultZoom", "2");
+    await sleep(300);
+    await command("state");
+    assert(near(activeZoom(), zoomed), `the default changed a zoomed site: ${activeZoom()}`);
+    // Another tab on a host the user hasn't zoomed follows the default, in either direction.
+    await goTo(`${raytestOrigin}/b`, true);
+    await until("ray.test, default zoom", async () => { await command("state"); return activeTabState()?.url.startsWith(raytestOrigin) && near(activeZoom(), 2); });
+    await setSetting("defaultZoom", "0.75");
+    await until("ray.test follows the new default", async () => { await command("state"); return near(activeZoom(), 0.75); });
+    // Going to the zoomed host keeps its level, and coming back to an unzoomed one gets the default.
+    await goTo(`${localOrigin}/h`);
+    await until("localhost keeps its zoom", async () => { await command("state"); return activeTabState()?.url.startsWith(localOrigin) && near(activeZoom(), zoomed); });
+    await sleep(300);
+    await command("state");
+    assert(near(activeZoom(), zoomed), `localhost lost its zoom: ${activeZoom()}`);
+    await goTo(`${raytestOrigin}/h`);
+    await until("ray.test default", async () => { await command("state"); return activeTabState()?.url.startsWith(raytestOrigin) && near(activeZoom(), 0.75); });
+    assert(!state().settings.zoomedHosts.includes("ray.test"), "the default was taken for the user's zoom");
+    // Reset (the site controls' button) hands a site back to the default.
+    await goTo(`${localOrigin}/b`);
+    await until("localhost again", async () => { await command("state"); return activeTabState()?.url.startsWith(localOrigin) && near(activeZoom(), zoomed); });
+    await command("zoom reset");
+    await until("localhost follows the default", async () => { await command("state"); return near(activeZoom(), 0.75) && !state().settings.zoomedHosts.includes("localhost"); });
+    // The first tab (127.0.0.1) followed every change too.
+    const first = state().tabs.find((t) => t.url.startsWith(origin));
+    assert(first && near(first.zoom, 0.75), `127.0.0.1 is at ${first?.zoom}`);
+    await setSetting("defaultZoom", "1");
+    await until("all back to 100%", async () => { await command("state"); return state().tabs.every((t) => near(t.zoom, 1)); });
+    for (const extra of state().tabs.filter((t) => !t.url.startsWith(origin))) await command(`rowaction close ${entryOfTab(extra.id).id}`);
+    await until("zoom tabs closed", async () => { await command("state"); return state().tabs.every((t) => t.url.startsWith(origin)); });
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await resetSettings();
+  },
+  async "settings-private-zoom"() {
+    // A private window reads the default but never writes its zoomed hosts to Settings.json.
+    await resetSettings();
+    await setSetting("defaultZoom", "1.25");
+    await command("menu newPrivateWindow");
+    await until("private window", async () => { await command("state"); return state().private === true && state().commandBar; });
+    await command(`type ${origin}/b?pzoom`);
+    await command("enter");
+    await until("private page at the default", async () => { await command("state"); return state().private === true && near(activeZoom() ?? 0, 1.25); });
+    await command("zoom in");
+    await until("zoomed in the private window", async () => { await command("state"); return activeZoom() > 1.26; });
+    await sleep(600);
+    await command("state");
+    assert(!state().settings.zoomedHosts.includes("127.0.0.1"), "a private window's zoom reached the settings");
+    const file = readFileSync(join(dataDir, "Settings.json"), "utf8");
+    assert(!file.includes("127.0.0.1"), "a private window's host was saved in Settings.json");
+    await command("key w cmd");
+    await until("private tab closed", async () => { await command("state"); return state().private === true && state().active === null; }, 5000);
+    await command("key w cmd keywin");
+    await until("back to the normal window", async () => { await command("state"); return state().private === false; }, 5000);
+    await resetSettings();
+    await until("normal tabs back to 100%", async () => { await command("state"); return state().tabs.every((t) => near(t.zoom, 1)); });
+  },
+  async "settings-new-tab-position"() {
+    await resetSettings();
+    await todayTabs(3);
+    const today = () => state().sidebar.today.map((e) => e.id);
+    const target = state().sidebar.today[1];
+    await command(`row ${target.id}`);
+    await until("middle tab active", () => state().activeEntry === target.id);
+    // Off (the default): a new tab goes to the top of Today.
+    await goTo(`${origin}/b?top`, true);
+    await until("new tab at the top", () => state().sidebar.today[0]?.url.includes("?top"));
+    // On: right after the active tab.
+    await setSetting("newTabNextToActive", "on");
+    await command(`row ${target.id}`);
+    await until("middle tab active again", () => state().activeEntry === target.id);
+    await goTo(`${origin}/b?next`, true);
+    await until("new tab next to the active one", () => today().indexOf(state().sidebar.today.find((e) => e.url.includes("?next"))?.id) === today().indexOf(target.id) + 1);
+    // From a tab that isn't in Today the new tab goes to the top as usual.
+    for (const url of ["?top", "?next"]) {
+      const e = state().sidebar.today.find((e) => e.url.includes(url));
+      if (e) await command(`rowaction close ${e.id}`);
+    }
+    await resetSettings();
+  },
+  async "settings-recent-tab-cycling"() {
+    await resetSettings();
+    // Four tabs, used in a known order: T1, T2, T3, T4 (T4 most recent).
+    await todayTabs(4);
+    const tabs = state().sidebar.today.filter((e) => e.live).slice(0, 4);
+    assert(tabs.length === 4, "need four open tabs in Today");
+    const [t1, t2, t3, t4] = tabs;
+    for (const t of [t1, t2, t3, t4]) {
+      await command(`row ${t.id}`);
+      await until("tab active", () => state().activeEntry === t.id);
+      await sleep(30);
+    }
+    const key = async (extra, expect) => {
+      await command(`key tab ctrl ${extra}keywin`.replace("  ", " "));
+      await until(`tab ${expect.title}`, async () => { await command("state"); return state().activeEntry === expect.id; }, 4000);
+    };
+    // Holding Control, each press goes one further back, and ⇧ goes the other way.
+    await key("", t3);
+    await key("", t2);
+    await key("", t1);
+    await command("state");
+    assert(state().tabCycle?.order.length === 4, "no walk in progress while Control is held");
+    await key("shift ", t2);
+    await command("key ctrlup");
+    await until("walk settled", async () => { await command("state"); return state().tabCycle === null; });
+    // Settled on T2: it is now the most recent; the rest keep their order (T4, T3, T1).
+    const ids = (list) => list.map((e) => e.tab);
+    assert(JSON.stringify(state().recentOrder) === JSON.stringify(ids([t2, t4, t3, t1])), `recent order ${state().recentOrder}, wanted ${ids([t2, t4, t3, t1])}`);
+    // A quick press and release goes back to the tab you were just on.
+    await key("", t4);
+    await command("key ctrlup");
+    await until("walk settled", async () => { await command("state"); return state().tabCycle === null; });
+    await key("", t2);
+    await command("key ctrlup");
+    await until("walk settled again", async () => { await command("state"); return state().tabCycle === null; });
+    // Off: the sidebar's order.
+    await setSetting("recentTabCycling", "off");
+    const order = allEntries().filter((e) => e.live);
+    const at = order.findIndex((e) => e.id === state().activeEntry);
+    const next = order[(at + 1) % order.length];
+    await key("", next);
+    await command("key ctrlup");
+    assert(state().tabCycle === null, "a walk started with recently used order off");
+    await resetSettings();
+  },
+  async "settings-shortcuts"() {
+    await resetSettings();
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
+    assert(state().menuKeys.copyURL === "C" && state().menuKeys.toggleSidebar === "s", `menu keys ${JSON.stringify(state().menuKeys)}`);
+    // ⇧⌘C copies the page's address.
+    const urlA = activeTabState().url;
+    await command("key c cmd shift");
+    await until("copied", () => state().pasteboard === urlA);
+    // Off: the item has no key and the key does nothing in Ray.
+    await goTo(`${origin}/b?copy`);
+    await until("/b?copy", () => tabFor("?copy"));
+    await setSetting("copyLinkShortcut", "off");
+    assert(state().menuKeys.copyURL === "", `⇧⌘C still on the menu: ${JSON.stringify(state().menuKeys)}`);
+    await command("key c cmd shift");
+    await sleep(600);
+    await command("state");
+    assert(state().pasteboard === urlA, `⇧⌘C copied with the setting off: ${state().pasteboard}`);
+    await setSetting("copyLinkShortcut", "on");
+    await command("key c cmd shift");
+    await until("copies again", () => state().pasteboard === activeTabState().url && state().pasteboard.includes("?copy"));
+    await goTo(`${origin}/a`);
+    await until("/a again", () => tabFor("/a"));
+    // ⌘S toggles the sidebar; off, the menu item has no key and ⌘S leaves the sidebar alone.
+    await setSetting("sidebarShortcut", "off");
+    assert(state().menuKeys.toggleSidebar === "", `⌘S still on the menu: ${JSON.stringify(state().menuKeys)}`);
+    const hidden = state().sidebar.hidden;
+    await command("key s cmd");
+    await sleep(600);
+    await command("state");
+    assert(state().sidebar.hidden === hidden, "⌘S toggled the sidebar with the setting off");
+    await command("menu toggleSidebar");
+    await until("the menu item still works", async () => { await command("state"); return state().sidebar.hidden === !hidden; });
+    await command("menu toggleSidebar");
+    await until("sidebar back", async () => { await command("state"); return state().sidebar.hidden === hidden; });
+    await setSetting("sidebarShortcut", "on");
+    await command("key s cmd");
+    await until("⌘S toggles again", async () => { await command("state"); return state().sidebar.hidden === !hidden; });
+    await command("key s cmd");
+    await until("⌘S toggles back", async () => { await command("state"); return state().sidebar.hidden === hidden; });
+    await resetSettings();
+  },
+  async "settings-routes"() {
+    await resetSettings();
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
+    const before = activeTabState().url;
+    const tabCount = state().tabs.length;
+    // Typed addresses open the window and never load the page.
+    for (const typed of ["ray://settings/appearance", "chrome://settings/appearance"]) {
+      await closeSettingsWindow().catch(() => {});
+      await goTo(typed);
+      await until(`${typed} opens the window`, async () => { await command("state"); return state().settingsWindow.open; });
+      await sleep(300);
+      await command("state");
+      assert(activeTabState().url === before && state().tabs.length === tabCount, `${typed} changed the tab: ${activeTabState().url}`);
+      assert(!state().commandBar, "the command bar stayed open");
+      await closeSettingsWindow();
+    }
+    // The same from a new tab: no tab appears.
+    await goTo("ray://settings/appearance", true);
+    await until("window from a new tab", async () => { await command("state"); return state().settingsWindow.open; });
+    await sleep(300);
+    await closeSettingsWindow();
+    assert(!state().tabs.some((t) => t.url.includes("settings/appearance")), "a tab loaded Chrome's Appearance page");
+    // All Settings… opens Chrome's own settings in a tab.
+    await command("settings open");
+    await command("settings link");
+    await until("settings tab", async () => { await command("state"); return activeTabState()?.url.startsWith("chrome://settings"); }, 10000);
+    const chromeSettings = await session("chrome://settings");
+    await until("settings page loaded", async () => (await evaluate(chromeSettings.sessionId, `document.readyState`)) === "complete");
+    const settingsTab = state().active;
+    // Chrome's page moving itself to Appearance (its left menu does) opens the window and goes back.
+    await closeSettingsWindow();
+    await evaluate(chromeSettings.sessionId, `history.pushState({}, "", "/appearance")`);
+    await until("window opened from the page", async () => { await command("state"); return state().settingsWindow.open; });
+    await until("tab left Appearance", async () => { await command("state"); return !state().tabs.some((t) => t.url.includes("/appearance")); }, 6000);
+    assert(state().tabs.some((t) => t.id === settingsTab), "the settings tab closed instead of going back");
+    // A navigation to it (not in place) is the same.
+    await closeSettingsWindow();
+    await until("on chrome settings", async () => { await command("state"); return activeTabState()?.url.startsWith("chrome://settings"); });
+    const again = await session("chrome://settings");
+    await evaluate(again.sessionId, `location.href = "chrome://settings/appearance"`);
+    await until("window opened by navigation", async () => { await command("state"); return state().settingsWindow.open; });
+    await until("tab left Appearance again", async () => { await command("state"); return !state().tabs.some((t) => t.url.includes("/appearance")); }, 6000);
+    await closeSettingsWindow();
+    await command(`rowaction close ${entryOfTab(settingsTab).id}`);
+    await until("settings tab closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === settingsTab); });
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+  },
   async "sidebar-toggle"() {
     await needsFrames();
     const x = () => Number(state().cardFrame.match(/-?[\d.]+/g)[0]);
@@ -1394,6 +1787,23 @@ const checks = {
     await until("window back", async () => { await command("state"); return states.length > count + 1 && state().sidebar; }, 8000);
     assert(ids(state().sidebar) === before, "the reopened window lost tabs");
   },
+  async "settings-persist"() {
+    // Non-default values for every setting; the next launch (the restore check) must find them as they were.
+    await resetSettings();
+    for (const [name, value] of [["minimalURL", "on"], ["loadingProgress", "off"], ["theme", "#E5589D"], ["defaultZoom", "1.25"],
+      ["newTabNextToActive", "on"], ["recentTabCycling", "off"], ["copyLinkShortcut", "off"], ["sidebarShortcut", "off"]])
+      await setSetting(name, value);
+    await command("settings open");
+    await closeSettingsWindow();
+    const file = join(dataDir, "Settings.json");
+    await until("saved", () => existsSync(file) && JSON.parse(readFileSync(file, "utf8")).theme === "#E5589D", 4000);
+    const saved = JSON.parse(readFileSync(file, "utf8"));
+    assert(saved.minimalURL === true && saved.loadingProgress === false && saved.defaultZoom === 1.25 && saved.newTabNextToActive === true &&
+      saved.recentTabCycling === false && saved.copyLinkShortcut === false && saved.sidebarShortcut === false, `Settings.json ${JSON.stringify(saved)}`);
+    assert(!/(https?:|password|cookie)/i.test(readFileSync(file, "utf8")), "Settings.json holds something it shouldn't");
+    await command("state");
+    savedSettings = state().settings;
+  },
   async quit() {
     savedSidebar = state().sidebar;
     savedActive = state().activeEntry;
@@ -1418,6 +1828,17 @@ const checks = {
     await sleep(300);
     await command("state");
     assert(state().fullScreen === false, "a background test instance went full screen");
+    // The settings come back as they were left, in the menu, the colour and the window.
+    assert(savedSettings, "no settings saved before quitting");
+    const canon = (o) => JSON.stringify(o, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort()) : v));
+    assert(canon(state().settings) === canon(savedSettings), `settings changed over the relaunch: ${JSON.stringify(state().settings)} vs ${JSON.stringify(savedSettings)}`);
+    assert(state().menuKeys.copyURL === "" && state().menuKeys.toggleSidebar === "", `menu keys after relaunch ${JSON.stringify(state().menuKeys)}`);
+    await command("settings open");
+    await until("settings window after relaunch", async () => { await command("state"); return state().settingsWindow.open; });
+    const shown = state().settingsWindow.controls;
+    assert(shown.minimalURL === true && shown.loadingProgress === false && shown.newTabNextToActive === true && shown.recentTabCycling === false &&
+      shown.copyLinkShortcut === false && shown.sidebarShortcut === false && shown.swatch === "#E5589D" && shown.zoom === "125%", `window after relaunch ${JSON.stringify(shown)}`);
+    await closeSettingsWindow();
     const after = state().sidebar;
     assert(JSON.stringify(after.favorites.map((e) => e.id)) === JSON.stringify(before.favorites.map((e) => e.id)), "favorites differ");
     assert(JSON.stringify(after.pinned.map((e) => [e.id, e.pinnedURL, e.parent, e.title])) === JSON.stringify(before.pinned.map((e) => [e.id, e.pinnedURL, e.parent, e.title])), "pinned differ");
