@@ -7,6 +7,8 @@ enum MainMenu {
     main.addItem(submenu("Ray", [
       item("About Ray", #selector(AppController.showAbout(_:)), nil, target: target),
       .separator(),
+      item("Settings…", #selector(AppController.showSettings(_:)), ",", target: target),
+      .separator(),
       item("Hide Ray", #selector(NSApplication.hide(_:)), "h", target: NSApp),
       item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option], target: NSApp),
       item("Show All", #selector(NSApplication.unhideAllApplications(_:)), nil, target: NSApp),
@@ -73,8 +75,9 @@ enum MainMenu {
       .separator(),
       item("Show Next Tab", #selector(AppController.nextTab(_:)), "]", [.command, .shift], target: target),
       item("Show Previous Tab", #selector(AppController.previousTab(_:)), "[", [.command, .shift], target: target),
-      item("Show Next Tab", #selector(AppController.nextTab(_:)), "\t", [.control], target: target, alternate: true),
-      item("Show Previous Tab", #selector(AppController.previousTab(_:)), "\t", [.control, .shift], target: target, alternate: true),
+      // ⌃Tab: most recently used order when Settings says so (and the sidebar's order when it doesn't).
+      item("Show Next Tab", #selector(AppController.nextTabWithControl(_:)), "\t", [.control], target: target, alternate: true),
+      item("Show Previous Tab", #selector(AppController.previousTabWithControl(_:)), "\t", [.control, .shift], target: target, alternate: true),
       .separator(),
     ]
     for number in 1...9 {
@@ -87,6 +90,33 @@ enum MainMenu {
 
     NSApp.mainMenu = main
     NSApp.windowsMenu = window.submenu
+    applyShortcutSettings()
+  }
+
+  /// Settings can take ⇧⌘C and ⌘S away from the menu, so the page gets those keys. Run at launch and on every change.
+  static func applyShortcutSettings() {
+    let values = RaySettings.shared.values
+    setKey(#selector(AppController.copyURL(_:)), on: values.copyLinkShortcut, key: "C", modifiers: [.command, .shift])
+    setKey(#selector(AppController.toggleSidebar(_:)), on: values.sidebarShortcut, key: "s", modifiers: [.command])
+  }
+
+  private static func setKey(_ action: Selector, on: Bool, key: String, modifiers: NSEvent.ModifierFlags) {
+    guard let menu = NSApp.mainMenu, let entry = find(action, in: menu) else { return }
+    entry.keyEquivalent = on ? key : ""
+    entry.keyEquivalentModifierMask = on ? modifiers : []
+  }
+
+  private static func find(_ action: Selector, in menu: NSMenu) -> NSMenuItem? {
+    for item in menu.items {
+      if item.action == action { return item }
+      if let found = item.submenu.flatMap({ find(action, in: $0) }) { return found }
+    }
+    return nil
+  }
+
+  /// For tests: the key a menu item answers to now ("" for none).
+  static func keyEquivalent(of action: Selector) -> String? {
+    NSApp.mainMenu.flatMap { find(action, in: $0) }?.keyEquivalent
   }
 
   private static func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {

@@ -9,7 +9,8 @@ enum Shortcuts {
     let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
     switch modifiers {
     case [.command]:
-      return ["t", "w", "n", "q"].contains(key)
+      // ⌘, is Chrome's too (it opens chrome://settings): Ray's Settings window takes it first.
+      return ["t", "w", "n", "q", ","].contains(key)
     case [.command, .shift]:
       return ["t", "w", "n", "[", "]", "{", "}"].contains(key)
     case [.control], [.control, .shift]:

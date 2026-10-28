@@ -32,6 +32,22 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private var loadingEntry: SidebarEntry?
   private var peeking = false
   private var peekEndWork: DispatchWorkItem?
+  /// Ctrl+Tab through recently used tabs: the order when it began (most recent first), where it is, and each tab's
+  /// `lastActive` from before, so stepping through tabs doesn't reorder them.
+  private struct TabCycle {
+    var order: [SidebarEntry]
+    var index: Int
+    var lastActive: [UUID: Date]
+  }
+  private var tabCycle: TabCycle?
+  /// The cycle is moving the selection itself (so `select` doesn't take that for the user going elsewhere).
+  private var cycling = false
+  /// Page zoom: the host each tab was last settled for, by tab id, and the hosts zoomed in this private window
+  /// (nothing a private window does goes to Settings.json).
+  private var zoomHosts: [Int32: String] = [:]
+  private var privateZoomed: Set<String> = []
+  private var applyingZoom = false
+  private var lastDownloadProgress: Double?
   private lazy var dockSpring = Spring(value: state.sidebarHidden ? 0 : 1, response: 0.26, dampingRatio: 0.86) {
     [weak self] _ in self?.layout()
   }
@@ -95,13 +111,21 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       NotificationCenter.default.addObserver(self, selector: #selector(fullScreenChanged), name: name, object: window)
     }
     root.postsFrameChangedNotifications = true
+    migrateLegacySettings()
     reloadSidebar()
     layout()
     installPointerMonitors()
+    let center = NotificationCenter.default
+    center.addObserver(self, selector: #selector(settingsChanged(_:)), name: RaySettings.didChange, object: nil)
+    center.addObserver(self, selector: #selector(profileColorChanged), name: ProfileColor.didChange, object: nil)
+    center.addObserver(self, selector: #selector(windowResignedKey), name: NSWindow.didResignKeyNotification, object: window)
+    // Zoom levels the engine already holds are the user's own; the default zoom only touches the rest.
+    RaySettings.shared.adoptExistingZoom(profile: mainProfile) { [weak self] in self?.settleZoomOfAllTabs() }
   }
 
   deinit {
     pointerMonitors.forEach(NSEvent.removeMonitor)
+    NotificationCenter.default.removeObserver(self)
   }
 
   private func configureWindow() {
@@ -170,7 +194,10 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     toolbar.isHidden = !toolbarShown
     sidebar.showsAddress = !toolbarShown || sidebar.superview === floating
     toolbar.showsFullAddress = fullAddressShown
-    pages.showsProgress = !toolbarShown
+    toolbar.showsLoadingWash = RaySettings.shared.values.loadingProgress
+    // One load indicator: the page's own line only when the address bar above it is off, and neither when Settings
+    // turns progress off.
+    pages.showsProgress = !toolbarShown && RaySettings.shared.values.loadingProgress
     if toolbarShown {
       // The address bar sits above the card, at the window's top edge, across the card's width.
       let height = PageToolbarView.height
@@ -222,6 +249,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let items = downloads.items
     let active = items.filter { $0.active && !$0.waiting }
     let progress = active.isEmpty ? nil : active.map(\.fraction).reduce(0, +) / Double(active.count)
+    lastDownloadProgress = progress
     sidebar.setDownloads(progress: progress)
     if let downloadsList {
       downloadsList.show(items)
@@ -492,7 +520,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let isInternal = URLComponents(string: tab.url)?.scheme.map { ["chrome", AddressInput.internalScheme].contains($0) } ?? false
     let panel = SiteControlsView(
       origin: tab.committedOrigin, url: tab.url, profile: profile, security: level, isInternal: isInternal, extensions: items,
-      zoom: tab.zoomFactor, resetZoom: { [weak tab] in tab?.zoomFactor = 1 })
+      zoom: tab.zoomFactor, defaultZoom: RaySettings.shared.values.defaultZoom,
+      resetZoom: { [weak self, weak tab] in if let tab { self?.resetZoom(of: tab) } })
     panel.onAction = { [weak self, weak tab] action in
       guard let self, let tab, !tab.closed else { return }
       self.siteControlsAction(action, tab: tab)
@@ -708,6 +737,12 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   private func insertToday(_ entry: SidebarEntry, after opener: SidebarEntry?) {
+    var opener = opener
+    // Settings › Open new tabs next to the active tab: one with no opener goes right after the active one (when
+    // that is in Today; otherwise at the top as usual).
+    if opener == nil, RaySettings.shared.values.newTabNextToActive, let active = activeEntry, active.kind == .today {
+      opener = active
+    }
     if let opener, opener.kind == .today, let index = state.today.firstIndex(where: { $0 === opener }) {
       state.today.insert(entry, at: index + 1)
     } else {
@@ -739,6 +774,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     pages.show(tab)
     coreWindow.activate(tab)
     let switched = state.activeEntryID != entry.id
+    // Going to a tab by any other way ends a Ctrl+Tab in progress.
+    if switched, !cycling { tabCycle = nil }
     if switched, findTab != nil, findTab !== tab { closeFind() }
     if switched { closeSiteControls() }
     state.activeEntryID = entry.id
@@ -948,6 +985,56 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     select(live[(index + step + live.count) % live.count])
   }
 
+  /// ⌃Tab and ⌃⇧Tab. With Settings › Cycle through tabs in most recently used order on, each press goes one tab
+  /// further back (or forward) through the tabs by when they were last used, as Chrome's tab search and Firefox do;
+  /// holding Control keeps one walk going, and releasing it (`endTabCycle`) makes the tab it reached the most
+  /// recently used. Off, it's the sidebar's order, like ⇧⌘] and ⇧⌘[.
+  func cycleTabWithControl(by step: Int) {
+    guard RaySettings.shared.values.recentTabCycling else { return cycleTab(by: step) }
+    var cycle: TabCycle
+    if let running = tabCycle {
+      cycle = running
+      // A tab closed in the middle of the walk drops out of it.
+      cycle.order.removeAll { !$0.isLive }
+    } else {
+      let live = state.allEntries.filter { $0.isLive && !$0.isFolder }
+      // Most recently used first, the current tab on top; ties keep the sidebar's order.
+      var order = live.enumerated().sorted { ($0.element.lastActive, $1.offset) > ($1.element.lastActive, $0.offset) }.map(\.element)
+      if let active = activeEntry, let at = order.firstIndex(where: { $0 === active }) {
+        order.remove(at: at)
+        order.insert(active, at: 0)
+      }
+      cycle = TabCycle(order: order, index: 0, lastActive: Dictionary(order.map { ($0.id, $0.lastActive) }, uniquingKeysWith: { first, _ in first }))
+    }
+    guard cycle.order.count > 1 else {
+      tabCycle = cycle
+      return
+    }
+    cycle.index = cycle.order.firstIndex { $0.id == state.activeEntryID } ?? 0
+    cycle.index = (cycle.index + step + cycle.order.count) % cycle.order.count
+    let target = cycle.order[cycle.index]
+    cycling = true
+    select(target)
+    cycling = false
+    // Passing through a tab doesn't make it recent; only where the walk ends does.
+    if let before = cycle.lastActive[target.id] { target.lastActive = before }
+    tabCycle = cycle
+    logState("tabCycle")
+  }
+
+  /// Control was let go (or the window lost focus): the walk through recent tabs is over.
+  func endTabCycle() {
+    guard let cycle = tabCycle else { return }
+    tabCycle = nil
+    if let active = activeEntry, cycle.order.contains(where: { $0 === active }) {
+      active.lastActive = Date()
+      store.save(state)
+    }
+    logState("tabCycleEnd")
+  }
+
+  @objc private func windowResignedKey() { endTabCycle() }
+
   func selectTab(number: Int) {
     let entries = state.allEntries.filter { !$0.isFolder }
     guard !entries.isEmpty else { return }
@@ -970,14 +1057,13 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     toolbar.showLoading(tab?.loading ?? false, progress: tab?.progress ?? 0, tab: tab.map { Int($0.tabId) } ?? -1)
   }
 
-  var fullAddressShown: Bool { state.fullAddress ?? true }
+  /// Settings › Minimal URL in the address bar, the other way round.
+  var fullAddressShown: Bool { !RaySettings.shared.values.minimalURL }
 
-  /// View › Show Full Address.
+  /// View › Show Full Address: the same setting as Settings › Minimal URL in the address bar. Its change comes back
+  /// through `settingsChanged`, in every window.
   func toggleFullAddress() {
-    state.fullAddress = !fullAddressShown
-    toolbar.showsFullAddress = fullAddressShown
-    store.save(state)
-    logState("toolbar")
+    RaySettings.shared.update { $0.minimalURL.toggle() }
   }
 
   /// View › Show Address Bar on Page.
@@ -1206,6 +1292,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     case .url(let target), .search(let target), .history(let target):
       url = target
     }
+    // ray://settings/appearance is Ray's own Settings window, never a page.
+    if showNativeSettings(for: url) { return }
     if mode == .newTab || activeTab == nil {
       openToday(url, after: nil, foreground: true)
     } else if let tab = activeTab {
@@ -1366,10 +1454,30 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   func tabDidChangeTitle(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "title") }
-  func tabDidChangeURL(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "url") }
+  func tabDidChangeURL(_ tab: ArdiaCoreTab) {
+    // Chrome's own settings page moved itself to Appearance (its left menu does that in place): Ray's window is
+    // Appearance, so the tab goes back to where it was and the window opens.
+    if !closing, let entry = state.entry(for: tab), let pane = AddressInput.nativeSettingsPane(for: tab.url) {
+      leaveNativeSettings(tab, entry, pane: pane)
+      return
+    }
+    tabChanged(tab, event: "url")
+  }
   func tabDidChangeFavicon(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "favicon") }
   func tabDidChangeNavigationState(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "navigation") }
   func tabDidChangeSecurity(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "security") }
+
+  func tabDidCommitDocument(_ tab: ArdiaCoreTab) {
+    // On the next turn of the run loop, by which time the engine has set its own zoom for the new page.
+    DispatchQueue.main.async { [weak self, weak tab] in
+      guard let self, let tab else { return }
+      RaySettings.shared.adoptExistingZoom(profile: self.mainProfile) { [weak self, weak tab] in
+        if let self, let tab { self.settleZoom(of: tab) }
+      }
+    }
+  }
+
+  func tabDidChangeZoom(_ tab: ArdiaCoreTab) { noteZoomChanged(tab) }
 
   func tabDidChangeLoading(_ tab: ArdiaCoreTab) {
     pages.updateProgress(for: tab)
@@ -1397,6 +1505,126 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     if kind == "hello" && main { TestEnvironment.log("page channel ready in tab \(tab.tabId) (\(origin))") }
   }
 
+  // MARK: Settings
+
+  /// An older Sidebar.json kept View › Show Full Address; it's Settings › Minimal URL in the address bar now.
+  private func migrateLegacySettings() {
+    guard !isPrivate, let full = state.fullAddress else { return }
+    if !full { RaySettings.shared.update { $0.minimalURL = true } }
+    state.fullAddress = nil
+    store.save(state)
+  }
+
+  /// Every window follows the one set of settings.
+  @objc private func settingsChanged(_ note: Notification) {
+    let keys = note.userInfo?["keys"] as? [RaySetting] ?? []
+    if keys.contains(.minimalURL) || keys.contains(.loadingProgress) {
+      layout()
+      updateToolbarLoading()
+      if let tab = activeTab { pages.updateProgress(for: tab) }
+    }
+    if keys.contains(.defaultZoom) { settleZoomOfAllTabs() }
+    if keys.contains(.recentTabCycling) { endTabCycle() }
+    logState("settings")
+  }
+
+  /// The profile's colour changed: everything drawn with it takes the new one at once.
+  @objc private func profileColorChanged() {
+    root.setNeedsDisplayRecursively()
+    pages.refreshAccent()
+    toolbar.refreshAccent()
+    sidebar.setDownloads(progress: lastDownloadProgress)
+    logState("theme")
+  }
+
+  /// ray://settings/appearance (or chrome://) is Ray's Settings window, not a page.
+  private func showNativeSettings(for url: String) -> Bool {
+    guard let pane = AddressInput.nativeSettingsPane(for: url) else { return false }
+    SettingsWindowController.shared.show(pane: pane)
+    return true
+  }
+
+  /// A tab that ended up on that page (Chrome's settings navigated itself there, or a link opened it): the window
+  /// opens, and the tab goes back to where it was, or closes if it has nowhere to go back to.
+  private func leaveNativeSettings(_ tab: ArdiaCoreTab, _ entry: SidebarEntry, pane: String) {
+    SettingsWindowController.shared.show(pane: pane)
+    if tab.canGoBack {
+      tab.goBack()
+    } else if entry.kind == .today {
+      tab.close()
+    } else if let home = entry.pinnedURL, AddressInput.nativeSettingsPane(for: home) == nil {
+      tab.loadURL(home, userInitiated: true)
+    }
+  }
+
+  // MARK: Page zoom
+
+  /// Settings › Page zoom is Ray's own: the engine keeps zoom per host, so Ray sets the default when a navigation
+  /// commits on a host the user hasn't zoomed, and remembers the hosts they did zoom (⌘+ / ⌘−) so those keep their
+  /// level. Hosts are never logged in a normal run.
+  private func zoomHost(of tab: ArdiaCoreTab) -> String? {
+    guard let origin = tab.committedOrigin, let components = URLComponents(string: origin),
+          let scheme = components.scheme?.lowercased(), scheme == "http" || scheme == "https",
+          let host = components.host?.lowercased(), !host.isEmpty else { return nil }
+    return host
+  }
+
+  private func isUserZoomed(_ host: String) -> Bool {
+    RaySettings.shared.isZoomed(host) || privateZoomed.contains(host)
+  }
+
+  private func setZoom(_ tab: ArdiaCoreTab, to factor: Double) {
+    guard abs(tab.zoomFactor - factor) > 0.002 else { return }
+    applyingZoom = true
+    tab.zoomFactor = factor
+    applyingZoom = false
+  }
+
+  /// A tab's page just committed, or the default changed: a host the user zoomed keeps its own level, any other
+  /// gets the default.
+  private func settleZoom(of tab: ArdiaCoreTab) {
+    guard !closing, !tab.closed, let host = zoomHost(of: tab) else {
+      zoomHosts[tab.tabId] = nil
+      return
+    }
+    zoomHosts[tab.tabId] = host
+    if !isUserZoomed(host) { setZoom(tab, to: RaySettings.shared.values.defaultZoom) }
+  }
+
+  private func settleZoomOfAllTabs() { tabs.forEach(settleZoom(of:)) }
+
+  /// The engine says a tab's zoom changed. While Ray is setting it, or a navigation is still settling (the host
+  /// isn't the one Ray last settled), that's not the user; anything else on a host that isn't marked yet is.
+  private func noteZoomChanged(_ tab: ArdiaCoreTab) {
+    guard !applyingZoom, !closing, let host = zoomHost(of: tab), zoomHosts[tab.tabId] == host, !isUserZoomed(host),
+          abs(tab.zoomFactor - RaySettings.shared.values.defaultZoom) > 0.002 else { return }
+    if isPrivate { privateZoomed.insert(host) } else { RaySettings.shared.markZoomed(host) }
+    logState("zoom")
+  }
+
+  /// A site's Reset in the site controls: back to following the default.
+  func resetZoom(of tab: ArdiaCoreTab) {
+    guard let host = zoomHost(of: tab) else {
+      tab.zoomFactor = 1
+      return
+    }
+    if isPrivate { privateZoomed.remove(host) } else { RaySettings.shared.unmarkZoomed(host) }
+    setZoom(tab, to: RaySettings.shared.values.defaultZoom)
+    logState("zoom")
+  }
+
+  /// For tests: ⌘+ and ⌘− as the engine does them, and the site controls' Reset.
+  func zoomCommand(_ word: String) -> Bool {
+    guard let tab = activeTab else { return false }
+    switch word {
+    case "in": tab.zoomStep(1)
+    case "out": tab.zoomStep(-1)
+    case "reset": resetZoom(of: tab)
+    default: return false
+    }
+    return true
+  }
+
   // MARK: State log
 
   func logState(_ event: String) {
@@ -1409,7 +1637,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
         "parent": entry.parentID?.uuidString ?? NSNull(), "open": entry.isOpen ?? NSNull(),
       ]
     }
-    let state: [String: Any] = [
+    var state: [String: Any] = [
       "event": event,
       "active": activeTab.map { Int($0.tabId) } ?? NSNull(),
       "activeEntry": self.state.activeEntryID?.uuidString ?? NSNull(),
@@ -1479,10 +1707,22 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "tabs": tabs.map { tab in
         [
           "id": Int(tab.tabId), "url": tab.url, "title": tab.title,
-          "visible": !tab.view.isHidden && tab.view.superview != nil,
+          "visible": !tab.view.isHidden && tab.view.superview != nil, "zoom": tab.zoomFactor,
         ] as [String: Any]
       },
     ]
+    // Settings (test builds only, like the rest of this log).
+    func tabID(_ entry: SidebarEntry) -> Any { entry.isLive ? Int(entry.tab!.tabId) : NSNull() }
+    state["settings"] = RaySettings.shared.debug
+    state["settingsWindow"] = SettingsWindowController.shared.debug
+    state["menuKeys"] = [
+      "copyURL": MainMenu.keyEquivalent(of: #selector(AppController.copyURL(_:))) ?? NSNull(),
+      "toggleSidebar": MainMenu.keyEquivalent(of: #selector(AppController.toggleSidebar(_:))) ?? NSNull(),
+      "settings": MainMenu.keyEquivalent(of: #selector(AppController.showSettings(_:))) ?? NSNull(),
+    ] as [String: Any]
+    state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
+      .sorted { $0.lastActive > $1.lastActive }.map(tabID)
+    state["tabCycle"] = tabCycle.map { ["order": $0.order.map(tabID), "index": $0.index] as [String: Any] } ?? NSNull()
     guard let data = try? JSONSerialization.data(withJSONObject: state),
           let json = String(data: data, encoding: .utf8) else { return }
     FileHandle.standardError.write("[ray-state] \(json)\n".data(using: .utf8)!)

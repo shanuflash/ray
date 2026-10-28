@@ -43,7 +43,8 @@ final class PageContainerView: NSView {
 
   var debugState: [String: Any] {
     let page = shown?.view
-    var state: [String: Any] = ["pageFrame": page.map { NSStringFromRect($0.frame) } ?? "", "progressLine": progressShown]
+    var state: [String: Any] = ["pageFrame": page.map { NSStringFromRect($0.frame) } ?? "", "progressLine": progressShown,
+                                 "progressColor": progressColor]
     if let page {
       state["pageSubviews"] = page.subviews.map {
         "\(type(of: $0)) \(NSStringFromRect($0.frame)) hidden=\($0.isHidden)"
@@ -170,6 +171,19 @@ final class PageContainerView: NSView {
     }
   }
   var progressShown: Bool { progressLayer.opacity > 0 }
+
+  /// The profile's colour changed: the line takes it up.
+  func refreshAccent() {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    effectiveAppearance.performAsCurrentDrawingAppearance { progressLayer.backgroundColor = ProfileColor.accent.cgColor }
+    CATransaction.commit()
+  }
+
+  /// For tests: the line's colour as `#RRGGBB`.
+  var progressColor: String {
+    progressLayer.backgroundColor.flatMap { NSColor(cgColor: $0) }.map { ProfileColor.hex(of: $0) } ?? ""
+  }
 
   func updateProgress(for tab: ArdiaCoreTab) {
     guard tab === shown else { return }

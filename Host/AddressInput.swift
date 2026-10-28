@@ -27,6 +27,18 @@ enum AddressInput {
     return searchTemplate.replacingOccurrences(of: "%s", with: query)
   }
 
+  /// The pane of Ray's own Settings window that a `chrome://settings/<pane>` (or `ray://`) address stands for. Only
+  /// Appearance is native; Chrome's other settings pages still load as they are. The address is a URL the engine or
+  /// `url(for:)` gave, never something a page said about itself.
+  static func nativeSettingsPane(for url: String) -> String? {
+    guard let components = URLComponents(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
+          let scheme = components.scheme?.lowercased(), scheme == "chrome" || scheme == internalScheme,
+          components.host?.lowercased() == "settings", components.user == nil, components.password == nil
+    else { return nil }
+    let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+    return path == "appearance" ? "appearance" : nil
+  }
+
   static func isSearch(_ url: String) -> Bool {
     url.hasPrefix(searchTemplate.replacingOccurrences(of: "%s", with: ""))
   }

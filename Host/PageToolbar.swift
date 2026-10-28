@@ -95,6 +95,14 @@ final class PageToolbarView: NSView {
     get { address.showsFullAddress }
     set { address.showsFullAddress = newValue }
   }
+  /// Settings › Show loading progress in the address bar: off, the field draws no wash (the reload button still
+  /// turns into stop while the page loads).
+  var showsLoadingWash: Bool {
+    get { address.showsLoadingWash }
+    set { address.showsLoadingWash = newValue }
+  }
+  /// The profile's colour changed: the wash takes it up.
+  func refreshAccent() { address.refreshAccent() }
   var addressDebug: [String: Any] {
     address.debug.merging(["stopButton": isStopping]) { _, new in new }
   }
@@ -222,14 +230,23 @@ private final class ToolbarAddressView: NSView {
       "look": "\(look)", "icon": !securityIcon.isHidden, "textOffset": label.frame.midY - bounds.midY,
       "shown": label.attributedStringValue.string,
       "loading": wash.loading, "progress": wash.progress, "wash": wash.active, "washFinishing": wash.finishing,
-      "washFraction": wash.fraction,
+      "washFraction": wash.fraction, "washColor": wash.lineColor,
       "progressSteps": wash.steps,
     ]
   }
 
-  func showLoading(_ loading: Bool, progress: Double, tab: Int) {
-    wash.update(loading: loading, progress: progress, tab: tab)
+  /// Settings › Show loading progress in the address bar. Turning it off mid-load ends the wash like a finished load.
+  var showsLoadingWash = true {
+    didSet { if oldValue != showsLoadingWash { showLoading(lastLoad.loading, progress: lastLoad.progress, tab: lastLoad.tab) } }
   }
+  private var lastLoad = (loading: false, progress: 0.0, tab: -1)
+
+  func showLoading(_ loading: Bool, progress: Double, tab: Int) {
+    lastLoad = (loading, progress, tab)
+    wash.update(loading: loading && showsLoadingWash, progress: progress, tab: tab)
+  }
+
+  func refreshAccent() { wash.applyTint(for: effectiveAppearance) }
 
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
@@ -440,6 +457,12 @@ private final class LoadingWash {
       let count = ramp.colors?.count ?? 0
       ramp.locations = count > 1 ? (0..<count).map { NSNumber(value: solid * Double($0) / Double(count - 1)) } : nil
     }
+  }
+
+  /// For tests: the leading end of the line, as `#RRGGBB`, so a theme change can be seen in what's drawn.
+  var lineColor: String {
+    guard let cg = line.colors?.last, let color = NSColor(cgColor: cg as! CGColor) else { return "" }
+    return ProfileColor.hex(of: color.withAlphaComponent(1))
   }
 
   func applyTint(for appearance: NSAppearance) {

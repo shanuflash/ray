@@ -30,6 +30,8 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     }
     NSApp.delegate = self
     MainMenu.install(target: self)
+    NotificationCenter.default.addObserver(
+      forName: RaySettings.didChange, object: nil, queue: .main) { _ in MainMenu.applyShortcutSettings() }
     installReservedKeyRouting()
     TestCommands.start()
     openMainWindow(startURL: TestEnvironment["RAY_START_URL"])
@@ -70,6 +72,11 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
             NSApp.mainMenu?.performKeyEquivalent(with: event) == true else { return event }
       return nil
     }
+    // Releasing Control settles a Ctrl+Tab through the recently used tabs on the tab it reached.
+    NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+      if !event.modifierFlags.contains(.control) { self?.windows.forEach { $0.endTabCycle() } }
+      return event
+    }
   }
 
   func engineQuitCancelled() {
@@ -80,6 +87,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   func engineWillShutDown() {
     if !quitting { windows.forEach { $0.prepareForQuit() } }
     quitting = true
+    RaySettings.shared.flush()
   }
 
   func engineWindowForNewBrowser(of profile: ArdiaCoreProfile, type: String) -> ArdiaCoreWindow? {
@@ -161,12 +169,14 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     guard !quitting else { return }
     quitting = true
     windows.forEach { $0.prepareForQuit() }
+    RaySettings.shared.flush()
     ArdiaCoreEngine.shared?.quit()
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     quitting = true
     windows.forEach { $0.prepareForQuit() }
+    RaySettings.shared.flush()
     return .terminateNow
   }
 
@@ -221,7 +231,18 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   @objc func find(_ sender: Any?) { current?.showFind() }
   @objc func findNext(_ sender: Any?) { current?.findAgain(forward: true) }
   @objc func findPrevious(_ sender: Any?) { current?.findAgain(forward: false) }
-  @objc func closeTab(_ sender: Any?) { current?.closeActive() }
+  @objc func closeTab(_ sender: Any?) {
+    // ⌘W in the Settings window closes it, not a tab of the browser behind it.
+    if SettingsWindowController.shared.isKey { SettingsWindowController.shared.close() } else { current?.closeActive() }
+  }
+  @objc func showSettings(_ sender: Any?) { SettingsWindowController.shared.show() }
+
+  /// Settings › All Settings…: Chrome's own settings page, in a tab of the window you were in.
+  func openChromeSettings() {
+    guard let controller = current ?? openMainWindow(), let url = AddressInput.url(for: "ray://settings") else { return }
+    controller.openToday(url, after: controller.activeEntry, foreground: true)
+    if !launchedInBackground { controller.window.makeKeyAndOrderFront(nil) }
+  }
   @objc func toggleSidebar(_ sender: Any?) { current?.toggleSidebar() }
   @objc func togglePin(_ sender: Any?) { current?.togglePin() }
   @objc func backToPinned(_ sender: Any?) { current?.backToPinned() }
@@ -233,6 +254,15 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   @objc func toggleDevTools(_ sender: Any?) { current?.toggleDevTools() }
   @objc func nextTab(_ sender: Any?) { current?.cycleTab(by: 1) }
   @objc func previousTab(_ sender: Any?) { current?.cycleTab(by: -1) }
+  // ⌃Tab and ⌃⇧Tab both land on one of these (AppKit may match the ⌃Tab item for either), so the direction comes
+  // from whether ⇧ was down in the key itself.
+  @objc func nextTabWithControl(_ sender: Any?) { current?.cycleTabWithControl(by: shiftIsDown ? -1 : 1) }
+  @objc func previousTabWithControl(_ sender: Any?) { current?.cycleTabWithControl(by: -1) }
+
+  private var shiftIsDown: Bool {
+    guard let event = NSApp.currentEvent, event.type == .keyDown else { return false }
+    return event.modifierFlags.contains(.shift)
+  }
   @objc func selectTab(_ sender: NSMenuItem) { current?.selectTab(number: sender.tag) }
 }
 
@@ -249,8 +279,8 @@ extension AppController: NSMenuItemValidation {
       return current?.toolbarShown == true
     case #selector(closeTab(_:)):
       // With no tab open, ⌘W closes the window, as in Chrome and Arc.
-      item.title = current?.activeEntry == nil ? "Close Window" : "Close Tab"
-      return current != nil
+      item.title = current?.activeEntry == nil || SettingsWindowController.shared.isKey ? "Close Window" : "Close Tab"
+      return current != nil || SettingsWindowController.shared.isKey
     case #selector(reload(_:)), #selector(reloadIgnoringCache(_:)), #selector(toggleDevTools(_:)):
       return current?.activeTab != nil
     default: return true

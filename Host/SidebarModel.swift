@@ -93,8 +93,8 @@ final class SidebarState: Codable {
   var fullScreen: Bool?
   /// View › Show Address Bar on Page (on unless turned off).
   var pageToolbar: Bool?
-  /// View › Show Full Address (on unless turned off): the page address bar shows the path and query, not just the
-  /// host.
+  /// Where View › Show Full Address used to live. It's `RaySettings.minimalURL` now (minimal = !fullAddress); an
+  /// older file's value moves there once on load and is cleared.
   var fullAddress: Bool?
 
   var allEntries: [SidebarEntry] { favorites + pinned + today }

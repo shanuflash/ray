@@ -33,6 +33,8 @@ final class SiteControlsView: NSView {
   private let security: String
   private let host: String
   private let zoom: Double
+  /// Settings › Page zoom: the level a site has unless the user zoomed it.
+  private let defaultZoom: Double
   private let onResetZoom: () -> Void
 
   private let quickTiles: [(name: String, tile: PanelTile)]
@@ -48,11 +50,12 @@ final class SiteControlsView: NSView {
   private(set) var settings: [(type: String, value: String, isDefault: Bool)] = []
 
   init(origin: String?, url: String, profile: ArdiaCoreProfile, security: String, isInternal: Bool, extensions: [Extension],
-       zoom: Double, resetZoom: @escaping () -> Void) {
+       zoom: Double, defaultZoom: Double = 1, resetZoom: @escaping () -> Void) {
     self.origin = origin
     self.profile = profile
     self.security = security
     self.zoom = zoom
+    self.defaultZoom = defaultZoom
     self.onResetZoom = resetZoom
     host = origin.flatMap { URLComponents(string: $0)?.host } ?? ""
     quickTiles = [
@@ -156,10 +159,10 @@ final class SiteControlsView: NSView {
     self.settings = settings
     rows.forEach { $0.removeFromSuperview() }
     rows = []
-    if zoom > 0, abs(zoom - 1) > 0.001 {
+    if zoom > 0, abs(zoom - defaultZoom) > 0.001 {
       let row = SettingRow(symbol: "plus.magnifyingglass", title: "Zoom", subtitle: "\(Int((zoom * 100).rounded()))%",
                            on: false)
-      row.toolTip = "Reset to 100%"
+      row.toolTip = "Reset to \(Int((defaultZoom * 100).rounded()))%"
       row.onClick = { [weak self] _ in
         self?.onResetZoom()
         self?.close()
@@ -550,7 +553,8 @@ private final class SettingRow: NSView {
   override func updateLayer() {
     layer?.backgroundColor = (hovered ? PanelColors.tile : .clear).cgColor
     circle.layer?.backgroundColor = (on ? ProfileColor.accent : PanelColors.tileHover).cgColor
-    icon.contentTintColor = on ? .white : .labelColor
+    // White or black, whichever reads better on the profile's colour.
+    icon.contentTintColor = on ? ProfileColor.foreground(on: ProfileColor.accent) : .labelColor
   }
 
   override func viewDidChangeEffectiveAppearance() {

@@ -34,7 +34,8 @@ enum TestCommands {
     // `keywin`: make the window key first (without ordering it front), so the press takes AppKit's real key path.
     if parts.contains("keywin") { window.makeKey() }
     // A real keyboard reports the shifted character (⇧⌘C arrives as "C"), even ignoring modifiers.
-    let shown = flags.contains(.shift) ? character.uppercased() : character
+    let typed = character == "tab" ? "\t" : character
+    let shown = flags.contains(.shift) ? typed.uppercased() : typed
     for type in [NSEvent.EventType.keyDown, .keyUp] {
       guard let event = NSEvent.keyEvent(
         with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
@@ -46,7 +47,44 @@ enum TestCommands {
     return "ok"
   }
 
-  private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53]
+  private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53, "tab": 48, ",": 43, "=": 24]
+
+  /// `key ctrlup`: Control let go, as a real keyboard reports it (through the event queue, where local monitors see it).
+  private static func releaseControl(in window: NSWindow?) -> String {
+    guard let window, let event = NSEvent.keyEvent(
+      with: .flagsChanged, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+      windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "",
+      isARepeat: false, keyCode: 59) else { return "no event" }
+    NSApp.postEvent(event, atStart: false)
+    return "ok"
+  }
+
+  /// `setting <name> <value>`: a setting changed through `RaySettings.apply`, the call the Settings window's own
+  /// controls make. `settings open|close|link|snap <path>` drive the window itself.
+  private static func setting(_ argument: String) -> String {
+    let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
+    guard words.count == 2, let key = RaySetting(rawValue: words[0]), RaySettings.shared.apply(key, words[1]) else {
+      return "usage: setting <\(RaySetting.allCases.map(\.rawValue).joined(separator: "|"))> <value>"
+    }
+    return "ok"
+  }
+
+  private static func settingsWindow(_ argument: String) -> String {
+    let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
+    switch words.first {
+    case "open": SettingsWindowController.shared.show()
+    case "close": SettingsWindowController.shared.close()
+    case "link": if !SettingsWindowController.shared.pressAllSettings() { return "no window" }
+    case "press":
+      guard words.count == 2, SettingsWindowController.shared.press(words[1].split(separator: " ").map(String.init)) else {
+        return "no such control"
+      }
+    case "snap":
+      guard words.count == 2, SettingsWindowController.shared.snapshot(to: words[1]) else { return "no window" }
+    default: return "usage: settings open|close|link|snap <path>"
+    }
+    return "ok"
+  }
 
   /// `press x y`, `move x y`, `release x y`: one mouse drag in steps, so checks can look at it mid-way.
   private static func mouse(_ type: NSEvent.EventType, _ argument: String, in window: NSWindow?) -> String {
@@ -244,7 +282,13 @@ enum TestCommands {
         result = chain.joined(separator: " < ")
       }
     case "key":
-      result = key(argument, in: window)
+      result = argument == "ctrlup" ? releaseControl(in: window) : key(argument, in: window)
+    case "setting":
+      result = setting(argument)
+    case "settings":
+      result = settingsWindow(argument)
+    case "zoom":
+      if AppController.shared.current?.zoomCommand(argument) != true { result = "usage: zoom in|out|reset (a page open)" }
     case "drag":
       result = drag(argument, in: window)
     case "press":
