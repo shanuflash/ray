@@ -25,6 +25,7 @@ export const areas = {
   "Host/SidebarModel.swift": "all",
   "Host/EngineCalls.swift": "all",
   "Host/TestEnvironment.swift": "all",
+  "Host/ProfileColor.swift": "all",
   "Host/main.swift": "all",
   "Host/Bridging.h": "all",
   "Resources/": "all",

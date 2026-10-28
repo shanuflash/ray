@@ -16,6 +16,11 @@ if [ "${1:-}" = "--changed" ]; then
   esac
   echo "running: ${*:-the whole suite}"
 fi
+# Ray's accents come from the profile's colour (Host/ProfileColor.swift), never the system accent.
+if grep -n 'controlAccentColor' "$root"/Host/*.swift | grep -v 'Host/ProfileColor.swift'; then
+  echo "error: use ProfileColor.accent instead of NSColor.controlAccentColor" >&2
+  exit 1
+fi
 mkdir -p "$root/build/tests"
 cp "$root/tests/AddressInputTests.swift" "$root/build/tests/main.swift"
 xcrun swiftc -target arm64-apple-macos14.0 -D RAY_TEST_HOOKS "$root/Host/AddressInput.swift" \

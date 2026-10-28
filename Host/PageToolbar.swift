@@ -263,8 +263,8 @@ private final class ToolbarAddressView: NSView {
   }
 }
 
-/// The colours of the loading wash and its line, in one place so the profile's colour can set `current` once
-/// profiles exist. Measured from Dia on white, Dia's isn't one colour: it ramps from a pale pink lilac at the
+/// The colours of the loading wash and its line, from the profile's colour (`ProfileColor`). The default profile
+/// gets Dia's, measured on white. Dia's isn't one colour: it ramps from a pale pink lilac at the
 /// trailing end to a deeper blue-violet lavender at the leading edge (line #F5D0FF → #9366C5, the wash's bottom
 /// #F1E4F9 → #D3C5E8), and the ramp travels with the leading edge. The wash is about a sixth as strong at the
 /// field's top as at its bottom.
@@ -276,7 +276,8 @@ struct LoadingTint {
   /// The wash's strength at the field's top, relative to its bottom.
   var topFade: Float
 
-  static var current = LoadingTint.dia
+  /// Dia's own ramp for the default profile; any other colour gets one built the same way from it.
+  static var current: LoadingTint { ProfileColor.isDefault ? .dia : LoadingTint(accent: ProfileColor.accent) }
 
   static let dia = LoadingTint(
     wash: [
@@ -291,6 +292,33 @@ struct LoadingTint {
       rgba(0x5A, 0x2D, 0xA0, light: 0.7, dark: 0.85),
     ],
     topFade: 0.15)
+
+  /// A ramp shaped like Dia's around another colour: the leading edge is the colour a little deepened, the trailing
+  /// end paler and shifted toward pink (Dia's runs about 23° of hue from #5A2DA0 back to #E070FF).
+  init(accent: NSColor) {
+    var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+    var light = accent
+    NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance { light = accent.usingColorSpace(.sRGB) ?? accent }
+    light.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+    func stop(_ t: CGFloat, light: CGFloat, dark: CGFloat) -> NSColor {
+      let shifted = (hue + 0.065 * (1 - t)).truncatingRemainder(dividingBy: 1)
+      let base = NSColor(hue: shifted, saturation: saturation * (0.55 + 0.45 * t),
+                         brightness: 1 - (1 - brightness * 0.7) * t, alpha: 1)
+      return NSColor(name: nil) {
+        base.withAlphaComponent($0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light)
+      }
+    }
+    wash = [stop(0, light: 0.18, dark: 0.16), stop(0.5, light: 0.25, dark: 0.22), stop(1, light: 0.33, dark: 0.3)]
+    line = [stop(0, light: 0.33, dark: 0.45), stop(1.0 / 3, light: 0.5, dark: 0.6), stop(2.0 / 3, light: 0.65, dark: 0.8),
+            stop(1, light: 0.7, dark: 0.85)]
+    topFade = 0.15
+  }
+
+  init(wash: [NSColor], line: [NSColor], topFade: Float) {
+    self.wash = wash
+    self.line = line
+    self.topFade = topFade
+  }
 
   /// One colour at two strengths: a light field needs less of it than a dark one to read the same.
   static func rgba(_ r: Int, _ g: Int, _ b: Int, light: CGFloat, dark: CGFloat) -> NSColor {

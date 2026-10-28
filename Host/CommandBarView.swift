@@ -248,7 +248,7 @@ final class FlippedView: NSView {
 
 private final class SuggestionRowBackground: NSTableRowView {
   override func drawSelection(in dirtyRect: NSRect) {
-    NSColor.controlAccentColor.withAlphaComponent(0.22).setFill()
+    ProfileColor.accent.withAlphaComponent(0.22).setFill()
     let rect = bounds.insetBy(dx: CommandBarView.rowInset, dy: 2)
     NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
   }

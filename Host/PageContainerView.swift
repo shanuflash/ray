@@ -13,7 +13,7 @@ final class PageContainerView: NSView {
     layer?.cornerCurve = .continuous
     layer?.masksToBounds = true
     layer?.backgroundColor = NSColor.clear.cgColor
-    progressLayer.backgroundColor = NSColor.controlAccentColor.cgColor
+    progressLayer.backgroundColor = ProfileColor.accent.cgColor
     progressLayer.opacity = 0
     progressLayer.zPosition = 10
     layer?.addSublayer(progressLayer)
@@ -175,6 +175,7 @@ final class PageContainerView: NSView {
     guard tab === shown else { return }
     CATransaction.begin()
     CATransaction.setAnimationDuration(0.2)
+    effectiveAppearance.performAsCurrentDrawingAppearance { progressLayer.backgroundColor = ProfileColor.accent.cgColor }
     if tab.loading && showsProgress {
       progressLayer.opacity = 1
       progressLayer.frame.size.width = bounds.width * CGFloat(max(0.1, tab.progress))

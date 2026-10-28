@@ -830,7 +830,7 @@ final class SidebarView: NSView {
   /// The downloads button is always in the footer; while files are coming in, a ring around it fills with their
   /// progress.
   func setDownloads(progress: Double?) {
-    downloadsRing.strokeColor = NSColor.controlAccentColor.cgColor
+    downloadsRing.strokeColor = ProfileColor.accent.cgColor
     downloadsRing.isHidden = progress == nil
     downloadsRing.strokeEnd = CGFloat(progress ?? 0)
   }
@@ -1294,13 +1294,13 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   override var mouseDownCanMoveWindow: Bool { false }
 
   override func updateLayer() {
-    let color: NSColor = dropTarget ? NSColor.controlAccentColor.withAlphaComponent(0.22)
+    let color: NSColor = dropTarget ? ProfileColor.accent.withAlphaComponent(0.22)
       : lifted ? SidebarColors.lifted : selected ? SidebarColors.selected : hovered ? SidebarColors.hover : .clear
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     fill.backgroundColor = color.cgColor
     fill.borderWidth = dropTarget ? 1 : 0
-    fill.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.65).cgColor
+    fill.borderColor = ProfileColor.accent.withAlphaComponent(0.65).cgColor
     Lift.shadow(fill, lifted, radius: 8)
     CATransaction.commit()
   }
@@ -1549,7 +1549,7 @@ final class DropHintView: NSView {
   override func updateLayer() {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    let accent = NSColor.controlAccentColor
+    let accent = ProfileColor.accent
     outline.fillColor = accent.withAlphaComponent(active ? 0.22 : 0.1).cgColor
     outline.strokeColor = accent.withAlphaComponent(active ? 0.65 : 0.3).cgColor
     CATransaction.commit()

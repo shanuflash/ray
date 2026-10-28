@@ -502,7 +502,7 @@ private final class PanelTile: NSView {
   }
 }
 
-/// One setting: a round icon (filled with the accent colour when it's allowed), its name and its value.
+/// One setting: a round icon (filled with the profile's colour when it's allowed), its name and its value.
 private final class SettingRow: NSView {
   var onClick: ((SettingRow) -> Void)?
   let title: String
@@ -549,7 +549,7 @@ private final class SettingRow: NSView {
 
   override func updateLayer() {
     layer?.backgroundColor = (hovered ? PanelColors.tile : .clear).cgColor
-    circle.layer?.backgroundColor = (on ? NSColor.controlAccentColor : PanelColors.tileHover).cgColor
+    circle.layer?.backgroundColor = (on ? ProfileColor.accent : PanelColors.tileHover).cgColor
     icon.contentTintColor = on ? .white : .labelColor
   }
 

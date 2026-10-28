@@ -311,7 +311,7 @@ final class DownloadRowView: NSView {
     CATransaction.setDisableActions(true)
     fill.backgroundColor = (hovered ? SidebarColors.hover : .clear).cgColor
     track.backgroundColor = NSColor.labelColor.withAlphaComponent(0.1).cgColor
-    bar.backgroundColor = NSColor.controlAccentColor.cgColor
+    bar.backgroundColor = ProfileColor.accent.cgColor
     CATransaction.commit()
   }
 

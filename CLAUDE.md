@@ -16,6 +16,10 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   quick actions, extension tiles, the site's permissions (`ac_site_settings_*`, keyed by the tab's
   `committedOrigin`) and the connection state.
 - `ConnectionLook` (in `AddressInput.swift`): the security icon for both address fields and the panel's footer.
+- `ProfileColor`: the profile's colour, which every accent in Ray's UI uses (loading wash, progress, drop targets,
+  selection, "on" states). Default: Dia's lavender; profiles and their settings come later. Never use
+  `NSColor.controlAccentColor` (`scripts/test.sh` fails on it). `LoadingTint` uses Dia's measured lilac-to-lavender
+  ramp for the default and builds the same shape around any other colour.
 - `EngineCalls`: calls the engine's exported `ac_*` C functions (`dlsym`, JSON in, JSON reply), e.g.
   `ac_history_query`. Their arguments are in `third_party/ardia/engine/chromium/src/chrome/browser/ardia/ac_*.cc`.
   `EngineEvents` is the one engine event sink (`downloads.changed`, …), handed out by topic.
