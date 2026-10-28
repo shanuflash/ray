@@ -19,6 +19,9 @@ build() {
   cp -cR "$fw_src" "$app/Contents/Frameworks/"
   local fw_version
   fw_version=$(ls "$app/Contents/Frameworks/$fw_name.framework/Versions" | grep -v Current)
+  # The engine's own pages call the browser "Ardia"; its string files say "Ray" instead.
+  python3 -I "$root/tools/rebrand-pak.py" \
+    "$app/Contents/Frameworks/$fw_name.framework/Versions/$fw_version/Resources"/*.lproj/locale.pak
 
   xcrun swiftc -O -target arm64-apple-macos14.0 -swift-version 5 "$@" \
     -import-objc-header "$root/Host/Bridging.h" -Xcc -I"$root/vendor/ardiacore" \
@@ -27,12 +30,20 @@ build() {
     -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
     -o "$app/Contents/MacOS/Ray"
   cp "$root"/Resources/* "$app/Contents/Resources/"
+  # The app icon: an Icon Composer document, so macOS 26+ gets its light, dark, tinted and clear looks (Assets.car)
+  # and older systems the .icns.
+  xcrun actool "$root/Branding/Ray.icon" --compile "$app/Contents/Resources" --platform macosx \
+    --minimum-deployment-target 14.0 --app-icon Ray --target-device mac \
+    --output-partial-info-plist "$app/Contents/icon.plist" >/dev/null
+  rm -f "$app/Contents/icon.plist"
 
   cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleExecutable</key><string>Ray</string>
+  <key>CFBundleIconFile</key><string>Ray</string>
+  <key>CFBundleIconName</key><string>Ray</string>
   <key>CFBundleIdentifier</key><string>$id</string>
   <key>CFBundleName</key><string>$name</string>
   <key>CFBundleDisplayName</key><string>$name</string>
