@@ -118,4 +118,5 @@ export const needs = {
   "folder-drag-in": ["folder-create"],
   "folder-drag-folder": ["folder-create"],
   "folder-out-and-delete": ["folder-create"],
+  "drag-to-favorite": ["drag-click-selects", "drag-reorder", "drag-to-pin"],
 };
