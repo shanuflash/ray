@@ -25,7 +25,8 @@ export const areas = {
   "Host/SidebarModel.swift": "all",
   "Host/EngineCalls.swift": "all",
   "Host/TestEnvironment.swift": "all",
-  "Host/ProfileColor.swift": "all",
+  // Colours only: the checks that read a colour or draw with it.
+  "Host/ProfileColor.swift": ["page-loading", "site-controls", "tile-hover", "drag-to-favorite"],
   "Host/main.swift": "all",
   "Host/Bridging.h": "all",
   "Resources/": "all",
@@ -57,6 +58,10 @@ export const areas = {
     "site-controls", "find-in-page"],
   "Host/BrowserWindowController.swift#State log": [],
 
+  // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
+  "Host/SidebarView.swift": [...drag, "folder-create", "folder-toggle", "folder-rename", "folder-animation",
+    "folder-drag-in", "folder-drag-folder", "folder-out-and-delete", "tile-hover", "favorites", "pin-unload-restore",
+    "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
   "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder"],
   "Host/SidebarView.swift#Downloads panel": ["downloads"],

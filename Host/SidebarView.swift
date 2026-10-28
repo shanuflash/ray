@@ -68,9 +68,9 @@ private final class SidebarDrag {
 /// Neighbours make room and the dropped item settles on a critically damped spring (ω 90 rad/s, about 70 ms),
 /// as Ardia measured Dia's sidebar.
 private enum Slide {
-  /// A folder opening or closing: the same critically damped spring, softer (ω 30 rad/s, about 0.2 s), so the rows
-  /// below can be seen sliding to their places.
-  static let foldStiffness: CGFloat = 900, foldDamping: CGFloat = 60
+  /// A folder opening or closing: a softer spring with a little give (ω ≈ 20 rad/s, ζ ≈ 0.9, about 0.35 s), so the
+  /// rows below are seen gliding to their places, as Arc's folders do.
+  static let foldStiffness: CGFloat = 400, foldDamping: CGFloat = 36
 
   static func isMoving(_ view: NSView) -> Bool { view.layer?.animation(forKey: "slide.position") != nil }
 
@@ -118,6 +118,8 @@ private protocol Liftable: NSView {
 final class SidebarView: NSView {
   static let width: CGFloat = 267
   static let rowHeight: CGFloat = 41
+  /// How far an opening folder's rows drop into place.
+  static let foldDrop: CGFloat = 10
   private static let inset: CGFloat = 8
   private static let tileHeight: CGFloat = 46
 
@@ -468,6 +470,7 @@ final class SidebarView: NSView {
       }
       return nil
     }
+    var appearingIndex = 0
     for slot in pinnedSlots {
       if case let (row, entry, depth)? = slot {
         // Each folder level steps in 16 pt, as Arc's and Ardia's folders do.
@@ -475,7 +478,15 @@ final class SidebarView: NSView {
         let frame = NSRect(x: inset + indent, y: rowY, width: width - indent, height: Self.rowHeight)
         placed[entry.id] = frame
         if folding {
-          foldPlace(row, frame, from: appearing.contains(entry.id) ? collapsed(entry, among: placed) : nil, alpha: 1)
+          // An opening folder's rows appear where they belong, each dropping in a little after the one above, the
+          // way an accordion opens, rather than all sliding out from under the folder.
+          if appearing.contains(entry.id), collapsed(entry, among: placed) != nil {
+            foldPlace(row, frame, from: frame.offsetBy(dx: 0, dy: -Self.foldDrop), alpha: 1,
+                      delay: min(0.12, 0.03 * Double(appearingIndex)))
+            appearingIndex += 1
+          } else {
+            foldPlace(row, frame, from: nil, alpha: 1)
+          }
         } else {
           place(row, frame, entry: entry)
         }
@@ -483,13 +494,18 @@ final class SidebarView: NSView {
       rowY += Self.rowHeight
     }
     for (row, entry) in zip(pinnedRows, pinned) where row.collapsing {
-      guard let frame = collapsed(entry, among: placed) else {
+      guard collapsed(entry, among: placed) != nil else {
         row.collapsing = false
         row.isHidden = true
         row.alphaValue = 1
         continue
       }
-      if folding { foldPlace(row, frame, from: nil, alpha: 0) } else { Slide.move(row, to: frame, soft: true) }
+      // A closing folder's rows fade where they are, drifting up a touch, while the rows below slide up over them.
+      if folding {
+        row.layer?.zPosition = -1
+        foldPlace(row, row.frame.offsetBy(dx: 0, dy: -Self.foldDrop / 2), from: nil, alpha: 0, quick: true)
+      }
+      // Another layout during the fade leaves it where it is fading.
     }
     separator.isHidden = pinnedSlots.isEmpty
     if !separator.isHidden {
@@ -565,15 +581,18 @@ final class SidebarView: NSView {
   /// Sets a frame and a fade for one pinned row of a folding layout: from where it is drawn now (or `start`, for a
   /// row that appears from inside its folder), sliding on the soft spring, fading towards `alpha`. A row that fades
   /// out is hidden when it's done, unless it was toggled back by then.
-  private func foldPlace(_ row: SidebarRowView, _ frame: NSRect, from start: NSRect?, alpha: CGFloat) {
+  private func foldPlace(_ row: SidebarRowView, _ frame: NSRect, from start: NSRect?, alpha: CGFloat,
+                         delay: CFTimeInterval = 0, quick: Bool = false) {
     row.foldToken &+= 1
     let token = row.foldToken
+    if alpha > 0 { row.layer?.zPosition = 0 }
     CATransaction.begin()
     CATransaction.setCompletionBlock { [weak row] in
       guard let row, row.foldToken == token, row.collapsing else { return }
       row.collapsing = false
       row.isHidden = true
       row.alphaValue = 1
+      row.layer?.zPosition = 0
     }
     if let start {
       Slide.stop(row)
@@ -583,7 +602,7 @@ final class SidebarView: NSView {
       CATransaction.commit()
     }
     Slide.move(row, to: frame, soft: true)
-    row.fade(to: alpha)
+    row.fade(to: alpha, from: start == nil ? nil : 0, delay: delay, duration: quick ? 0.1 : 0.22)
     CATransaction.commit()
   }
 
@@ -1474,7 +1493,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   private var shownFolder: UUID?
   private var chevronOpen: Bool?
   /// The "Done" button at the end of the field while renaming.
-  private let doneButton = NSButton()
+  private let doneButton = PointingButton()
   private var onRenamed: ((String?) -> Void)?
   /// Lit while a dragged tab would drop into this folder.
   var dropTarget = false {
@@ -1712,7 +1731,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   }
 
   /// Fades the row to `alpha` from where it is drawn now (the layer's presentation while a fade runs).
-  func fade(to alpha: CGFloat, from start: Float? = nil) {
+  func fade(to alpha: CGFloat, from start: Float? = nil, delay: CFTimeInterval = 0, duration: CFTimeInterval = 0.16) {
     guard let layer else { return }
     let from = start ?? (layer.animation(forKey: "fold.opacity") != nil ? layer.presentation()?.opacity : nil) ?? layer.opacity
     CATransaction.begin()
@@ -1723,8 +1742,12 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     let animation = CABasicAnimation(keyPath: "opacity")
     animation.fromValue = from
     animation.toValue = Float(alpha)
-    animation.duration = 0.16
+    animation.duration = duration
     animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+    if delay > 0 {
+      animation.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) + delay
+      animation.fillMode = .backwards
+    }
     layer.add(animation, forKey: "fold.opacity")
   }
 
@@ -1997,5 +2020,12 @@ final class PrivateBadge: NSView {
     super.layout()
     icon.frame = NSRect(x: 8, y: (bounds.height - 14) / 2, width: 18, height: 14)
     label.frame = NSRect(x: 30, y: (bounds.height - 16) / 2, width: bounds.width - 36, height: 16)
+  }
+}
+
+/// A button that shows the pointing hand, as links and web buttons do.
+final class PointingButton: NSButton {
+  override func resetCursorRects() {
+    addCursorRect(bounds, cursor: .pointingHand)
   }
 }
