@@ -292,6 +292,20 @@ final class SidebarView: NSView {
   var addressDebug: [String: Any] { addressPill.debug }
 
   func setExtensionsShown(_ shown: Bool) { addressPill.extensionsShown = shown }
+  /// The address field under the top row. Off while the sidebar is docked beside the page's own address bar, which
+  /// already shows the address (as in Dia); on while it peeks over that bar or the bar is off.
+  var showsAddress = true {
+    didSet {
+      guard oldValue != showsAddress else { return }
+      addressPill.isHidden = !showsAddress
+      needsLayout = true
+    }
+  }
+  var addressShown: Bool { showsAddress }
+  /// Where the sidebar's content starts: below the address field, or where it would be.
+  private var contentTop: CGFloat {
+    showsAddress ? addressPill.frame.maxY + 8 : trafficLightsCenterY + 24
+  }
   var extensionsAnchor: NSView { addressPill.extensionsButton }
 
   var debugToggleCenter: String {
@@ -326,7 +340,7 @@ final class SidebarView: NSView {
     layoutDownloadsPanel()
 
     addressPill.frame = NSRect(x: inset, y: rowCenter + 24, width: width, height: 36)
-    var y = addressPill.frame.maxY + 8
+    var y = contentTop
 
     let dragged = isDragging ? drag?.entry : nil
     let target = dragged == nil ? nil : drag?.target
@@ -889,7 +903,7 @@ final class SidebarView: NSView {
 
   func layoutDownloadsPanel() {
     guard let panel = downloadsPanel else { return }
-    let top = addressPill.frame.maxY + 8
+    let top = contentTop
     let bottom = downloadsButton.frame.minY - 6
     let height = min(panel.wantedHeight, max(0, bottom - top))
     panel.frame = NSRect(x: Self.inset, y: bottom - height, width: downloadsPanelWidth, height: height)

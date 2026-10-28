@@ -939,11 +939,24 @@ const checks = {
     await until("full again", async () => { await command("state"); return state().toolbar.field.shown.endsWith("/a"); });
     const cardTop = () => { const [, y, , h] = state().cardFrame.match(/-?[\d.]+/g).map(Number); return y + h; };
     const withBar = cardTop();
+    // Docked beside the page's bar, the sidebar drops its own address field; without the bar it has one again.
+    assert(state().sidebarAddressShown === false, "the docked sidebar repeats the address beside the page's bar");
     await command("menu toggleToolbar");
     await until("bar off", async () => { await command("state"); return state().toolbar === null; });
     assert(cardTop() > withBar, `the page didn't grow into the bar's room (${withBar} -> ${cardTop()})`);
+    assert(state().sidebarAddressShown === true, "no address field anywhere with the page's bar off");
     await command("menu toggleToolbar");
     await until("bar on", async () => { await command("state"); return state().toolbar !== null; });
+    // Peeking, the sidebar covers the bar's address, so it shows its own.
+    await command("menu toggleSidebar");
+    await until("sidebar hidden", async () => { await command("state"); return state().sidebar.hidden; });
+    await command("peek on");
+    await until("peeking", async () => { await command("state"); return state().sidebar.peeking; });
+    assert(state().sidebarAddressShown === true, "a peeking sidebar has no address field");
+    await command("peek off");
+    await until("peek ended", async () => { await command("state"); return !state().sidebar.peeking; });
+    await command("menu toggleSidebar");
+    await until("sidebar back", async () => { await command("state"); return !state().sidebar.hidden && state().sidebarAddressShown === false; });
   },
   async "page-loading"() {
     // The address bar shows the load as a wash filling the field, and its reload button is a stop button meanwhile.

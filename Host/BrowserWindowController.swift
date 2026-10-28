@@ -55,7 +55,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   var activeEntry: SidebarEntry? { state.activeEntryID.flatMap(state.entry(id:)) }
 
   func owns(_ tab: ArdiaCoreTab) -> Bool { state.entry(for: tab) != nil }
-  var extensionsAnchor: NSView { sidebar.extensionsAnchor }
+  /// The puzzle button in the sidebar's address field, or the sliders button while that field is hidden.
+  var extensionsAnchor: NSView { sidebar.showsAddress ? sidebar.extensionsAnchor : toolbar.siteButton }
 
   var activeTab: ArdiaCoreTab? { activeEntry.flatMap { $0.isLive ? $0.tab : nil } }
 
@@ -167,6 +168,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let bottom = edge.rounded()
     var top = (bounds.height - edge).rounded()
     toolbar.isHidden = !toolbarShown
+    sidebar.showsAddress = !toolbarShown || sidebar.superview === floating
     toolbar.showsFullAddress = fullAddressShown
     pages.showsProgress = !toolbarShown
     if toolbarShown {
@@ -1407,6 +1409,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "activeEntry": self.state.activeEntryID?.uuidString ?? NSNull(),
       "address": sidebar.addressText,
       "addressField": sidebar.addressDebug,
+      "sidebarAddressShown": sidebar.addressShown,
       "pages": pages.debugState,
       "cardFrame": NSStringFromRect(pages.frame),
       "windowFrame": NSStringFromRect(window.frame),
