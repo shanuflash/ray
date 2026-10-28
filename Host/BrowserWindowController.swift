@@ -666,29 +666,6 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     updateToolbar()
   }
 
-  private func updateToolbar() {
-    let entry = activeEntry
-    let level = entry.flatMap { $0.isLive ? $0.tab?.securityInfo["level"] as? String : nil }
-    toolbar.show(url: entry?.currentURL ?? "", security: level,
-                 canGoBack: activeTab?.canGoBack ?? false, canGoForward: activeTab?.canGoForward ?? false)
-  }
-
-  /// View › Show Address Bar on Page.
-  func toggleToolbar() {
-    state.pageToolbar = !toolbarShown
-    layout()
-    store.save(state)
-    logState("toolbar")
-  }
-
-  func toolbarToggleSidebar(_ toolbar: PageToolbarView) { toggleSidebar() }
-  func toolbarBack(_ toolbar: PageToolbarView) { activeTab?.goBack() }
-  func toolbarForward(_ toolbar: PageToolbarView) { activeTab?.goForward() }
-  func toolbarReload(_ toolbar: PageToolbarView) { activeTab?.reload() }
-  func toolbarEditAddress(_ toolbar: PageToolbarView) { focusAddress() }
-  func toolbarCopyLink(_ toolbar: PageToolbarView) { copyURL() }
-  func toolbarSiteControls(_ toolbar: PageToolbarView) { toggleSiteControls() }
-
   private var forcedOpen: Bool { state.sidebarHidden && activeEntry.map { !$0.isLive } ?? true }
 
   private func updateForcedPeek() {
@@ -966,6 +943,42 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     guard !entries.isEmpty else { return }
     select(number >= 9 ? entries[entries.count - 1] : entries[min(number, entries.count) - 1])
   }
+
+  // MARK: Page toolbar
+
+  private func updateToolbar() {
+    let entry = activeEntry
+    let level = entry.flatMap { $0.isLive ? $0.tab?.securityInfo["level"] as? String : nil }
+    toolbar.show(url: entry?.currentURL ?? "", security: level,
+                 canGoBack: activeTab?.canGoBack ?? false, canGoForward: activeTab?.canGoForward ?? false)
+    updateToolbarLoading()
+  }
+
+  /// The active tab's load in the address field and the reload button; other tabs' loads aren't drawn.
+  private func updateToolbarLoading() {
+    let tab = activeTab
+    toolbar.showLoading(tab?.loading ?? false, progress: tab?.progress ?? 0, tab: tab.map { Int($0.tabId) } ?? -1)
+  }
+
+  /// View › Show Address Bar on Page.
+  func toggleToolbar() {
+    state.pageToolbar = !toolbarShown
+    layout()
+    store.save(state)
+    logState("toolbar")
+  }
+
+  func toolbarToggleSidebar(_ toolbar: PageToolbarView) { toggleSidebar() }
+  func toolbarBack(_ toolbar: PageToolbarView) { activeTab?.goBack() }
+  func toolbarForward(_ toolbar: PageToolbarView) { activeTab?.goForward() }
+  func toolbarReload(_ toolbar: PageToolbarView) { activeTab?.reload() }
+  func toolbarStop(_ toolbar: PageToolbarView) { activeTab?.stop() }
+  func toolbarEditAddress(_ toolbar: PageToolbarView) { focusAddress() }
+  func toolbarCopyLink(_ toolbar: PageToolbarView) { copyURL() }
+  func toolbarSiteControls(_ toolbar: PageToolbarView) { toggleSiteControls() }
+
+  /// For tests: the toolbar's reload (or, while loading, stop) button.
+  func pressToolbarReload() { toolbar.pressReload() }
 
   // MARK: Sidebar visibility
 
@@ -1340,11 +1353,17 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   func tabDidChangeLoading(_ tab: ArdiaCoreTab) {
     pages.updateProgress(for: tab)
+    if tab === activeTab { updateToolbarLoading() }
     if !tab.loading { TestEnvironment.log("tab \(tab.tabId) loaded \(tab.url)") }
+    if tab === activeTab { logState("loading") }
   }
 
   func tabDidChangeProgress(_ tab: ArdiaCoreTab) {
     pages.updateProgress(for: tab)
+    if tab === activeTab {
+      updateToolbarLoading()
+      logState("progress")
+    }
   }
 
   func tab(_ tab: ArdiaCoreTab, didFailLoad url: String, code: Int32, description text: String) {

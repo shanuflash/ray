@@ -5,6 +5,7 @@ protocol PageToolbarDelegate: AnyObject {
   func toolbarBack(_ toolbar: PageToolbarView)
   func toolbarForward(_ toolbar: PageToolbarView)
   func toolbarReload(_ toolbar: PageToolbarView)
+  func toolbarStop(_ toolbar: PageToolbarView)
   func toolbarEditAddress(_ toolbar: PageToolbarView)
   func toolbarCopyLink(_ toolbar: PageToolbarView)
   func toolbarSiteControls(_ toolbar: PageToolbarView)
@@ -27,6 +28,8 @@ final class PageToolbarView: NSView {
   private let backButton = PageToolbarView.button("chevron.left", "Back")
   private let forwardButton = PageToolbarView.button("chevron.right", "Forward")
   private let reloadButton = PageToolbarView.button("arrow.clockwise", "Reload")
+  /// While the page loads the reload button is a stop button (an ✕), as in Dia and Ardia.
+  private(set) var isStopping = false
   private let copyButton = PageToolbarView.button("link", "Copy Link")
   /// Opens the site controls panel, which hangs below it.
   let siteButton = PageToolbarView.button("slider.horizontal.3", "Site Controls")
@@ -76,13 +79,31 @@ final class PageToolbarView: NSView {
     needsLayout = true
   }
 
+  /// The active tab's load, drawn in the address field as a wash that fills in from the left. `tab` identifies the
+  /// tab: another one shows its own state at once, with no animation from the old tab's width.
+  func showLoading(_ loading: Bool, progress: Double, tab: Int) {
+    address.showLoading(loading, progress: progress, tab: tab)
+    guard loading != isStopping else { return }
+    isStopping = loading
+    reloadButton.image = NSImage(
+      systemSymbolName: loading ? "xmark" : "arrow.clockwise", accessibilityDescription: loading ? "Stop" : "Reload")
+    reloadButton.toolTip = loading ? "Stop Loading" : "Reload"
+  }
+
   var addressText: String { address.text }
-  var addressDebug: [String: Any] { address.debug }
+  var addressDebug: [String: Any] {
+    address.debug.merging(["stopButton": isStopping]) { _, new in new }
+  }
+
+  /// For tests: the reload/stop button's own action (the button hides while the sidebar is docked).
+  func pressReload() { reload() }
 
   @objc private func toggleSidebar() { delegate?.toolbarToggleSidebar(self) }
   @objc private func back() { delegate?.toolbarBack(self) }
   @objc private func forward() { delegate?.toolbarForward(self) }
-  @objc private func reload() { delegate?.toolbarReload(self) }
+  @objc private func reload() {
+    if isStopping { delegate?.toolbarStop(self) } else { delegate?.toolbarReload(self) }
+  }
   @objc private func copyLink() { delegate?.toolbarCopyLink(self) }
   @objc private func siteControls() { delegate?.toolbarSiteControls(self) }
 
@@ -126,12 +147,15 @@ private final class ToolbarAddressView: NSView {
   private var hovered = false
   private(set) var text = ""
   private(set) var look = ConnectionLook.quiet
+  private let wash = LoadingWash()
 
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
     layer?.cornerRadius = 8
     layer?.cornerCurve = .continuous
+    // Under the label and icon, above the hover fill.
+    layer?.insertSublayer(wash.host, at: 0)
     label.lineBreakMode = .byTruncatingTail
     securityIcon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
     securityIcon.isHidden = true
@@ -183,7 +207,21 @@ private final class ToolbarAddressView: NSView {
 
   var debug: [String: Any] {
     layoutSubtreeIfNeeded()
-    return ["look": "\(look)", "icon": !securityIcon.isHidden, "textOffset": label.frame.midY - bounds.midY]
+    return [
+      "look": "\(look)", "icon": !securityIcon.isHidden, "textOffset": label.frame.midY - bounds.midY,
+      "loading": wash.loading, "progress": wash.progress, "wash": wash.active, "washFinishing": wash.finishing,
+      "washFraction": wash.fraction,
+      "progressSteps": wash.steps,
+    ]
+  }
+
+  func showLoading(_ loading: Bool, progress: Double, tab: Int) {
+    wash.update(loading: loading, progress: progress, tab: tab)
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    wash.applyTint(for: effectiveAppearance)
   }
 
   func show(url: String, security: String?) {
@@ -214,6 +252,7 @@ private final class ToolbarAddressView: NSView {
 
   override func layout() {
     super.layout()
+    wash.layout(in: bounds, flipped: layer?.isGeometryFlipped ?? false, appearance: effectiveAppearance)
     let mid = bounds.height / 2
     // Ardia's lock: 7 pt in, 18 wide, the text 3 pt after it.
     securityIcon.frame = NSRect(x: 7, y: (mid - 9).rounded(), width: 18, height: 18)
@@ -221,5 +260,220 @@ private final class ToolbarAddressView: NSView {
     // One line tall, so the text sits on the middle (a label draws from its frame's top).
     let line = ceil(label.intrinsicContentSize.height)
     label.frame = NSRect(x: x, y: (mid - line / 2).rounded(), width: max(0, bounds.width - x - 8), height: line)
+  }
+}
+
+/// The colours of the loading wash and its line, in one place so a later "colour from the page" setting can set
+/// `current`. Close to Dia's lavender.
+struct LoadingTint {
+  var wash: NSColor
+  var line: NSColor
+
+  static var current = LoadingTint(
+    wash: dynamic(light: NSColor(srgbRed: 0.60, green: 0.42, blue: 0.90, alpha: 0.20),
+                  dark: NSColor(srgbRed: 0.62, green: 0.48, blue: 1.00, alpha: 0.24)),
+    line: dynamic(light: NSColor(srgbRed: 0.58, green: 0.36, blue: 0.90, alpha: 0.95),
+                  dark: NSColor(srgbRed: 0.70, green: 0.55, blue: 1.00, alpha: 0.90)))
+
+  static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
+    NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
+  }
+}
+
+/// The page-load look inside the address field, from Core Animation layers only. A lavender wash the field's full
+/// height with a thin line along its bottom edge, both on one `sweep` layer whose leading edge is feathered; the
+/// sweep slides in from the left in eased steps as the load's progress rises (never backwards), runs to the full
+/// width when the page finishes, then fades. Switching tabs snaps to the new tab's state.
+private final class LoadingWash {
+  /// Clips to the field's rounded rect.
+  let host = CALayer()
+  private let sweep = CALayer()
+  private let fill = CAGradientLayer()
+  private let line = CAGradientLayer()
+
+  static let feather: CGFloat = 120
+  static let lineFeather: CGFloat = 36
+  static let lineHeight: CGFloat = 1.5
+  /// Ardia's minimum is 8%; a little more so the first step shows.
+  static let minimum = 0.1
+  static let stepDuration: CFTimeInterval = 0.4
+  static let finishDuration: CFTimeInterval = 0.3
+  static let fadeDuration: CFTimeInterval = 0.35
+
+  private(set) var loading = false
+  /// The last progress the engine reported while loading, for the state log.
+  private(set) var progress = 0.0
+  /// The wash is showing: from a load's start until the page has finished.
+  private(set) var active = false
+  /// The run to full width and the fade are still going (they don't tick while the window is off screen).
+  private(set) var finishing = false
+  /// Where the leading edge is heading, 0...1 of the field plus its feather.
+  private(set) var fraction = 0.0
+  /// Distinct progress steps drawn for the last load.
+  private(set) var steps = 0
+  private var tab: Int?
+  private var size = CGSize.zero
+  private var generation = 0
+
+  init() {
+    host.masksToBounds = true
+    host.cornerRadius = 8
+    host.cornerCurve = .continuous
+    sweep.anchorPoint = .zero
+    sweep.opacity = 0
+    for gradient in [fill, line] {
+      gradient.startPoint = CGPoint(x: 0, y: 0.5)
+      gradient.endPoint = CGPoint(x: 1, y: 0.5)
+      sweep.addSublayer(gradient)
+    }
+    host.addSublayer(sweep)
+  }
+
+  /// The sweep is as wide as the field plus the feather, so at 1 the solid part just covers the field.
+  private var travel: CGFloat { size.width + Self.feather }
+  private func origin(_ fraction: Double) -> CGFloat { (CGFloat(fraction) - 1) * travel }
+  private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+
+  private func quietly(_ body: () -> Void) {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    body()
+    CATransaction.commit()
+  }
+
+  func layout(in bounds: NSRect, flipped: Bool, appearance: NSAppearance) {
+    guard size != bounds.size else { return }
+    size = bounds.size
+    applyTint(for: appearance)
+    quietly {
+      host.frame = bounds
+      sweep.bounds = CGRect(x: 0, y: 0, width: travel, height: bounds.height)
+      fill.frame = sweep.bounds
+      let lineHeight = Self.lineHeight
+      line.frame = CGRect(x: 0, y: flipped ? bounds.height - lineHeight : 0, width: travel, height: lineHeight)
+      fill.locations = [0, NSNumber(value: Double(1 - Self.feather / travel)), 1]
+      line.locations = [0, NSNumber(value: Double(1 - Self.lineFeather / travel)), 1]
+      sweep.position = CGPoint(x: origin(active || finishing ? fraction : 0), y: 0)
+    }
+  }
+
+  func applyTint(for appearance: NSAppearance) {
+    let tint = LoadingTint.current
+    var colours = (wash: CGColor.clear, line: CGColor.clear)
+    appearance.performAsCurrentDrawingAppearance { colours = (tint.wash.cgColor, tint.line.cgColor) }
+    quietly {
+      fill.colors = [colours.wash, colours.wash, colours.wash.copy(alpha: 0) ?? .clear]
+      line.colors = [colours.line, colours.line, colours.line.copy(alpha: 0) ?? .clear]
+    }
+  }
+
+  func update(loading now: Bool, progress reported: Double, tab id: Int) {
+    let target = min(1, max(Self.minimum, reported))
+    if now { progress = reported }
+    if id != tab {
+      tab = id
+      snap(loading: now, to: target)
+    } else if now {
+      if !loading {
+        begin(at: target)
+      } else if target > fraction + 0.01 {
+        advance(to: target)
+      } else if target < fraction - 0.2 {
+        // A new navigation while loading: start again from the left, never run backwards.
+        begin(at: target)
+      }
+    } else if loading {
+      finish()
+    }
+    loading = now
+  }
+
+  private func begin(at target: Double) {
+    generation += 1
+    steps = 1
+    fraction = target
+    active = true
+    finishing = false
+    quietly {
+      sweep.removeAllAnimations()
+      sweep.opacity = 1
+      sweep.position = CGPoint(x: origin(reduceMotion ? target : 0), y: 0)
+    }
+    if !reduceMotion { slide(to: target) }
+  }
+
+  private func advance(to target: Double) {
+    steps += 1
+    fraction = target
+    slide(to: target)
+  }
+
+  /// One eased step, from wherever the sweep is drawn right now.
+  private func slide(to target: Double) {
+    guard !reduceMotion else {
+      quietly { sweep.position = CGPoint(x: origin(target), y: 0) }
+      return
+    }
+    let from = sweep.presentation()?.position.x ?? sweep.position.x
+    let to = origin(target)
+    quietly { sweep.position = CGPoint(x: to, y: 0) }
+    sweep.add(Self.step(from: from, to: to, duration: Self.stepDuration), forKey: "step")
+  }
+
+  private static func step(from: CGFloat, to: CGFloat, duration: CFTimeInterval) -> CABasicAnimation {
+    let step = CABasicAnimation(keyPath: "position.x")
+    step.fromValue = from
+    step.toValue = to
+    step.duration = duration
+    step.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.7, 0.2, 1)
+    return step
+  }
+
+  /// Run to the full width, then fade (Reduce Motion: just the fade).
+  private func finish() {
+    generation += 1
+    let mine = generation
+    fraction = 1
+    active = false
+    finishing = true
+    let from = sweep.presentation()?.position.x ?? sweep.position.x
+    let fromOpacity = sweep.presentation()?.opacity ?? sweep.opacity
+    let run = reduceMotion ? 0 : Self.finishDuration
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    CATransaction.setCompletionBlock { [weak self] in
+      guard let self, self.generation == mine else { return }
+      self.finishing = false
+      self.quietly {
+        self.sweep.removeAllAnimations()
+        self.sweep.position = CGPoint(x: self.origin(0), y: 0)
+      }
+    }
+    sweep.position = CGPoint(x: origin(1), y: 0)
+    sweep.opacity = 0
+    if !reduceMotion { sweep.add(Self.step(from: from, to: origin(1), duration: run), forKey: "step") }
+    let fade = CABasicAnimation(keyPath: "opacity")
+    fade.fromValue = fromOpacity
+    fade.toValue = 0
+    fade.duration = Self.fadeDuration
+    fade.beginTime = sweep.convertTime(CACurrentMediaTime(), from: nil) + run * 0.8
+    fade.fillMode = .backwards
+    fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
+    sweep.add(fade, forKey: "fade")
+    CATransaction.commit()
+  }
+
+  /// Another tab: its state at once.
+  private func snap(loading now: Bool, to target: Double) {
+    generation += 1
+    active = now
+    finishing = false
+    fraction = now ? target : 0
+    if now { steps = 1 }
+    quietly {
+      sweep.removeAllAnimations()
+      sweep.opacity = now ? 1 : 0
+      sweep.position = CGPoint(x: origin(now ? target : 0), y: 0)
+    }
   }
 }

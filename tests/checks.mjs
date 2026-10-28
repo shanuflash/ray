@@ -61,6 +61,14 @@ function serve(req, res) {
     res.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${name}"` });
     return res.end("ray download fixture\n".repeat(64));
   }
+  if (url.pathname === "/slow") {
+    // The head arrives at once, the rest 1.5 s later: a page that is visibly loading for a while.
+    res.writeHead(200, { "content-type": "text/html" });
+    res.write("<title>Slow</title><p>starts at once</p>" + "<!-- padding -->".repeat(256));
+    const timer = setTimeout(() => res.end("<p>done</p>"), 1500);
+    res.on("close", () => clearTimeout(timer));
+    return;
+  }
   const body = pages[url.pathname];
   res.writeHead(body ? 200 : 404, { "content-type": "text/html" });
   res.end(body ?? "not found");
@@ -929,6 +937,71 @@ const checks = {
     assert(cardTop() > withBar, `the page didn't grow into the bar's room (${withBar} -> ${cardTop()})`);
     await command("menu toggleToolbar");
     await until("bar on", async () => { await command("state"); return state().toolbar !== null; });
+  },
+  async "page-loading"() {
+    // The address bar shows the load as a wash filling the field, and its reload button is a stop button meanwhile.
+    const entryFor = (tabId) => ["favorites", "pinned", "today"].flatMap((k) => state().sidebar[k]).find((e) => e.tab === tabId);
+    const field = () => state().toolbar.field;
+    const loadSlow = async (tag) => {
+      const from = states.length;
+      await command("menu focusAddress");
+      await command(`type ${origin}/slow?${tag}`);
+      await command("enter");
+      // Every state the log wrote during the load (loading and progress changes each write one).
+      const seen = () => states.slice(from).filter((s) => s.toolbar?.field);
+      return { seen, loading: await until("loading", () => seen().find((s) => s.toolbar.field.loading), 5000, 25) };
+    };
+    const aId = tabFor("/a").id;
+    await command(`row ${entryFor(aId).id}`);
+    await until("/a active", () => state().active === aId);
+    await until("not loading", async () => { await command("state"); return field().loading === false; });
+    assert(field().stopButton === false && field().wash === false, `the idle bar shows a load: ${JSON.stringify(field())}`);
+
+    // Stop: the button is an ✕ while loading, and pressing it ends the load.
+    const first = await loadSlow("stop");
+    assert(first.loading.toolbar.field.stopButton === true, "the reload button isn't a stop button while loading");
+    assert(first.loading.toolbar.field.wash === true, "no wash while loading");
+    if (process.env.SNAP_DIR) await command(`toolbarsnap ${join(process.env.SNAP_DIR, "toolbar-loading.png")}`);
+    await until("progress between 0 and 1", () => first.seen().find((s) => s.toolbar.field.loading && s.toolbar.field.progress > 0 && s.toolbar.field.progress < 1), 3000, 25);
+    await command("toolbarreload");
+    await until("stopped", async () => { await command("state"); return field().loading === false; }, 3000);
+    assert(field().stopButton === false, "the stop button stayed after the load stopped");
+    assert(field().wash === false, "the wash stayed after the load stopped");
+
+    // A load that finishes by itself: steps came in one by one, then the wash is gone and the button is reload again.
+    const second = await loadSlow("done");
+    await until("loaded", async () => { await command("state"); return field().loading === false; }, 8000);
+    assert(second.seen().some((s) => s.toolbar.field.loading && s.toolbar.field.progress < 1), "progress never showed mid-load");
+    assert(field().progressSteps >= 2, `fewer than two progress steps were drawn (${field().progressSteps})`);
+    assert(field().wash === false, "the wash stayed after the page loaded");
+    // The fade only ticks while the window is on screen.
+    if (state().windowVisibleOnScreen !== false) await until("wash faded", async () => { await command("state"); return field().washFinishing === false; }, 3000);
+    assert(field().stopButton === false, "the stop button stayed after the page loaded");
+
+    // Another tab shows its own state at once: nothing from the loading tab leaks into it, and back again.
+    if (!tabFor("/b")) {
+      await command("menu newTab");
+      await command(`type ${origin}/b`);
+      await command("enter");
+      await until("/b open", () => tabFor("/b"));
+    }
+    await command(`row ${entryFor(aId).id}`);
+    await until("/a active again", () => state().active === aId);
+    await loadSlow("switch");
+    await command(`row ${entryFor(tabFor("/b").id).id}`);
+    await command("state");
+    assert(field().loading === false && field().wash === false && field().stopButton === false,
+      `the other tab shows the loading tab's state: ${JSON.stringify(field())}`);
+    await command(`row ${entryFor(aId).id}`);
+    await command("state");
+    assert(field().loading === true && field().wash === true && field().stopButton === true,
+      `switching back lost the load: ${JSON.stringify(field())}`);
+    await until("switched load finished", async () => { await command("state"); return field().loading === false; }, 8000);
+    // Leave the tab on /a for the checks after this one.
+    await command("menu focusAddress");
+    await command(`type ${origin}/a`);
+    await command("enter");
+    await until("/a again", () => tabFor("/a"));
   },
   async "site-controls"() {
     // The sliders button's panel: the site is the engine's committed origin, permissions go through the engine,

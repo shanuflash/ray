@@ -195,6 +195,9 @@ enum TestCommands {
       if AppController.shared.current?.snapshotSiteControls(to: argument) != true { result = "no panel" }
     case "toolbarsnap":
       if AppController.shared.current?.snapshotToolbar(to: argument) != true { result = "no toolbar" }
+    case "toolbarreload":
+      // The toolbar's reload button, which is a stop button while the page loads.
+      AppController.shared.current?.pressToolbarReload()
     case "dlsnap":
       if AppController.shared.current?.snapshotDownloads(to: argument) != true { result = "no list" }
     case "dlopen":
