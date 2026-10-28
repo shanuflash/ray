@@ -919,11 +919,12 @@ const checks = {
     if (process.env.SNAP_DIR) {
       await command(`toolbarsnap ${join(process.env.SNAP_DIR, "toolbar.png")}`);
       await command("menu toggleSidebar");
-      await until("sidebar hidden", async () => { await command("state"); return state().toolbar?.navigation === true; });
+      // The buttons ride the sidebar's spring, which only ticks while the window is on screen.
+      await until("sidebar hidden", async () => { await command("state"); return state().sidebar.hidden; });
       await sleep(400);
       await command(`toolbarsnap ${join(process.env.SNAP_DIR, "toolbar-sidebar-hidden.png")}`);
       await command("menu toggleSidebar");
-      await until("sidebar back", async () => { await command("state"); return state().toolbar?.navigation === false; });
+      await until("sidebar back", async () => { await command("state"); return !state().sidebar.hidden; });
     }
     // A plain-http page on the user's own machine gets no warning in either address field, and both centre the text.
     for (const [name, field] of [["toolbar", state().toolbar.field], ["sidebar", state().addressField]]) {

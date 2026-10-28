@@ -264,23 +264,40 @@ private final class ToolbarAddressView: NSView {
 }
 
 /// The colours of the loading wash and its line, in one place so the profile's colour can set `current` once
-/// profiles exist. Measured from Dia: the wash is barely there at the field's top (≈3%) and deepens toward its
-/// bottom edge (≈15%), over a pale line (#DBAAFF on white).
+/// profiles exist. Measured from Dia on white, Dia's isn't one colour: it ramps from a pale pink lilac at the
+/// trailing end to a deeper blue-violet lavender at the leading edge (line #F5D0FF → #9366C5, the wash's bottom
+/// #F1E4F9 → #D3C5E8), and the ramp travels with the leading edge. The wash is about a sixth as strong at the
+/// field's top as at its bottom.
 struct LoadingTint {
-  var washTop: NSColor
-  var washBottom: NSColor
-  var line: NSColor
+  /// Trailing end to leading edge, at the wash's full (bottom) strength.
+  var wash: [NSColor]
+  /// Trailing end to leading edge.
+  var line: [NSColor]
+  /// The wash's strength at the field's top, relative to its bottom.
+  var topFade: Float
 
-  static var current = LoadingTint(accent: NSColor(srgbRed: 0.56, green: 0.24, blue: 1.0, alpha: 1))
+  static var current = LoadingTint.dia
 
-  init(accent: NSColor) {
-    washTop = Self.dynamic(light: accent.withAlphaComponent(0.03), dark: accent.withAlphaComponent(0.05))
-    washBottom = Self.dynamic(light: accent.withAlphaComponent(0.15), dark: accent.withAlphaComponent(0.2))
-    line = Self.dynamic(light: accent.withAlphaComponent(0.34), dark: accent.withAlphaComponent(0.5))
-  }
+  static let dia = LoadingTint(
+    wash: [
+      rgba(0xB0, 0x60, 0xE0, light: 0.18, dark: 0.16),
+      rgba(0x90, 0x58, 0xD0, light: 0.25, dark: 0.22),
+      rgba(0x7A, 0x50, 0xC0, light: 0.33, dark: 0.3),
+    ],
+    line: [
+      rgba(0xE0, 0x70, 0xFF, light: 0.33, dark: 0.45),
+      rgba(0xB0, 0x70, 0xF0, light: 0.5, dark: 0.6),
+      rgba(0x6A, 0x3D, 0xB0, light: 0.65, dark: 0.8),
+      rgba(0x5A, 0x2D, 0xA0, light: 0.7, dark: 0.85),
+    ],
+    topFade: 0.15)
 
-  static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
-    NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
+  /// One colour at two strengths: a light field needs less of it than a dark one to read the same.
+  static func rgba(_ r: Int, _ g: Int, _ b: Int, light: CGFloat, dark: CGFloat) -> NSColor {
+    let base = NSColor(srgbRed: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: 1)
+    return NSColor(name: nil) {
+      base.withAlphaComponent($0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light)
+    }
   }
 }
 
@@ -293,7 +310,9 @@ private final class LoadingWash {
   let host = CALayer()
   private let sweep = CALayer()
   private let fill = CAGradientLayer()
-  private let line = CALayer()
+  /// Fades the wash toward the field's top.
+  private let fillFade = CAGradientLayer()
+  private let line = CAGradientLayer()
   /// Feathers the sweep's leading edge (wash and line alike).
   private let feather = CAGradientLayer()
 
@@ -326,8 +345,15 @@ private final class LoadingWash {
     host.cornerCurve = .continuous
     sweep.anchorPoint = .zero
     sweep.opacity = 0
-    sweep.addSublayer(fill)
-    sweep.addSublayer(line)
+    for ramp in [fill, line] {
+      ramp.startPoint = CGPoint(x: 0, y: 0.5)
+      ramp.endPoint = CGPoint(x: 1, y: 0.5)
+      sweep.addSublayer(ramp)
+    }
+    // The field is a flipped view, so its sublayers run top down (its layer's isGeometryFlipped doesn't say so).
+    fillFade.startPoint = CGPoint(x: 0.5, y: 0)
+    fillFade.endPoint = CGPoint(x: 0.5, y: 1)
+    fill.mask = fillFade
     feather.startPoint = CGPoint(x: 0, y: 0.5)
     feather.endPoint = CGPoint(x: 1, y: 0.5)
     feather.colors = [CGColor.black, CGColor.black, CGColor.clear]
@@ -355,10 +381,8 @@ private final class LoadingWash {
       host.frame = bounds
       sweep.bounds = CGRect(x: 0, y: 0, width: travel, height: bounds.height)
       fill.frame = sweep.bounds
-      // The field is a flipped view, so its sublayers run top down (its layer's isGeometryFlipped doesn't say so).
-      // Deeper toward the field's bottom edge, where the line runs.
-      fill.startPoint = CGPoint(x: 0.5, y: 0)
-      fill.endPoint = CGPoint(x: 0.5, y: 1)
+      fillFade.frame = fill.bounds
+      placeRamps()
       let lineHeight = Self.lineHeight
       line.frame = CGRect(x: 0, y: bounds.height - lineHeight, width: travel, height: lineHeight)
       feather.frame = sweep.bounds
@@ -367,16 +391,27 @@ private final class LoadingWash {
     }
   }
 
+  /// The colour ramps run across the solid part, ending at the leading edge where the feather starts.
+  private func placeRamps() {
+    let solid = Double(1 - Self.feather / travel)
+    for ramp in [fill, line] {
+      let count = ramp.colors?.count ?? 0
+      ramp.locations = count > 1 ? (0..<count).map { NSNumber(value: solid * Double($0) / Double(count - 1)) } : nil
+    }
+  }
+
   func applyTint(for appearance: NSAppearance) {
     let tint = LoadingTint.current
-    var colours = (top: CGColor.clear, bottom: CGColor.clear, line: CGColor.clear)
+    var colours = (wash: [CGColor](), line: [CGColor]())
     appearance.performAsCurrentDrawingAppearance {
-      colours = (tint.washTop.cgColor, tint.washBottom.cgColor, tint.line.cgColor)
+      colours = (tint.wash.map(\.cgColor), tint.line.map(\.cgColor))
     }
     quietly {
-      fill.colors = [colours.top, colours.bottom]
-      line.backgroundColor = colours.line
+      fill.colors = colours.wash
+      line.colors = colours.line
+      fillFade.colors = [CGColor(gray: 0, alpha: CGFloat(tint.topFade)), CGColor.black]
     }
+    if size.width > 0 { quietly { placeRamps() } }
   }
 
   func update(loading now: Bool, progress reported: Double, tab id: Int) {
