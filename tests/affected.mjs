@@ -10,7 +10,8 @@ const pages = ["page-channel", "navigate", "target-blank", "window-open", "backg
   "activate-target", "page-closes-itself", "close-target"];
 const permissions = ["permission", "permission-allow"];
 const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-switch-to-tab", "bar-history",
-  "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions"];
+  "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions", "search-engine-default",
+  "search-engine-chosen"];
 const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];
 const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still"];
@@ -86,6 +87,7 @@ export const areas = {
   "Host/ArcImport.swift": ["arc-import"],
   "Host/CommandBarView.swift": commandBar,
   "Host/Suggestions.swift": commandBar,
+  "Host/SearchEngine.swift": [...commandBar, "page-toolbar", "site-controls"],
   "Host/Downloads.swift": ["downloads", "download-insecure-blocked"],
   "Host/Extensions.swift": ["extensions", "extension-prompt", "site-controls"],
   "Host/FindBar.swift": ["find-in-page"],
@@ -98,7 +100,7 @@ export const areas = {
   "Host/Updater.swift": ["updater-config"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
-  "Host/TestCommands.swift": ["folder-rename", "tile-hover"],
+  "Host/TestCommands.swift": ["folder-rename", "tile-hover", "search-engine-default", "search-engine-chosen"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

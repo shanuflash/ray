@@ -45,6 +45,7 @@ const pages = {
   "/h": `<title>Hist Page</title><p>history</p>`,
   "/find": `<title>Find</title><p>banana one</p><p>apple</p><p>banana two</p><p>banana three</p>`,
   "/search": `<title>Search</title><p>results</p>`,
+  "/engine": `<title>Fixture engine</title><p>results from the fixture engine</p>`,
   "/long": `<title>Long</title><style>body{margin:0;font:16px/1.6 sans-serif}p{margin:0 16px 12px}</style>` +
     Array.from({ length: 120 }, (_, i) => `<p id=p${i}>Paragraph ${i}: the quick brown fox jumps over the lazy dog, again and again, to make lines wrap differently at different widths.</p>`).join(""),
 };
@@ -253,6 +254,7 @@ let folderIDs = {};
 let downloadedName = null;
 let savedActive = null;
 let savedSettings = null;
+let fixtureEngineChosen = false;
 
 // Settings window checks: helpers.
 const localOrigin = origin.replace("127.0.0.1", "localhost");
@@ -498,6 +500,59 @@ const checks = {
     await command("enter");
     await until("search tab", () => state().tabs.length === before + 1 &&
       state().tabs.find((t) => t.id === state().active && t.url.startsWith(`${origin}/search?q=zzq`) && t.url.includes("one")));
+  },
+  async "search-engine-default"() {
+    // With the test overrides lifted, Ray searches with the default engine the profile reports (a fresh profile's
+    // too), and says so. Only the template and the URL it would load are read: nothing is fetched from the engine.
+    await command("searchengine real");
+    const reply = JSON.parse(await commandResult("searchengine refresh"));
+    assert(reply.engineName && reply.engineURL, `no default engine in ${JSON.stringify(reply)}`);
+    const engineHost = new URL(reply.engineURL.replace("%s", "x")).host;
+    assert(new URL(reply.template.replace("%s", "x")).host === engineHost, `template ${reply.template} isn't the engine's ${reply.engineURL}`);
+    assert(reply.typed === reply.template.replace("%s", "ray%20test"), `typed search went to ${reply.typed}`);
+    assert(reply.label === reply.engineName.slice(0, 40), `command bar names the engine ${reply.label}, engine says ${reply.engineName}`);
+    await command("menu newTab");
+    await command("type zzq");
+    const bar = await until("typed search row", () => state().commandBar?.query === "zzq" && state().commandBar.rows.length && state().commandBar);
+    assert(bar.rows[0].kind === "search" && bar.rows[0].detail === `Search ${reply.label}`, `first row ${JSON.stringify(bar.rows[0])}`);
+    await command("escape");
+    await command("searchengine pinned");
+  },
+  async "search-engine-chosen"() {
+    // The choice made in ray://settings (Chrome's Search engine page): Ray searches with it from then on, encoded,
+    // keeps it across a relaunch (see restore), and the settings page stays up.
+    await send("Target.createTarget", { url: "chrome://settings/searchEngines" });
+    const { target, sessionId } = await session("chrome://settings/searchEngines");
+    const find = `function find(tag){ const out=[]; (function walk(n,d){ if(!n||d>60) return; if(n.tagName&&n.tagName.toLowerCase()===tag) out.push(n); const kids=[...(n.children||[])]; if(n.shadowRoot) kids.push(...n.shadowRoot.children); for(const k of kids) walk(k,d+1); })(document.documentElement,0); return out; }`;
+    const page = (body) => evaluate(sessionId, `(async()=>{ ${find} ${body} })()`);
+    await until("search engines page", () => page(`return find("cr-button").some(b=>b.id==="addSearchEngine")`));
+    await page(`find("cr-button").find(b=>b.id==="addSearchEngine").click()`);
+    await until("add dialog", () => page(`return find("settings-search-engine-edit-dialog").length>0 && find("cr-input").some(i=>i.id==="queryUrl")`));
+    await page(`const set=(id,v)=>{ const n=find("cr-input").find(x=>x.id===id).inputElement; n.focus(); n.value=v; n.dispatchEvent(new Event("input",{bubbles:true,composed:true})); };
+      set("searchEngine","Fixture"); set("keyword","fixture.test"); set("queryUrl",${JSON.stringify(origin + "/engine?q=%s")});`);
+    await sleep(500);
+    await page(`find("settings-search-engine-edit-dialog")[0].shadowRoot.querySelector("#actionButton").click()`);
+    await until("engine added", () => page(`return find("settings-search-engines-list").some(l=>(l.engines||[]).some(e=>e.name==="Fixture"))`));
+    await page(`const e=find("settings-search-engines-list").flatMap(l=>l.engines||[]).find(x=>x.name==="Fixture");
+      const el=find("settings-search-engines-page")[0]; setTimeout(()=>el.browserProxy_.setDefaultSearchEngine(e.id, 1), 0);`);
+    await command("searchengine real");
+    await until("Ray follows the choice", async () => JSON.parse(await commandResult("searchengine refresh")).template === `${origin}/engine?q=%s`);
+    await command("menu newTab");
+    await command("type a&b c");
+    const bar = await until("search row", () => state().commandBar?.query === "a&b c" && state().commandBar.rows.length && state().commandBar);
+    assert(bar.rows[0].kind === "search" && bar.rows[0].detail === "Search Fixture", `first row ${JSON.stringify(bar.rows[0])}`);
+    await command("enter");
+    const searched = await until("search tab", () => state().tabs.find((t) => t.url === `${origin}/engine?q=a%26b%20c`));
+    assert(searched, "searching didn't load the chosen engine with the encoded query");
+    assert((await evaluate(sessionId, `document.readyState`)) === "complete", "the settings page went away");
+    await send("Target.closeTarget", { targetId: target.targetId });
+    await until("search tab closes", async () => {
+      const gone = !(await targets()).some((t) => t.url.startsWith(`${origin}/engine`));
+      if (!gone) await send("Target.closeTarget", { targetId: (await targets()).find((t) => t.url.startsWith(`${origin}/engine`)).targetId });
+      return gone;
+    });
+    fixtureEngineChosen = true;
+    await command("searchengine pinned");
   },
   async "devtools-docked"() {
     await command("menu toggleDevTools");
@@ -1926,6 +1981,13 @@ const checks = {
     assert(shown.minimalURL === true && shown.loadingProgress === false && shown.newTabNextToActive === true && shown.recentTabCycling === false &&
       shown.copyLinkShortcut === false && shown.sidebarShortcut === false && shown.swatch === "#E5589D" && shown.zoom === "125%", `window after relaunch ${JSON.stringify(shown)}`);
     await closeSettingsWindow();
+    }
+    if (fixtureEngineChosen) {
+      // A choice made in settings is kept: the relaunch doesn't put the profile's default back.
+      await command("searchengine real");
+      const kept = JSON.parse(await commandResult("searchengine refresh"));
+      assert(kept.engineName === "Fixture" && kept.template === `${origin}/engine?q=%s`, `default after relaunch ${JSON.stringify(kept)}`);
+      await command("searchengine pinned");
     }
     const after = state().sidebar;
     assert(JSON.stringify(after.favorites.map((e) => e.id)) === JSON.stringify(before.favorites.map((e) => e.id)), "favorites differ");

@@ -49,6 +49,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     let controller = makeWindow(profile: engine.defaultProfile)
     controller.present(background: launchedInBackground)
     controller.restore(startURL: startURL)
+    SearchEngine.refresh(profile: controller.mainProfile)
     controller.searches.warm()
     return controller
   }
