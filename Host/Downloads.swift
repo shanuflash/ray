@@ -97,6 +97,28 @@ final class DownloadsController {
   func pause(_ id: String) { call("ac_downloads_pause", id) }
   func resume(_ id: String) { call("ac_downloads_resume", id) }
 
+  /// Takes a finished, failed or cancelled download off the list (the file stays where it is).
+  func remove(_ id: String) {
+    items.removeAll { $0.id == id }
+    call("ac_downloads_remove", id)
+    onChange?(false)
+  }
+
+  func open(_ id: String) {
+    guard let item = items.first(where: { $0.id == id }), item.state == "finished", !item.path.isEmpty,
+          FileManager.default.fileExists(atPath: item.path) else { return }
+    NSWorkspace.shared.open(URL(fileURLWithPath: item.path))
+  }
+
+  /// The folder downloads land in (from the newest finished file, else ~/Downloads).
+  var folder: URL {
+    if let path = items.first(where: { $0.state == "finished" && !$0.path.isEmpty })?.path {
+      return URL(fileURLWithPath: path).deletingLastPathComponent()
+    }
+    return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+      ?? FileManager.default.homeDirectoryForCurrentUser
+  }
+
   func reveal(_ id: String) {
     guard let item = items.first(where: { $0.id == id }), !item.path.isEmpty else { return }
     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
@@ -107,18 +129,29 @@ final class DownloadsController {
   }
 }
 
-/// The list in the downloads popover: one row per download, newest first.
+/// The downloads popover: a header, then one row per download, newest first (Arc's layout: file icon, name, a quiet
+/// status line, a thin progress bar while it comes in, and small actions that show on hover).
 final class DownloadsListView: NSView {
   private let stack = NSStackView()
+  private let header = NSView()
+  private let titleLabel = NSTextField(labelWithString: "Downloads")
+  private let folderButton = DownloadsListView.iconButton("folder", "Open Downloads Folder")
   private var rows: [String: DownloadRowView] = [:]
   weak var controller: DownloadsController?
+  static let width: CGFloat = 340
 
   override init(frame: NSRect) {
     super.init(frame: frame)
+    titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+    titleLabel.textColor = .secondaryLabelColor
+    folderButton.target = self
+    folderButton.action = #selector(openFolder)
+    header.addSubview(titleLabel)
+    header.addSubview(folderButton)
     stack.orientation = .vertical
     stack.alignment = .leading
     stack.spacing = 2
-    stack.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+    stack.edgeInsets = NSEdgeInsets(top: 8, left: 6, bottom: 6, right: 6)
     stack.translatesAutoresizingMaskIntoConstraints = false
     addSubview(stack)
     NSLayoutConstraint.activate([
@@ -129,140 +162,250 @@ final class DownloadsListView: NSView {
 
   required init?(coder: NSCoder) { fatalError() }
 
+  @objc private func openFolder() {
+    guard let folder = controller?.folder else { return }
+    NSWorkspace.shared.open(folder)
+  }
+
   func show(_ items: [DownloadsController.Item]) {
     let shown = Array(items.prefix(8))
-    for row in stack.arrangedSubviews { stack.removeArrangedSubview(row); row.removeFromSuperview() }
+    for view in stack.arrangedSubviews {
+      stack.removeArrangedSubview(view)
+      view.removeFromSuperview()
+    }
+    header.frame = NSRect(x: 0, y: 0, width: Self.width - 12, height: 28)
+    titleLabel.frame = NSRect(x: 8, y: 6, width: 200, height: 17)
+    folderButton.frame = NSRect(x: header.frame.width - 30, y: 2, width: 26, height: 24)
+    stack.addArrangedSubview(header)
+    header.widthAnchor.constraint(equalToConstant: Self.width - 12).isActive = true
+    header.heightAnchor.constraint(equalToConstant: 28).isActive = true
     var kept: [String: DownloadRowView] = [:]
     for item in shown {
       let row = rows[item.id] ?? DownloadRowView()
       row.controller = controller
       row.show(item)
       stack.addArrangedSubview(row)
-      row.widthAnchor.constraint(equalToConstant: 320).isActive = true
+      row.widthAnchor.constraint(equalToConstant: Self.width - 12).isActive = true
+      row.heightAnchor.constraint(equalToConstant: DownloadRowView.height).isActive = true
       kept[item.id] = row
     }
     rows = kept
-    if shown.isEmpty {
-      let empty = NSTextField(labelWithString: "No downloads yet")
-      empty.textColor = .secondaryLabelColor
-      stack.addArrangedSubview(empty)
-    }
+    if shown.isEmpty { stack.addArrangedSubview(EmptyDownloadsView()) }
   }
 
   func row(for id: String) -> DownloadRowView? { rows[id] }
 
-  override var fittingSize: NSSize { stack.fittingSize }
+  override var fittingSize: NSSize { NSSize(width: Self.width, height: stack.fittingSize.height) }
+
+  static func iconButton(_ symbol: String, _ label: String) -> NSButton {
+    let button = HoverIconButton()
+    button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+    button.symbolConfiguration = .init(pointSize: 12, weight: .medium)
+    button.isBordered = false
+    button.bezelStyle = .regularSquare
+    button.imagePosition = .imageOnly
+    button.contentTintColor = .secondaryLabelColor
+    button.refusesFirstResponder = true
+    button.toolTip = label
+    return button
+  }
+}
+
+private final class EmptyDownloadsView: NSView {
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    let icon = NSImageView(image: NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil) ?? NSImage())
+    icon.symbolConfiguration = .init(pointSize: 22, weight: .light)
+    icon.contentTintColor = .tertiaryLabelColor
+    let label = NSTextField(labelWithString: "No downloads yet")
+    label.font = .systemFont(ofSize: 13)
+    label.textColor = .secondaryLabelColor
+    label.alignment = .center
+    icon.frame = NSRect(x: (DownloadsListView.width - 12 - 28) / 2, y: 18, width: 28, height: 28)
+    label.frame = NSRect(x: 0, y: 52, width: DownloadsListView.width - 12, height: 18)
+    addSubview(icon)
+    addSubview(label)
+    translatesAutoresizingMaskIntoConstraints = false
+    widthAnchor.constraint(equalToConstant: DownloadsListView.width - 12).isActive = true
+    heightAnchor.constraint(equalToConstant: 86).isActive = true
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+  override var isFlipped: Bool { true }
 }
 
 final class DownloadRowView: NSView {
+  static let height: CGFloat = 52
   weak var controller: DownloadsController?
   private let icon = NSImageView()
   private let name = NSTextField(labelWithString: "")
   private let status = NSTextField(labelWithString: "")
-  private let progress = NSProgressIndicator()
-  private let primary = NSButton()
-  private let secondary = NSButton()
+  private let track = CALayer()
+  private let bar = CALayer()
+  private let primary = DownloadsListView.iconButton("pause.fill", "Pause")
+  private let secondary = DownloadsListView.iconButton("xmark", "Cancel")
+  private let keep = NSButton(title: "Keep", target: nil, action: nil)
+  private let discard = NSButton(title: "Discard", target: nil, action: nil)
+  private let fill = CALayer()
   private var item: DownloadsController.Item?
   private var heldSince: Date?
+  private var hovered = false
 
   override init(frame: NSRect) {
     super.init(frame: frame)
+    wantsLayer = true
+    fill.cornerRadius = 8
+    fill.cornerCurve = .continuous
+    layer?.addSublayer(fill)
     icon.imageScaling = .scaleProportionallyUpOrDown
     name.font = .systemFont(ofSize: 13, weight: .medium)
     name.lineBreakMode = .byTruncatingMiddle
     status.font = .systemFont(ofSize: 11)
     status.textColor = .secondaryLabelColor
     status.lineBreakMode = .byTruncatingTail
-    progress.style = .bar
-    progress.controlSize = .small
-    progress.minValue = 0
-    progress.maxValue = 1
-    for button in [primary, secondary] {
+    track.cornerRadius = 1.5
+    bar.cornerRadius = 1.5
+    layer?.addSublayer(track)
+    layer?.addSublayer(bar)
+    for button in [keep, discard] {
       button.bezelStyle = .rounded
       button.controlSize = .small
       button.target = self
     }
+    keep.action = #selector(keepClicked)
+    discard.action = #selector(discardClicked)
+    primary.target = self
     primary.action = #selector(primaryClicked)
+    secondary.target = self
     secondary.action = #selector(secondaryClicked)
-    [icon, name, status, progress, primary, secondary].forEach(addSubview)
+    [icon, name, status, primary, secondary, keep, discard].forEach(addSubview)
+    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    translatesAutoresizingMaskIntoConstraints = false
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
-  override var intrinsicContentSize: NSSize { NSSize(width: 320, height: 54) }
   override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+
+  override func updateLayer() {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    fill.backgroundColor = (hovered ? SidebarColors.hover : .clear).cgColor
+    track.backgroundColor = NSColor.labelColor.withAlphaComponent(0.1).cgColor
+    bar.backgroundColor = NSColor.controlAccentColor.cgColor
+    CATransaction.commit()
+  }
+
+  override func mouseEntered(with event: NSEvent) {
+    hovered = true
+    updateButtons()
+    needsDisplay = true
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    hovered = false
+    updateButtons()
+    needsDisplay = true
+  }
+
+  /// A click on a finished download opens it, as in Arc.
+  override func mouseUp(with event: NSEvent) {
+    guard let item, item.state == "finished", bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+    controller?.open(item.id)
+  }
 
   /// Waiting for Keep or Discard: Discard is the default (Return), Keep ignores clicks for its first half second.
-  var keepReady: Bool { item?.waiting == true && primary.isEnabled }
+  var keepReady: Bool { item?.waiting == true && keep.isEnabled }
 
   func show(_ item: DownloadsController.Item) {
     self.item = item
     let ext = (item.filename as NSString).pathExtension
-    icon.image = NSWorkspace.shared.icon(for: .init(filenameExtension: ext) ?? .data)
+    if item.state == "finished", !item.path.isEmpty, FileManager.default.fileExists(atPath: item.path) {
+      icon.image = NSWorkspace.shared.icon(forFile: item.path)
+    } else {
+      icon.image = NSWorkspace.shared.icon(for: .init(filenameExtension: ext) ?? .data)
+    }
+    icon.alphaValue = item.state == "failed" || item.state == "cancelled" ? 0.5 : 1
     name.stringValue = item.filename.isEmpty ? "Download" : item.filename
-    progress.isHidden = !item.active || item.waiting
-    progress.isIndeterminate = item.total <= 0
-    progress.doubleValue = item.fraction
-    if item.isIndeterminateRunning { progress.startAnimation(nil) } else { progress.stopAnimation(nil) }
-    primary.isHidden = false
-    secondary.isHidden = false
-    primary.keyEquivalent = ""
-    secondary.keyEquivalent = ""
-    let from = item.host.isEmpty ? "" : " from \(item.host)"
+    let from = item.host.isEmpty ? "" : " · \(item.host)"
+    status.textColor = .secondaryLabelColor
     if item.waiting {
-      status.stringValue = "This file may be harmful or was sent insecurely\(from). Keep it?"
+      status.stringValue = "May be harmful or sent insecurely\(from)"
       status.textColor = .systemOrange
-      secondary.title = "Discard"
-      secondary.keyEquivalent = "\r"
-      primary.title = "Keep"
       if heldSince == nil {
         heldSince = Date()
-        primary.isEnabled = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.primary.isEnabled = true }
+        keep.isEnabled = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.keep.isEnabled = true }
       }
+      discard.keyEquivalent = "\r"
     } else {
       heldSince = nil
-      primary.isEnabled = true
-      status.textColor = .secondaryLabelColor
+      discard.keyEquivalent = ""
       switch item.state {
-      case "finished":
-        status.stringValue = "\(Self.bytes(item.received))\(from)"
-        primary.title = "Show in Finder"
-        secondary.isHidden = true
+      case "finished": status.stringValue = Self.bytes(item.received) + from
       case "failed":
-        status.stringValue = "Failed" + (item.error.map { " · \($0.lowercased().replacingOccurrences(of: "_", with: " "))" } ?? "")
-        primary.isHidden = true
-        secondary.isHidden = true
-      case "cancelled":
-        status.stringValue = "Cancelled"
-        primary.isHidden = true
-        secondary.isHidden = true
+        status.stringValue = "Failed" + (item.error.map { " · " + $0.lowercased().replacingOccurrences(of: "_", with: " ") } ?? "")
+        status.textColor = .systemRed
+      case "cancelled": status.stringValue = "Cancelled" + from
       default:
         let size = item.total > 0 ? "\(Self.bytes(item.received)) of \(Self.bytes(item.total))" : Self.bytes(item.received)
         status.stringValue = item.paused ? "Paused · \(size)" : "\(size) · \(Self.bytes(item.speed))/s"
-        primary.title = item.paused ? "Resume" : "Pause"
-        secondary.title = "Cancel"
       }
+    }
+    toolTip = item.state == "finished" ? "Click to open" : nil
+    updateButtons()
+    needsLayout = true
+    needsDisplay = true
+  }
+
+  private func updateButtons() {
+    guard let item else { return }
+    let waiting = item.waiting
+    keep.isHidden = !waiting
+    discard.isHidden = !waiting
+    let downloading = item.active && !waiting
+    primary.isHidden = waiting || !(downloading || (item.state == "finished" && hovered))
+    secondary.isHidden = waiting || !(downloading || hovered)
+    if downloading {
+      primary.image = NSImage(systemSymbolName: item.paused ? "play.fill" : "pause.fill", accessibilityDescription: nil)
+      primary.toolTip = item.paused ? "Resume" : "Pause"
+      secondary.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Cancel")
+      secondary.toolTip = "Cancel"
+    } else {
+      primary.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Show in Finder")
+      primary.toolTip = "Show in Finder"
+      secondary.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Remove from List")
+      secondary.toolTip = "Remove from List"
     }
     needsLayout = true
   }
 
   @objc private func primaryClicked() {
     guard let item, let controller else { return }
-    if item.waiting { controller.keep(item.id) }
-    else if item.state == "finished" { controller.reveal(item.id) }
+    if item.state == "finished" { controller.reveal(item.id) }
     else if item.paused { controller.resume(item.id) }
     else { controller.pause(item.id) }
   }
 
   @objc private func secondaryClicked() {
     guard let item, let controller else { return }
-    if item.waiting { controller.discard(item.id) } else { controller.cancel(item.id) }
+    if item.active { controller.cancel(item.id) } else { controller.remove(item.id) }
+  }
+
+  @objc private func keepClicked() {
+    guard let item else { return }
+    controller?.keep(item.id)
+  }
+
+  @objc private func discardClicked() {
+    guard let item else { return }
+    controller?.discard(item.id)
   }
 
   /// For tests: press Keep or Discard the way a click would.
-  func press(keep: Bool) -> Bool {
-    let button = keep ? primary : secondary
+  func press(keep pressKeep: Bool) -> Bool {
+    let button = pressKeep ? keep : discard
     guard !button.isHidden, button.isEnabled else { return false }
     button.performClick(nil)
     return true
@@ -270,29 +413,39 @@ final class DownloadRowView: NSView {
 
   override func layout() {
     super.layout()
-    icon.frame = NSRect(x: 4, y: 11, width: 32, height: 32)
-    var buttonX = bounds.width - 4
-    for button in [secondary, primary] where !button.isHidden {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    fill.frame = bounds
+    CATransaction.commit()
+    icon.frame = NSRect(x: 8, y: (bounds.height - 32) / 2, width: 32, height: 32)
+    var right = bounds.width - 6
+    for button in [discard, keep] where !button.isHidden {
       button.sizeToFit()
-      buttonX -= button.frame.width
-      button.frame.origin = NSPoint(x: buttonX, y: (bounds.height - button.frame.height) / 2)
-      buttonX -= 4
+      right -= button.frame.width
+      button.frame.origin = NSPoint(x: right, y: (bounds.height - button.frame.height) / 2)
+      right -= 4
     }
-    let textWidth = buttonX - 44
-    name.frame = NSRect(x: 44, y: 8, width: textWidth, height: 17)
-    progress.frame = NSRect(x: 44, y: 27, width: textWidth, height: 8)
-    status.frame = NSRect(x: 44, y: progress.isHidden ? 28 : 36, width: textWidth, height: 15)
-    if !status.stringValue.isEmpty, item?.waiting == true {
-      status.maximumNumberOfLines = 2
-      status.frame = NSRect(x: 44, y: 26, width: textWidth, height: 28)
+    for button in [secondary, primary] where !button.isHidden {
+      right -= 26
+      button.frame = NSRect(x: right, y: (bounds.height - 24) / 2, width: 26, height: 24)
+      right -= 2
     }
+    let textX: CGFloat = 50
+    let width = max(0, right - textX - 4)
+    let showsBar = item.map { $0.active && !$0.waiting } ?? false
+    name.frame = NSRect(x: textX, y: showsBar ? 7 : 9, width: width, height: 17)
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    track.isHidden = !showsBar
+    bar.isHidden = !showsBar
+    track.frame = NSRect(x: textX, y: 27, width: width, height: 3)
+    let fraction = item.map { $0.total > 0 ? $0.fraction : 0.08 } ?? 0
+    bar.frame = NSRect(x: textX, y: 27, width: max(3, width * CGFloat(fraction)), height: 3)
+    CATransaction.commit()
+    status.frame = NSRect(x: textX, y: showsBar ? 32 : 27, width: width, height: 15)
   }
 
   private static func bytes(_ value: Double) -> String {
     ByteCountFormatter.string(fromByteCount: Int64(max(value, 0)), countStyle: .file)
   }
-}
-
-private extension DownloadsController.Item {
-  var isIndeterminateRunning: Bool { active && !waiting && total <= 0 }
 }

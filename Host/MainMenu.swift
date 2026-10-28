@@ -5,7 +5,7 @@ enum MainMenu {
     let main = NSMenu()
 
     main.addItem(submenu("Ray", [
-      item("About Ray", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), nil, target: NSApp),
+      item("About Ray", #selector(AppController.showAbout(_:)), nil, target: target),
       .separator(),
       item("Hide Ray", #selector(NSApplication.hide(_:)), "h", target: NSApp),
       item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option], target: NSApp),

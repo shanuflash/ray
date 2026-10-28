@@ -759,6 +759,7 @@ const checks = {
     assert(existsSync(item.path), "no file on disk");
     await command("dlopen");
     await until("list open", () => state().downloadsOpen);
+    if (process.env.SNAP_DIR) { await sleep(300); await command(`dlsnap ${join(process.env.SNAP_DIR, "downloads.png")}`); }
     // The button sits bottom left in the sidebar's footer.
     const [bx, by] = state().downloadsButton.split(",").map(Number);
     const windowHeight = Number(state().windowFrame.match(/-?[\d.]+/g)[3]);
@@ -811,6 +812,10 @@ const checks = {
     await command(`press ${fx + fw - 19} ${fy + fh / 2}`);
     await command(`release ${fx + fw - 19} ${fy + fh / 2}`);
     await until("closed by click", async () => { await command("state"); return state().find === null; }, 3000);
+  },
+  async "about-panel"() {
+    if (!process.env.SNAP_DIR) return;
+    await command(`aboutsnap ${join(process.env.SNAP_DIR, "about.png")}`);
   },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]

@@ -170,6 +170,18 @@ enum TestCommands {
       if AppController.shared.current?.answerArcImport(argument == "accept") != true { result = "no prompt" }
     case "perm":
       if AppController.shared.current?.permissions.press(argument) != true { result = "not ready" }
+    case "aboutsnap":
+      AppController.shared.showAbout(nil)
+      result = "no panel"
+      if let panel = NSApp.windows.first(where: { $0.isVisible && $0 is NSPanel }), let view = panel.contentView,
+         let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+        view.cacheDisplay(in: view.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]),
+           (try? png.write(to: URL(fileURLWithPath: argument))) != nil { result = "ok" }
+        panel.close()
+      }
+    case "dlsnap":
+      if AppController.shared.current?.snapshotDownloads(to: argument) != true { result = "no list" }
     case "dlopen":
       AppController.shared.current?.showDownloads()
     case "dl":

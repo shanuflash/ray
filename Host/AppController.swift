@@ -107,6 +107,43 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
   @objc func newTab(_ sender: Any?) { current?.beginNewTab() }
+
+  /// The About panel, laid out like Arc's: version, the Chromium engine version, and what Ray is built on.
+  @objc func showAbout(_ sender: Any?) {
+    let center = NSMutableParagraphStyle()
+    center.alignment = .center
+    center.paragraphSpacing = 6
+    let body: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.labelColor, .paragraphStyle: center,
+    ]
+    let credits = NSMutableAttributedString()
+    func add(_ text: String, link: String? = nil) {
+      var attributes = body
+      if let link, let url = URL(string: link) { attributes[.link] = url }
+      credits.append(NSAttributedString(string: text, attributes: attributes))
+    }
+    let engine = ArdiaCoreEngine.shared?.chromiumVersion ?? ""
+    if !engine.isEmpty { add("Chromium Engine Version \(engine)\n") }
+    add("Ray is made possible by the ")
+    add("Chromium", link: "https://www.chromium.org/")
+    add(" open source project, ")
+    add("Helium", link: "https://github.com/imputnet/helium")
+    add(" and ")
+    add("Ardia", link: "https://github.com/mantrakp04/ardia")
+    add("'s engine, as well as other ")
+    add("open source software", link: "chrome://credits")
+    add(".\n")
+    add("Ray is free software under the GNU GPL v3. ")
+    add("Source code", link: "https://github.com/shanuflash/ray")
+    add(".")
+    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    NSApp.activate()
+    NSApp.orderFrontStandardAboutPanel(options: [
+      .applicationVersion: "Version \(version)",
+      .version: "",
+      .credits: credits,
+    ])
+  }
   @objc func focusAddress(_ sender: Any?) { current?.focusAddress() }
   @objc func copyURL(_ sender: Any?) { current?.copyURL() }
   @objc func newFolder(_ sender: Any?) { current?.newFolder() }

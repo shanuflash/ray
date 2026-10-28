@@ -242,6 +242,31 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     logState("downloads")
   }
 
+  /// For tests: draws the open downloads list into a PNG, to look at its design.
+  func snapshotDownloads(to path: String) -> Bool {
+    guard let view = downloadsPopover?.contentViewController?.view else { return false }
+    for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+      let old = view.appearance
+      view.appearance = NSAppearance(named: appearance)
+      view.layoutSubtreeIfNeeded()
+      view.displayIfNeeded()
+      guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return false }
+      view.cacheDisplay(in: view.bounds, to: rep)
+      let image = NSImage(size: view.bounds.size)
+      image.lockFocus()
+      (appearance == .aqua ? NSColor(white: 0.97, alpha: 1) : NSColor(white: 0.17, alpha: 1)).setFill()
+      NSRect(origin: .zero, size: view.bounds.size).fill()
+      rep.draw(in: NSRect(origin: .zero, size: view.bounds.size))
+      image.unlockFocus()
+      view.appearance = old
+      guard let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
+      else { return false }
+      let file = path.replacingOccurrences(of: ".png", with: "-\(name).png")
+      guard (try? png.write(to: URL(fileURLWithPath: file))) != nil else { return false }
+    }
+    return true
+  }
+
   /// For tests: Keep or Discard through the open list's buttons.
   func pressDownload(_ id: String, keep: Bool) -> Bool {
     downloadsList?.row(for: id)?.press(keep: keep) ?? false
@@ -840,7 +865,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   func focusAddress() {
-    openCommandBar(.currentTab, query: activeEntry?.currentURL ?? "")
+    openCommandBar(.currentTab, query: activeEntry.map { AddressInput.display(for: $0.currentURL) } ?? "")
   }
 
   /// ⇧⌘C, as in Arc and Chrome: the current page's full URL to the clipboard, and Arc's "Copied Current URL" toast
