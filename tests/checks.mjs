@@ -765,6 +765,23 @@ const checks = {
     const windowHeight = Number(state().windowFrame.match(/-?[\d.]+/g)[3]);
     assert(bx < 40 && by > windowHeight - 80, `downloads button at ${bx},${by}`);
     downloadedName = item.filename;
+    // ⌥⌘L toggles the panel; with the sidebar hidden, opening it brings the sidebar out and keeps it out.
+    await command("menu showDownloads");
+    await until("panel closed", () => !state().downloadsOpen);
+    await command("menu toggleSidebar");
+    await until("sidebar hidden", () => state().sidebar.hidden);
+    await command("menu showDownloads");
+    await until("panel open over a peeking sidebar", () => state().downloadsOpen && state().sidebar.peeking);
+    await command("pointer 900 400");
+    await sleep(400);
+    await command("state");
+    assert(state().sidebar.peeking, "the sidebar hid while the downloads panel was open");
+    await command("menu showDownloads");
+    await until("panel closed again", () => !state().downloadsOpen);
+    await command("pointer 900 400");
+    await until("sidebar hides after", async () => { await command("state"); return !state().sidebar.peeking; }, 3000);
+    await command("menu toggleSidebar");
+    await until("sidebar back", () => !state().sidebar.hidden);
   },
   async "download-insecure-blocked"() {
     // A file over plain HTTP from a secure page never lands (the engine cancels Chrome's insecure download).

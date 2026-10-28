@@ -129,16 +129,18 @@ final class DownloadsController {
   }
 }
 
-/// The downloads popover: a header, then one row per download, newest first (Arc's layout: file icon, name, a quiet
-/// status line, a thin progress bar while it comes in, and small actions that show on hover).
+/// The downloads list in the sidebar's panel: a header, then one row per download, newest first (Arc's layout: file
+/// icon, name, a quiet status line, a thin progress bar while it comes in, and small actions that show on hover).
 final class DownloadsListView: NSView {
   private let stack = NSStackView()
   private let header = NSView()
   private let titleLabel = NSTextField(labelWithString: "Downloads")
   private let folderButton = DownloadsListView.iconButton("folder", "Open Downloads Folder")
+  private let closeButton = DownloadsListView.iconButton("xmark", "Close")
   private var rows: [String: DownloadRowView] = [:]
   weak var controller: DownloadsController?
-  static let width: CGFloat = 340
+  var onClose: (() -> Void)?
+  var width: CGFloat = 251
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -146,8 +148,11 @@ final class DownloadsListView: NSView {
     titleLabel.textColor = .secondaryLabelColor
     folderButton.target = self
     folderButton.action = #selector(openFolder)
+    closeButton.target = self
+    closeButton.action = #selector(close)
     header.addSubview(titleLabel)
     header.addSubview(folderButton)
+    header.addSubview(closeButton)
     stack.orientation = .vertical
     stack.alignment = .leading
     stack.spacing = 2
@@ -162,6 +167,8 @@ final class DownloadsListView: NSView {
 
   required init?(coder: NSCoder) { fatalError() }
 
+  @objc private func close() { onClose?() }
+
   @objc private func openFolder() {
     guard let folder = controller?.folder else { return }
     NSWorkspace.shared.open(folder)
@@ -173,11 +180,12 @@ final class DownloadsListView: NSView {
       stack.removeArrangedSubview(view)
       view.removeFromSuperview()
     }
-    header.frame = NSRect(x: 0, y: 0, width: Self.width - 12, height: 28)
-    titleLabel.frame = NSRect(x: 8, y: 6, width: 200, height: 17)
-    folderButton.frame = NSRect(x: header.frame.width - 30, y: 2, width: 26, height: 24)
+    header.frame = NSRect(x: 0, y: 0, width: width - 12, height: 28)
+    titleLabel.frame = NSRect(x: 8, y: 6, width: 150, height: 17)
+    closeButton.frame = NSRect(x: header.frame.width - 28, y: 2, width: 26, height: 24)
+    folderButton.frame = closeButton.frame.offsetBy(dx: -28, dy: 0)
     stack.addArrangedSubview(header)
-    header.widthAnchor.constraint(equalToConstant: Self.width - 12).isActive = true
+    header.widthAnchor.constraint(equalToConstant: width - 12).isActive = true
     header.heightAnchor.constraint(equalToConstant: 28).isActive = true
     var kept: [String: DownloadRowView] = [:]
     for item in shown {
@@ -185,17 +193,17 @@ final class DownloadsListView: NSView {
       row.controller = controller
       row.show(item)
       stack.addArrangedSubview(row)
-      row.widthAnchor.constraint(equalToConstant: Self.width - 12).isActive = true
+      row.widthAnchor.constraint(equalToConstant: width - 12).isActive = true
       row.heightAnchor.constraint(equalToConstant: DownloadRowView.height).isActive = true
       kept[item.id] = row
     }
     rows = kept
-    if shown.isEmpty { stack.addArrangedSubview(EmptyDownloadsView()) }
+    if shown.isEmpty { stack.addArrangedSubview(EmptyDownloadsView(width: width - 12)) }
   }
 
   func row(for id: String) -> DownloadRowView? { rows[id] }
 
-  override var fittingSize: NSSize { NSSize(width: Self.width, height: stack.fittingSize.height) }
+  override var fittingSize: NSSize { NSSize(width: width, height: stack.fittingSize.height) }
 
   static func iconButton(_ symbol: String, _ label: String) -> NSButton {
     let button = HoverIconButton()
@@ -212,8 +220,8 @@ final class DownloadsListView: NSView {
 }
 
 private final class EmptyDownloadsView: NSView {
-  override init(frame: NSRect) {
-    super.init(frame: frame)
+  init(width: CGFloat) {
+    super.init(frame: .zero)
     let icon = NSImageView(image: NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil) ?? NSImage())
     icon.symbolConfiguration = .init(pointSize: 22, weight: .light)
     icon.contentTintColor = .tertiaryLabelColor
@@ -221,12 +229,12 @@ private final class EmptyDownloadsView: NSView {
     label.font = .systemFont(ofSize: 13)
     label.textColor = .secondaryLabelColor
     label.alignment = .center
-    icon.frame = NSRect(x: (DownloadsListView.width - 12 - 28) / 2, y: 18, width: 28, height: 28)
-    label.frame = NSRect(x: 0, y: 52, width: DownloadsListView.width - 12, height: 18)
+    icon.frame = NSRect(x: (width - 28) / 2, y: 18, width: 28, height: 28)
+    label.frame = NSRect(x: 0, y: 52, width: width, height: 18)
     addSubview(icon)
     addSubview(label)
     translatesAutoresizingMaskIntoConstraints = false
-    widthAnchor.constraint(equalToConstant: DownloadsListView.width - 12).isActive = true
+    widthAnchor.constraint(equalToConstant: width).isActive = true
     heightAnchor.constraint(equalToConstant: 86).isActive = true
   }
 
@@ -447,5 +455,47 @@ final class DownloadRowView: NSView {
 
   private static func bytes(_ value: Double) -> String {
     ByteCountFormatter.string(fromByteCount: Int64(max(value, 0)), countStyle: .file)
+  }
+}
+
+/// The sidebar's downloads panel: the list on a raised, rounded card that slides up from the footer.
+final class DownloadsPanelView: NSView {
+  let list: DownloadsListView
+
+  init(list: DownloadsListView) {
+    self.list = list
+    super.init(frame: .zero)
+    wantsLayer = true
+    layer?.cornerRadius = 12
+    layer?.cornerCurve = .continuous
+    layer?.borderWidth = 1
+    layer?.shadowOpacity = 0.18
+    layer?.shadowRadius = 10
+    layer?.shadowOffset = CGSize(width: 0, height: 3)
+    addSubview(list)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+  override var mouseDownCanMoveWindow: Bool { false }
+
+  override func updateLayer() {
+    let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    layer?.backgroundColor = (dark ? NSColor(white: 0.14, alpha: 1) : NSColor(white: 0.99, alpha: 1)).cgColor
+    layer?.borderColor = (dark ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.08)).cgColor
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    needsDisplay = true
+  }
+
+  var wantedHeight: CGFloat { list.fittingSize.height }
+
+  override func layout() {
+    super.layout()
+    list.frame = bounds
   }
 }

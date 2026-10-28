@@ -180,7 +180,6 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     controller.onChange = { [weak self] newlyWaiting in self?.downloadsChanged(newlyWaiting: newlyWaiting) }
     return controller
   }()
-  private var downloadsPopover: NSPopover?
   private var downloadsList: DownloadsListView?
 
   private func downloadsChanged(newlyWaiting: Bool) {
@@ -188,64 +187,52 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let active = items.filter { $0.active && !$0.waiting }
     let progress = active.isEmpty ? nil : active.map(\.fraction).reduce(0, +) / Double(active.count)
     sidebar.setDownloads(progress: progress)
-    if let downloadsList, let downloadsPopover {
+    if let downloadsList {
       downloadsList.show(items)
-      downloadsPopover.contentSize = downloadsList.fittingSize
+      sidebar.layoutDownloadsPanel()
     }
     if newlyWaiting {
       // A held download needs an answer: open the list where it can be given.
-      if sidebar.window != nil, !state.sidebarHidden || peeking { showDownloads() } else { showToast("A download needs your OK") }
-    } else if let started = items.first, started.active, items.count == 1 || downloadsPopover == nil, started.received == 0 {
+      showDownloads()
+    } else if let started = items.first, started.active, !sidebar.downloadsOpen, started.received == 0 {
       showToast("Downloading \(started.filename)", symbol: "arrow.down.circle") { [weak self] in self?.showDownloads() }
     }
     logState("downloads")
   }
 
+  /// The downloads panel slides up from the sidebar's footer; with the sidebar hidden, the sidebar comes out first
+  /// and stays out while the panel is open.
   func showDownloads() {
-    guard downloadsPopover == nil else { return }
+    guard !sidebar.downloadsOpen else { return }
     downloads.loadHistory()
-    layoutIfNeededForDownloads()
+    if state.sidebarHidden && !peeking { beginPeek() }
+    sidebar.layoutSubtreeIfNeeded()
     let list = DownloadsListView(frame: .zero)
+    list.width = sidebar.downloadsPanelWidth
     list.controller = downloads
+    list.onClose = { [weak self] in self?.closeDownloads() }
     list.show(downloads.items)
-    let controller = NSViewController()
-    controller.view = list
-    let popover = NSPopover()
-    popover.contentViewController = controller
-    popover.contentSize = list.fittingSize
-    popover.behavior = .transient
-    popover.animates = false
-    NotificationCenter.default.addObserver(self, selector: #selector(downloadsClosed), name: NSPopover.didCloseNotification, object: popover)
-    downloadsPopover = popover
     downloadsList = list
-    // From the footer button while the sidebar shows; otherwise from the page's bottom left corner.
-    let anchor = sidebar.downloadsAnchor
-    if sidebarOnScreen, anchor.window != nil {
-      popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
-    } else {
-      popover.show(relativeTo: NSRect(x: pages.frame.minX + 24, y: pages.frame.minY + 12, width: 1, height: 1),
-                   of: root, preferredEdge: .maxY)
-    }
+    sidebar.openDownloads(DownloadsPanelView(list: list))
     logState("downloads")
   }
 
-  private func layoutIfNeededForDownloads() {
-    sidebar.layoutSubtreeIfNeeded()
-  }
-
-  /// The sidebar is in view: docked and shown, or peeking.
-  private var sidebarOnScreen: Bool { peeking || (!state.sidebarHidden && dockSpring.value > 0.99) }
-
-  @objc private func downloadsClosed() {
-    downloadsPopover = nil
+  func closeDownloads() {
+    guard sidebar.downloadsOpen else { return }
+    sidebar.closeDownloads()
     downloadsList = nil
     logState("downloads")
   }
 
+  func toggleDownloads() {
+    sidebar.downloadsOpen ? closeDownloads() : showDownloads()
+  }
+
   /// For tests: draws the open downloads list into a PNG, to look at its design.
   func snapshotDownloads(to path: String) -> Bool {
-    guard let view = downloadsPopover?.contentViewController?.view else { return false }
-    for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+    guard let panel = sidebar.downloadsPanel else { return false }
+    for (name, appearance, view) in [("light", NSAppearance.Name.aqua, panel as NSView), ("dark", .darkAqua, panel),
+                                     ("sidebar", .aqua, sidebar)] {
       let old = view.appearance
       view.appearance = NSAppearance(named: appearance)
       view.layoutSubtreeIfNeeded()
@@ -777,11 +764,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   private func schedulePeekEnd() {
-    guard peekEndWork == nil, !forcedOpen, !sidebar.isDragging else { return }
+    guard peekEndWork == nil, !forcedOpen, !sidebar.isDragging, !sidebar.downloadsOpen else { return }
     let work = DispatchWorkItem { [weak self] in
       guard let self else { return }
       self.peekEndWork = nil
-      if self.sidebar.isDragging { return }
+      if self.sidebar.isDragging || self.sidebar.downloadsOpen { return }
       self.endPeek(animated: true)
     }
     peekEndWork = work
@@ -1003,7 +990,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   func sidebarDownloads(_ sidebar: SidebarView, anchor: NSView) {
-    showDownloads()
+    toggleDownloads()
   }
 
   func sidebarNewTab(_ sidebar: SidebarView) { beginNewTab() }
@@ -1170,7 +1157,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
         "id": $0.id, "filename": $0.filename, "state": $0.state, "dangerous": $0.dangerous, "path": $0.path,
         "keepReady": downloadsList?.row(for: $0.id)?.keepReady ?? false,
       ] },
-      "downloadsOpen": downloadsPopover != nil,
+      "downloadsOpen": sidebar.downloadsOpen,
       "downloadsButton": {
         let button = sidebar.downloadsAnchor
         guard !button.isHidden, let height = window.contentView?.bounds.height else { return "" }

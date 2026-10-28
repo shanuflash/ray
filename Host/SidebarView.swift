@@ -307,6 +307,7 @@ final class SidebarView: NSView {
     downloadsRing.frame = downloadsButton.bounds
     downloadsRing.path = CGPath(ellipseIn: downloadsButton.bounds.insetBy(dx: 6, dy: 6), transform: nil)
     CATransaction.commit()
+    layoutDownloadsPanel()
 
     addressPill.frame = NSRect(x: inset, y: rowCenter + 24, width: width, height: 36)
     var y = addressPill.frame.maxY + 8
@@ -819,6 +820,64 @@ final class SidebarView: NSView {
   }
 
   var downloadsAnchor: NSView { downloadsButton }
+
+  // MARK: Downloads panel
+
+  private(set) var downloadsPanel: DownloadsPanelView?
+  var downloadsOpen: Bool { downloadsPanel != nil }
+  var downloadsPanelWidth: CGFloat { bounds.width - Self.inset * 2 }
+
+  /// Slides the panel up from the footer, over the tab list.
+  func openDownloads(_ panel: DownloadsPanelView) {
+    downloadsPanel?.removeFromSuperview()
+    downloadsPanel = panel
+    addSubview(panel)
+    layoutDownloadsPanel()
+    guard let layer = panel.layer else { return }
+    let rise = CASpringAnimation(keyPath: "transform.translation.y")
+    rise.fromValue = 24
+    rise.toValue = 0
+    rise.mass = 1
+    rise.stiffness = 380
+    rise.damping = 28
+    rise.duration = rise.settlingDuration
+    let fade = CABasicAnimation(keyPath: "opacity")
+    fade.fromValue = 0
+    fade.toValue = 1
+    fade.duration = 0.16
+    layer.add(rise, forKey: "rise")
+    layer.add(fade, forKey: "fade")
+  }
+
+  /// Slides it back down into the footer.
+  func closeDownloads() {
+    guard let panel = downloadsPanel else { return }
+    downloadsPanel = nil
+    guard let layer = panel.layer else { return panel.removeFromSuperview() }
+    let sink = CABasicAnimation(keyPath: "transform.translation.y")
+    sink.fromValue = 0
+    sink.toValue = 16
+    let fade = CABasicAnimation(keyPath: "opacity")
+    fade.fromValue = 1
+    fade.toValue = 0
+    let group = CAAnimationGroup()
+    group.animations = [sink, fade]
+    group.duration = 0.16
+    group.timingFunction = CAMediaTimingFunction(name: .easeIn)
+    CATransaction.begin()
+    CATransaction.setCompletionBlock { panel.removeFromSuperview() }
+    layer.opacity = 0
+    layer.add(group, forKey: "close")
+    CATransaction.commit()
+  }
+
+  func layoutDownloadsPanel() {
+    guard let panel = downloadsPanel else { return }
+    let top = addressPill.frame.maxY + 8
+    let bottom = downloadsButton.frame.minY - 6
+    let height = min(panel.wantedHeight, max(0, bottom - top))
+    panel.frame = NSRect(x: Self.inset, y: bottom - height, width: downloadsPanelWidth, height: height)
+  }
 
   private func reuse<V: NSView>(_ views: [V], count: Int, in parent: NSView, make: () -> V) -> [V] {
     var views = views
