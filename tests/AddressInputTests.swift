@@ -12,6 +12,9 @@ let cases: [(String, String?)] = [
   ("192.168.1.10:8080", "http://192.168.1.10:8080"),
   ("app.localhost", "http://app.localhost"),
   ("chrome://settings", "chrome://settings"),
+  ("ray://settings", "chrome://settings"),
+  ("RAY://settings/help", "chrome://settings/help"),
+  ("ray://extensions", "chrome://extensions"),
   ("about:blank", "about:blank"),
   ("file:///tmp/a.html", "file:///tmp/a.html"),
   ("javascript:alert(1)", nil),
@@ -35,6 +38,7 @@ for (input, expected) in cases {
 let displayCases: [(String, String)] = [
   ("https://user:pass@example.com/x", "https://example.com/x"),
   ("http://example.com:8080/", "http://example.com:8080/"),
+  ("chrome://settings/help", "ray://settings/help"),
 ]
 for (input, expected) in displayCases where AddressInput.display(for: input) != expected {
   failures += 1
@@ -43,6 +47,7 @@ for (input, expected) in displayCases where AddressInput.display(for: input) != 
 let pillCases: [(String, String)] = [
   ("https://www.example.com/path?q=1#x", "example.com"),
   ("http://localhost:3000/", "localhost"),
+  ("chrome://settings/help", "ray://settings"),
   ("about:blank#////accounts.google.com", "about:blank"),
   ("about:blank?x=//accounts.google.com", "about:blank"),
   ("data:text/html,<h1>accounts.google.com</h1>", "data:"),

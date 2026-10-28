@@ -6,9 +6,15 @@ enum AddressInput {
 
   private static let passThroughSchemes: Set<String> = ["http", "https", "file", "chrome", "about", "data", "view-source"]
 
+  /// Ray's name for the engine's own pages, as Arc has arc://: ray://settings is chrome://settings.
+  static let internalScheme = "ray"
+
   static func url(for input: String) -> String? {
-    let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty else { return nil }
+    if text.lowercased().hasPrefix(internalScheme + "://") {
+      text = "chrome://" + text.dropFirst(internalScheme.count + 3)
+    }
     if let colon = text.firstIndex(of: ":") {
       let scheme = text[..<colon].lowercased()
       if scheme == "javascript" { return nil }
@@ -47,6 +53,9 @@ enum AddressInput {
   static func pillText(for url: String) -> String {
     guard !url.isEmpty else { return "" }
     let components = URLComponents(string: url)
+    if components?.scheme?.lowercased() == "chrome", let host = components?.host, !host.isEmpty {
+      return internalScheme + "://" + host
+    }
     if let host = components?.host, !host.isEmpty {
       return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
@@ -68,7 +77,9 @@ enum AddressInput {
     guard var components = URLComponents(string: url), components.host != nil else { return url }
     components.user = nil
     components.password = nil
-    return components.string ?? url
+    let text = components.string ?? url
+    if components.scheme?.lowercased() == "chrome" { return internalScheme + text.dropFirst("chrome".count) }
+    return text
   }
 
   private static func hostPart(of text: String) -> String? {
