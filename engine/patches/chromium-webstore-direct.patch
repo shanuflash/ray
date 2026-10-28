@@ -1,0 +1,392 @@
+SPDX-License-Identifier: GPL-3.0-only
+Reverts parts of Helium's helium/core/proxy-extension-downloads.patch and helium/core/spoof-extension-downloader-platform.patch
+(GPL-3.0, The Helium Authors) and of ungoogled-chromium's disable-webstore-urls.patch (BSD-3-Clause), which Helium's
+series needs for its later patches and so can't be skipped.
+
+Chrome Web Store installs and extension updates go straight to Google again, as they did before Helium: Helium sends
+them through its own proxy only after its onboarding consent, which Ray never shows, so every install and update
+went to a dummy host and failed.
+- the store's update URL is clients2.google.com again, and the item snippet URL chromewebstore.googleapis.com;
+- installs, pending installs (sync and external ones included), effective update URLs and the standalone installer
+  no longer swap in Helium's proxy URL, and ExtensionUpdater uses the update service again (Omaha attributes, the
+  malware kill switch, arrive through it);
+- requests say the real platform (os=mac, arch=arm64, prod=chromiumcrx) instead of Windows, so extensions with
+  per-platform packages get their Mac build;
+- ChromeContentVerifierDelegate::IsFromStore, the store's dedicated process, the extension migrator's update URL,
+  https for store updates, the store's daystart and the extension downloader's defaults are Chromium's code again
+  (content verification itself stays unenforced, as in unbranded Chromium before Helium).
+Helium's no-tracking choice stays: no utm_source on store links. Update pings have no domain (the branding patch).
+
+--- a/chrome/browser/extensions/chrome_content_browser_client_extensions_part.cc
++++ b/chrome/browser/extensions/chrome_content_browser_client_extensions_part.cc
+@@ -682,6 +682,12 @@
+ std::vector<url::Origin> ChromeContentBrowserClientExtensionsPart::
+     GetOriginsRequiringDedicatedProcess() {
+   std::vector<url::Origin> list;
++
++  // Require a dedicated process for the webstore origin.  See
++  // https://crbug.com/40094229.
++  list.push_back(url::Origin::Create(extension_urls::GetWebstoreLaunchURL()));
++  list.push_back(
++      url::Origin::Create(extension_urls::GetNewWebstoreLaunchURL()));
+ 
+   return list;
+ }
+--- a/chrome/browser/extensions/chrome_content_verifier_delegate.cc
++++ b/chrome/browser/extensions/chrome_content_verifier_delegate.cc
+@@ -305,7 +305,17 @@
+   // between which extensions are considered in-store.
+   // See https://crbug.com/40540778 for details.
+   if (!InstallVerifier::IsFromStore(extension, context_)) {
+-    return false;
++    // It's possible that the webstore update url was overridden for testing
++    // so also consider extensions with the default (production) update url
++    // to be from the store as well. Therefore update URL is compared with
++    // |GetDefaultWebstoreUpdateUrl|, not the |GetWebstoreUpdateUrl| used by
++    // |IsWebstoreUpdateUrl|.
++    ExtensionManagement* extension_management =
++        ExtensionManagementFactory::GetForBrowserContext(context_);
++    if (extension_management->GetEffectiveUpdateURL(extension) !=
++        extension_urls::GetDefaultWebstoreUpdateUrl()) {
++      return false;
++    }
+   }
+   return true;
+ }
+--- a/chrome/browser/extensions/extension_management.cc
++++ b/chrome/browser/extensions/extension_management.cc
+@@ -283,19 +283,12 @@
+     return update_url;
+   }
+ 
+-  const GURL& original_url = ManifestURL::GetUpdateURL(&extension);
+-  const GURL& dummy_url = extension_urls::GetDefaultWebstoreUpdateUrl();
+-
+-  if (dummy_url.host() == original_url.host()) {
+-    return helium::GetExtensionUpdateURL(*profile_->GetPrefs());
+-  }
+-
+-  return original_url;
++  return ManifestURL::GetUpdateURL(&extension);
+ }
+ 
+ bool ExtensionManagement::UpdatesFromWebstore(const Extension& extension) {
+   const bool is_webstore_url = extension_urls::IsWebstoreUpdateUrl(
+-      ManifestURL::GetUpdateURL(&extension));
++      GURL(GetEffectiveUpdateURL(extension)));
+   if (is_webstore_url) {
+     DCHECK(!IsUpdateUrlOverridden(extension.id()))
+         << "An extension's update URL cannot be overridden to the webstore.";
+--- a/chrome/browser/extensions/extension_migrator.cc
++++ b/chrome/browser/extensions/extension_migrator.cc
+@@ -22,9 +22,7 @@
+ ExtensionMigrator::ExtensionMigrator(Profile* profile,
+                                      const std::string& old_id,
+                                      const std::string& new_id)
+-    : profile_(profile), old_id_(old_id), new_id_(new_id) {
+-    chrome_blank_ = GURL("chrome://blank/");
+-}
++    : profile_(profile), old_id_(old_id), new_id_(new_id) {}
+ 
+ ExtensionMigrator::~ExtensionMigrator() = default;
+ 
+@@ -36,7 +34,7 @@
+   if (should_have_extension) {
+     base::DictValue entry;
+     entry.Set(ExternalProviderImpl::kExternalUpdateUrl,
+-              chrome_blank_.spec());
++              extension_urls::GetWebstoreUpdateUrl().spec());
+ 
+     prefs.Set(new_id_, std::move(entry));
+   }
+--- a/chrome/browser/extensions/extension_migrator.h
++++ b/chrome/browser/extensions/extension_migrator.h
+@@ -10,7 +10,6 @@
+ #include "base/memory/raw_ptr.h"
+ #include "chrome/browser/extensions/external_loader.h"
+ #include "extensions/buildflags/buildflags.h"
+-#include "url/gurl.h"
+ 
+ static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+ 
+@@ -44,7 +43,6 @@
+   raw_ptr<Profile> profile_;
+   const std::string old_id_;
+   const std::string new_id_;
+-  GURL chrome_blank_;
+ };
+ 
+ }  // namespace extensions
+--- a/chrome/browser/extensions/updater/chrome_extension_downloader_factory.cc
++++ b/chrome/browser/extensions/updater/chrome_extension_downloader_factory.cc
+@@ -46,7 +46,7 @@
+   }
+ #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
+   std::string manifest_query_params =
+-      UpdateQueryParams::Get(UpdateQueryParams::CRX_DUMMY);
++      UpdateQueryParams::Get(UpdateQueryParams::CRX);
+   base::CommandLine* command_line =
+       base::CommandLine::ForCurrentProcess();
+   if (command_line->HasSwitch(extensions::kSwitchTestRequestParam)) {
+--- a/chrome/browser/extensions/updater/extension_updater.cc
++++ b/chrome/browser/extensions/updater/extension_updater.cc
+@@ -217,6 +217,9 @@
+   if (!downloader_.get()) {
+     downloader_ = downloader_factory_.Run(this);
+   }
++  if (!update_service_) {
++    update_service_ = UpdateService::Get(profile_);
++  }
+ }
+ 
+ void ExtensionUpdater::Start() {
+@@ -798,8 +801,8 @@
+ bool ExtensionUpdater::CanUseUpdateService(
+     const Extension* extension,
+     const PendingExtensionInfo* info) const {
+-  if ((true)) {
+-    return false;
++  if (g_force_use_update_service_for_tests) {
++    return true;
+   }
+ 
+   // UpdateService can only update extensions that have been installed on the
+--- a/chrome/browser/extensions/webstore_standalone_installer.cc
++++ b/chrome/browser/extensions/webstore_standalone_installer.cc
+@@ -77,12 +77,9 @@
+   webstore_data_fetcher_ =
+       std::make_unique<WebstoreDataFetcher>(this, GURL(), id_);
+ 
+-  GURL snippet_url = helium::GetWebstoreSnippetURL(*profile_->GetPrefs(), id_);
+-
+   webstore_data_fetcher_->Start(profile_->GetDefaultStoragePartition()
+                                     ->GetURLLoaderFactoryForBrowserProcess()
+-                                    .get(),
+-                                &snippet_url);
++                                    .get());
+ }
+ 
+ //
+--- a/components/update_client/update_query_params.cc
++++ b/components/update_client/update_query_params.cc
+@@ -68,7 +68,7 @@
+ #error "unknown arch"
+ #endif
+ 
+-#if true
++#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+ constexpr char kChrome[] = "chrome";
+ constexpr char kCrx[] = "chromecrx";
+ constexpr char kWebView[] = "googleandroidwebview";
+@@ -86,10 +86,6 @@
+ 
+ // static
+ std::string UpdateQueryParams::Get(ProdId prod) {
+-  if (prod == CRX_DUMMY) {
+-    return "os=win&arch=x64&prod=chromecrx&acceptformat=crx3,puff";
+-  }
+-
+   return absl::StrFormat("os=%s&arch=%s&prod=%s%s&acceptformat=crx3,puff", kOs,
+                          kArch, GetProdIdString(prod),
+                          g_delegate ? g_delegate->GetExtraParams() : "");
+@@ -101,7 +97,6 @@
+     case UpdateQueryParams::CHROME:
+       return kChrome;
+     case UpdateQueryParams::CRX:
+-    case UpdateQueryParams::CRX_DUMMY:
+       return kCrx;
+     case UpdateQueryParams::WEBVIEW:
+       return kWebView;
+--- a/components/update_client/update_query_params.h
++++ b/components/update_client/update_query_params.h
+@@ -19,7 +19,7 @@
+ // browser process.
+ class UpdateQueryParams {
+  public:
+-  enum ProdId { CHROME = 0, CRX, WEBVIEW, IOS_WEBVIEW, CRX_DUMMY };
++  enum ProdId { CHROME = 0, CRX, WEBVIEW, IOS_WEBVIEW };
+ 
+   UpdateQueryParams() = delete;
+   UpdateQueryParams(const UpdateQueryParams&) = delete;
+--- a/extensions/browser/pending_extension_manager.cc
++++ b/extensions/browser/pending_extension_manager.cc
+@@ -218,7 +218,6 @@
+ 
+ std::list<std::string> PendingExtensionManager::GetPendingIdsForUpdateCheck() {
+   std::list<std::string> result;
+-  const GURL baseUrl = extension_urls::GetWebstoreUpdateUrl();
+ 
+   for (auto& it : pending_extensions_) {
+     ManifestLocation install_source = it.second.install_source();
+@@ -230,17 +229,6 @@
+         install_source == ManifestLocation::kExternalRegistry ||
+         install_source == ManifestLocation::kExternalPolicy) {
+       continue;
+-    }
+-
+-    if (it.second.update_url().host() == baseUrl.host()) {
+-      Profile* profile = Profile::FromBrowserContext(context_.get());
+-      PrefService* prefs = profile->GetPrefs();
+-
+-      if (prefs && helium::ShouldAccessExtensionService(*prefs)) {
+-        it.second.OverrideURL(helium::GetExtensionUpdateURL(*prefs));
+-      } else {
+-        continue;
+-      }
+     }
+ 
+     result.push_back(it.first);
+--- a/extensions/browser/updater/extension_downloader.cc
++++ b/extensions/browser/updater/extension_downloader.cc
+@@ -93,16 +93,25 @@
+ const char kDefaultInstallSource[] = "";
+ const char kReinstallInstallSource[] = "reinstall";
+ 
++const char kGoogleDotCom[] = "google.com";
+ 
+ ExtensionDownloader::TestObserver* g_test_observer = nullptr;
+ ExtensionDownloaderTestDelegate* g_test_delegate = nullptr;
+ 
+ #define RETRY_HISTOGRAM(name, retry_count, url)                           \
++  if ((url).DomainIs(kGoogleDotCom)) {                                    \
++    UMA_HISTOGRAM_CUSTOM_COUNTS("Extensions." name "RetryCountGoogleUrl", \
++                                retry_count,                              \
++                                1,                                        \
++                                kMaxRetries,                              \
++                                kMaxRetries + 1);                         \
++  } else {                                                                \
+     UMA_HISTOGRAM_CUSTOM_COUNTS("Extensions." name "RetryCountOtherUrl",  \
+                                 retry_count,                              \
+                                 1,                                        \
+                                 kMaxRetries,                              \
+-                                kMaxRetries + 1);
++                                kMaxRetries + 1);                         \
++  }
+ 
+ bool ShouldRetryRequest(const network::SimpleURLLoader* loader) {
+   DCHECK(loader);
+@@ -158,7 +167,7 @@
+                                       const GURL& update_url) {
+   if (update_url.is_empty()) {
+     // Fill in default update URL.
+-    return std::nullopt;
++    return extension_urls::GetWebstoreUpdateUrl();
+   }
+ 
+   // Skip extensions with non-empty invalid update URLs.
+@@ -176,6 +185,11 @@
+     return std::nullopt;
+   }
+ 
++  // Make sure we use SSL for store-hosted extensions.
++  if (extension_urls::IsWebstoreUpdateUrl(update_url) &&
++      !update_url.SchemeIsCryptographic()) {
++    return extension_urls::GetWebstoreUpdateUrl();
++  }
+ 
+   return update_url;
+ }
+@@ -809,6 +823,20 @@
+             std::move(update.first), crx_url, update.second->package_hash,
+             update.second->version, fetch_data->fetch_priority()),
+         update.second->info);
++  }
++
++  // If the manifest response included a <daystart> element, we want to save
++  // that value for any extensions which had sent a ping in the request.
++  if (fetch_data->base_url().DomainIs(kGoogleDotCom) &&
++      results->daystart_elapsed_seconds >= 0) {
++    Time day_start =
++        Time::Now() - base::Seconds(results->daystart_elapsed_seconds);
++
++    for (const ExtensionId& id : extension_ids) {
++      ExtensionDownloaderDelegate::PingResult& result = ping_results_[id];
++      result.did_ping = fetch_data->DidPing(id, ManifestFetchData::ROLLCALL);
++      result.day_start = day_start;
++    }
+   }
+ 
+   ExtensionIdSet extension_ids_with_errors;
+@@ -1405,7 +1433,11 @@
+   // fetch.
+   switch (fetch->credentials) {
+     case ExtensionFetch::CREDENTIALS_NONE:
+-      fetch->credentials = ExtensionFetch::CREDENTIALS_COOKIES;
++      if (fetch->url.DomainIs(kGoogleDotCom) && identity_manager_) {
++        fetch->credentials = ExtensionFetch::CREDENTIALS_OAUTH2_TOKEN;
++      } else {
++        fetch->credentials = ExtensionFetch::CREDENTIALS_COOKIES;
++      }
+       return true;
+     case ExtensionFetch::CREDENTIALS_OAUTH2_TOKEN:
+       fetch->oauth2_attempt_count++;
+--- a/extensions/browser/webstore_installer.cc
++++ b/extensions/browser/webstore_installer.cc
+@@ -189,15 +189,12 @@
+     params.push_back(installsource_param);
+   }
+   params.push_back("uc");
+-  std::string url_string =
+-      helium::GetExtensionUpdateURL(
+-          *user_prefs::UserPrefs::Get(browser_context_))
+-          .spec();
++  std::string url_string = extension_urls::GetWebstoreUpdateUrl().spec();
+ 
+   GURL url(
+       url_string + "?response=redirect&" +
+       update_client::UpdateQueryParams::Get(
+-          update_client::UpdateQueryParams::CRX_DUMMY) +
++          update_client::UpdateQueryParams::CRX) +
+       "&x=" + base::EscapeQueryParamValue(base::JoinString(params, "&"), true));
+   DCHECK(url.is_valid());
+ 
+--- a/extensions/common/extension_urls.cc
++++ b/extensions/common/extension_urls.cc
+@@ -44,7 +44,7 @@
+     "https://developer.chrome.com/docs/extensions/ai/"
+     "build-with-ai#modern_web_guidance";
+ const char kChromeWebstoreUpdateURL[] =
+-    "https://update-url-to-be-replaced.qjz9zk";
++    "https://clients2.google.com/service/update2/crx";
+ const char kChromeWebstoreApiURL[] = "https://chromewebstore.googleapis.com/";
+ 
+ const char kAppMenuUtmSource[] = "ext_app_menu";
+@@ -86,6 +86,8 @@
+ 
+ GURL GetWebstoreExtensionsCategoryURL() {
+   GURL base_url = GetNewWebstoreLaunchURL();
++  CHECK_EQ(base_url.path(), "/")
++      << "GURL::Resolve() won't work with a URL with a path.";
+   return base_url.Resolve("category/extensions");
+ }
+ 
+@@ -94,7 +96,18 @@
+ }
+ 
+ GURL GetWebstoreItemSnippetURL(const extensions::ExtensionId& extension_id) {
+-  return GURL(kChromeWebstoreUpdateURL);
++  if (g_item_snippet_url_for_test_) {
++    // Return `<base URL><extension_id>`. There is no suffix if the URL is
++    // overridden by a test.
++    return GURL(base::StringPrintf("%s%s",
++                                   g_item_snippet_url_for_test_->spec().c_str(),
++                                   extension_id.c_str()));
++  }
++
++  // Return `<base URL><extension_id><suffix>`.
++  return GURL(kChromeWebstoreApiURL)
++      .Resolve(base::StringPrintf("v2/items/%s:fetchItemSnippet",
++                                  extension_id.c_str()));
+ }
+ 
+ GURL GetWebstoreBlockStatusURL() {
+@@ -112,6 +125,9 @@
+ }
+ 
+ GURL GetWebstoreUpdateUrl() {
++  extensions::ExtensionsClient* client = extensions::ExtensionsClient::Get();
++  if (client)
++    return client->GetWebstoreUpdateURL();
+   return GetDefaultWebstoreUpdateUrl();
+ }
+ 

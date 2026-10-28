@@ -1,0 +1,28 @@
+--- a/raycore/src/ray/core/ac_seams.mm
++++ b/raycore/src/ray/core/ac_seams.mm
+@@ -46,17 +46,6 @@
+   return HostExtensionSidePanel(contents, extension_id, open);
+ }
+ 
+-bool LiveTabSkipsRestore(sessions::LiveTab* live_tab, SessionID* source) {
+-  int32_t source_id = 0;
+-  if (!live_tab || !IsTemporaryTabId(live_tab->GetSessionID().id(), &source_id)) {
+-    return false;
+-  }
+-  if (source && source_id > 0) {
+-    *source = SessionID::FromSerializedValue(source_id);
+-  }
+-  return true;
+-}
+-
+ bool OmitsFromSessionService(const BrowserWindowInterface* browser) {
+   return ACBrowserWindow::IsOurs(browser);
+ }
+@@ -113,7 +102,6 @@
+   g_ray_devtools_dock_changed = &DevToolsDockChanged;
+   g_ray_create_web_contents_delegate = &CreateWebContentsDelegate;
+   g_ray_initial_main_document_accessed = &InitialMainDocumentAccessed;
+-  g_ray_live_tab_skips_restore = &LiveTabSkipsRestore;
+   g_ray_omits_from_session_service = &OmitsFromSessionService;
+   g_ray_viewless_browsers = true;
+ }

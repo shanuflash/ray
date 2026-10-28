@@ -1,0 +1,279 @@
+#!/bin/bash
+# The shared locks agents take in this checkout (xcodebuild, pod install, the Chromium build).
+#
+#   scripts/agent/locked <name> [--wait SECS] [--as WHO] -- <command> [args…]   run one command holding it
+#   scripts/agent/locked <name> --take WHO [--ttl MIN] [--wait SECS]              hold it across several calls
+#   scripts/agent/locked <name> --release WHO                                   give back a --take
+#   scripts/agent/locked -h | --help                                            this text
+#
+# <name> is xcodebuild, pod, chromium or perflab (any timing measurement: benches, profiles; one at a time).
+#   - xcodebuild is one lock per derived data: builds with different -derivedDataPath run in parallel (the Podfile and
+#     the build phases keep each build's writes in its own folder); two into the same one take turns. A command
+#     without -derivedDataPath (one run through `sh -c`, say) takes the single shared xcodebuild lock.
+#     scripts/agent/build-app is the quiet way to build the app.
+#   - pod covers pod install, pnpm install and edits to apps/browser/package.json; chromium covers ~/chromium-build.
+#   - The Pods directory is a readers-writer lock between them: any number of xcodebuild commands read it at once,
+#     a pod command rewrites it alone. A pod command waits for running builds to finish, and builds that start
+#     meanwhile wait for it, so it isn't starved.
+# The old pattern (`until mkdir /tmp/ac-<name>.lock; …; rmdir`)
+# left the lock behind whenever the shell was killed before its rmdir (a tool timeout, ⌃C), and every
+# other agent then waited forever. Here:
+#   - everything runs under a kernel lock (lockf) that dies with its holder, and a command's pid is
+#     recorded, so a holder that died is noticed and its lock removed;
+#   - --take records WHO and an expiry (default 60 min); --as WHO runs the taker's own commands (one
+#     at a time) and pushes the expiry back. An expired take counts as abandoned. Taking again what
+#     WHO already holds just renews it;
+#   - the old /tmp/ac-<name>.lock directory is still created while held, so agents on the mkdir
+#     pattern keep waiting for us. One of theirs is never removed: we wait and say so.
+# Nested calls: a command run under `locked <name>` may call `locked <name>` again (the app build runs
+# packages/ardiacore/scripts/stage-framework.sh, which takes chromium). If an enclosing call already holds that
+# lock, the inner command runs straight through. --as WHO is passed down too (AC_LOCKED_AS), so under
+# `locked xcodebuild --as pip -- …` a nested `locked chromium` uses pip's take; export AC_LOCKED_AS=pip yourself
+# for the same effect from a plain shell.
+# Waiting gives up after --wait seconds (default 500, under the Bash tool's 600 s limit) with exit 75
+# and names the holder. Run long builds with the Bash tool's run_in_background instead of waiting on
+# them in the foreground. AC_LOCK_ROOT (default /tmp) moves the lock files, for testing this script only.
+set -uo pipefail
+unset on_start cmd
+
+help() {
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+  exit 0
+}
+usage() {
+  sed -n '4,7p' "$0" | sed 's/^# *//' >&2
+  exit 64
+}
+
+name="${1:-}"
+case "$name" in -h | --help) help ;; xcodebuild | pod | chromium | perflab) ;; *) usage ;; esac
+shift
+wait=500 as="" take="" release="" ttl=60
+while [[ $# -gt 0 && "$1" != "--" ]]; do
+  case "$1" in -h | --help) help ;; esac
+  [[ $# -ge 2 ]] || { echo "locked: $1 needs a value" >&2; usage; }
+  case "$1" in
+    --wait) wait="$2" ;;
+    --as) as="$2" ;;
+    --take) take="$2" ;;
+    --release) release="$2" ;;
+    --ttl) ttl="$2" ;;
+    *) echo "locked: unknown option $1" >&2; usage ;;
+  esac
+  shift 2
+done
+[[ "${1:-}" == "--" ]] && shift
+[[ -n "$take$release" || $# -gt 0 ]] || usage
+[[ "$wait$ttl" =~ ^[0-9]+$ ]] || { echo "locked: --wait and --ttl take whole numbers" >&2; usage; }
+[[ -z "$as$take$release" ]] && as="${AC_LOCKED_AS:-}"
+
+lock=$name
+if [[ $name == xcodebuild && $# -gt 0 && -z "$take$release" ]]; then
+  dd="" prev=""
+  for arg in "$@"; do
+    [[ $prev == -derivedDataPath ]] && dd=$arg
+    prev=$arg
+  done
+  if [[ -n "$dd" ]]; then
+    dd=${dd%/}
+    [[ "$dd" == /* ]] || dd="$PWD/$dd"
+    if [[ -d "$dd" ]]; then
+      dd=$(cd "$dd" && pwd -P)
+    elif [[ -d "${dd%/*}" ]]; then
+      dd="$(cd "${dd%/*}" && pwd -P)/${dd##*/}"
+    fi
+    lock="xcodebuild-$(printf %s "${dd##*/}" | tr -c 'A-Za-z0-9_.-' _ | cut -c1-40)-$(printf %s "$dd" | shasum | cut -c1-8)"
+  fi
+fi
+
+root=${AC_LOCK_ROOT:-/tmp}
+kernel=$root/ac-$lock.lockf
+legacy=$root/ac-$lock.lock
+holder=$root/ac-$lock.holder
+now() { date +%s; }
+
+field() { awk -v n="$1" '{print $n; exit}' "$holder" 2>/dev/null; }
+taken_by() { [[ "$(field 1)" == take && "$(field 3)" == "$1" ]]; }
+renew() { sed -i '' "1s/^take [0-9]*/take $(($(now) + ttl * 60))/" "$holder"; }
+
+describe() {
+  if [[ "$(field 1)" == take ]]; then
+    echo "taken by $(cut -d' ' -f3- "$holder"), until $(date -r "$(field 2)" '+%H:%M:%S') (if that take is yours, pass --as $(field 3), or export AC_LOCKED_AS=$(field 3) so nested calls use it)"
+  elif [[ -s "$holder" ]]; then
+    echo "held by pid $(cut -d' ' -f2- "$holder")"
+  elif [[ -d "$legacy" ]]; then
+    echo "held since $(stat -f %Sm "$legacy") by an agent using the old mkdir lock; if nothing is building, the owner can rmdir $legacy"
+  fi
+}
+
+held_by_caller() {
+  local pid path want=${1:-$kernel}
+  while read -r pid path; do
+    [[ -n "$pid" && "$path" == "$want" ]] && kill -0 "$pid" 2>/dev/null && { echo "$pid"; return 0; }
+  done <<<"${AC_LOCKED_HELD:-}"
+  return 1
+}
+
+rw_perl='
+use Fcntl qw(:flock);
+my ($mode, $path, $timeout, @cmd) = @ARGV;
+open(my $fh, ">>", $path) or die "locked: cannot open $path: $!\n";
+my $deadline = time + ($timeout > 0 ? $timeout : 1);
+my $said = 0;
+until (flock($fh, ($mode eq "EX" ? LOCK_EX : LOCK_SH) | LOCK_NB)) {
+  if (time >= $deadline) {
+    print STDERR $mode eq "EX"
+      ? "locked: app builds still read the Pods after ${timeout}s; run this again once they finish\n"
+      : "locked: a pod install still rewrites the Pods after ${timeout}s\n";
+    exit 76;
+  }
+  print STDERR $mode eq "EX" ? "locked: waiting for running app builds to finish (they read the Pods)\n"
+    : "locked: waiting for a pod install to finish\n" unless $said++;
+  sleep 2;
+}
+my $pid = fork;
+defined $pid or die "locked: fork: $!\n";
+if (!$pid) { close $fh; exec { $cmd[0] } @cmd; die "locked: cannot run $cmd[0]: $!\n"; }
+for my $sig (qw(INT TERM HUP)) { $SIG{$sig} = sub { kill $sig, $pid }; }
+waitpid($pid, 0);
+exit(($? & 127) ? 128 + ($? & 127) : $? >> 8);
+'
+
+run() {
+  AC_LOCKED_HELD="${AC_LOCKED_HELD:+$AC_LOCKED_HELD
+}$$ $kernel" AC_LOCKED_AS="$as" "$@" &
+  child=$!
+  trap 'kill -INT "$child" 2>/dev/null; wait "$child"; exit 130' INT
+  trap 'kill -TERM "$child" 2>/dev/null; wait "$child"; exit 143' TERM
+  trap 'kill -HUP "$child" 2>/dev/null; wait "$child"; exit 129' HUP
+  "${on_start:-true}" "$child"
+  wait "$child"
+}
+
+if [[ -n "${AC_LOCKED_INNER:-}" && "$(ps -o comm= -p "$PPID" 2>/dev/null)" != *lockf ]]; then
+  unset AC_LOCKED_INNER AC_LOCKED_DEADLINE
+fi
+
+if [[ -z "${AC_LOCKED_INNER:-}" ]]; then
+  if outer=$(held_by_caller); then
+    if [[ -n "$take$release" ]]; then
+      echo "locked: $name is held by an enclosing call (pid $outer) of this command; --take/--release it outside that call" >&2
+      exit 64
+    fi
+    echo "locked: $name is already held by an enclosing call (pid $outer); running inside it" >&2
+    exec "$@"
+  fi
+  start=$(now)
+  deadline=$((start + wait))
+  if [[ $name == xcodebuild && -z "$take$release" ]]; then
+    AC_LOCKED_NO_RW=1 "$0" pod --wait "$wait" -- true 2>/dev/null || {
+      echo "locked: a pod install still holds the pod lock after ${wait}s; see $root/ac-pod.holder" >&2
+      exit 75
+    }
+  fi
+  opts=(--wait "$wait" --ttl "$ttl")
+  [[ -n "$take" ]] && opts+=(--take "$take")
+  [[ -n "$as" ]] && opts+=(--as "$as")
+  [[ -n "$release" ]] && opts+=(--release "$release")
+  while :; do
+    left=$((deadline - $(now)))
+    ((left < 1)) && left=1
+    AC_LOCKED_INNER=1 AC_LOCKED_DEADLINE=$deadline lockf -s -k -t "$left" "$kernel" "$0" "$name" "${opts[@]}" -- "$@"
+    status=$?
+    if [[ $status -eq 77 && $(now) -lt $deadline ]]; then
+      sleep 3
+      continue
+    fi
+    break
+  done
+  if [[ $name == xcodebuild && -z "$take$release" ]]; then
+    "$(dirname "$0")/unregister-builds" >/dev/null 2>&1 &
+  fi
+  [[ $status -eq 77 ]] && echo "locked: $name lock still busy after ${wait}s; $(describe)" >&2
+  [[ $status -eq 76 || $status -eq 77 ]] && exit 75
+  if [[ $status -eq 75 && $(($(now) - start)) -ge $wait ]]; then
+    echo "locked: $name lock still busy after ${wait}s; $(describe)" >&2
+  fi
+  exit $status
+fi
+
+deadline=${AC_LOCKED_DEADLINE:-$(($(now) + wait))}
+unset AC_LOCKED_INNER AC_LOCKED_DEADLINE
+
+rw=()
+if [[ -z "${AC_LOCKED_NO_RW:-}" && $# -gt 0 ]]; then
+  case $name in
+    pod) rw=(perl -e "$rw_perl" EX "$root/ac-pods.rw") ;;
+    xcodebuild) held_by_caller "$root/ac-pod.lockf" >/dev/null || rw=(perl -e "$rw_perl" SH "$root/ac-pods.rw") ;;
+  esac
+fi
+unset AC_LOCKED_NO_RW
+rw_timeout() { local left=$((deadline - $(now))); ((left < 1)) && left=1; echo "$left"; }
+
+if [[ -n "$release" ]]; then
+  if taken_by "$release"; then
+    rm -f "$holder"
+    rmdir "$legacy" 2>/dev/null
+    echo "locked: released $name" >&2
+    exit 0
+  fi
+  echo "locked: $name isn't taken by $release; $(describe)" >&2
+  exit 1
+fi
+
+if [[ -n "$take" ]] && taken_by "$take"; then
+  renew
+  echo "locked: $name already taken by $take; renewed for ${ttl} min" >&2
+  exit 0
+fi
+
+if [[ -n "$as" ]] && taken_by "$as"; then
+  renew
+  if [[ ${#rw[@]} -gt 0 ]]; then set -- "${rw[@]}" "$(rw_timeout)" "$@"; fi
+  run "$@"
+  status=$?
+  taken_by "$as" && renew
+  exit $status
+fi
+
+while ! mkdir "$legacy" 2>/dev/null; do
+  stale=""
+  case "$(field 1)" in
+    pid)
+      pid=$(field 2)
+      kill -0 "$pid" 2>/dev/null || stale="its holder (pid $pid) has exited"
+      ;;
+    take)
+      [[ $(now) -gt $(field 2) ]] && stale="$(field 3)'s take expired"
+      ;;
+  esac
+  if [[ -n "$stale" ]]; then
+    echo "locked: removing stale $legacy: $stale" >&2
+    rm -f "$holder"
+    rm -rf "$legacy"
+    continue
+  fi
+  if [[ $(now) -ge $deadline ]]; then
+    echo "locked: $name lock still busy after ${wait}s; $(describe)" >&2
+    exit 76
+  fi
+  exit 77
+done
+rm -f "$holder"
+
+if [[ -n "$take" ]]; then
+  echo "take $(($(now) + ttl * 60)) $take since $(date '+%H:%M:%S')" >"$holder"
+  echo "locked: $name taken by $take for ${ttl} min; run its commands with --as $take, then --release $take" >&2
+  exit 0
+fi
+
+cleanup() {
+  rm -f "$holder"
+  rmdir "$legacy" 2>/dev/null
+}
+trap cleanup EXIT
+record() { echo "pid $1 since $(date '+%H:%M:%S') in $PWD: ${cmd}" >"$holder"; }
+cmd="$*"
+on_start=record
+if [[ ${#rw[@]} -gt 0 ]]; then set -- "${rw[@]}" "$(rw_timeout)" "$@"; fi
+run "$@"

@@ -1,0 +1,118 @@
+--- a/components/remote_cocoa/app_shim/bridged_content_view.h
++++ b/components/remote_cocoa/app_shim/bridged_content_view.h
+@@ -57,6 +57,13 @@
+ @property(assign, nonatomic) BOOL drawMenuBackgroundForBlur;
+ @property(strong, nonatomic) NSEvent* keyDownEventForTesting;
+ 
++// Ray: a view the embedder added as a subview of this one to show its
++// own UI over the widget's views (RayCore's windows, engine/raycore). Hit
++// testing and accessibility ask it first, so
++// the points it covers reach its views and assistive technologies see its
++// tree rather than the widget's views underneath.
++@property(weak, nonatomic) NSView* rayEmbeddedView;
++
+ // Initialize the NSView -> views::View bridge. |viewToHost| must be non-NULL.
+ - (instancetype)initWithBridge:(remote_cocoa::NativeWidgetNSWindowBridge*)bridge
+                         bounds:(gfx::Rect)rect;
+--- a/components/remote_cocoa/app_shim/bridged_content_view.mm
++++ b/components/remote_cocoa/app_shim/bridged_content_view.mm
+@@ -198,6 +198,7 @@
+ @synthesize bridge = _bridge;
+ @synthesize drawMenuBackgroundForBlur = _drawMenuBackgroundForBlur;
+ @synthesize keyDownEventForTesting = _keyDownEvent;
++@synthesize rayEmbeddedView = _rayEmbeddedView;
+ 
+ - (instancetype)initWithBridge:(remote_cocoa::NativeWidgetNSWindowBridge*)bridge
+                         bounds:(gfx::Rect)bounds {
+@@ -291,6 +292,13 @@
+   // This is important when the window has a native titlebar, in which case the
+   // superview is taller than the contentView.
+   NSPoint pointInView = [self convertPoint:point fromView:self.superview];
++
++  // Ray: the embedder's views come first.
++  if (NSView* embedded = [self rayEmbeddedSubview]) {
++    if (NSView* hit = [embedded hitTest:pointInView]) {
++      return hit;
++    }
++  }
+   gfx::Point flippedPoint(point.x, NSHeight(self.frame) - pointInView.y);
+   remote_cocoa::mojom::HitTestResult hitTestResult;
+   _bridge->host()->GetHitTestResult(flippedPoint, &hitTestResult);
+@@ -1714,6 +1722,10 @@
+ // NSAccessibility formal protocol implementation:
+ 
+ - (NSArray*)accessibilityChildren {
++  // Ray: the embedder's views cover the widget's.
++  if (NSView* embedded = [self rayEmbeddedSubview]) {
++    return NSAccessibilityUnignoredChildren(@[ embedded ]);
++  }
+   if (id accessible = _bridge->host_helper()->GetNativeViewAccessible())
+     return @[ accessible ];
+   return [super accessibilityChildren];
+@@ -1722,10 +1734,22 @@
+ // NSAccessibility informal protocol implementation:
+ 
+ - (id)accessibilityHitTest:(NSPoint)point {
++  if (NSView* embedded = [self rayEmbeddedSubview]) {
++    if (id hit = [embedded accessibilityHitTest:point]) {
++      return hit;
++    }
++  }
+   return [_bridge->host_helper()->GetNativeViewAccessible()
+       accessibilityHitTest:point];
+ }
+ 
++// Ray: rayEmbeddedView while it is a visible subview of this view.
++- (NSView*)rayEmbeddedSubview {
++  NSView* embedded = self.rayEmbeddedView;
++  return embedded && embedded.superview == self && !embedded.hidden ? embedded
++                                                                     : nil;
++}
++
+ - (id)accessibilityFocusedUIElement {
+   // This function should almost-never be called because when |self| is the
+   // first responder for the key NSWindow, NativeWidgetMacNSWindowHost's
+--- a/chrome/browser/ui/browser.cc
++++ b/chrome/browser/ui/browser.cc
+@@ -614,7 +614,18 @@ void Browser::OnTabStripModelChanged(TabStripModel* tab_strip_model,
+   OnActiveTabChanged(change, selection);
+ }
+ 
++// Ray: RayCore (engine/raycore) keeps its windows open without tabs.
++bool (*g_ray_keeps_window_without_tabs)(
++    const BrowserWindowInterface* browser) = nullptr;
++
+ void Browser::TabStripEmpty() {
++  // Ray: a window RayCore shows its own UI in stays open without tabs,
++  // unless it is closing.
++  if (g_ray_keeps_window_without_tabs &&
++      g_ray_keeps_window_without_tabs(this) &&
++      !UnloadController::From(this)->is_attempting_to_close_browser()) {
++    return;
++  }
+   // A touch tab drag session may still be delivering OS touch events to this
+   // window's native widget. Destroying it mid-gesture would strand the drag, so
+   // let TabDragController take ownership of closing this browser once the drag
+--- a/chrome/browser/ui/unload_controller.cc
++++ b/chrome/browser/ui/unload_controller.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/unload_controller.h"
++#include "ray/core/ac_hooks.h"  // nogncheck
+ 
+ #include <algorithm>
+ 
+@@ -632,6 +633,12 @@ void UnloadController::OnTabStripModelChanged(
+ }
+ 
+ void UnloadController::TabStripEmpty() {
++  // Ray: see Browser::TabStripEmpty. The window stays open for new tabs.
++  if (!is_attempting_to_close_browser() &&
++      g_ray_keeps_window_without_tabs &&
++      g_ray_keeps_window_without_tabs(browser_.get())) {
++    return;
++  }
+   // Set state_ here, so that extensions, etc, do not attempt to add tabs to the
+   // browser before it closes.
+   if (state_ == State::kIdle) {

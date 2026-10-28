@@ -1,0 +1,96 @@
+--- a/chrome/browser/ui/extensions/extension_side_panel_utils.cc
++++ b/chrome/browser/ui/extensions/extension_side_panel_utils.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "chrome/browser/ui/extensions/extension_side_panel_utils.h"
+ 
++#include "ray/core/ac_hooks.h"  // nogncheck
++
+ #include "chrome/browser/tab_list/tab_list_interface.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/side_panel/side_panel_entry.h"
+@@ -20,6 +22,14 @@
+ #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_utils.h"
+ #endif
+ 
++// Ray: RayCore (engine/raycore) shows extension side panels in its own
++// panel for the tabs it hosts.
++bool (*g_ray_extension_side_panel)(
++    BrowserWindowInterface* browser_window,
++    content::WebContents* web_contents,
++    const extensions::ExtensionId& extension_id,
++    bool open) = nullptr;
++
+ namespace extensions::side_panel_util {
+ 
+ namespace {
+@@ -63,6 +73,13 @@
+     return;
+   }
+ 
++  // Ray: RayCore may draw extension side panels itself.
++  if (g_ray_extension_side_panel &&
++      g_ray_extension_side_panel(browser_window, nullptr, extension_id,
++                                       /*open=*/true)) {
++    return;
++  }
++
+ #if BUILDFLAG(ENABLE_EXTENSIONS)
+   auto* organizer_controller =
+       organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
+@@ -88,6 +105,13 @@
+ void OpenGlobalExtensionSidePanel(BrowserWindowInterface& browser_window,
+                                   content::WebContents* web_contents,
+                                   const ExtensionId& extension_id) {
++  // Ray: RayCore may draw extension side panels itself.
++  if (g_ray_extension_side_panel &&
++      g_ray_extension_side_panel(&browser_window, web_contents, extension_id,
++                                       /*open=*/true)) {
++    return;
++  }
++
+ #if BUILDFLAG(ENABLE_EXTENSIONS)
+   auto* organizer_controller =
+       organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
+@@ -172,6 +196,13 @@
+ void OpenContextualExtensionSidePanel(BrowserWindowInterface& browser_window,
+                                       content::WebContents& web_contents,
+                                       const ExtensionId& extension_id) {
++  // Ray: RayCore may draw extension side panels itself.
++  if (g_ray_extension_side_panel &&
++      g_ray_extension_side_panel(&browser_window, &web_contents, extension_id,
++                                       /*open=*/true)) {
++    return;
++  }
++
+ #if BUILDFLAG(ENABLE_EXTENSIONS)
+   auto* organizer_controller =
+       organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
+@@ -214,6 +245,13 @@
+     return;
+   }
+ 
++  // Ray: RayCore may draw extension side panels itself.
++  if (g_ray_extension_side_panel &&
++      g_ray_extension_side_panel(browser_window, nullptr, extension_id,
++                                       /*open=*/false)) {
++    return;
++  }
++
+ #if BUILDFLAG(ENABLE_EXTENSIONS)
+   auto* organizer_controller =
+       organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()
+@@ -262,6 +300,13 @@
+     return;
+   }
+ 
++  // Ray: RayCore may draw extension side panels itself.
++  if (g_ray_extension_side_panel &&
++      g_ray_extension_side_panel(browser_window, web_contents, extension_id,
++                                       /*open=*/false)) {
++    return;
++  }
++
+ #if BUILDFLAG(ENABLE_EXTENSIONS)
+   auto* organizer_controller =
+       organizer_panel::IsShowExtensionsSidePanelUiInOrganizerPanelEnabled()

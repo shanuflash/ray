@@ -1,0 +1,118 @@
+SPDX-License-Identifier: GPL-3.0-only
+Changes code from Helium's helium/core/services-prefs.patch, services-schema-nag.patch and onboarding-page.patch
+(GPL-3.0, The Helium Authors).
+
+Settings has no Helium services page: no route (chrome://settings/privacy/services opens Settings itself), no view,
+and no "set up services" button that opened chrome://setup, which isn't built. Helium services stay off in Ray
+(the branding patch, which also removes its row), so the page could only offer switches that do nothing.
+
+--- a/chrome/browser/resources/settings/privacy_page/privacy_page.ts
++++ b/chrome/browser/resources/settings/privacy_page/privacy_page.ts
+@@ -179,12 +179,6 @@
+     Router.getInstance().navigateTo(routes.SITE_SETTINGS);
+   }
+ 
+-  private onHeliumServicesPageClick_() {
+-    this.interactedWithPage_();
+-
+-    Router.getInstance().navigateTo(routes.HELIUM_SERVICES);
+-  }
+-
+   private onSecurityPageClick_() {
+     this.interactedWithPage_();
+     this.metricsBrowserProxy_.recordAction(
+@@ -250,10 +244,6 @@
+       map.set(routes.NOISE.path, '#noiseLinkRow');
+     }
+ 
+-    if (routes.HELIUM_SERVICES) {
+-      map.set(routes.HELIUM_SERVICES.path, '#heliumServicesLinkRow');
+-    }
+-
+     if (routes.COOKIES) {
+       map.set(routes.COOKIES.path, '#thirdPartyCookiesLinkRow');
+     }
+@@ -280,9 +270,6 @@
+       case 'noise':
+         triggerId = 'noiseLinkRow';
+         break;
+-      case 'heliumServices':
+-        triggerId = 'heliumServicesLinkRow';
+-        break;
+       case 'security':
+       case 'securityKeys':
+         triggerId = 'securityLinkRow';
+--- a/chrome/browser/resources/settings/privacy_page/privacy_page_index.html
++++ b/chrome/browser/resources/settings/privacy_page/privacy_page_index.html
+@@ -19,14 +19,6 @@
+     <settings-privacy-page slot="view" id="privacy" prefs="{{prefs}}"
+         route-path$="[[routes_.PRIVACY.path]]">
+     </settings-privacy-page>
+-  </template>
+-
+-  <template is="dom-if" if="[[renderView_(
+-      routes_.HELIUM_SERVICES, currentRoute, inSearchMode)]]">
+-    <settings-helium-services-page slot="view" id="heliumServices"
+-        data-parent-view-id="privacy" prefs="{{prefs}}"
+-        route-path$="[[routes_.HELIUM_SERVICES.path]]">
+-    </settings-helium-services-page>
+   </template>
+ 
+   <!-- Keep entries below sorted based on the route name. -->
+--- a/chrome/browser/resources/settings/privacy_page/services_page.html
++++ b/chrome/browser/resources/settings/privacy_page/services_page.html
+@@ -41,20 +41,6 @@
+ 
+ <settings-subpage page-title="$i18n{heliumServicesTitle}" route-path$="[[routePath]]">
+ <div class="cr-col first">
+-    <template is="dom-if" if="[[!prefs.helium.services.user_consented.value]]">
+-        <div class="cr-row" id="onboarding-notice">
+-            <div id="onboarding-text">
+-                  <cr-icon icon="cr:security" aria-hidden="true"></cr-icon>
+-                  <span>$i18n{heliumServicesSetupPendingText}</span>
+-            </div>
+-            <cr-button
+-                class="action-button"
+-                on-click="onServicesPendingButtonClick_">
+-                $i18n{heliumServicesSetupPendingButton}
+-            </cr-button>
+-        </div>
+-    </template>
+-
+     <template is="dom-if" if="[[prefs.helium.services.user_consented.value]]">
+         <template is="dom-if" if="[[changes_.length]]">
+           <div id="changelog-notice">
+--- a/chrome/browser/resources/settings/privacy_page/services_page.ts
++++ b/chrome/browser/resources/settings/privacy_page/services_page.ts
+@@ -167,10 +167,6 @@
+ 
+     this.setPrefValue('helium.services.origin_override', target.value);
+   }
+-
+-  private onServicesPendingButtonClick_() {
+-    window.open('chrome://setup', '_blank');
+-  }
+ }
+ 
+ declare global {
+--- a/chrome/browser/resources/settings/route.ts
++++ b/chrome/browser/resources/settings/route.ts
+@@ -21,8 +21,6 @@
+   if (loadTimeData.getBoolean('heliumNoiseAvailable')) {
+     r.NOISE = r.PRIVACY.createChild('noise');
+   }
+-
+-  r.HELIUM_SERVICES = r.PRIVACY.createChild('services');
+ 
+   const visibility = pageVisibility || {};
+ 
+--- a/chrome/browser/resources/settings/router.ts
++++ b/chrome/browser/resources/settings/router.ts
+@@ -39,7 +39,6 @@ export interface SettingsRoutes {
+   GEMINI_LOGIN: Route;
+   GEMINI_ENTERPRISE: Route;
+   GLIC_SECTION: Route;
+-  HELIUM_SERVICES: Route;
+   HISTORY_SEARCH: Route;
+   IDENTITY_DOCS: Route;
+   INLINE_CUE_MENU: Route;

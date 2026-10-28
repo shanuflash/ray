@@ -1,0 +1,60 @@
+The updater's sync installs tell RayCore which CrxInstaller is theirs, and every CrxInstaller says which extension
+it is about to hand the registrar. ExtensionUpdater::CreateUpdateInstaller calls g_ray_sync_installer_created with
+the profile, the id and the installer when it makes the installer for a pending install that came from sync
+(PendingExtensionInfo::is_from_sync); CrxInstaller::ReportSuccessFromUIThread calls g_ray_crx_installing with the
+context, the installer and its extension on the UI thread, just before registrar_->OnExtensionInstalled.
+//chrome/browser/ray (ac_extensions_sync.cc) keeps the sync installers until their callback runs, so an install
+is a sync install exactly when the installer completing it is one of them, and the user's own Web Store install of
+the same id is told apart from a sync install that was cancelled or is still running.
+
+--- a/chrome/browser/extensions/updater/extension_updater.cc
++++ b/chrome/browser/extensions/updater/extension_updater.cc
+@@ -77,6 +77,11 @@
+ using content::BrowserThread;
+ using Error = extensions::ExtensionDownloaderDelegate::Error;
+ using PingResult = extensions::ExtensionDownloaderDelegate::PingResult;
++
++void (*g_ray_sync_installer_created)(content::BrowserContext* context,
++                                       const std::string& extension_id,
++                                       extensions::CrxInstaller* installer) =
++    nullptr;
+ 
+ namespace extensions {
+ 
+@@ -952,6 +957,11 @@
+ 
+   installer->set_delete_source(file_ownership_passed);
+ 
++  if (g_ray_sync_installer_created && pending_extension_info &&
++      pending_extension_info->is_from_sync()) {
++    g_ray_sync_installer_created(profile_, id, installer.get());
++  }
++
+   return installer;
+ }
+ 
+--- a/extensions/browser/crx_installer.cc
++++ b/extensions/browser/crx_installer.cc
+@@ -88,6 +88,11 @@
+ 
+ using content::BrowserThread;
+ 
++void (*g_ray_crx_installing)(content::BrowserContext* context,
++                               extensions::CrxInstaller* installer,
++                               const extensions::Extension* extension) =
++    nullptr;
++
+ namespace extensions {
+ 
+ namespace {
+@@ -1060,6 +1065,10 @@
+                               true);
+   }
+ 
++  if (g_ray_crx_installing) {
++    g_ray_crx_installing(browser_context(), this, extension());
++  }
++
+   registrar_->OnExtensionInstalled(extension(), page_ordinal_, install_flags_,
+                                    std::move(ruleset_install_prefs_));
+ 

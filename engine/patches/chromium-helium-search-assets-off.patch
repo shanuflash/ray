@@ -1,0 +1,14 @@
+SPDX-License-Identifier: GPL-3.0-only
+Reverts helium/core/search/fix-search-engine-icons.patch (GPL-3.0, The Helium Authors): built-in search provider
+assets are on only for Chrome-branded builds again, as in Chromium. The build doesn't fetch Helium's non-free
+search engine assets (third_party/search_engines_data/resources_internal), and the setting isn't a GN argument,
+so a gn arg can't turn it off.
+
+--- a/build/config/chrome_build.gni
++++ b/build/config/chrome_build.gni
+@@ -111,4 +111,4 @@
+ 
+ # Whether to enable built-in branding assets (logos & marketing snippets) for
+ # search providers in choice UIs.
+-enable_builtin_search_provider_assets = true
++enable_builtin_search_provider_assets = is_internal_chrome_branded

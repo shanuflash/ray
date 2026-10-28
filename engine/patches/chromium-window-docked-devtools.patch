@@ -1,0 +1,50 @@
+--- a/chrome/browser/devtools/devtools_ui_controller.cc
++++ b/chrome/browser/devtools/devtools_ui_controller.cc
+@@ -3,16 +3,25 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/devtools/devtools_ui_controller.h"
++#include "ray/core/ac_hooks.h"  // nogncheck
+ 
+ #include "base/memory/raw_ptr.h"
+ #include "chrome/browser/devtools/devtools_contents_resizing_strategy.h"
+ #include "chrome/browser/devtools/devtools_window.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"  // nogncheck crbug.com/40147906
+ #include "chrome/browser/ui/views/frame/contents_container_view.h"
+ #include "chrome/browser/ui/views/frame/contents_web_view.h"
+ #include "chrome/browser/ui/views/frame/scrim_view.h"
+ #include "ui/views/focus/external_focus_tracker.h"
+ 
++// Ray: RayCore (engine/raycore) shows the docked DevTools of the tabs it
++// hosts itself.
++void (*g_ray_devtools_dock_changed)(BrowserWindowInterface* browser,
++                                          content::WebContents* inspected,
++                                          content::WebContents* devtools) =
++    nullptr;
++
+ DEFINE_USER_DATA(DevtoolsUIController);
+ 
+ DevtoolsUIController::DevtoolsUIController(
+@@ -43,6 +52,21 @@
+ bool DevtoolsUIController::UpdateDevtools(
+     content::WebContents* web_contents,
+     bool update_devtools_web_contents) {
++  // Ray: RayCore, which shows its tabs itself, shows their docked
++  // DevTools too, whether or not the tab is the one Chrome's contents view
++  // shows.
++  if (g_ray_devtools_dock_changed && web_contents &&
++      update_devtools_web_contents) {
++    BrowserWindowInterface* browser =
++        GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
++            web_contents);
++    if (browser) {
++      DevToolsContentsResizingStrategy strategy;
++      g_ray_devtools_dock_changed(
++          browser, web_contents,
++          DevToolsWindow::GetInTabWebContents(web_contents, &strategy));
++    }
++  }
+   auto it = std::ranges::find_if(
+       devtools_web_view_controllers_, [&web_contents](const auto& entry) {
+         return entry.first->contents_view()->web_contents() == web_contents;

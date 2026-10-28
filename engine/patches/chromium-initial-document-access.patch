@@ -1,0 +1,51 @@
+diff --git a/content/browser/renderer_host/render_frame_host_impl.cc b/content/browser/renderer_host/render_frame_host_impl.cc
+--- a/content/browser/renderer_host/render_frame_host_impl.cc
++++ b/content/browser/renderer_host/render_frame_host_impl.cc
+@@ -391,7 +391,13 @@
+ #include "content/public/browser/ax_inspect_factory.h"
+ #include "ui/accessibility/accessibility_switches.h"
+ #endif
++
++#include "ray/core/ac_content_hooks.h"  // nogncheck
++#include "content/public/browser/web_contents.h"
+ 
++void (*g_ray_initial_main_document_accessed)(content::WebContents* contents) =
++    nullptr;
++
+ namespace features {
+ 
+ BASE_FEATURE(kDoNotEvictOnAXLocationChange, base::FEATURE_ENABLED_BY_DEFAULT);
+@@ -8508,6 +8514,9 @@
+ 
+ void RenderFrameHostImpl::DidAccessInitialMainDocument() {
+   frame_tree_->DidAccessInitialMainDocument();
++  if (g_ray_initial_main_document_accessed && frame_tree_->is_primary()) {
++    g_ray_initial_main_document_accessed(WebContents::FromRenderFrameHost(this));
++  }
+ }
+ 
+ void RenderFrameHostImpl::DidChangeThemeColor(
+diff --git a/content/browser/web_contents/web_contents_impl.cc b/content/browser/web_contents/web_contents_impl.cc
+--- a/content/browser/web_contents/web_contents_impl.cc
++++ b/content/browser/web_contents/web_contents_impl.cc
+@@ -286,6 +286,8 @@
+ #if BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_IOS_TVOS)
+ #include "content/browser/ios/nfc_host.h"
+ #endif
++
++#include "ray/core/ac_content_hooks.h"  // nogncheck
+ 
+ namespace content {
+ 
+@@ -9229,6 +9231,11 @@
+   return GetPrimaryFrameTree().has_accessed_initial_main_document();
+ }
+ 
++bool RayHasAccessedInitialMainDocument(WebContents* contents) {
++  return contents &&
++         static_cast<WebContentsImpl*>(contents)->HasAccessedInitialDocument();
++}
++
+ void WebContentsImpl::UpdateTitleForEntry(NavigationEntry* entry,
+                                           const std::u16string& title) {
+   OPTIONAL_TRACE_EVENT1("content", "WebContentsImpl::UpdateTitleForEntry",

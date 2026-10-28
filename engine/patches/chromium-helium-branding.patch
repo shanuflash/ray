@@ -1,0 +1,1145 @@
+SPDX-License-Identifier: GPL-3.0-only
+
+Helium shows as Ray, and Helium's own services, update feed and crash server can't be reached.
+Applied first in the series, on the tree 03-helium.py leaves (strings already renamed by ray_namesub.py,
+icons already replaced from ray_resources.txt); it covers what those can't reach, literals in source:
+- Helium's internal-page scheme alias is unregistered: the engine neither registers, rewrites nor shows it, and shows
+  chrome:// as chrome:// (the app shows those as ray:// and owns ray:// itself, as before Helium);
+- the crash product is Ray, there is no crash upload URL and no switch to set one; the browser update feed is empty;
+- Helium services are off for good: ShouldAccessServices is false whatever the prefs say, every services URL is
+  an unresolvable placeholder, the settings row that opens them is gone and the page's input has no Helium host;
+- extension update pings are enabled for no domain (they were for helium.computer);
+- chrome://credits names Ray and its source repository; Helium's GPL-3.0 licence entry stays in the list;
+- chrome://crashes files bugs on Ray's issue tracker; the Safari import dialog has no help link (it pointed at
+  Helium's wiki);
+- screenshots save as ray_screenshot*.png; the Web Store's button says "Add to Ray";
+- chrome://flags: descriptions say Ray, Helium's flag ids are ray-*, and the updater channel and update server
+  flags are gone (the app has its own updater), as are the Proxy server and Proxy bypass list flags (on a real profile
+  RayCore drops --proxy-server from the browser's command line, after chrome://flags apply);
+- cr:chrome-product is Ray's mark (traced from docs/brand/ray/source/mark-small.png), as are the product
+  vector icons and logos ray_resources.txt copies in;
+- Helium's indigo palette is undone (helium-color-scheme.patch reversed): chrome:// pages and dialogs use
+  Chromium's colours, as Ray does today;
+- the onboarding page and Helium's uBlock Origin aren't packed or registered (Ray has its own onboarding and its
+  own uBlock Origin);
+- chrome/app/theme/chromium/BRANDING is Chromium's again (Ray builds with chrome/app/theme/ray/BRANDING).
+
+--- a/chrome/app/chrome_crash_reporter_client.cc
++++ b/chrome/app/chrome_crash_reporter_client.cc
+@@ -136,7 +136,7 @@ bool ChromeCrashReporterClient::GetCrashDumpLocation(
+ void ChromeCrashReporterClient::GetProductInfo(ProductInfo* product_info) {
+   CHECK(product_info);
+ 
+-  const char* product_name = "Helium";
++  const char* product_name = "Ray";
+ 
+ #if BUILDFLAG(IS_ANDROID)
+   std::string_view version = version_info::GetVersionNumber();
+--- a/chrome/app/theme/chromium/BRANDING
++++ b/chrome/app/theme/chromium/BRANDING
+@@ -1,10 +1,10 @@
+-COMPANY_FULLNAME=The Helium Authors
+-COMPANY_SHORTNAME=The Helium Authors
+-PRODUCT_FULLNAME=Helium
+-PRODUCT_SHORTNAME=Helium
+-PRODUCT_INSTALLER_FULLNAME=Helium Installer
+-PRODUCT_INSTALLER_SHORTNAME=Helium Installer
+-COPYRIGHT=Copyright @LASTCHANGE_YEAR@ The Helium Authors. All rights reserved.
+-MAC_BUNDLE_ID=net.imput.helium
++COMPANY_FULLNAME=The Chromium Authors
++COMPANY_SHORTNAME=The Chromium Authors
++PRODUCT_FULLNAME=Chromium
++PRODUCT_SHORTNAME=Chromium
++PRODUCT_INSTALLER_FULLNAME=Chromium Installer
++PRODUCT_INSTALLER_SHORTNAME=Chromium Installer
++COPYRIGHT=Copyright @LASTCHANGE_YEAR@ The Chromium Authors. All rights reserved.
++MAC_BUNDLE_ID=org.chromium.Chromium
+ MAC_CREATOR_CODE=Cr24
+-MAC_TEAM_ID=S4Q33XPHB4
++MAC_TEAM_ID=
+--- a/chrome/browser/autocomplete/chrome_autocomplete_provider_client.cc
++++ b/chrome/browser/autocomplete/chrome_autocomplete_provider_client.cc
+@@ -421,7 +421,7 @@ std::string ChromeAutocompleteProviderClient::GetAcceptLanguages() const {
+ std::string
+ ChromeAutocompleteProviderClient::GetEmbedderRepresentationOfAboutScheme()
+     const {
+-  return content::kHeliumUIScheme;
++  return content::kChromeUIScheme;
+ }
+ 
+ std::vector<std::u16string> ChromeAutocompleteProviderClient::GetBuiltinURLs() {
+--- a/chrome/browser/extensions/updater/chrome_extension_downloader_factory.cc
++++ b/chrome/browser/extensions/updater/chrome_extension_downloader_factory.cc
+@@ -53,7 +53,7 @@ ChromeExtensionDownloaderFactory::CreateForURLLoaderFactory(
+     manifest_query_params += "&testrequest=1";
+   }
+   downloader->set_manifest_query_params(manifest_query_params);
+-  downloader->set_ping_enabled_domain("helium.computer");
++  downloader->set_ping_enabled_domain("");
+   return downloader;
+ }
+ 
+--- a/chrome/browser/existing_switch_flag_entries.h
++++ b/chrome/browser/existing_switch_flag_entries.h
+@@ -36,14 +36,6 @@
+      "No Pings",
+      "Don't send hyperlink auditing pings. Chromium feature, ungoogled-chromium flag.",
+      kOsAll, SINGLE_VALUE_TYPE("no-pings")},
+-    {"proxy-bypass-list",
+-     "Proxy bypass list",
+-     "Bypass proxy specified in the \"Proxy server\" flag for the given list of hosts. Only has an effect when the \"Proxy server\" flag is set. Chromium feature, ungoogled-chromium flag.",
+-     kOsAll, STRING_VALUE_TYPE("proxy-bypass-list", "")},
+-    {"proxy-server",
+-     "Proxy server",
+-     "Specify a custom proxy configuration, overriding system proxy settings. Chromium feature, ungoogled-chromium flag.",
+-     kOsAll, STRING_VALUE_TYPE("proxy-server", "")},
+     {"start-maximized",
+      "Start Maximized",
+      "Starts the browser maximized, regardless of any previous settings. Chromium feature, ungoogled-chromium flag.",
+--- a/chrome/browser/helium_flag_choices.h
++++ b/chrome/browser/helium_flag_choices.h
+@@ -32,20 +32,20 @@ constexpr const char kUpdateServerUrlCommandLine[] = "custom-update-server-url";
+ constexpr const char kMiddleClickAutoscrollCommandLine[] =
+     "middle-click-autoscroll";
+ 
+-constexpr const char kHeliumNoiseCommandLine[] = "helium-noise";
+-constexpr const char kHeliumNoiseCanvasCommandLine[] = "helium-noise-canvas";
+-constexpr const char kHeliumNoiseAudioCommandLine[] = "helium-noise-audio";
++constexpr const char kHeliumNoiseCommandLine[] = "ray-noise";
++constexpr const char kHeliumNoiseCanvasCommandLine[] = "ray-noise-canvas";
++constexpr const char kHeliumNoiseAudioCommandLine[] = "ray-noise-audio";
+ constexpr const char kHeliumNoiseCpuCoresCommandLine[] =
+-    "helium-noise-hw-concurrency";
++    "ray-noise-hw-concurrency";
+ 
+ constexpr const char kDisableEchCommandLine[] = "disable-ech";
+ constexpr const char kHeliumSplitClientHelloCommandLine[] =
+-    "helium-split-clienthello";
++    "ray-split-clienthello";
+ 
+ constexpr const char kHeliumNativeFrameMaterialsCommandLine[] =
+-    "helium-native-frame-materials";
++    "ray-native-frame-materials";
+ constexpr const char kHeliumHidePageActionsCommandLine[] =
+-    "helium-hide-page-actions";
++    "ray-hide-page-actions";
+ }  // namespace helium
+ 
+ #endif /* CHROME_BROWSER_HELIUM_FLAG_CHOICES_H_ */
+--- a/chrome/browser/helium_flag_entries.h
++++ b/chrome/browser/helium_flag_entries.h
+@@ -10,55 +10,48 @@
+     {helium::kEnergySaverFrameRateCommandLine,
+      "Maximum frame rate for Energy Saver",
+      "Configures the frame rate the browser is throttled to when Energy Saver "
+-     "is enabled. Helium flag.",
++     "is enabled. Ray flag.",
+      kOsDesktop, MULTI_VALUE_TYPE(helium::kEnergySaverFrameRateChoices)},
+     {"bookmark-open-all-confirmation", "Bookmark open-all confirmation",
+-     "Controls whether Helium asks for confirmation before opening 15 or more "
+-     "bookmarks at once. Helium flag.",
++     "Controls whether Ray asks for confirmation before opening 15 or more "
++     "bookmarks at once. Ray flag.",
+      kOsDesktop, FEATURE_VALUE_TYPE(features::kBookmarkOpenAllConfirmation)},
+-    {helium::kChannelCommandLine, "Update channel",
+-     "Selects which update channel to use for update checking. Helium flag.",
+-     kOsAll, MULTI_VALUE_TYPE(helium::kChannelChoices)},
+-    {helium::kUpdateServerUrlCommandLine, "Update server URL",
+-     "Overrides the default URL for fetching updates. Should be used only for "
+-     "testing. Helium flag.",
+-     kOsDesktop, STRING_VALUE_TYPE(helium::kUpdateServerUrlCommandLine, "")},
+     {helium::kMiddleClickAutoscrollCommandLine, "Middle Click Autoscroll",
+-     "Enables autoscroll on middle click. Helium flag, Chromium feature.",
++     "Enables autoscroll on middle click. Ray flag, Chromium feature.",
+      kOsDesktop,
+      FEATURE_VALUE_TYPE(blink::features::kHeliumMiddleClickAutoscroll)},
+-    {helium::kHeliumNoiseCommandLine, "Helium Noise",
+-     "Helium's anti-fingerprinting functionality. Adds insignificant noise to "
++    {helium::kHeliumNoiseCommandLine, "Ray Noise",
++     "Ray's anti-fingerprinting functionality. Adds insignificant noise to "
+      "various features to deceive fingerprinting scripts. Enabled by default, "
+-     "must be enabled for other anti-fingerprinting features to work. Helium "
++     "must be enabled for other anti-fingerprinting features to work. Ray "
+      "flag.",
+      kOsAll, FEATURE_VALUE_TYPE(blink::features::kHeliumNoise)},
+     {helium::kHeliumNoiseCanvasCommandLine,
+-     "[Helium Noise] Canvas pixel noising",
++     "[Ray Noise] Canvas pixel noising",
+      "Adds insignificant noise to canvas pixels during readback to deceive "
+-     "canvas-based fingerprinting. Helium flag.",
++     "canvas-based fingerprinting. Ray flag.",
+      kOsAll, FEATURE_VALUE_TYPE(blink::features::kHeliumNoiseCanvas)},
+     {helium::kHeliumNoiseAudioCommandLine,
+-     "[Helium Noise] Jitter audio context data",
++     "[Ray Noise] Jitter audio context data",
+      "Adds insignificant jitter to audio data to deceive AudioContext-based "
+-     "fingerprinting. Helium flag.",
++     "fingerprinting. Ray flag.",
+      kOsAll, FEATURE_VALUE_TYPE(blink::features::kHeliumNoiseAudio)},
+     {helium::kHeliumNoiseCpuCoresCommandLine,
+-     "[Helium Noise] Randomize number of CPU cores",
++     "[Ray Noise] Randomize number of CPU cores",
+      "Randomizes the number of cores returned by "
+-     "`navigator.hardwareConcurrency` in a reasonable range. Helium flag.",
++     "`navigator.hardwareConcurrency` in a reasonable range. Ray flag.",
+      kOsAll, FEATURE_VALUE_TYPE(blink::features::kHeliumNoiseCpuCores)},
+     // core/network
+     {helium::kDisableEchCommandLine, "Disable Encrypted Client Hello (ECH)",
+      "Disables TLS Encrypted Client Hello, reducing traffic privacy when "
+      "accessing websites that support ECH. Use this flag only if ECH is "
+-     "blocked on your network. Helium flag.",
++     "blocked on your network. Ray flag.",
+      kOsAll, SINGLE_VALUE_TYPE(helium::kDisableEchCommandLine)},
+     {"quic-v2-only", "Use only QUIC v2 for HTTP/3",
+      "Restricts HTTP/3 connections to QUIC v2 instead of default QUIC v1. This "
+      "may help on networks that block QUIC v1 but do not recognize QUIC v2. It "
+      "does not force QUIC on unsupported sites. Connections may fall back to "
+-     "TCP when the server does not support QUIC v2. Helium flag.",
++     "TCP when the server does not support QUIC v2. Ray flag.",
+      kOsAll, SINGLE_VALUE_TYPE_AND_VALUE(switches::kQuicVersion, "RFCv2")},
+     {helium::kHeliumSplitClientHelloCommandLine,
+      "Random TLS ClientHello splitting",
+@@ -68,21 +61,21 @@
+      "filtering, but it does not hide DNS queries or destination IP addresses "
+      "and makes TLS traffic unusual and potentially recognizable. Some "
+      "middleboxes and TLS endpoints mishandle this behavior and may become "
+-     "inaccessible. Helium flag.",
++     "inaccessible. Ray flag.",
+      kOsAll, FEATURE_VALUE_TYPE(net::features::kHeliumSplitClientHello)},
+     {"no-proxy-server", "Ignore system proxy",
+      "Ignores system proxy settings and always connects directly. This may "
+-     "prevent access to networks that require a proxy. Helium flag.",
++     "prevent access to networks that require a proxy. Ray flag.",
+      kOsAll, SINGLE_VALUE_TYPE(switches::kNoProxyServer)},
+     // ui
+     {helium::kHeliumNativeFrameMaterialsCommandLine, "Native frame materials",
+      "Enables an option to apply native materials to the browser frame "
+-     "surfaces. May cause UI clarity issues. Helium flag.",
++     "surfaces. May cause UI clarity issues. Ray flag.",
+      kOsMac, FEATURE_VALUE_TYPE(features::kHeliumNativeFrameMaterials)},
+     {helium::kHeliumHidePageActionsCommandLine, "Hide all page actions",
+      "Hides all page actions at the end of address bar. This includes: "
+      "bookmark star, page zoom, PWA install/open, local file access, and more. "
+-     "Important actions and indicators will be missing. Helium flag.",
++     "Important actions and indicators will be missing. Ray flag.",
+      kOsDesktop, FEATURE_VALUE_TYPE(features::kHeliumHidePageActions)},
+     // platform
+ #endif  // CHROME_BROWSER_HELIUM_FLAG_ENTRIES_H_
+--- a/chrome/browser/profiles/profile_io_data.cc
++++ b/chrome/browser/profiles/profile_io_data.cc
+@@ -44,7 +44,6 @@ bool ProfileIOData::IsHandledProtocol(std::string_view scheme) {
+       extensions::kExtensionScheme,
+ #endif
+       content::kChromeUIScheme,
+-      content::kHeliumUIScheme,
+       content::kChromeUIUntrustedScheme,
+       url::kDataScheme,
+ #if BUILDFLAG(IS_CHROMEOS)
+--- a/chrome/browser/resources/settings/privacy_page/privacy_page.html
++++ b/chrome/browser/resources/settings/privacy_page/privacy_page.html
+@@ -46,11 +46,6 @@
+         sub-label="$i18n{siteSettingsSublabel}"
+         on-click="onSiteSettingsLinkRowClick_"
+         role-description="$i18n{subpageArrowRoleDescription}"></cr-link-row>
+-    <cr-link-row id="heliumServicesLinkRow" start-icon="cr:chrome-product"
+-        class="hr" label="$i18n{heliumServicesTitle}"
+-        sub-label="$i18n{heliumServicesDescription}"
+-        on-click="onHeliumServicesPageClick_"
+-        role-description="$i18n{subpageArrowRoleDescription}"></cr-link-row>
+     <cr-toast id="deleteBrowsingDataToast" duration="5000">
+       <div>[[dbdDeletionConfirmationToastLabel_]]</div>
+     </cr-toast>
+--- a/chrome/browser/resources/settings/privacy_page/services_page.html
++++ b/chrome/browser/resources/settings/privacy_page/services_page.html
+@@ -142,7 +142,7 @@
+     </div>
+     <cr-input
+         id="heliumOriginOverride"
+-        placeholder="https://services.helium.imput.net"
++        placeholder="https://"
+         value="[[prefs.helium.services.origin_override.value]]"
+         pattern="https://.*"
+         on-keydown="onOriginOverrideKeydown_"
+--- a/chrome/browser/resources/tab_search/tab_search_item.ts
++++ b/chrome/browser/resources/tab_search/tab_search_item.ts
+@@ -228,8 +228,8 @@ export class TabSearchItemElement extends TabSearchItemBase {
+ 
+     // Show chrome:// if it's a chrome internal url
+     const protocol = new URL(normalizeURL(data.tab.url)).protocol;
+-    if (protocol === 'chrome:' || protocol === 'helium:') {
+-      this.$.secondaryTextInner.prepend(document.createTextNode('helium://'));
++    if (protocol === 'chrome:') {
++      this.$.secondaryTextInner.prepend(document.createTextNode('chrome://'));
+     }
+   }
+ 
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+@@ -798,13 +798,6 @@ void BrowserWebContentsDelegate::SetContentsBounds(content::WebContents* source,
+ 
+ void BrowserWebContentsDelegate::UpdateTargetURL(content::WebContents* source,
+                                                  const GURL& url) {
+-  GURL patched_url = url;
+-  if (patched_url.SchemeIs(content::kChromeUIScheme)) {
+-    GURL::Replacements replacements;
+-    replacements.SetSchemeStr(content::kHeliumUIScheme);
+-    patched_url = patched_url.ReplaceComponents(replacements);
+-  }
+-
+   std::vector<StatusBubble*> status_bubbles =
+       browser_ui_controller_->GetStatusBubbles();
+   for (StatusBubble* status_bubble : status_bubbles) {
+@@ -813,7 +806,7 @@ void BrowserWebContentsDelegate::UpdateTargetURL(content::WebContents* source,
+     ContentsWebView* anchor =
+         static_cast<ContentsWebView*>(status_bubble_views->base_view());
+     if (source == anchor->GetWebContents()) {
+-      status_bubble->SetURL(patched_url);
++      status_bubble->SetURL(url);
+       break;
+     }
+   }
+--- a/chrome/browser/ui/navigator/browser_navigator.cc
++++ b/chrome/browser/ui/navigator/browser_navigator.cc
+@@ -725,12 +725,6 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
+   }
+ #endif  // BUILDFLAG(IS_CHROMEOS)
+ 
+-  if (params->url.scheme() == content::kHeliumUIScheme) {
+-    GURL::Replacements replacements;
+-    replacements.SetSchemeStr(content::kChromeUIScheme);
+-    params->url = params->url.ReplaceComponents(replacements);
+-  }
+-
+   // Open System Apps in their standalone window if necessary.
+   // TODO(crbug.com/40136163): Remove this code after we integrate with intent
+   // handling.
+--- a/chrome/browser/ui/views/sharing_hub/screenshot/screenshot_captured_bubble.cc
++++ b/chrome/browser/ui/views/sharing_hub/screenshot/screenshot_captured_bubble.cc
+@@ -169,11 +169,11 @@ void ScreenshotCapturedBubble::Init() {
+ const std::u16string ScreenshotCapturedBubble::GetFilenameForURL(
+     const GURL& url) {
+   if (!url.has_host() || url.HostIsIPAddress()) {
+-    return u"helium_screenshot.png";
++    return u"ray_screenshot.png";
+   }
+ 
+   return base::ASCIIToUTF16(
+-      base::StrCat({"helium_screenshot_", url.GetHost(), ".png"}));
++      base::StrCat({"ray_screenshot_", url.GetHost(), ".png"}));
+ }
+ 
+ void ScreenshotCapturedBubble::DownloadButtonPressed() {
+--- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
++++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
+@@ -482,7 +482,6 @@ void RegisterChromeWebUIConfigs() {
+ #if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
+   map.AddWebUIConfig(std::make_unique<DefaultBrowserModalUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ManagedUserProfileNoticeUIConfig>());
+-  map.AddWebUIConfig(std::make_unique<HeliumOnboardingPageConfig>());
+   map.AddWebUIConfig(std::make_unique<ProfileCustomizationUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ProfilePickerUIConfig>());
+   map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
+--- a/chrome/browser/ui/webui/settings/brave_full_disk_access_confirm_dialog_delegate_mac.mm
++++ b/chrome/browser/ui/webui/settings/brave_full_disk_access_confirm_dialog_delegate_mac.mm
+@@ -39,7 +39,7 @@
+ }
+ 
+ std::u16string FullDiskAccessConfirmDialogDelegate::GetLinkText() const {
+-  return l10n_util::GetStringUTF16(IDS_IMPORT_FULL_DISK_ACCESS_DIALOG_LINK);
++  return std::u16string();
+ }
+ 
+ std::u16string FullDiskAccessConfirmDialogDelegate::GetAcceptButtonTitle() {
+@@ -55,9 +55,4 @@
+ }
+ 
+ void FullDiskAccessConfirmDialogDelegate::OnLinkClicked(
+-    WindowOpenDisposition disposition) {
+-  const int target_index = browser_->GetTabStripModel()->active_index() + 1;
+-  // Add import help tab right after current settings tab.
+-  chrome::AddTabAt(browser_, GURL("https://github.com/imputnet/helium-macos/wiki/Import-data-from-Safari"), target_index,
+-                   true /* foreground */);
+-}
++    WindowOpenDisposition disposition) {}
+--- a/chrome/chrome_paks.gni
++++ b/chrome/chrome_paks.gni
+@@ -147,7 +147,6 @@ template("chrome_extra_paks") {
+       "$root_gen_dir/third_party/blink/public/resources/blink_resources.pak",
+       "$root_gen_dir/third_party/blink/public/resources/inspector_overlay_resources.pak",
+       "$root_gen_dir/third_party/blink/public/strings/permission_element_generated_strings.pak",
+-      "$root_gen_dir/third_party/ublock/resources/ublock_resources.pak",
+       "$root_gen_dir/ui/resources/ui_lottie_resources.pak",
+       "$root_gen_dir/ui/webui/resources/webui_resources.pak",
+     ]
+@@ -477,7 +476,6 @@ template("chrome_extra_paks") {
+       sources += [
+         "$root_gen_dir/chrome/default_browser_modal_resources.pak",
+         "$root_gen_dir/chrome/profile_picker_resources.pak",
+-        "$root_gen_dir/components/helium_onboarding/resources/helium_onboarding_generated.pak",
+       ]
+       deps += [
+         "//chrome/browser/resources/default_browser/default_browser_modal:resources",
+--- a/components/crash/core/app/crash_reporter_client.cc
++++ b/components/crash/core/app/crash_reporter_client.cc
+@@ -26,10 +26,6 @@ CrashReporterClient* g_client = nullptr;
+ const char kDefaultUploadURL[] = "https://clients2.9oo91e.qjz9zk/cr/report";
+ #endif
+ 
+-#if !BUILDFLAG(IS_WIN)
+-constexpr char kCrashServerUrlCommandLine[] = "custom-crash-server-url";
+-#endif
+-
+ }  // namespace
+ 
+ void SetCrashReporterClient(CrashReporterClient* client) {
+@@ -146,18 +142,7 @@ void CrashReporterClient::GetSanitizationInformation(
+ #endif
+ 
+ std::string CrashReporterClient::GetUploadUrl() {
+-#if !BUILDFLAG(IS_WIN)
+-  const auto* command_line = base::CommandLine::ForCurrentProcess();
+-  if (command_line->HasSwitch(kCrashServerUrlCommandLine)) {
+-    return command_line->GetSwitchValueASCII(kCrashServerUrlCommandLine);
+-  }
+-#endif
+-
+-#if defined(OFFICIAL_BUILD)
+-  return "https://crash.helium.computer/crash";
+-#else
+   return std::string();
+-#endif
+ }
+ 
+ bool CrashReporterClient::ShouldRateLimitUploads() {
+--- a/components/crash/core/browser/resources/crashes.ts
++++ b/components/crash/core/browser/resources/crashes.ts
+@@ -223,7 +223,7 @@ function fileBug(crashId: string, os: string, version: string) {
+     os,
+     additional: commentLines.join('\n'),
+   };
+-  let href = 'https://github.com/imputnet/helium/issues/new';
++  let href = 'https://github.com/shanuflash/ray/issues/new';
+   for (const param in params) {
+     href = appendParam(href, param, params[param]!);
+   }
+--- a/components/extstore_fixups/chrome-webstore-main.js
++++ b/components/extstore_fixups/chrome-webstore-main.js
+@@ -59,12 +59,12 @@
+             return Reflect.apply(value, this, args);
+           };
+         } else {
+-          console.warn('Helium: unverified Chrome eligibility check: ' +
++          console.warn('Ray: unverified Chrome eligibility check: ' +
+               String(key));
+         }
+         eligibilityCandidates.set(key, override);
+         if (eligibilityCandidates.size > 1) {
+-          console.warn('Helium: ambiguous Chrome eligibility check: ' +
++          console.warn('Ray: ambiguous Chrome eligibility check: ' +
+               Array.from(eligibilityCandidates.keys(), String).join(', '));
+         }
+       } else {
+--- a/components/extstore_fixups/chrome-webstore.js
++++ b/components/extstore_fixups/chrome-webstore.js
+@@ -20,7 +20,7 @@
+ 
+   const replaceDownloadButtonText = (el) => {
+     if (el.nodeType === Node.TEXT_NODE) {
+-      const replacement = el.nodeValue.replace(CHROME_NAME_REGEX, 'Helium');
++      const replacement = el.nodeValue.replace(CHROME_NAME_REGEX, 'Ray');
+       if (replacement === el.nodeValue) {
+         return false;
+       }
+--- a/components/helium_services/helium_services_helpers.cc
++++ b/components/helium_services/helium_services_helpers.cc
+@@ -28,7 +28,7 @@ namespace helium {
+ #endif
+ 
+ #if defined(UPDATES_SUPPORTED)
+-constexpr std::string_view kUpdateBaseUrl = "https://updates.helium.computer/";
++constexpr std::string_view kUpdateBaseUrl = "";
+ constexpr const char kUpdatePath[] =
+ #if BUILDFLAG(IS_MAC)
+     "mac/appcast-" CPU_ARCH_STR ".xml";
+@@ -78,8 +78,7 @@ GURL GetDummyURL() {
+ }
+ 
+ bool ShouldAccessServices(const PrefService& prefs) {
+-    return prefs.GetBoolean(prefs::kHeliumServicesEnabled) &&
+-           prefs.GetBoolean(prefs::kHeliumServicesConsented);
++    return false;
+ }
+ 
+ bool ShouldAccessExtensionService(const PrefService& prefs) {
+--- a/components/helium_services/helium_services_helpers.h
++++ b/components/helium_services/helium_services_helpers.h
+@@ -13,10 +13,10 @@
+ namespace helium {
+ 
+ const char kHeliumDefaultOrigin[] =
+-    "https://services.helium.imput.net";
++    "https://services-disabled.qjz9zk";
+ 
+ const char kHeliumDummyOrigin[] =
+-    "https://helium-services-are-disabled.qjz9zk";
++    "https://services-disabled.qjz9zk";
+ 
+ bool ShouldAccessServices(const PrefService& prefs);
+ 
+--- a/components/helium_services/schema.cc
++++ b/components/helium_services/schema.cc
+@@ -30,7 +30,7 @@ ServicesChangelog& GetChangelog() {
+           {
+             1,
+             "Automatic component updates are now available. They're managed by the same toggle that enables automatic browser updates.\n"
+-            "From now on, you'll be notified about major changes to Helium services. Even though these notifications are extremely rare, you can choose to ignore them and accept all future changes automatically."
++            "From now on, you'll be notified about major changes to Ray services. Even though these notifications are extremely rare, you can choose to ignore them and accept all future changes automatically."
+           }
+       });
+ 
+--- a/components/omnibox/browser/builtin_provider.cc
++++ b/components/omnibox/browser/builtin_provider.cc
+@@ -73,9 +73,7 @@ void BuiltinProvider::DoBuiltinAutocompletion(const std::u16string& text) {
+     // Include some common builtin URLs as the user types the scheme.
+     for (const std::u16string& url :
+          client_->GetBuiltinsToProvideAsUserTypes()) {
+-      DCHECK(url.starts_with(u"chrome://"));
+-      AddBuiltinMatch(std::u16string(url).replace(0, 6, u"helium"),
+-                      std::u16string(), styles);
++      AddBuiltinMatch(url, std::u16string(), styles);
+     }
+   } else {
+     // Match input about: or |embedderAbout| URL input against builtin URLs.
+--- a/components/omnibox/browser/omnibox_text_util.cc
++++ b/components/omnibox/browser/omnibox_text_util.cc
+@@ -166,12 +166,6 @@ void AdjustTextForCopy(
+     *url_from_text = navigation_entry_url;
+     *write_url = true;
+ 
+-    if (url_from_text->scheme() == content::kChromeUIScheme) {
+-      GURL::Replacements replacements;
+-      replacements.SetSchemeStr(content::kHeliumUIScheme);
+-      *url_from_text = url_from_text->ReplaceComponents(replacements);
+-    }
+-
+     // Don't let users copy Reader Mode page URLs.
+     // We display the original article's URL in the omnibox, so users will
+     // expect that to be what is copied to the clipboard.
+--- a/components/url_formatter/url_fixer.cc
++++ b/components/url_formatter/url_fixer.cc
+@@ -39,7 +39,6 @@ namespace {
+ 
+ // Hardcode these constants to avoid dependences on //chrome and //content.
+ const char kChromeUIScheme[] = "chrome";
+-const char kHeliumUIScheme[] = "helium";
+ const char kDevToolsScheme[] = "devtools";
+ const char kChromeUIDefaultHost[] = "version";
+ const char kViewSourceScheme[] = "view-source";
+@@ -447,8 +446,7 @@ std::string SegmentURLInternal(std::string* text, url::Parsed* parts) {
+       (*text)[semicolon] = ':';
+       if (GetValidScheme(*text, &parts->scheme, &scheme) &&
+           (url::IsStandard(scheme) || scheme == url::kAboutScheme ||
+-           scheme == kChromeUIScheme || scheme == kHeliumUIScheme ||
+-           scheme == url::kFileScheme)) {
++           scheme == kChromeUIScheme || scheme == url::kFileScheme)) {
+         found_scheme = true;
+       } else {
+         (*text)[semicolon] = ';';
+@@ -464,8 +462,7 @@ std::string SegmentURLInternal(std::string* text, url::Parsed* parts) {
+   // Proceed with about, chrome, and devtools schemes,
+   // but not file or nonstandard schemes.
+   if ((scheme != url::kAboutScheme) && (scheme != kChromeUIScheme) &&
+-      (scheme != kHeliumUIScheme) && (scheme != kDevToolsScheme) &&
+-      !url::IsStandard(scheme)) {
++      (scheme != kDevToolsScheme) && !url::IsStandard(scheme)) {
+     return scheme;
+   }
+ 
+@@ -622,9 +619,7 @@ GURL FixupURLInternal(const std::string& text,
+ 
+   // For some schemes whose layouts we understand, we rebuild the URL.
+   bool chrome_url =
+-      (scheme == url::kAboutScheme)
+-      || (scheme == kChromeUIScheme)
+-      || (scheme == kHeliumUIScheme);
++      (scheme == url::kAboutScheme) || (scheme == kChromeUIScheme);
+   bool devtools_url = (scheme == kDevToolsScheme);
+   if (chrome_url || devtools_url || url::IsStandard(scheme)) {
+     // Replace the about: scheme with the chrome: scheme.
+@@ -753,11 +748,7 @@ bool IsEquivalentScheme(const std::string& scheme1,
+                         const std::string& scheme2) {
+   return scheme1 == scheme2 ||
+          (scheme1 == url::kAboutScheme && scheme2 == kChromeUIScheme) ||
+-         (scheme1 == kChromeUIScheme && scheme2 == url::kAboutScheme) ||
+-         (scheme1 == kHeliumUIScheme && scheme2 == url::kAboutScheme) ||
+-         (scheme1 == url::kAboutScheme && scheme2 == kHeliumUIScheme) ||
+-         (scheme1 == kHeliumUIScheme && scheme2 == kChromeUIScheme)   ||
+-         (scheme1 == kChromeUIScheme && scheme2 == kHeliumUIScheme);
++         (scheme1 == kChromeUIScheme && scheme2 == url::kAboutScheme);
+ }
+ 
+ }  // namespace url_formatter
+--- a/components/url_formatter/url_formatter.cc
++++ b/components/url_formatter/url_formatter.cc
+@@ -625,18 +625,6 @@ std::u16string FormatUrlWithAdjustments(
+                                prefix_end, adjustments);
+   }
+ 
+-  if ((format_types & kFormatReplaceChromeProtocol) != 0) {
+-    if (url.SchemeIs(content::kChromeUIScheme)) {
+-      GURL url_;
+-      GURL::Replacements replacements;
+-      replacements.SetSchemeStr(content::kHeliumUIScheme);
+-      url_ = url.ReplaceComponents(replacements);
+-
+-      return FormatUrlWithAdjustments(url_, format_types, unescape_rules,
+-                                      new_parsed, prefix_end, adjustments);
+-    }
+-  }
+-
+   // We handle both valid and invalid URLs (this will give us the spec
+   // regardless of validity).
+   const std::string& spec = url.possibly_invalid_spec();
+--- a/components/webui/flags/resources/app.css
++++ b/components/webui/flags/resources/app.css
+@@ -18,19 +18,14 @@
+   --ease-in-out: cubic-bezier(0.4, 0.0, 0.2, 1);
+   --shadow-color: rgba(0, 0, 0, 0.1);
+ 
+-  --helium-blue: #3450d1;
+-
+-  --google-blue-300-rgb: 174, 201, 255; /* #aec9ff */
++  --google-blue-300-rgb: 138, 180, 248;
+   --google-blue-300: rgb(var(--google-blue-300-rgb));
+-  --google-blue-400-rgb: 144, 177, 255; /* #90b1ff */
+-  --google-blue-400: rgb(var(--google-blue-400-rgb));
+-  --google-blue-500-rgb: 114, 150, 255; /* #7296ff */
++  --google-blue-400: rgb(102, 157, 246);
++  --google-blue-500-rgb: 66, 133, 244;
+   --google-blue-500: rgb(var(--google-blue-500-rgb));
+-  --google-blue-600-rgb: 85, 120, 244; /* #5578f4 */
++  --google-blue-600-rgb: 26, 115, 232;
+   --google-blue-600: rgb(var(--google-blue-600-rgb));
+-  --google-blue-700-rgb: 58, 88, 218; /* #3a58da */
+-  --google-blue-700: rgb(var(--google-blue-700-rgb));
+-
++  --google-blue-700: rgb(25, 103, 210);
+   --google-grey-100: rgb(241, 243, 244);
+   --google-grey-200-rgb: 232, 234, 237;
+   --google-grey-200: rgb(var(--google-grey-200-rgb));
+@@ -49,7 +44,7 @@
+   --secondary-color: var(--google-grey-700);
+   --warning-color: var(--google-red-700);
+ 
+-  --focus-shadow-color: var(--helium-blue);
++  --focus-shadow-color: rgb(11, 87, 208);
+   --input-background: var(--google-grey-100);
+   --link-color: var(--google-blue-700);
+   --separator-color: rgba(0, 0, 0, .06);
+@@ -65,7 +60,7 @@
+     --secondary-color: var(--google-grey-500);
+     --warning-color: var(--google-red-300);
+ 
+-    --focus-shadow-color: var(--google-blue-400);
++    --focus-shadow-color: rgb(168, 199, 250);
+     --input-background: rgba(0, 0, 0, .3);
+     --link-color: var(--google-blue-300);
+     --separator-color: rgba(255, 255, 255, .1);
+--- a/content/common/url_schemes.cc
++++ b/content/common/url_schemes.cc
+@@ -30,7 +30,6 @@ const char* const kDefaultSavableSchemes[] = {
+   url::kFileSystemScheme,
+   kChromeDevToolsScheme,
+   kChromeUIScheme,
+-  kHeliumUIScheme,
+   url::kDataScheme
+ };
+ 
+@@ -61,7 +60,6 @@ void RegisterContentSchemes(bool should_lock_registry) {
+ 
+   url::AddStandardScheme(kChromeDevToolsScheme, url::SCHEME_WITH_HOST);
+   url::AddStandardScheme(kChromeUIScheme, url::SCHEME_WITH_HOST);
+-  url::AddStandardScheme(kHeliumUIScheme, url::SCHEME_WITH_HOST);
+   url::AddStandardScheme(kChromeUIUntrustedScheme, url::SCHEME_WITH_HOST);
+   url::AddStandardScheme(kChromeErrorScheme, url::SCHEME_WITH_HOST);
+   for (auto& scheme : schemes.standard_schemes)
+@@ -72,7 +70,6 @@ void RegisterContentSchemes(bool should_lock_registry) {
+ 
+   schemes.secure_schemes.push_back(kChromeDevToolsScheme);
+   schemes.secure_schemes.push_back(kChromeUIScheme);
+-  schemes.secure_schemes.push_back(kHeliumUIScheme);
+   schemes.secure_schemes.push_back(kChromeUIUntrustedScheme);
+   schemes.secure_schemes.push_back(kChromeErrorScheme);
+   for (auto& scheme : schemes.secure_schemes)
+@@ -93,7 +90,6 @@ void RegisterContentSchemes(bool should_lock_registry) {
+     url::AddNoAccessScheme(scheme.c_str());
+ 
+   schemes.cors_enabled_schemes.push_back(kChromeUIScheme);
+-  schemes.cors_enabled_schemes.push_back(kHeliumUIScheme);
+   schemes.cors_enabled_schemes.push_back(kChromeUIUntrustedScheme);
+   for (auto& scheme : schemes.cors_enabled_schemes)
+     url::AddCorsEnabledScheme(scheme.c_str());
+@@ -122,7 +118,6 @@ void RegisterContentSchemes(bool should_lock_registry) {
+   // service workers don't work for chrome[-untrusted]:// when the flag is not
+   // enabled.
+   schemes.service_worker_schemes.push_back(kChromeUIScheme);
+-  schemes.service_worker_schemes.push_back(kHeliumUIScheme);
+   schemes.service_worker_schemes.push_back(kChromeUIUntrustedScheme);
+ 
+   // Prevent future modification of the scheme lists. This is to prevent
+--- a/content/renderer/render_thread_impl.cc
++++ b/content/renderer/render_thread_impl.cc
+@@ -887,13 +887,6 @@ void RenderThreadImpl::RegisterSchemes() {
+       chrome_scheme);
+   WebSecurityPolicy::RegisterURLSchemeAsWebUI(chrome_scheme);
+ 
+-  // helium:
+-  WebString helium_scheme(WebString::FromAscii(kHeliumUIScheme));
+-  WebSecurityPolicy::RegisterURLSchemeAsDisplayIsolated(helium_scheme);
+-  WebSecurityPolicy::RegisterURLSchemeAsNotAllowingJavascriptURLs(
+-      helium_scheme);
+-  WebSecurityPolicy::RegisterURLSchemeAsWebUI(helium_scheme);
+-
+   WebString chrome_untrusted_scheme(
+       WebString::FromAscii(kChromeUIUntrustedScheme));
+ 
+--- a/tools/licenses/licenses.py
++++ b/tools/licenses/licenses.py
+@@ -1185,8 +1185,8 @@ def GenerateCredits(args, metadatas):
+   reciprocal_contents = EvaluateTemplate(
+     reciprocal_template,
+     {
+-      'opensource_project': 'Helium',
+-      'opensource_link': 'https://github.com/imputnet/helium',
++      'opensource_project': 'Ray',
++      'opensource_link': 'https://github.com/shanuflash/ray',
+     },
+     escape=False,
+   )
+--- a/ui/color/ref_color_mixer.cc
++++ b/ui/color/ref_color_mixer.cc
+@@ -28,64 +28,64 @@ void AddBaselinePalette(ColorProvider* provider,
+                         ColorProviderKey::ColorMode color_mode) {
+   ColorMixer& mixer = provider->AddMixer();
+   mixer[kColorRefPrimary0] = {SkColorSetRGB(0x00, 0x00, 0x00)};
+-  mixer[kColorRefPrimary10] = {SkColorSetRGB(0x00, 0x11, 0x59)};
+-  mixer[kColorRefPrimary20] = {SkColorSetRGB(0x00, 0x21, 0x8D)};
+-  mixer[kColorRefPrimary25] = {SkColorSetRGB(0x00, 0x29, 0xA8)};
+-  mixer[kColorRefPrimary30] = {SkColorSetRGB(0x12, 0x35, 0xBA)};
+-  mixer[kColorRefPrimary40] = {SkColorSetRGB(0x35, 0x51, 0xD2)};
+-  mixer[kColorRefPrimary50] = {SkColorSetRGB(0x51, 0x6B, 0xEC)};
+-  mixer[kColorRefPrimary60] = {SkColorSetRGB(0x70, 0x87, 0xFF)};
+-  mixer[kColorRefPrimary70] = {SkColorSetRGB(0x95, 0xA6, 0xFF)};
+-  mixer[kColorRefPrimary80] = {SkColorSetRGB(0xBA, 0xC3, 0xFF)};
+-  mixer[kColorRefPrimary90] = {SkColorSetRGB(0xDE, 0xE1, 0xFF)};
+-  mixer[kColorRefPrimary95] = {SkColorSetRGB(0xF0, 0xEF, 0xFF)};
+-  mixer[kColorRefPrimary99] = {SkColorSetRGB(0xFE, 0xFB, 0xFF)};
++  mixer[kColorRefPrimary10] = {SkColorSetRGB(0x04, 0x1E, 0x49)};
++  mixer[kColorRefPrimary20] = {SkColorSetRGB(0x06, 0x2E, 0x6F)};
++  mixer[kColorRefPrimary25] = {SkColorSetRGB(0x07, 0x38, 0x88)};
++  mixer[kColorRefPrimary30] = {SkColorSetRGB(0x08, 0x42, 0xA0)};
++  mixer[kColorRefPrimary40] = {SkColorSetRGB(0x0B, 0x57, 0xD0)};
++  mixer[kColorRefPrimary50] = {SkColorSetRGB(0x1B, 0x6E, 0xF3)};
++  mixer[kColorRefPrimary60] = {SkColorSetRGB(0x4C, 0x8D, 0xF6)};
++  mixer[kColorRefPrimary70] = {SkColorSetRGB(0x7C, 0xAC, 0xF8)};
++  mixer[kColorRefPrimary80] = {SkColorSetRGB(0xA8, 0xC7, 0xFA)};
++  mixer[kColorRefPrimary90] = {SkColorSetRGB(0xD3, 0xE3, 0xFD)};
++  mixer[kColorRefPrimary95] = {SkColorSetRGB(0xEC, 0xF3, 0xFE)};
++  mixer[kColorRefPrimary99] = {SkColorSetRGB(0xFA, 0xFB, 0xFF)};
+   mixer[kColorRefPrimary100] = {SkColorSetRGB(0xFF, 0xFF, 0xFF)};
+ 
+   mixer[kColorRefSecondary0] = {SkColorSetRGB(0x00, 0x00, 0x00)};
+-  mixer[kColorRefSecondary10] = {SkColorSetRGB(0x17, 0x1A, 0x2C)};
+-  mixer[kColorRefSecondary12] = {SkColorSetRGB(0x1B, 0x1F, 0x30)};
+-  mixer[kColorRefSecondary15] = {SkColorSetRGB(0x22, 0x25, 0x37)};
+-  mixer[kColorRefSecondary20] = {SkColorSetRGB(0x2C, 0x2F, 0x42)};
+-  mixer[kColorRefSecondary25] = {SkColorSetRGB(0x37, 0x3A, 0x4D)};
+-  mixer[kColorRefSecondary30] = {SkColorSetRGB(0x43, 0x46, 0x59)};
+-  mixer[kColorRefSecondary35] = {SkColorSetRGB(0x4E, 0x51, 0x65)};
+-  mixer[kColorRefSecondary40] = {SkColorSetRGB(0x5A, 0x5D, 0x72)};
+-  mixer[kColorRefSecondary50] = {SkColorSetRGB(0x73, 0x76, 0x8B)};
+-  mixer[kColorRefSecondary60] = {SkColorSetRGB(0x8D, 0x8F, 0xA6)};
+-  mixer[kColorRefSecondary70] = {SkColorSetRGB(0xA8, 0xAA, 0xC1)};
+-  mixer[kColorRefSecondary80] = {SkColorSetRGB(0xC3, 0xC5, 0xDD)};
+-  mixer[kColorRefSecondary90] = {SkColorSetRGB(0xDF, 0xE1, 0xF9)};
+-  mixer[kColorRefSecondary95] = {SkColorSetRGB(0xF0, 0xEF, 0xFF)};
+-  mixer[kColorRefSecondary99] = {SkColorSetRGB(0xFE, 0xFB, 0xFF)};
++  mixer[kColorRefSecondary10] = {SkColorSetRGB(0x00, 0x1D, 0x35)};
++  mixer[kColorRefSecondary12] = {SkColorSetRGB(0x00, 0x22, 0x38)};
++  mixer[kColorRefSecondary15] = {SkColorSetRGB(0x00, 0x28, 0x45)};
++  mixer[kColorRefSecondary20] = {SkColorSetRGB(0x00, 0x33, 0x55)};
++  mixer[kColorRefSecondary25] = {SkColorSetRGB(0x00, 0x3f, 0x66)};
++  mixer[kColorRefSecondary30] = {SkColorSetRGB(0x00, 0x4A, 0x77)};
++  mixer[kColorRefSecondary35] = {SkColorSetRGB(0x00, 0x57, 0x89)};
++  mixer[kColorRefSecondary40] = {SkColorSetRGB(0x00, 0x63, 0x9B)};
++  mixer[kColorRefSecondary50] = {SkColorSetRGB(0x04, 0x7D, 0xB7)};
++  mixer[kColorRefSecondary60] = {SkColorSetRGB(0x39, 0x98, 0xD3)};
++  mixer[kColorRefSecondary70] = {SkColorSetRGB(0x5A, 0xB3, 0xF0)};
++  mixer[kColorRefSecondary80] = {SkColorSetRGB(0x7F, 0xCF, 0xFF)};
++  mixer[kColorRefSecondary90] = {SkColorSetRGB(0xC2, 0xE7, 0xFF)};
++  mixer[kColorRefSecondary95] = {SkColorSetRGB(0xDF, 0xF3, 0xFF)};
++  mixer[kColorRefSecondary99] = {SkColorSetRGB(0xF7, 0xFC, 0xFF)};
+   mixer[kColorRefSecondary100] = {SkColorSetRGB(0xFF, 0xFF, 0xFF)};
+ 
+   mixer[kColorRefTertiary0] = {SkColorSetRGB(0x00, 0x00, 0x00)};
+-  mixer[kColorRefTertiary10] = {SkColorSetRGB(0x18, 0x1B, 0x24)};
+-  mixer[kColorRefTertiary20] = {SkColorSetRGB(0x2D, 0x30, 0x39)};
+-  mixer[kColorRefTertiary30] = {SkColorSetRGB(0x44, 0x47, 0x50)};
+-  mixer[kColorRefTertiary40] = {SkColorSetRGB(0x5B, 0x5E, 0x68)};
+-  mixer[kColorRefTertiary50] = {SkColorSetRGB(0x74, 0x77, 0x81)};
+-  mixer[kColorRefTertiary60] = {SkColorSetRGB(0x8E, 0x90, 0x9B)};
+-  mixer[kColorRefTertiary70] = {SkColorSetRGB(0xA9, 0xAB, 0xB6)};
+-  mixer[kColorRefTertiary80] = {SkColorSetRGB(0xC4, 0xC6, 0xD1)};
+-  mixer[kColorRefTertiary90] = {SkColorSetRGB(0xE0, 0xE2, 0xED)};
+-  mixer[kColorRefTertiary95] = {SkColorSetRGB(0xEF, 0xF0, 0xFC)};
+-  mixer[kColorRefTertiary99] = {SkColorSetRGB(0xFE, 0xFB, 0xFF)};
++  mixer[kColorRefTertiary10] = {SkColorSetRGB(0x07, 0x27, 0x11)};
++  mixer[kColorRefTertiary20] = {SkColorSetRGB(0x0A, 0x38, 0x18)};
++  mixer[kColorRefTertiary30] = {SkColorSetRGB(0x0F, 0x52, 0x23)};
++  mixer[kColorRefTertiary40] = {SkColorSetRGB(0x14, 0x6C, 0x2E)};
++  mixer[kColorRefTertiary50] = {SkColorSetRGB(0x19, 0x86, 0x39)};
++  mixer[kColorRefTertiary60] = {SkColorSetRGB(0x1E, 0xA4, 0x46)};
++  mixer[kColorRefTertiary70] = {SkColorSetRGB(0x37, 0xBE, 0x5F)};
++  mixer[kColorRefTertiary80] = {SkColorSetRGB(0x6D, 0xD5, 0x8C)};
++  mixer[kColorRefTertiary90] = {SkColorSetRGB(0xC4, 0xEE, 0xD0)};
++  mixer[kColorRefTertiary95] = {SkColorSetRGB(0xE7, 0xF8, 0xED)};
++  mixer[kColorRefTertiary99] = {SkColorSetRGB(0xF2, 0xFF, 0xEE)};
+   mixer[kColorRefTertiary100] = {SkColorSetRGB(0xFF, 0xFF, 0xFF)};
+ 
+   mixer[kColorRefError0] = {SkColorSetRGB(0x00, 0x00, 0x00)};
+-  mixer[kColorRefError10] = {SkColorSetRGB(0x41, 0x00, 0x02)};
+-  mixer[kColorRefError20] = {SkColorSetRGB(0x69, 0x00, 0x05)};
+-  mixer[kColorRefError30] = {SkColorSetRGB(0x93, 0x00, 0x0A)};
+-  mixer[kColorRefError40] = {SkColorSetRGB(0xBA, 0x1A, 0x1A)};
+-  mixer[kColorRefError50] = {SkColorSetRGB(0xDE, 0x37, 0x30)};
+-  mixer[kColorRefError60] = {SkColorSetRGB(0xFF, 0x54, 0x49)};
+-  mixer[kColorRefError70] = {SkColorSetRGB(0xFF, 0x89, 0x7D)};
+-  mixer[kColorRefError80] = {SkColorSetRGB(0xFF, 0xB4, 0xAB)};
+-  mixer[kColorRefError90] = {SkColorSetRGB(0xFF, 0xDA, 0xD6)};
+-  mixer[kColorRefError95] = {SkColorSetRGB(0xFF, 0xED, 0xEA)};
+-  mixer[kColorRefError99] = {SkColorSetRGB(0xFF, 0xFB, 0xFF)};
++  mixer[kColorRefError10] = {SkColorSetRGB(0x41, 0x0E, 0x0B)};
++  mixer[kColorRefError20] = {SkColorSetRGB(0x60, 0x14, 0x10)};
++  mixer[kColorRefError30] = {SkColorSetRGB(0x8C, 0x1D, 0x18)};
++  mixer[kColorRefError40] = {SkColorSetRGB(0xB3, 0x26, 0x1E)};
++  mixer[kColorRefError50] = {SkColorSetRGB(0xDC, 0x36, 0x2E)};
++  mixer[kColorRefError60] = {SkColorSetRGB(0xE4, 0x69, 0x62)};
++  mixer[kColorRefError70] = {SkColorSetRGB(0xEC, 0x92, 0x8E)};
++  mixer[kColorRefError80] = {SkColorSetRGB(0xF2, 0xB8, 0xB5)};
++  mixer[kColorRefError90] = {SkColorSetRGB(0xF9, 0xDE, 0xDC)};
++  mixer[kColorRefError95] = {SkColorSetRGB(0xFC, 0xEE, 0xEE)};
++  mixer[kColorRefError99] = {SkColorSetRGB(0xFF, 0xFB, 0xF9)};
+   mixer[kColorRefError100] = {SkColorSetRGB(0xFF, 0xFF, 0xFF)};
+ 
+   // Sets new neutral ref colors in dark mode. These colors will also be
+@@ -136,46 +136,46 @@ void AddBaselinePalette(ColorProvider* provider,
+     mixer[kColorRefNeutralVariant100] = {SkColorSetRGB(0xFF, 0xFF, 0xFF)};
+   } else {
+     mixer[kColorRefNeutral0] = {SkColorSetRGB(0x00, 0x00, 0x00)};
+-    mixer[kColorRefNeutral4] = {SkColorSetRGB(0x0D, 0x0E, 0x0F)};
+-    mixer[kColorRefNeutral6] = {SkColorSetRGB(0x12, 0x14, 0x14)};
++    mixer[kColorRefNeutral4] = {SkColorSetRGB(0x0E, 0x0E, 0x0F)};
++    mixer[kColorRefNeutral6] = {SkColorSetRGB(0x13, 0x13, 0x14)};
+     mixer[kColorRefNeutral8] = {SkColorSetRGB(0x16, 0x18, 0x18)};
+-    mixer[kColorRefNeutral10] = {SkColorSetRGB(0x1A, 0x1C, 0x1C)};
+-    mixer[kColorRefNeutral12] = {SkColorSetRGB(0x1E, 0x20, 0x20)};
+-    mixer[kColorRefNeutral15] = {SkColorSetRGB(0x24, 0x26, 0x26)};
+-    mixer[kColorRefNeutral17] = {SkColorSetRGB(0x29, 0x2A, 0x2A)};
+-    mixer[kColorRefNeutral20] = {SkColorSetRGB(0x2F, 0x31, 0x31)};
++    mixer[kColorRefNeutral10] = {SkColorSetRGB(0x1F, 0x1F, 0x1F)};
++    mixer[kColorRefNeutral12] = {SkColorSetRGB(0x1F, 0x20, 0x20)};
++    mixer[kColorRefNeutral15] = {SkColorSetRGB(0x28, 0x28, 0x28)};
++    mixer[kColorRefNeutral17] = {SkColorSetRGB(0x2A, 0x2A, 0x2A)};
++    mixer[kColorRefNeutral20] = {SkColorSetRGB(0x30, 0x30, 0x30)};
+     mixer[kColorRefNeutral22] = {SkColorSetRGB(0x34, 0x35, 0x35)};
+-    mixer[kColorRefNeutral24] = {SkColorSetRGB(0x38, 0x39, 0x3A)};
+-    mixer[kColorRefNeutral25] = {SkColorSetRGB(0x3A, 0x3C, 0x3C)};
+-    mixer[kColorRefNeutral30] = {SkColorSetRGB(0x46, 0x47, 0x47)};
+-    mixer[kColorRefNeutral40] = {SkColorSetRGB(0x5D, 0x5E, 0x5F)};
+-    mixer[kColorRefNeutral50] = {SkColorSetRGB(0x76, 0x77, 0x77)};
+-    mixer[kColorRefNeutral60] = {SkColorSetRGB(0x90, 0x91, 0x91)};
++    mixer[kColorRefNeutral24] = {SkColorSetRGB(0x39, 0x39, 0x39)};
++    mixer[kColorRefNeutral25] = {SkColorSetRGB(0x3c, 0x3c, 0x3c)};
++    mixer[kColorRefNeutral30] = {SkColorSetRGB(0x47, 0x47, 0x47)};
++    mixer[kColorRefNeutral40] = {SkColorSetRGB(0x5E, 0x5E, 0x5E)};
++    mixer[kColorRefNeutral50] = {SkColorSetRGB(0x75, 0x75, 0x75)};
++    mixer[kColorRefNeutral60] = {SkColorSetRGB(0x8F, 0x8F, 0x8F)};
+     mixer[kColorRefNeutral70] = {SkColorSetRGB(0xAB, 0xAB, 0xAB)};
+-    mixer[kColorRefNeutral80] = {SkColorSetRGB(0xC6, 0xC6, 0xC6)};
++    mixer[kColorRefNeutral80] = {SkColorSetRGB(0xC7, 0xC7, 0xC7)};
+     mixer[kColorRefNeutral87] = {SkColorSetRGB(0xDA, 0xDA, 0xDA)};
+-    mixer[kColorRefNeutral90] = {SkColorSetRGB(0xE3, 0xE2, 0xE2)};
+-    mixer[kColorRefNeutral92] = {SkColorSetRGB(0xE8, 0xE8, 0xE8)};
+-    mixer[kColorRefNeutral94] = {SkColorSetRGB(0xEE, 0xEE, 0xED)};
+-    mixer[kColorRefNeutral95] = {SkColorSetRGB(0xF1, 0xF0, 0xF0)};
+-    mixer[kColorRefNeutral96] = {SkColorSetRGB(0xF4, 0xF3, 0xF3)};
+-    mixer[kColorRefNeutral98] = {SkColorSetRGB(0xFA, 0xF9, 0xF9)};
+-    mixer[kColorRefNeutral99] = {SkColorSetRGB(0xFD, 0xFC, 0xFC)};
++    mixer[kColorRefNeutral90] = {SkColorSetRGB(0xE3, 0xE3, 0xE3)};
++    mixer[kColorRefNeutral92] = {SkColorSetRGB(0xE9, 0xE8, 0xE8)};
++    mixer[kColorRefNeutral94] = {SkColorSetRGB(0xEF, 0xED, 0xED)};
++    mixer[kColorRefNeutral95] = {SkColorSetRGB(0xF2, 0xF2, 0xF2)};
++    mixer[kColorRefNeutral96] = {SkColorSetRGB(0xF4, 0xF3, 0xF2)};
++    mixer[kColorRefNeutral98] = {SkColorSetRGB(0xFA, 0xF9, 0xF8)};
++    mixer[kColorRefNeutral99] = {SkColorSetRGB(0xFD, 0xFC, 0xFB)};
+     mixer[kColorRefNeutral100] = {SkColorSetRGB(0xFF, 0xFF, 0xFF)};
+ 
+     mixer[kColorRefNeutralVariant0] = {SkColorSetRGB(0x00, 0x00, 0x00)};
+-    mixer[kColorRefNeutralVariant10] = {SkColorSetRGB(0x18, 0x1B, 0x24)};
+-    mixer[kColorRefNeutralVariant15] = {SkColorSetRGB(0x23, 0x26, 0x2E)};
+-    mixer[kColorRefNeutralVariant20] = {SkColorSetRGB(0x2D, 0x30, 0x39)};
+-    mixer[kColorRefNeutralVariant30] = {SkColorSetRGB(0x44, 0x47, 0x50)};
+-    mixer[kColorRefNeutralVariant40] = {SkColorSetRGB(0x5B, 0x5E, 0x68)};
+-    mixer[kColorRefNeutralVariant50] = {SkColorSetRGB(0x74, 0x77, 0x81)};
+-    mixer[kColorRefNeutralVariant60] = {SkColorSetRGB(0x8E, 0x90, 0x9B)};
+-    mixer[kColorRefNeutralVariant70] = {SkColorSetRGB(0xA9, 0xAB, 0xB6)};
+-    mixer[kColorRefNeutralVariant80] = {SkColorSetRGB(0xC4, 0xC6, 0xD1)};
+-    mixer[kColorRefNeutralVariant90] = {SkColorSetRGB(0xE0, 0xE2, 0xED)};
+-    mixer[kColorRefNeutralVariant95] = {SkColorSetRGB(0xEF, 0xF0, 0xFC)};
+-    mixer[kColorRefNeutralVariant99] = {SkColorSetRGB(0xFE, 0xFB, 0xFF)};
++    mixer[kColorRefNeutralVariant10] = {SkColorSetRGB(0x19, 0x1D, 0x1C)};
++    mixer[kColorRefNeutralVariant15] = {SkColorSetRGB(0x23, 0x27, 0x26)};
++    mixer[kColorRefNeutralVariant20] = {SkColorSetRGB(0x2D, 0x31, 0x2F)};
++    mixer[kColorRefNeutralVariant30] = {SkColorSetRGB(0x44, 0x47, 0x46)};
++    mixer[kColorRefNeutralVariant40] = {SkColorSetRGB(0x5C, 0x5F, 0x5E)};
++    mixer[kColorRefNeutralVariant50] = {SkColorSetRGB(0x74, 0x77, 0x75)};
++    mixer[kColorRefNeutralVariant60] = {SkColorSetRGB(0x8E, 0x91, 0x8F)};
++    mixer[kColorRefNeutralVariant70] = {SkColorSetRGB(0xA9, 0xAC, 0xAA)};
++    mixer[kColorRefNeutralVariant80] = {SkColorSetRGB(0xC4, 0xC7, 0xC5)};
++    mixer[kColorRefNeutralVariant90] = {SkColorSetRGB(0xE1, 0xE3, 0xE1)};
++    mixer[kColorRefNeutralVariant95] = {SkColorSetRGB(0xEF, 0xF2, 0xEF)};
++    mixer[kColorRefNeutralVariant99] = {SkColorSetRGB(0xFA, 0xFD, 0xFB)};
+     mixer[kColorRefNeutralVariant100] = {SkColorSetRGB(0xFF, 0xFF, 0xFF)};
+   }
+ }
+--- a/ui/color/sys_color_mixer.cc
++++ b/ui/color/sys_color_mixer.cc
+@@ -82,11 +82,11 @@ void AddGrayscaleSysColorOverrides(ColorMixer& mixer,
+   mixer[kColorSysOnSurfacePrimary] = {dark_mode ? kColorRefNeutral90
+                                                 : kColorRefNeutral10};
+   mixer[kColorSysDivider] = {dark_mode ? kColorRefNeutral40
+-                                       : kColorRefNeutral92};
++                                       : kColorRefNeutral90};
+ 
+   // Chrome surfaces.
+   mixer[kColorSysHeader] = {dark_mode ? kColorRefNeutral12
+-                                      : kColorRefNeutral92};
++                                      : kColorRefNeutral90};
+   mixer[kColorSysHeaderInactive] = {
+       dark_mode ? AlphaBlend({kColorSysHeader}, {kColorRefNeutral25}, 0x99)
+                 : AlphaBlend({kColorSysHeader}, {kColorRefNeutral98}, 0x48)};
+--- a/ui/gfx/color_palette.h
++++ b/ui/gfx/color_palette.h
+@@ -15,16 +15,16 @@ constexpr SkColor kPlaceholderColor = SK_ColorRED;
+ 
+ // The number refers to the shade of darkness. Each color in the MD
+ // palette ranges from 050-900.
+-constexpr SkColor kGoogleBlue050 = SkColorSetRGB(0xEE, 0xF5, 0xFF);
+-constexpr SkColor kGoogleBlue100 = SkColorSetRGB(0xE1, 0xED, 0xFF);
+-constexpr SkColor kGoogleBlue200 = SkColorSetRGB(0xCA, 0xDD, 0xFF);
+-constexpr SkColor kGoogleBlue300 = SkColorSetRGB(0xAE, 0xC9, 0xFF);
+-constexpr SkColor kGoogleBlue400 = SkColorSetRGB(0x90, 0xB1, 0xFF);
+-constexpr SkColor kGoogleBlue500 = SkColorSetRGB(0x72, 0x96, 0xFF);
+-constexpr SkColor kGoogleBlue600 = SkColorSetRGB(0x55, 0x78, 0xF4);
+-constexpr SkColor kGoogleBlue700 = SkColorSetRGB(0x3A, 0x58, 0xDA);
+-constexpr SkColor kGoogleBlue800 = SkColorSetRGB(0x24, 0x39, 0xB5);
+-constexpr SkColor kGoogleBlue900 = SkColorSetRGB(0x12, 0x1A, 0x86);
++constexpr SkColor kGoogleBlue050 = SkColorSetRGB(0xE8, 0xF0, 0xFE);
++constexpr SkColor kGoogleBlue100 = SkColorSetRGB(0xD2, 0xE3, 0xFC);
++constexpr SkColor kGoogleBlue200 = SkColorSetRGB(0xAE, 0xCB, 0xFA);
++constexpr SkColor kGoogleBlue300 = SkColorSetRGB(0x8A, 0xB4, 0xF8);
++constexpr SkColor kGoogleBlue400 = SkColorSetRGB(0x66, 0x9D, 0xF6);
++constexpr SkColor kGoogleBlue500 = SkColorSetRGB(0x42, 0x85, 0xF4);
++constexpr SkColor kGoogleBlue600 = SkColorSetRGB(0x1A, 0x73, 0xE8);
++constexpr SkColor kGoogleBlue700 = SkColorSetRGB(0x19, 0x67, 0xD2);
++constexpr SkColor kGoogleBlue800 = SkColorSetRGB(0x18, 0x5A, 0xBC);
++constexpr SkColor kGoogleBlue900 = SkColorSetRGB(0x17, 0x4E, 0xA6);
+ 
+ constexpr SkColor kGoogleRed050 = SkColorSetRGB(0xFC, 0xE8, 0xE6);
+ constexpr SkColor kGoogleRed100 = SkColorSetRGB(0xFA, 0xD2, 0xCF);
+--- a/ui/webui/resources/cr_components/theme_color_picker/color_utils.ts
++++ b/ui/webui/resources/cr_components/theme_color_picker/color_utils.ts
+@@ -41,13 +41,13 @@ export const DARK_BASELINE_BLUE_COLOR: Color = {
+ };
+ 
+ export const LIGHT_BASELINE_GREY_COLOR: Color = {
+-  background: {value: 0xff3551d2},
++  background: {value: 0xff0b57d0},
+   foreground: {value: 0xffe3e3e3},
+   base: {value: 0xffc7c7c7},
+ };
+ 
+ export const DARK_BASELINE_GREY_COLOR: Color = {
+-  background: {value: 0xffbac3ff},
++  background: {value: 0xffa8c7fa},
+   foreground: {value: 0xff474747},
+   base: {value: 0xff757575},
+ };
+--- a/ui/webui/resources/cr_elements/cr_shared_vars.css
++++ b/ui/webui/resources/cr_elements/cr_shared_vars.css
+@@ -9,26 +9,25 @@
+ 
+ /* Common css variables for Material Design WebUI */
+ html {
+-  --helium-blue: #3450d1;
+-  --google-blue-50-rgb: 238, 245, 255; /* #eef5ff */
++  --google-blue-50-rgb: 232, 240, 254;  /* #e8f0fe */
+   --google-blue-50: rgb(var(--google-blue-50-rgb));
+-  --google-blue-100-rgb: 225, 237, 255; /* #e1edff */
++  --google-blue-100-rgb: 210, 227, 252;  /* #d2e3fc */
+   --google-blue-100: rgb(var(--google-blue-100-rgb));
+-  --google-blue-200-rgb: 202, 221, 255; /* #caddff */
++  --google-blue-200-rgb: 174, 203, 250;  /* #aecbfa */
+   --google-blue-200: rgb(var(--google-blue-200-rgb));
+-  --google-blue-300-rgb: 174, 201, 255; /* #aec9ff */
++  --google-blue-300-rgb: 138, 180, 248;  /* #8ab4f8 */
+   --google-blue-300: rgb(var(--google-blue-300-rgb));
+-  --google-blue-400-rgb: 144, 177, 255; /* #90b1ff */
++  --google-blue-400-rgb: 102, 157, 246;  /* #669df6 */
+   --google-blue-400: rgb(var(--google-blue-400-rgb));
+-  --google-blue-500-rgb: 114, 150, 255; /* #7296ff */
++  --google-blue-500-rgb: 66, 133, 244;  /* #4285f4 */
+   --google-blue-500: rgb(var(--google-blue-500-rgb));
+-  --google-blue-600-rgb: 85, 120, 244; /* #5578f4 */
++  --google-blue-600-rgb: 26, 115, 232;  /* #1a73e8 */
+   --google-blue-600: rgb(var(--google-blue-600-rgb));
+-  --google-blue-700-rgb: 58, 88, 218; /* #3a58da */
++  --google-blue-700-rgb: 25, 103, 210;  /* #1967d2 */
+   --google-blue-700: rgb(var(--google-blue-700-rgb));
+-  --google-blue-800-rgb: 36, 57, 181; /* #2439b5 */
++  --google-blue-800-rgb: 24, 90, 188;  /* #185abc */
+   --google-blue-800: rgb(var(--google-blue-800-rgb));
+-  --google-blue-900-rgb: 18, 26, 134; /* #121a86 */
++  --google-blue-900-rgb: 23, 78, 166;  /* #174ea6 */
+   --google-blue-900: rgb(var(--google-blue-900-rgb));
+ 
+   --google-green-50-rgb: 230, 244, 234;  /* #e6f4ea */
+@@ -200,14 +199,14 @@ html {
+      the color pipeline. */
+   --cr-fallback-color-outline: rgb(116, 119, 117);
+ 
+-  --cr-fallback-color-primary: var(--helium-blue);
++  --cr-fallback-color-primary: rgb(11, 87, 208);
+   --cr-fallback-color-on-primary: rgb(255, 255, 255);
+ 
+-  --cr-fallback-color-primary-container: var(--google-blue-200);
+-  --cr-fallback-color-on-primary-container: var(--google-blue-900);
++  --cr-fallback-color-primary-container: rgb(211, 227, 253);
++  --cr-fallback-color-on-primary-container: rgb(4, 30, 73);
+ 
+-  --cr-fallback-color-secondary-container: var(--google-blue-300);
+-  --cr-fallback-color-on-secondary-container: var(--google-blue-900);
++  --cr-fallback-color-secondary-container: rgb(194, 231, 255);
++  --cr-fallback-color-on-secondary-container: rgb(0, 29, 53);
+ 
+   --cr-fallback-color-neutral-container: rgb(242, 242, 242);
+   --cr-fallback-color-neutral-outline: rgb(199, 199, 199);
+@@ -226,18 +225,18 @@ html {
+ 
+   --cr-fallback-color-on-surface-subtle: rgb(71, 71, 71);
+ 
+-  --cr-fallback-color-inverse-primary: var(--google-blue-400);
++  --cr-fallback-color-inverse-primary: rgb(168, 199, 250);
+   --cr-fallback-color-inverse-surface: rgb(48, 48, 48);
+   --cr-fallback-color-inverse-on-surface: rgb(242, 242, 242);
+ 
+-  --cr-fallback-color-tonal-container: var(--google-blue-200);
+-  --cr-fallback-color-on-tonal-container: var(--google-blue-900);
++  --cr-fallback-color-tonal-container: rgb(211, 227, 253);
++  --cr-fallback-color-on-tonal-container: rgb(4, 30, 73);
+ 
+-  --cr-fallback-color-tonal-outline: var(--google-blue-400);
++  --cr-fallback-color-tonal-outline: rgb(168, 199, 250);
+ 
+   --cr-fallback-color-error: rgb(179, 38, 30);
+ 
+-  --cr-fallback-color-divider: var(--google-blue-200);
++  --cr-fallback-color-divider: rgb(211, 227, 253);
+ 
+   --cr-fallback-color-state-hover-on-prominent_: rgba(253, 252, 251, .1);
+ 
+@@ -250,7 +249,7 @@ html {
+   --cr-fallback-color-state-ripple-primary_: rgba(
+       var(--cr-fallback-color-state-ripple-primary-rgb_), 0.32);
+ 
+-  --cr-fallback-color-base-container: var(--google-grey-100);
++  --cr-fallback-color-base-container: rgb(236, 239, 247);
+ 
+   --cr-fallback-color-disabled-background: rgba(
+       var(--cr-fallback-color-on-surface-rgb), .12);
+@@ -309,12 +308,12 @@ html[webui-refresh-2026] {
+   html {
+     /* Colors */
+     --cr-fallback-color-outline: rgb(142, 145, 143);
+-    --cr-fallback-color-primary: var(--google-blue-400);
+-    --cr-fallback-color-on-primary: var(--google-blue-900);
+-    --cr-fallback-color-primary-container: var(--helium-blue);
+-    --cr-fallback-color-on-primary-container: var(--google-blue-100);
+-    --cr-fallback-color-secondary-container: var(--google-blue-800);
+-    --cr-fallback-color-on-secondary-container: var(--google-blue-500);
++    --cr-fallback-color-primary: rgb(168, 199, 250);
++    --cr-fallback-color-on-primary: rgb(6, 46, 111);
++    --cr-fallback-color-primary-container: rgb(8, 66, 160);
++    --cr-fallback-color-on-primary-container: rgb(211, 227, 253);
++    --cr-fallback-color-secondary-container: rgb(0, 74, 119);
++    --cr-fallback-color-on-secondary-container: rgb(194, 231, 255);
+     --cr-fallback-color-neutral-container: rgb(40, 40, 40);
+     --cr-fallback-color-neutral-outline: rgb(117, 117, 117);
+     --cr-fallback-color-surface: rgb(31, 31, 31);
+@@ -324,24 +323,24 @@ html[webui-refresh-2026] {
+     --cr-fallback-color-surface4: rgb(52, 54, 58);
+     --cr-fallback-color-surface5: rgb(56, 58, 62);
+     --cr-fallback-color-on-surface-rgb: 227, 227, 227;
+-    --cr-fallback-color-surface-variant: rgb(68, 68, 68);
+-    --cr-fallback-color-on-surface-variant: rgb(196, 199, 196);
++    --cr-fallback-color-surface-variant: rgb(68, 71, 70);
++    --cr-fallback-color-on-surface-variant: rgb(196, 199, 197);
+     --cr-fallback-color-on-surface-subtle: rgb(199, 199, 199);
+-    --cr-fallback-color-inverse-primary: var(--helium-blue);
++    --cr-fallback-color-inverse-primary: rgb(11, 87, 208);
+     --cr-fallback-color-inverse-surface: rgb(227, 227, 227);
+     --cr-fallback-color-inverse-on-surface: rgb(31, 31, 31);
+-    --cr-fallback-color-tonal-container: var(--google-blue-800);
+-    --cr-fallback-color-on-tonal-container: var(--google-blue-300);
+-    --cr-fallback-color-tonal-outline: var(--google-blue-500);
++    --cr-fallback-color-tonal-container: rgb(0, 74, 119);
++    --cr-fallback-color-on-tonal-container: rgb(194, 231, 255);
++    --cr-fallback-color-tonal-outline: rgb(4, 125, 183);
+     --cr-fallback-color-error: rgb(242, 184, 181);
+     --cr-fallback-color-divider: rgb(94, 94, 94);
+     --cr-fallback-color-state-hover-on-prominent_: rgba(31, 31, 31, .06);
+-    --cr-fallback-color-state-on-subtle-rgb_: var(--google-blue-50-rgb);
++    --cr-fallback-color-state-on-subtle-rgb_: 253, 252, 251;
+     --cr-fallback-color-state-hover-on-subtle_: rgba(
+         var(--cr-fallback-color-state-on-subtle-rgb_), .10);
+     --cr-fallback-color-state-ripple-neutral-on-subtle_: rgba(
+         var(--cr-fallback-color-state-on-subtle-rgb_), .16);
+-    --cr-fallback-color-state-ripple-primary-rgb_: var(--google-blue-500-rgb);
++    --cr-fallback-color-state-ripple-primary-rgb_: 76, 141, 246;
+     --cr-fallback-color-base-container: rgba(40, 40, 40, 1);
+ 
+     --cr-card-background-color: var(--google-grey-900-white-4-percent);
+--- a/ui/webui/resources/cr_elements/icons.html.ts
++++ b/ui/webui/resources/cr_elements/icons.html.ts
+@@ -94,8 +94,8 @@ if (document.documentElement.hasAttribute('webui-rounded-icons')) {
+       <g id="chevron-right">
+         <path d="m13.05 12-4.1-4.102a.87.87 0 0 1-.274-.636.87.87 0 0 1 .273-.637.879.879 0 0 1 1.277 0l4.75 4.75a.84.84 0 0 1 .188.29c.04.105.063.218.063.335 0 .117-.024.23-.063.336a.84.84 0 0 1-.187.289l-4.75 4.75a.822.822 0 0 1-.625.262.902.902 0 0 1-.625-.285.883.883 0 0 1-.278-.641.88.88 0 0 1 .278-.637Zm0 0"></path>
+       </g>
+-      <g id="chrome-product" viewBox="0 0 56 56">
+-        <path d="M33.3232 52.0297L28 56L22.6768 52.0297L25.0958 33.0855L10.0649 44.6731L4 42L4.74054 35.3577L22.1898 28L4.74054 20.6423L4 14L10.0649 11.3269L25.0958 22.9145L22.6768 3.97031L28 0L33.3232 3.97031L30.9042 22.9145L45.9351 11.3269L52 14L51.2595 20.6423L33.8102 28L51.2595 35.3577L52 42L45.9351 44.6731L30.9042 33.0855L33.3232 52.0297Z"/>
++      <g id="chrome-product" viewBox="0 0 24 24">
++        <path d="M5.82 19.32C4.31 19.24 3.41 18.89 2.58 18.06L2.23 17.71L2.3 17.54C2.58 16.8 3.44 16.12 4.87 15.49C5.55 15.19 6.25 14.95 8.02 14.39C9.79 13.84 10.74 13.4 12.44 12.34C13.82 11.49 14.09 11.34 14.26 11.32C14.81 11.26 15.36 10.98 15.83 10.52C16.07 10.27 16.08 10.27 16.38 10.15C17.64 9.66 18.72 9.58 19.66 9.92C21.05 10.4 22.02 11.71 22.37 13.53C22.51 14.28 22.53 15.4 22.42 15.96C22.23 16.9 21.84 17.62 21.24 18.2C20.47 18.93 19.61 19.22 18.03 19.31C17.6 19.33 6.25 19.34 5.82 19.32ZM1.69 16.5C1.63 16.43 1.58 16.24 1.54 15.85C1.36 14.49 1.86 12.65 2.83 11.03C3.83 9.37 5.01 8.43 6.48 8.11C6.88 8.02 7.67 8.02 8.11 8.12C9.34 8.38 10.37 9.01 11.75 10.37C11.96 10.57 12.19 10.78 12.27 10.84C12.46 10.98 12.48 11.01 12.42 11.05C12.4 11.08 12.25 11.17 12.09 11.27C10.7 12.12 9.66 12.59 8.02 13.1C5.83 13.79 5.05 14.08 4.23 14.5C3.47 14.9 3.2 15.1 2.38 15.91C1.76 16.53 1.73 16.55 1.69 16.5ZM13.49 10.04C12.6 9.92 11.76 9.3 11.38 8.48C11.05 7.79 11.05 6.94 11.38 6.25C11.85 5.25 12.77 4.67 13.89 4.67C14.41 4.67 14.67 4.73 15.12 4.95C16.39 5.57 16.95 7.11 16.39 8.41C15.91 9.51 14.7 10.19 13.49 10.04Z"></path>
+       </g>
+       <g id="close">
+         <path d="m12 13.273-4.102 4.102a.816.816 0 0 1-.625.262.91.91 0 0 1-.625-.285.879.879 0 0 1 0-1.278L10.727 12 6.625 7.898a.83.83 0 0 1-.262-.636.914.914 0 0 1 .285-.637.879.879 0 0 1 1.278 0L12 10.727l4.102-4.102a.87.87 0 0 1 .636-.273.87.87 0 0 1 .637.273.87.87 0 0 1 .273.637.87.87 0 0 1-.273.636L13.273 12l4.102 4.102c.184.183.273.39.273.625 0 .23-.09.441-.273.625a.87.87 0 0 1-.637.273.87.87 0 0 1-.636-.273Zm0 0"></path>
+@@ -317,8 +317,8 @@ if (document.documentElement.hasAttribute('webui-rounded-icons')) {
+       <g id="chevron-right">
+         <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path>
+       </g>
+-      <g id="chrome-product" viewBox="0 0 56 56">
+-        <path d="M33.3232 52.0297L28 56L22.6768 52.0297L25.0958 33.0855L10.0649 44.6731L4 42L4.74054 35.3577L22.1898 28L4.74054 20.6423L4 14L10.0649 11.3269L25.0958 22.9145L22.6768 3.97031L28 0L33.3232 3.97031L30.9042 22.9145L45.9351 11.3269L52 14L51.2595 20.6423L33.8102 28L51.2595 35.3577L52 42L45.9351 44.6731L30.9042 33.0855L33.3232 52.0297Z"/>
++      <g id="chrome-product" viewBox="0 0 24 24">
++        <path d="M5.82 19.32C4.31 19.24 3.41 18.89 2.58 18.06L2.23 17.71L2.3 17.54C2.58 16.8 3.44 16.12 4.87 15.49C5.55 15.19 6.25 14.95 8.02 14.39C9.79 13.84 10.74 13.4 12.44 12.34C13.82 11.49 14.09 11.34 14.26 11.32C14.81 11.26 15.36 10.98 15.83 10.52C16.07 10.27 16.08 10.27 16.38 10.15C17.64 9.66 18.72 9.58 19.66 9.92C21.05 10.4 22.02 11.71 22.37 13.53C22.51 14.28 22.53 15.4 22.42 15.96C22.23 16.9 21.84 17.62 21.24 18.2C20.47 18.93 19.61 19.22 18.03 19.31C17.6 19.33 6.25 19.34 5.82 19.32ZM1.69 16.5C1.63 16.43 1.58 16.24 1.54 15.85C1.36 14.49 1.86 12.65 2.83 11.03C3.83 9.37 5.01 8.43 6.48 8.11C6.88 8.02 7.67 8.02 8.11 8.12C9.34 8.38 10.37 9.01 11.75 10.37C11.96 10.57 12.19 10.78 12.27 10.84C12.46 10.98 12.48 11.01 12.42 11.05C12.4 11.08 12.25 11.17 12.09 11.27C10.7 12.12 9.66 12.59 8.02 13.1C5.83 13.79 5.05 14.08 4.23 14.5C3.47 14.9 3.2 15.1 2.38 15.91C1.76 16.53 1.73 16.55 1.69 16.5ZM13.49 10.04C12.6 9.92 11.76 9.3 11.38 8.48C11.05 7.79 11.05 6.94 11.38 6.25C11.85 5.25 12.77 4.67 13.89 4.67C14.41 4.67 14.67 4.73 15.12 4.95C16.39 5.57 16.95 7.11 16.39 8.41C15.91 9.51 14.7 10.19 13.49 10.04Z"></path>
+       </g>
+       <g id="close">
+         <path

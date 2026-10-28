@@ -1,0 +1,265 @@
+--- a/chrome/browser/extensions/browser_extension_window_controller.cc
++++ b/chrome/browser/extensions/browser_extension_window_controller.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/extensions/browser_extension_window_controller.h"
++#include "ray/core/ac_hooks.h"  // nogncheck
+ 
+ #include <optional>
+ #include <string>
+@@ -45,6 +46,11 @@
+ #endif
+ 
+ static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
++
++// Ray: RayCore (engine/raycore) keeps the windows of its own pages (its
++// popups, side panels, the content blocker's page) from extensions.
++bool (*g_ray_hidden_from_extensions)(
++    const BrowserWindowInterface* browser) = nullptr;
+ 
+ namespace extensions {
+ 
+@@ -183,6 +189,12 @@
+     return false;
+   }
+ 
++  // Ray: windows RayCore uses internally.
++  if (extension && g_ray_hidden_from_extensions &&
++      g_ray_hidden_from_extensions(&*browser_)) {
++    return false;
++  }
++
+   return (window_type_ != api::tabs::WindowType::kDevtools) ||
+          allow_dev_tools_windows;
+ }
+--- a/chrome/browser/extensions/api/tabs/tabs_event_router.cc
++++ b/chrome/browser/extensions/api/tabs/tabs_event_router.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/extensions/api/tabs/tabs_event_router.h"
++#include "ray/core/ac_hooks.h"  // nogncheck
+ 
+ #include <memory>
+ #include <set>
+@@ -232,7 +233,9 @@
+ 
+ bool TabsEventRouter::ShouldTrackBrowser(BrowserWindowInterface& browser) {
+   return profile_->IsSameOrParent(browser.GetProfile()) &&
+-         ExtensionTabUtil::BrowserSupportsTabs(&browser);
++         ExtensionTabUtil::BrowserSupportsTabs(&browser) &&
++         !(g_ray_hidden_from_extensions &&
++           g_ray_hidden_from_extensions(&browser));
+ }
+ 
+ void TabsEventRouter::TrackTabList(TabListInterface& tab_list) {
+--- a/chrome/browser/extensions/api/web_navigation/web_navigation_api_helpers.cc
++++ b/chrome/browser/extensions/api/web_navigation/web_navigation_api_helpers.cc
+@@ -5,6 +5,7 @@
+ // Implements the Chrome Extensions WebNavigation API.
+ 
+ #include "chrome/browser/extensions/api/web_navigation/web_navigation_api_helpers.h"
++#include "ray/core/ac_hooks.h"  // nogncheck
+ 
+ #include <memory>
+ #include <utility>
+@@ -18,6 +19,7 @@
+ #include "chrome/browser/extensions/api/web_navigation/web_navigation_tab_observer.h"
+ #include "chrome/browser/extensions/extension_tab_util.h"
+ #include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+ #include "chrome/common/extensions/api/web_navigation.h"
+ #include "content/public/browser/navigation_handle.h"
+ #include "content/public/browser/render_frame_host.h"
+@@ -40,9 +42,13 @@
+ namespace {
+ 
+ // Dispatches events to the extension message service.
+-void DispatchEvent(content::BrowserContext* browser_context,
++void DispatchEvent(content::WebContents* web_contents,
++                   content::BrowserContext* browser_context,
+                    std::unique_ptr<Event> event,
+                    const GURL& url) {
++  if (IsHiddenFromExtensions(web_contents)) {
++    return;
++  }
+   Profile* profile = Profile::FromBrowserContext(browser_context);
+   EventRouter* event_router = EventRouter::Get(profile);
+   if (profile && event_router) {
+@@ -56,6 +62,15 @@
+ 
+ }  // namespace
+ 
++bool IsHiddenFromExtensions(content::WebContents* web_contents) {
++  if (!web_contents || !g_ray_hidden_from_extensions) {
++    return false;
++  }
++  BrowserWindowInterface* browser =
++      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents);
++  return browser && g_ray_hidden_from_extensions(browser);
++}
++
+ // Constructs an onBeforeNavigate event.
+ std::unique_ptr<Event> CreateOnBeforeNavigateEvent(
+     content::NavigationHandle* navigation_handle) {
+@@ -169,7 +184,7 @@
+       navigation_handle->GetWebContents()->GetBrowserContext();
+   auto event = std::make_unique<Event>(histogram_value, event_name,
+                                        std::move(args), browser_context);
+-  DispatchEvent(browser_context, std::move(event), url);
++  DispatchEvent(web_contents, browser_context, std::move(event), url);
+ }
+ 
+ // Constructs and dispatches an onDOMContentLoaded event.
+@@ -201,7 +216,7 @@
+       events::WEB_NAVIGATION_ON_DOM_CONTENT_LOADED,
+       web_navigation::OnDOMContentLoaded::kEventName,
+       web_navigation::OnDOMContentLoaded::Create(details), browser_context);
+-  DispatchEvent(browser_context, std::move(event), url);
++  DispatchEvent(web_contents, browser_context, std::move(event), url);
+ }
+ 
+ // Constructs and dispatches an onCompleted event.
+@@ -233,7 +248,7 @@
+       events::WEB_NAVIGATION_ON_COMPLETED,
+       web_navigation::OnCompleted::kEventName,
+       web_navigation::OnCompleted::Create(details), browser_context);
+-  DispatchEvent(browser_context, std::move(event), url);
++  DispatchEvent(web_contents, browser_context, std::move(event), url);
+ }
+ 
+ // Constructs and dispatches an onCreatedNavigationTarget event.
+@@ -244,6 +259,9 @@
+     content::BrowserContext* browser_context,
+     content::WebContents* target_web_contents,
+     const GURL& target_url) {
++  if (IsHiddenFromExtensions(target_web_contents)) {
++    return;
++  }
+   // Check that the tab is already inserted into a tab strip model. This code
+   // path is exercised by ExtensionApiTest.WebNavigationRequestOpenTab.
+   DCHECK(ExtensionTabUtil::GetTabById(
+@@ -264,7 +282,7 @@
+       web_navigation::OnCreatedNavigationTarget::kEventName,
+       web_navigation::OnCreatedNavigationTarget::Create(details),
+       browser_context);
+-  DispatchEvent(browser_context, std::move(event), target_url);
++  DispatchEvent(target_web_contents, browser_context, std::move(event), target_url);
+ 
+   // If the target WebContents already received the onBeforeNavigate event,
+   // send it immediately after the onCreatedNavigationTarget above.
+@@ -305,7 +323,7 @@
+                               web_navigation::OnErrorOccurred::kEventName,
+                               web_navigation::OnErrorOccurred::Create(details),
+                               web_contents->GetBrowserContext());
+-  DispatchEvent(browser_context, std::move(event), url);
++  DispatchEvent(web_contents, browser_context, std::move(event), url);
+ }
+ 
+ void DispatchOnErrorOccurred(content::NavigationHandle* navigation_handle) {
+@@ -339,7 +357,7 @@
+       events::WEB_NAVIGATION_ON_ERROR_OCCURRED,
+       web_navigation::OnErrorOccurred::kEventName,
+       web_navigation::OnErrorOccurred::Create(details), browser_context);
+-  DispatchEvent(browser_context, std::move(event), navigation_handle->GetURL());
++  DispatchEvent(navigation_handle->GetWebContents(), browser_context, std::move(event), navigation_handle->GetURL());
+ }
+ 
+ // Constructs and dispatches an onTabReplaced event.
+@@ -347,6 +365,9 @@
+     content::WebContents* old_web_contents,
+     content::BrowserContext* browser_context,
+     content::WebContents* new_web_contents) {
++  if (IsHiddenFromExtensions(old_web_contents)) {
++    return;
++  }
+   web_navigation::OnTabReplaced::Details details;
+   details.replaced_tab_id = ExtensionTabUtil::GetTabId(old_web_contents);
+   details.tab_id = ExtensionTabUtil::GetTabId(new_web_contents);
+@@ -356,7 +377,7 @@
+       events::WEB_NAVIGATION_ON_TAB_REPLACED,
+       web_navigation::OnTabReplaced::kEventName,
+       web_navigation::OnTabReplaced::Create(details), browser_context);
+-  DispatchEvent(browser_context, std::move(event), GURL());
++  DispatchEvent(new_web_contents, browser_context, std::move(event), GURL());
+ }
+ 
+ }  // namespace web_navigation_api_helpers
+--- a/chrome/browser/extensions/api/web_navigation/web_navigation_api_helpers.h
++++ b/chrome/browser/extensions/api/web_navigation/web_navigation_api_helpers.h
+@@ -31,6 +31,8 @@
+ // otherwise.
+ int GetFrameId(content::RenderFrameHost* frame_host);
+ 
++bool IsHiddenFromExtensions(content::WebContents* web_contents);
++
+ // Create and dispatch the various events of the webNavigation API.
+ std::unique_ptr<Event> CreateOnBeforeNavigateEvent(
+     content::NavigationHandle* navigation_handle);
+--- a/chrome/browser/extensions/api/web_navigation/web_navigation_event_router.cc
++++ b/chrome/browser/extensions/api/web_navigation/web_navigation_event_router.cc
+@@ -205,7 +205,8 @@
+     GURL target_url,
+     content::WebContents* target_web_contents,
+     bool not_yet_in_tabstrip) {
+-  if (source_render_frame_id == 0) {
++  if (source_render_frame_id == 0 ||
++      web_navigation_api_helpers::IsHiddenFromExtensions(source_web_contents)) {
+     return;
+   }
+   WebNavigationTabObserver* tab_observer =
+--- a/chrome/browser/extensions/api/web_navigation/web_navigation_tab_observer.cc
++++ b/chrome/browser/extensions/api/web_navigation/web_navigation_tab_observer.cc
+@@ -234,6 +234,10 @@
+   if (!pending_on_before_navigate_event_) {
+     return;
+   }
++  if (web_navigation_api_helpers::IsHiddenFromExtensions(web_contents())) {
++    pending_on_before_navigate_event_.reset();
++    return;
++  }
+ 
+   // EventRouter can be null in unit tests.
+   EventRouter* event_router =
+--- a/chrome/browser/extensions/extension_tab_util.cc
++++ b/chrome/browser/extensions/extension_tab_util.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/extensions/extension_tab_util.h"
++#include "ray/core/ac_hooks.h"  // nogncheck
+ 
+ #include <stddef.h>
+ 
+@@ -287,6 +288,11 @@
+   return info;
+ }
+ 
++bool HiddenFromExtensions(WindowController* window) {
++  return g_ray_hidden_from_extensions && window->GetBrowserWindowInterface() &&
++         g_ray_hidden_from_extensions(window->GetBrowserWindowInterface());
++}
++
+ }  // namespace
+ 
+ WindowController* ExtensionTabUtil::GetControllerFromWindowID(
+@@ -322,7 +328,8 @@
+     const Profile* controller_profile = window_controller->profile();
+     if ((controller_profile == profile ||
+          controller_profile == incognito_profile) &&
+-        window_controller->GetWindowId() == window_id) {
++        window_controller->GetWindowId() == window_id &&
++        !HiddenFromExtensions(window_controller)) {
+       return window_controller;
+     }
+   }
+@@ -647,7 +654,7 @@
+                     !window->GetBrowserWindowInterface()->IsDeleteScheduled();
+     bool profile_matches =
+         window->profile() == profile || window->profile() == incognito_profile;
+-    if (!is_alive || !profile_matches) {
++    if (!is_alive || !profile_matches || HiddenFromExtensions(window)) {
+       continue;
+     }
+     for (int i = 0; i < window->GetTabCount(); ++i) {

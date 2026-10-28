@@ -1,0 +1,16 @@
+SPDX-License-Identifier: BSD-3-Clause
+Reverts the chrome/BUILD.gn part of ungoogled-chromium's fix-building-with-prunned-binaries.patch, which Helium applies
+(its fix-building-without-safebrowsing needs the patch's context) and Ray skipped: the framework ships ANGLE's
+prebuilt Metal shader cache again, so the GPU process doesn't compile those shaders on first use.
+
+--- a/chrome/BUILD.gn
++++ b/chrome/BUILD.gn
+@@ -1070,6 +1070,8 @@
+ 
+   bundle_data("chrome_framework_resources") {
+     sources = [
++      "//ui/gl/resources/angle-metal/gpu_shader_cache.bin",
++
+       # This image is used to badge the lock icon in the
+       # authentication dialogs, such as those used for installation
+       # from disk image and Keystone promotion (if so enabled).  It

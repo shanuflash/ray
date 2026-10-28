@@ -1,0 +1,1255 @@
+--- a/chrome/browser/component_updater/chrome_component_updater_configurator.cc
++++ b/chrome/browser/component_updater/chrome_component_updater_configurator.cc
+@@ -4,21 +4,28 @@
+ 
+ #include "chrome/browser/component_updater/chrome_component_updater_configurator.h"
+ 
++#include <algorithm>
+ #include <memory>
+ #include <optional>
+ #include <string>
++#include <string_view>
++#include <utility>
+ #include <vector>
+ 
+ #include "base/check.h"
++#include "base/containers/span.h"
+ #include "base/files/file_path.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback.h"
++#include "base/json/json_reader.h"
++#include "base/json/json_writer.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "base/path_service.h"
+ #include "base/sequence_checker.h"
+ #include "base/strings/sys_string_conversions.h"
+ #include "base/time/time.h"
++#include "base/values.h"
+ #include "base/version.h"
+ #include "build/branding_buildflags.h"
+ #include "build/build_config.h"
+@@ -26,14 +33,11 @@
+ #include "chrome/browser/component_updater/component_updater_utils.h"
+ #include "chrome/browser/component_updater/updater_state.h"
+ #include "chrome/browser/net/system_network_context_manager.h"
+-#include "chrome/browser/profiles/profile.h"
+-#include "chrome/browser/profiles/profile_manager.h"
+ #include "chrome/browser/update_client/chrome_update_query_params_delegate.h"
+ #include "chrome/common/channel_info.h"
+ #include "chrome/common/chrome_paths.h"
+ #include "components/component_updater/component_updater_command_line_config_policy.h"
+ #include "components/component_updater/configurator_impl.h"
+-#include "components/helium_services/helium_services_helpers.h"
+ #include "components/prefs/pref_service.h"
+ #include "components/services/patch/content/patch_service.h"
+ #include "components/services/unzip/content/unzip_service.h"
+@@ -44,11 +48,15 @@
+ #include "components/update_client/patch/patch_impl.h"
+ #include "components/update_client/persisted_data.h"
+ #include "components/update_client/protocol_handler.h"
++#include "components/update_client/protocol_parser.h"
++#include "components/update_client/protocol_serializer.h"
+ #include "components/update_client/unzip/unzip_impl.h"
+ #include "components/update_client/unzipper.h"
+ #include "components/update_client/update_query_params.h"
+ #include "content/public/browser/browser_thread.h"
+ #include "services/network/public/cpp/shared_url_loader_factory.h"
++#include "url/gurl.h"
++#include "url/url_constants.h"
+ 
+ #if BUILDFLAG(IS_WIN)
+ #include "base/enterprise_util.h"
+@@ -62,26 +70,100 @@
+ namespace component_updater {
+ namespace {
+ 
+-PrefService* GetProfilePrefs() {
+-  // Browser process and profile manager are usually
+-  // not null, but they may be during tests.
+-  if (!g_browser_process) {
+-    return nullptr;
++constexpr char kComponentUpdateUrl[] =
++    "https://update.googleapis.com/service/update2/json";
++constexpr char kComponentUpdateHost[] = "update.googleapis.com";
++constexpr char kComponentUpdatePath[] = "/service/update2/json";
++constexpr char kComponentDownloadHost[] = "dl.google.com";
++constexpr char kComponentDownloadDomain[] = "gvt1.com";
++constexpr char kComponentDownloadMirrorHost[] = "www.google.com";
++constexpr char kComponentDownloadMirrorPathPrefix[] = "/dl/";
++
++constexpr std::string_view kRequestKeysSent[] = {
++    "@os",         "@updater",       "acceptformat",  "apps",
++    "arch",        "dedup",          "ismachine",     "os",
++    "prodchannel", "prodversion",    "protocol",      "requestid",
++    "sessionid",   "updaterchannel", "updaterversion"};
++constexpr std::string_view kAppKeysSent[] = {"appid", "updatecheck", "version"};
++
++bool IsComponentUpdateDestination(update_client::FetchKind kind,
++                                  const GURL& url) {
++  if (!url.SchemeIs(url::kHttpsScheme) || url.EffectiveIntPort() != 443) {
++    return false;
+   }
++  if (kind == update_client::FetchKind::kUpdateCheck) {
++    return url.host() == kComponentUpdateHost &&
++           url.path() == kComponentUpdatePath;
++  }
++  if (url.host() == kComponentDownloadMirrorHost) {
++    return url.path().starts_with(kComponentDownloadMirrorPathPrefix);
++  }
++  return url.host() == kComponentDownloadHost ||
++         url.DomainIs(kComponentDownloadDomain);
++}
+ 
+-  ProfileManager* pm = g_browser_process->profile_manager();
+-  if (!pm) {
+-    return nullptr;
++void KeepOnlyKeys(base::DictValue& dict,
++                  base::span<const std::string_view> kept) {
++  std::vector<std::string> dropped;
++  for (const auto [key, value] : dict) {
++    if (!std::ranges::contains(kept, std::string_view(key))) {
++      dropped.push_back(key);
++    }
+   }
++  for (const std::string& key : dropped) {
++    dict.Remove(key);
++  }
++}
+ 
+-  Profile* profile = pm->GetLastUsedProfileIfLoaded();
+-  if (!profile) {
+-    return nullptr;
++class ComponentRequestSerializer : public update_client::ProtocolSerializer {
++ public:
++  explicit ComponentRequestSerializer(
++      std::unique_ptr<update_client::ProtocolSerializer> serializer)
++      : serializer_(std::move(serializer)) {}
++
++  std::string Serialize(
++      const update_client::protocol_request::Request& request) const override {
++    std::optional<base::DictValue> root = base::JSONReader::ReadDict(
++        serializer_->Serialize(request), base::JSON_PARSE_RFC);
++    base::DictValue* body = root ? root->FindDict("request") : nullptr;
++    if (!body) {
++      return std::string();
++    }
++    KeepOnlyKeys(*body, kRequestKeysSent);
++    if (base::ListValue* apps = body->FindList("apps")) {
++      for (base::Value& app : *apps) {
++        if (base::DictValue* fields = app.GetIfDict()) {
++          KeepOnlyKeys(*fields, kAppKeysSent);
++        }
++      }
++    }
++    base::DictValue filtered;
++    filtered.Set("request", std::move(*body));
++    return base::WriteJson(filtered).value_or(std::string());
+   }
+ 
+-  return profile->GetPrefs();
+-}
++ private:
++  std::unique_ptr<update_client::ProtocolSerializer> serializer_;
++};
+ 
++class ComponentProtocolHandlerFactory
++    : public update_client::ProtocolHandlerFactory {
++ public:
++  std::unique_ptr<update_client::ProtocolParser> CreateParser() const override {
++    return json_.CreateParser();
++  }
++
++  std::unique_ptr<update_client::ProtocolSerializer> CreateSerializer()
++      const override {
++    return std::make_unique<ComponentRequestSerializer>(
++        json_.CreateSerializer());
++  }
++
++ private:
++  update_client::ProtocolHandlerFactoryJSON json_;
++};
++
++
+ class ChromeConfigurator : public update_client::Configurator {
+  public:
+   ChromeConfigurator(const base::CommandLine* cmdline,
+@@ -127,8 +209,6 @@
+ 
+   ~ChromeConfigurator() override = default;
+ 
+-  std::optional<base::FilePath> GetBackgroundDownloaderCache() const;
+-
+   SEQUENCE_CHECKER(sequence_checker_);
+   ConfiguratorImpl configurator_impl_;
+   raw_ptr<PrefService, LeakedDanglingUntriaged> pref_service_;
+@@ -184,12 +264,12 @@
+ 
+ std::vector<GURL> ChromeConfigurator::UpdateUrl() const {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+-  return {helium::GetComponentUpdateURL(GetProfilePrefs())};
++  return {GURL(kComponentUpdateUrl)};
+ }
+ 
+ std::vector<GURL> ChromeConfigurator::PingUrl() const {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+-  return {helium::GetComponentUpdateURL(GetProfilePrefs())};
++  return {};
+ }
+ 
+ std::string ChromeConfigurator::GetProdId() const {
+@@ -246,7 +326,8 @@
+             g_browser_process->system_network_context_manager()
+                 ->GetSharedURLLoaderFactory(),
+             // Never send cookies for component update downloads.
+-            base::BindRepeating([](const GURL& url) { return false; }));
++            base::BindRepeating([](const GURL& url) { return false; }),
++            base::BindRepeating(&IsComponentUpdateDestination));
+   }
+   return network_fetcher_factory_;
+ }
+@@ -256,7 +337,7 @@
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+   if (!crx_downloader_factory_) {
+     crx_downloader_factory_ = update_client::MakeCrxDownloaderFactory(
+-        GetNetworkFetcherFactory(), GetBackgroundDownloaderCache());
++        GetNetworkFetcherFactory(), std::nullopt);
+   }
+   return crx_downloader_factory_;
+ }
+@@ -285,7 +366,7 @@
+ 
+ bool ChromeConfigurator::EnabledBackgroundDownloader() const {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+-  return configurator_impl_.EnabledBackgroundDownloader();
++  return false;
+ }
+ 
+ bool ChromeConfigurator::EnabledCupSigning() const {
+@@ -311,7 +392,7 @@
+ std::unique_ptr<update_client::ProtocolHandlerFactory>
+ ChromeConfigurator::GetProtocolHandlerFactory() const {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+-  return configurator_impl_.GetProtocolHandlerFactory();
++  return std::make_unique<ComponentProtocolHandlerFactory>();
+ }
+ 
+ std::optional<bool> ChromeConfigurator::IsMachineExternallyManaged() const {
+@@ -334,16 +415,6 @@
+   return crx_cache_;
+ }
+ 
+-std::optional<base::FilePath> ChromeConfigurator::GetBackgroundDownloaderCache()
+-    const {
+-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+-  base::FilePath path;
+-  bool result = base::PathService::Get(chrome::DIR_USER_DATA, &path);
+-  return result
+-             ? std::optional<base::FilePath>(path.AppendASCII("download_cache"))
+-             : std::nullopt;
+-}
+-
+ #if BUILDFLAG(CHROME_FOR_TESTING)
+ std::vector<std::string> ChromeConfigurator::GetRequiredComponents() const {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+--- a/chrome/browser/component_updater/chrome_component_updater_configurator_unittest.cc
++++ b/chrome/browser/component_updater/chrome_component_updater_configurator_unittest.cc
+@@ -4,20 +4,35 @@
+ 
+ #include "chrome/browser/component_updater/chrome_component_updater_configurator.h"
+ 
++#include <algorithm>
+ #include <memory>
++#include <optional>
+ #include <string>
++#include <string_view>
++#include <utility>
+ #include <vector>
+ 
++#include "base/check.h"
+ #include "base/command_line.h"
++#include "base/containers/span.h"
++#include "base/functional/callback_helpers.h"
++#include "base/json/json_reader.h"
+ #include "base/memory/ref_counted.h"
+ #include "base/test/task_environment.h"
+ #include "base/time/time.h"
++#include "base/values.h"
++#include "base/version.h"
++#include "build/branding_buildflags.h"
+ #include "components/component_updater/component_updater_command_line_config_policy.h"
+ #include "components/component_updater/component_updater_switches.h"
+ #include "components/component_updater/component_updater_url_constants.h"
+ #include "components/component_updater/configurator_impl.h"
+ #include "components/prefs/testing_pref_service.h"
+ #include "components/update_client/configurator.h"
++#include "components/update_client/persisted_data.h"
++#include "components/update_client/protocol_definition.h"
++#include "components/update_client/protocol_handler.h"
++#include "components/update_client/protocol_serializer.h"
+ #include "components/update_client/update_client.h"
+ #include "components/update_client/update_query_params.h"
+ #include "testing/gtest/include/gtest/gtest.h"
+@@ -25,6 +40,77 @@
+ 
+ namespace component_updater {
+ 
++namespace {
++
++constexpr char kComponentUpdateUrl[] =
++    "https://update.googleapis.com/service/update2/json";
++constexpr char kCrlSetId[] = "hfnkpimlhhgieaddgfemjhofmfblmnib";
++constexpr char kCachedPayloadHash[] =
++    "9c08e9b1aea5496c13c278eb18267400ae2dec361a8497e83e207844b5ae4ec5";
++constexpr std::string_view kRequestKeysNotSent[] = {"domainjoined", "hw",
++                                                    "updaters"};
++constexpr std::string_view kAppKeysNotSent[] = {
++    "brand", "cohort",      "cohorthint", "cohortname", "cached_items",
++    "iid",   "installdate", "lang",       "ping"};
++constexpr std::string_view kRequestKeysSent[] = {
++    "@os",         "@updater",       "acceptformat",  "apps",
++    "arch",        "dedup",          "ismachine",     "os",
++    "prodchannel", "prodversion",    "protocol",      "requestid",
++    "sessionid",   "updaterchannel", "updaterversion"};
++constexpr std::string_view kAppKeysSent[] = {"appid", "updatecheck", "version"};
++
++void ExpectOnlyKeys(const base::DictValue& dict,
++                    base::span<const std::string_view> allowed) {
++  for (const auto [key, value] : dict) {
++    EXPECT_TRUE(std::ranges::contains(allowed, std::string_view(key))) << key;
++  }
++}
++
++void PersistLinkingState(update_client::PersistedData& metadata) {
++  metadata.SetDateLastData({kCrlSetId}, 7233, base::DoNothing());
++  metadata.SetCohort(kCrlSetId, "1:287f:");
++  metadata.SetCohortHint(kCrlSetId, "hint");
++  metadata.SetCohortName(kCrlSetId, "Auto full");
++  metadata.SetInstallId(kCrlSetId, "{7d3f5a2e-0a61-4c1b-9d0e-6f1f0f6a8b11}");
++}
++
++update_client::protocol_request::Request MakeRequest(
++    const update_client::PersistedData& metadata) {
++  std::vector<update_client::protocol_request::App> apps;
++  apps.push_back(update_client::MakeProtocolApp(
++      kCrlSetId, base::Version("10850"), "", "GGLS",
++      metadata.GetInstallId(kCrlSetId), "en",
++      metadata.GetInstallDate(kCrlSetId), "", "", {},
++      metadata.GetCohort(kCrlSetId), metadata.GetCohortHint(kCrlSetId),
++      metadata.GetCohortName(kCrlSetId), "", {}, {kCachedPayloadHash},
++      update_client::MakeProtocolUpdateCheck(false, "", false, false), {},
++      update_client::MakeProtocolPing(kCrlSetId, &metadata, true),
++      std::nullopt));
++  return update_client::MakeProtocolRequest(
++      false, "{session}", "chrome", "155.0.8059.84", "stable", "mac", "", true,
++      {}, {{"name", "Keystone"}, {"version", "1.3.16"}}, std::move(apps));
++}
++
++base::DictValue SerializedRequest(
++    const update_client::ProtocolHandlerFactory& factory,
++    const update_client::protocol_request::Request& request) {
++  std::optional<base::DictValue> root = base::JSONReader::ReadDict(
++      factory.CreateSerializer()->Serialize(request), base::JSON_PARSE_RFC);
++  CHECK(root);
++  base::DictValue* body = root->FindDict("request");
++  CHECK(body);
++  return std::move(*body);
++}
++
++const base::DictValue& OnlyApp(const base::DictValue& body) {
++  const base::ListValue* apps = body.FindList("apps");
++  CHECK(apps);
++  CHECK_EQ(1u, apps->size());
++  return (*apps)[0].GetDict();
++}
++
++}
++
+ class ChromeComponentUpdaterConfiguratorTest : public testing::Test {
+  protected:
+   // Overrides from testing::Test.
+@@ -66,23 +152,16 @@
+   CHECK_EQ(base::Seconds(10), config->UpdateDelay());
+ }
+ 
+-TEST_F(ChromeComponentUpdaterConfiguratorTest, TestOverrideUrl) {
+-  const char overrideUrl[] = "http://0.0.0.0/";
+-
++TEST_F(ChromeComponentUpdaterConfiguratorTest, TestOverrideUrlIgnored) {
+   base::CommandLine cmdline(*base::CommandLine::ForCurrentProcess());
++  cmdline.AppendSwitchASCII(switches::kComponentUpdater,
++                            "url-source=http://0.0.0.0/");
+ 
+-  std::string val = "url-source";
+-  val.append("=");
+-  val.append(overrideUrl);
+-  cmdline.AppendSwitchASCII(switches::kComponentUpdater, val.c_str());
+-
+   const auto config(
+       MakeChromeComponentUpdaterConfigurator(&cmdline, pref_service()));
+ 
+-  const std::vector<GURL> urls = config->UpdateUrl();
+-
+-  ASSERT_EQ(1U, urls.size());
+-  ASSERT_EQ(overrideUrl, urls.at(0).possibly_invalid_spec());
++  EXPECT_EQ(std::vector<GURL>{GURL(kComponentUpdateUrl)}, config->UpdateUrl());
++  EXPECT_TRUE(config->PingUrl().empty());
+ }
+ 
+ TEST_F(ChromeComponentUpdaterConfiguratorTest, TestSwitchRequestParam) {
+@@ -120,11 +199,9 @@
+   {
+     const auto config(
+         MakeChromeComponentUpdaterConfigurator(cmdline, pref_service()));
+-    const auto urls = config->UpdateUrl();
+-    ASSERT_EQ(2u, urls.size());
+-    ASSERT_STREQ(kUpdaterJSONDefaultUrl, urls[0].spec().c_str());
+-    ASSERT_STREQ(kUpdaterJSONFallbackUrl, urls[1].spec().c_str());
+-    ASSERT_EQ(config->UpdateUrl(), config->PingUrl());
++    EXPECT_EQ(std::vector<GURL>{GURL(kComponentUpdateUrl)},
++              config->UpdateUrl());
++    EXPECT_TRUE(config->PingUrl().empty());
+   }
+ 
+   // Use the configurator implementation to test the filtering of
+@@ -149,6 +226,66 @@
+   }
+ }
+ 
++TEST_F(ChromeComponentUpdaterConfiguratorTest,
++       TestBackgroundDownloaderDisabled) {
++  base::CommandLine cmdline(*base::CommandLine::ForCurrentProcess());
++  const auto config(
++      MakeChromeComponentUpdaterConfigurator(&cmdline, pref_service()));
++  EXPECT_FALSE(config->EnabledBackgroundDownloader());
++}
++
++TEST_F(ChromeComponentUpdaterConfiguratorTest,
++       TestRequestOmitsPersistedLinkingState) {
++  base::CommandLine cmdline(*base::CommandLine::ForCurrentProcess());
++  const auto config(
++      MakeChromeComponentUpdaterConfigurator(&cmdline, pref_service()));
++  update_client::PersistedData& metadata = *config->GetPersistedData();
++  PersistLinkingState(metadata);
++  ASSERT_FALSE(metadata.GetPingFreshness(kCrlSetId).empty());
++  ASSERT_EQ(7233, metadata.GetInstallDate(kCrlSetId));
++  ASSERT_FALSE(metadata.GetInstallId(kCrlSetId).empty());
++
++  const base::DictValue body = SerializedRequest(
++      *config->GetProtocolHandlerFactory(), MakeRequest(metadata));
++  for (std::string_view key : kRequestKeysNotSent) {
++    EXPECT_FALSE(body.contains(key)) << key;
++  }
++  ExpectOnlyKeys(body, kRequestKeysSent);
++  const base::DictValue& app = OnlyApp(body);
++  for (std::string_view key : kAppKeysNotSent) {
++    EXPECT_FALSE(app.contains(key)) << key;
++  }
++  ExpectOnlyKeys(app, kAppKeysSent);
++  EXPECT_EQ(kCrlSetId, *app.FindString("appid"));
++  EXPECT_EQ("10850", *app.FindString("version"));
++  EXPECT_TRUE(app.FindDict("updatecheck"));
++  EXPECT_TRUE(body.FindString("sessionid"));
++}
++
++TEST_F(ChromeComponentUpdaterConfiguratorTest,
++       TestDefaultSerializerStillSendsPersistedState) {
++  base::CommandLine cmdline(*base::CommandLine::ForCurrentProcess());
++  const auto config(
++      MakeChromeComponentUpdaterConfigurator(&cmdline, pref_service()));
++  update_client::PersistedData& metadata = *config->GetPersistedData();
++  PersistLinkingState(metadata);
++
++  const update_client::ProtocolHandlerFactoryJSON extension_factory;
++  const base::DictValue body =
++      SerializedRequest(extension_factory, MakeRequest(metadata));
++  EXPECT_TRUE(body.contains("domainjoined"));
++  EXPECT_TRUE(body.contains("hw"));
++  EXPECT_EQ(BUILDFLAG(GOOGLE_CHROME_BRANDING), body.contains("updaters"));
++  const base::DictValue& app = OnlyApp(body);
++  for (std::string_view key : kAppKeysNotSent) {
++    EXPECT_TRUE(app.contains(key)) << key;
++  }
++  const base::DictValue* ping = app.FindDict("ping");
++  ASSERT_TRUE(ping);
++  EXPECT_TRUE(ping->FindString("ping_freshness"));
++  EXPECT_EQ(7233, app.FindInt("installdate"));
++}
++
+ TEST_F(ChromeComponentUpdaterConfiguratorTest, TestProdId) {
+   base::CommandLine cmdline(*base::CommandLine::ForCurrentProcess());
+   const auto config(
+--- a/components/component_updater/component_updater_service.cc
++++ b/components/component_updater/component_updater_service.cc
+@@ -9,10 +9,12 @@
+ #include <memory>
+ #include <optional>
+ #include <string>
++#include <string_view>
+ #include <utility>
+ #include <vector>
+ 
+ #include "base/check.h"
++#include "base/containers/fixed_flat_set.h"
+ #include "base/files/file_path.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback.h"
+@@ -51,6 +53,13 @@
+   UPDATE_TYPE_AUTOMATIC,
+   UPDATE_TYPE_COUNT,
+ };
++
++constexpr auto kNetworkUpdatableComponents =
++    base::MakeFixedFlatSet<std::string_view>({
++        "efniojlnjndmcbiieegkicadnoecjjef",
++        "giekcmmlnklenlaomppkphknjmnnpneh",
++        "hfnkpimlhhgieaddgfemjhofmfblmnib",
++    });
+ 
+ }  // namespace
+ 
+@@ -494,8 +503,9 @@
+   std::vector<std::optional<CrxComponent>> crxs;
+   for (std::optional<ComponentRegistration> item :
+        component_updater::GetCrxComponents(components_, ids)) {
+-    crxs.push_back(item ? std::optional<CrxComponent>{ToCrxComponent(*item)}
+-                        : std::nullopt);
++    crxs.push_back(item && kNetworkUpdatableComponents.contains(item->app_id)
++                       ? std::optional<CrxComponent>{ToCrxComponent(*item)}
++                       : std::nullopt);
+   }
+   std::move(callback).Run(crxs);
+ }
+--- a/components/component_updater/component_updater_service_unittest.cc
++++ b/components/component_updater/component_updater_service_unittest.cc
+@@ -21,6 +21,7 @@
+ #include "base/memory/ref_counted.h"
+ #include "base/run_loop.h"
+ #include "base/task/sequenced_task_runner.h"
++#include "base/test/bind.h"
+ #include "base/test/metrics/histogram_tester.h"
+ #include "base/test/task_environment.h"
+ #include "base/time/time.h"
+@@ -704,6 +705,59 @@
+ 
+   EXPECT_TRUE(component_updater().GetComponentDetails(id, &item));
+   EXPECT_TRUE(item.component);
++}
++
++TEST_F(ComponentUpdaterTest, OnlySecurityComponentsReachUpdateClient) {
++  ON_CALL(scheduler(), Schedule(_, _, _, _)).WillByDefault(Return());
++  EXPECT_CALL(scheduler(), Schedule(_, _, _, _));
++  EXPECT_CALL(update_client(), Stop());
++  EXPECT_CALL(scheduler(), Stop());
++
++  const std::string crl_set = "hfnkpimlhhgieaddgfemjhofmfblmnib";
++  const std::string pki_metadata = "efniojlnjndmcbiieegkicadnoecjjef";
++  const std::string ssl_error_assistant = "giekcmmlnklenlaomppkphknjmnnpneh";
++  const std::string denied = "jebgalgnebhfojomionfpkfelancnnkf";
++  const std::string unregistered = "ihfokbkgjpifnbbojhneepfflplebdkc";
++  for (const std::string& id :
++       {crl_set, denied, pki_metadata, ssl_error_assistant}) {
++    ASSERT_TRUE(component_updater().RegisterComponent(ComponentRegistration(
++        id, {}, base::ToVector(update_client::jebg_hash), base::Version("1.0"),
++        {}, {}, nullptr, base::MakeRefCounted<MockInstaller>(), false, true,
++        true, true, true)));
++  }
++
++  UpdateClient::CrxDataCallback crx_data_callback;
++  EXPECT_CALL(update_client(), Update(_, _, _, true, _))
++      .WillOnce([&](const std::vector<std::string>&,
++                    UpdateClient::CrxDataCallback callback,
++                    UpdateClient::CrxStateChangeCallback, bool,
++                    update_client::Callback) {
++        crx_data_callback = std::move(callback);
++      });
++  OnDemandTester tester;
++  tester.OnDemand(&component_updater(), denied,
++                  OnDemandUpdater::Priority::FOREGROUND);
++  ASSERT_TRUE(crx_data_callback);
++
++  std::vector<std::optional<update_client::CrxComponent>> crxs;
++  std::move(crx_data_callback)
++      .Run(
++          {denied, crl_set, unregistered, pki_metadata, denied,
++           ssl_error_assistant},
++          base::BindLambdaForTesting(
++              [&](const std::vector<std::optional<update_client::CrxComponent>>&
++                      result) { crxs = result; }));
++
++  ASSERT_EQ(6u, crxs.size());
++  EXPECT_FALSE(crxs[0]);
++  ASSERT_TRUE(crxs[1]);
++  EXPECT_EQ(crl_set, crxs[1]->app_id);
++  EXPECT_FALSE(crxs[2]);
++  ASSERT_TRUE(crxs[3]);
++  EXPECT_EQ(pki_metadata, crxs[3]->app_id);
++  EXPECT_FALSE(crxs[4]);
++  ASSERT_TRUE(crxs[5]);
++  EXPECT_EQ(ssl_error_assistant, crxs[5]->app_id);
+ }
+ 
+ }  // namespace component_updater
+--- a/components/update_client/net/network_chromium.h
++++ b/components/update_client/net/network_chromium.h
+@@ -19,11 +19,17 @@
+ 
+ using SendCookiesPredicate = base::RepeatingCallback<bool(const GURL& url)>;
+ 
++enum class FetchKind { kUpdateCheck, kDownload };
++
++using AllowedDestinationPredicate =
++    base::RepeatingCallback<bool(FetchKind kind, const GURL& url)>;
++
+ class NetworkFetcherChromiumFactory : public NetworkFetcherFactory {
+  public:
+   NetworkFetcherChromiumFactory(
+       scoped_refptr<network::SharedURLLoaderFactory> shared_url_network_factory,
+-      SendCookiesPredicate cookie_predicate);
++      SendCookiesPredicate cookie_predicate,
++      AllowedDestinationPredicate allowed_destination = {});
+ 
+   NetworkFetcherChromiumFactory(const NetworkFetcherChromiumFactory&) = delete;
+   NetworkFetcherChromiumFactory& operator=(
+@@ -37,6 +43,7 @@
+  private:
+   scoped_refptr<network::SharedURLLoaderFactory> shared_url_network_factory_;
+   SendCookiesPredicate cookie_predicate_;
++  AllowedDestinationPredicate allowed_destination_;
+ };
+ 
+ }  // namespace update_client
+--- a/components/update_client/net/network_impl.h
++++ b/components/update_client/net/network_impl.h
+@@ -8,7 +8,9 @@
+ #include <stdint.h>
+ 
+ #include <memory>
++#include <optional>
+ #include <string>
++#include <vector>
+ 
+ #include "base/files/file_path.h"
+ #include "base/functional/callback_forward.h"
+@@ -18,6 +20,10 @@
+ #include "components/update_client/network.h"
+ #include "services/network/public/mojom/url_response_head.mojom-forward.h"
+ 
++namespace net {
++struct RedirectInfo;
++}
++
+ namespace network {
+ class SharedURLLoaderFactory;
+ class SimpleURLLoader;
+@@ -29,7 +35,8 @@
+  public:
+   explicit NetworkFetcherImpl(
+       scoped_refptr<network::SharedURLLoaderFactory> shared_url_network_factory,
+-      SendCookiesPredicate cookie_predicate);
++      SendCookiesPredicate cookie_predicate,
++      AllowedDestinationPredicate allowed_destination = {});
+ 
+   NetworkFetcherImpl(const NetworkFetcherImpl&) = delete;
+   NetworkFetcherImpl& operator=(const NetworkFetcherImpl&) = delete;
+@@ -67,8 +74,20 @@
+   void OnDownloadToFileComplete(base::FilePath file_path);
+   void CancelDownloadToFile();
+ 
++  bool IsAllowedDestination(FetchKind kind, const GURL& url) const;
++  void OnRestrictedPostRequestComplete(
++      std::optional<std::string> response_body);
++  void OnRestrictedRedirect(
++      FetchKind kind,
++      const GURL& url_before_redirect,
++      const net::RedirectInfo& redirect_info,
++      const network::mojom::URLResponseHead& response_head,
++      std::vector<std::string>* removed_headers);
++
+   scoped_refptr<network::SharedURLLoaderFactory> shared_url_network_factory_;
+   SendCookiesPredicate cookie_predicate_;
++  AllowedDestinationPredicate allowed_destination_;
++  PostRequestCompleteCallback post_request_complete_callback_;
+   // The loader and the completion callback of the download in progress, if
+   // any. Both are reset when the download completes or is cancelled.
+   std::unique_ptr<network::SimpleURLLoader> simple_url_loader_;
+--- a/components/update_client/net/network_impl.cc
++++ b/components/update_client/net/network_impl.cc
+@@ -20,6 +20,7 @@
+ #include "net/base/net_errors.h"
+ #include "net/http/http_response_headers.h"
+ #include "net/traffic_annotation/network_traffic_annotation.h"
++#include "net/url_request/redirect_info.h"
+ #include "services/network/public/cpp/is_potentially_trustworthy.h"
+ #include "services/network/public/cpp/resource_request.h"
+ #include "services/network/public/cpp/shared_url_loader_factory.h"
+@@ -109,11 +110,18 @@
+ 
+ NetworkFetcherImpl::NetworkFetcherImpl(
+     scoped_refptr<network::SharedURLLoaderFactory> shared_url_network_factory,
+-    SendCookiesPredicate cookie_predicate)
++    SendCookiesPredicate cookie_predicate,
++    AllowedDestinationPredicate allowed_destination)
+     : shared_url_network_factory_(shared_url_network_factory),
+-      cookie_predicate_(cookie_predicate) {}
++      cookie_predicate_(cookie_predicate),
++      allowed_destination_(std::move(allowed_destination)) {}
+ NetworkFetcherImpl::~NetworkFetcherImpl() = default;
+ 
++bool NetworkFetcherImpl::IsAllowedDestination(FetchKind kind,
++                                              const GURL& url) const {
++  return allowed_destination_.is_null() || allowed_destination_.Run(kind, url);
++}
++
+ void NetworkFetcherImpl::PostRequest(
+     const GURL& url,
+     const std::string& post_data,
+@@ -122,6 +130,15 @@
+     ResponseStartedCallback response_started_callback,
+     ProgressCallback progress_callback,
+     PostRequestCompleteCallback post_request_complete_callback) {
++  if (!IsAllowedDestination(FetchKind::kUpdateCheck, url) ||
++      (!allowed_destination_.is_null() && post_data.empty())) {
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(std::move(post_request_complete_callback),
++                                  std::optional<std::string>(),
++                                  net::ERR_BLOCKED_BY_CLIENT, std::string(),
++                                  std::string(), std::string(), int64_t{-1}));
++    return;
++  }
+   auto resource_request = std::make_unique<network::ResourceRequest>();
+   resource_request->url = url;
+   resource_request->method = "POST";
+@@ -146,6 +163,21 @@
+       &NetworkFetcherImpl::OnProgressCallback, weak_ptr_factory_.GetWeakPtr(),
+       std::move(progress_callback)));
+   static constexpr size_t kMaxResponseSize = 1024 * 1024;
++  if (!allowed_destination_.is_null()) {
++    CHECK(!simple_url_loader_);
++    CHECK(!post_request_complete_callback_);
++    post_request_complete_callback_ = std::move(post_request_complete_callback);
++    simple_url_loader_ = std::move(simple_url_loader);
++    simple_url_loader_->SetOnRedirectCallback(base::BindRepeating(
++        &NetworkFetcherImpl::OnRestrictedRedirect,
++        weak_ptr_factory_.GetWeakPtr(), FetchKind::kUpdateCheck));
++    simple_url_loader_->DownloadToString(
++        shared_url_network_factory_.get(),
++        base::BindOnce(&NetworkFetcherImpl::OnRestrictedPostRequestComplete,
++                       weak_ptr_factory_.GetWeakPtr()),
++        kMaxResponseSize);
++    return;
++  }
+   simple_url_loader->DownloadToString(
+       shared_url_network_factory_.get(),
+       base::BindOnce(
+@@ -172,6 +204,12 @@
+     ResponseStartedCallback response_started_callback,
+     ProgressCallback progress_callback,
+     DownloadToFileCompleteCallback download_to_file_complete_callback) {
++  if (!IsAllowedDestination(FetchKind::kDownload, url)) {
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(std::move(download_to_file_complete_callback),
++                                  net::ERR_BLOCKED_BY_CLIENT, int64_t{0}));
++    return base::DoNothing();
++  }
+   auto resource_request = std::make_unique<network::ResourceRequest>();
+   resource_request->url = url;
+   resource_request->method = "GET";
+@@ -206,6 +244,11 @@
+       kMaxRetriesOnNetworkChange,
+       network::SimpleURLLoader::RetryMode::RETRY_ON_NETWORK_CHANGE);
+   simple_url_loader_->SetAllowPartialResults(true);
++  if (!allowed_destination_.is_null()) {
++    simple_url_loader_->SetOnRedirectCallback(base::BindRepeating(
++        &NetworkFetcherImpl::OnRestrictedRedirect,
++        weak_ptr_factory_.GetWeakPtr(), FetchKind::kDownload));
++  }
+   simple_url_loader_->SetOnResponseStartedCallback(base::BindOnce(
+       &NetworkFetcherImpl::OnResponseStartedCallback,
+       weak_ptr_factory_.GetWeakPtr(), std::move(response_started_callback)));
+@@ -246,6 +289,42 @@
+                                 net::ERR_ABORTED, /*content_size=*/0));
+ }
+ 
++void NetworkFetcherImpl::OnRestrictedPostRequestComplete(
++    std::optional<std::string> response_body) {
++  CHECK(simple_url_loader_);
++  std::unique_ptr<network::SimpleURLLoader> simple_url_loader =
++      std::move(simple_url_loader_);
++  std::move(post_request_complete_callback_)
++      .Run(std::move(response_body), simple_url_loader->NetError(),
++           GetStringHeader(simple_url_loader.get(), kHeaderEtag),
++           GetStringHeader(simple_url_loader.get(), kHeaderXCupServerProof),
++           std::string(),
++           GetInt64Header(simple_url_loader.get(), kHeaderXRetryAfter));
++}
++
++void NetworkFetcherImpl::OnRestrictedRedirect(
++    FetchKind kind,
++    const GURL& url_before_redirect,
++    const net::RedirectInfo& redirect_info,
++    const network::mojom::URLResponseHead& response_head,
++    std::vector<std::string>* removed_headers) {
++  if (IsAllowedDestination(kind, redirect_info.new_url)) {
++    return;
++  }
++  simple_url_loader_.reset();
++  if (post_request_complete_callback_) {
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(std::move(post_request_complete_callback_),
++                                  std::optional<std::string>(),
++                                  net::ERR_UNSAFE_REDIRECT, std::string(),
++                                  std::string(), std::string(), int64_t{-1}));
++    return;
++  }
++  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE, base::BindOnce(std::move(download_to_file_complete_callback_),
++                                net::ERR_UNSAFE_REDIRECT, int64_t{0}));
++}
++
+ void NetworkFetcherImpl::OnResponseStartedCallback(
+     ResponseStartedCallback response_started_callback,
+     const GURL& final_url,
+@@ -262,15 +341,17 @@
+ 
+ NetworkFetcherChromiumFactory::NetworkFetcherChromiumFactory(
+     scoped_refptr<network::SharedURLLoaderFactory> shared_url_network_factory,
+-    SendCookiesPredicate cookie_predicate)
++    SendCookiesPredicate cookie_predicate,
++    AllowedDestinationPredicate allowed_destination)
+     : shared_url_network_factory_(shared_url_network_factory),
+-      cookie_predicate_(cookie_predicate) {}
++      cookie_predicate_(cookie_predicate),
++      allowed_destination_(std::move(allowed_destination)) {}
+ 
+ NetworkFetcherChromiumFactory::~NetworkFetcherChromiumFactory() = default;
+ 
+ std::unique_ptr<NetworkFetcher> NetworkFetcherChromiumFactory::Create() const {
+-  return std::make_unique<NetworkFetcherImpl>(shared_url_network_factory_,
+-                                              cookie_predicate_);
++  return std::make_unique<NetworkFetcherImpl>(
++      shared_url_network_factory_, cookie_predicate_, allowed_destination_);
+ }
+ 
+ }  // namespace update_client
+--- a/components/update_client/url_fetcher_downloader_unittest.cc
++++ b/components/update_client/url_fetcher_downloader_unittest.cc
+@@ -4,12 +4,19 @@
+ 
+ #include "components/update_client/url_fetcher_downloader.h"
+ 
++#include <cstdint>
+ #include <memory>
++#include <optional>
+ #include <string>
++#include <string_view>
+ #include <utility>
++#include <vector>
+ 
++#include "base/byte_size.h"
+ #include "base/containers/flat_map.h"
++#include "base/containers/span.h"
+ #include "base/files/file_util.h"
++#include "base/files/scoped_temp_dir.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback_helpers.h"
+ #include "base/memory/scoped_refptr.h"
+@@ -18,16 +25,23 @@
+ #include "base/task/sequenced_task_runner.h"
+ #include "base/task/thread_pool/thread_pool_instance.h"
+ #include "base/test/bind.h"
++#include "base/test/run_until.h"
+ #include "base/test/task_environment.h"
+ #include "components/update_client/crx_downloader.h"
+ #include "components/update_client/net/network_chromium.h"
+ #include "components/update_client/network.h"
+ #include "components/update_client/update_client_errors.h"
++#include "mojo/public/cpp/system/data_pipe.h"
+ #include "net/base/net_errors.h"
++#include "net/http/http_status_code.h"
++#include "net/url_request/redirect_info.h"
++#include "services/network/public/cpp/url_loader_completion_status.h"
+ #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
+ #include "services/network/test/test_url_loader_factory.h"
++#include "services/network/test/test_utils.h"
+ #include "testing/gtest/include/gtest/gtest.h"
+ #include "url/gurl.h"
++#include "url/url_constants.h"
+ 
+ namespace update_client {
+ 
+@@ -97,6 +111,17 @@
+ 
+   base::RepeatingClosure on_start_;
+ };
++
++bool TestDestinationAllowed(FetchKind kind, const GURL& url) {
++  if (!url.SchemeIs(url::kHttpsScheme)) {
++    return false;
++  }
++  if (kind == FetchKind::kUpdateCheck) {
++    return url.host() == "localhost" && url.path() == "/update";
++  }
++  return url.host() == "localhost" || url.host() == "mirror.localhost" ||
++         url.host() == "edge.localhost";
++}
+ 
+ }  // namespace
+ 
+@@ -263,6 +288,275 @@
+ 
+   EXPECT_EQ(1, num_complete_calls_);
+   EXPECT_EQ(std::to_underlying(CrxDownloaderError::CANCELLED), result_.error);
++}
++
++class RestrictedNetworkFetcherTest : public testing::Test {
++ protected:
++  RestrictedNetworkFetcherTest()
++      : task_environment_(base::test::TaskEnvironment::MainThreadType::IO),
++        loader_factory_(true),
++        shared_url_loader_factory_(
++            base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
++                &loader_factory_)) {
++    CHECK(temp_dir_.CreateUniqueTempDir());
++  }
++
++  scoped_refptr<NetworkFetcherFactory> MakeFactory(bool restricted) {
++    return base::MakeRefCounted<NetworkFetcherChromiumFactory>(
++        shared_url_loader_factory_,
++        base::BindRepeating([](const GURL& url) { return false; }),
++        restricted ? base::BindRepeating(&TestDestinationAllowed)
++                   : AllowedDestinationPredicate());
++  }
++
++  void StartDownload(NetworkFetcher& fetcher, const GURL& url) {
++    fetcher.DownloadToFile(url, temp_dir_.GetPath().AppendASCII("download"),
++                           base::DoNothing(), base::DoNothing(),
++                           base::BindLambdaForTesting([&](int error, int64_t) {
++                             ++completions_;
++                             net_error_ = error;
++                           }));
++  }
++
++  void StartPost(NetworkFetcher& fetcher,
++                 const GURL& url,
++                 const std::string& body = "{}") {
++    fetcher.PostRequest(
++        url, body, "application/json", {}, base::DoNothing(), base::DoNothing(),
++        base::BindLambdaForTesting([&](std::optional<std::string>, int error,
++                                       const std::string&, const std::string&,
++                                       const std::string&, int64_t) {
++          ++completions_;
++          net_error_ = error;
++        }));
++  }
++
++  network::TestURLLoaderFactory::PendingRequest* WaitForRequest(
++      const GURL& url) {
++    network::TestURLLoaderFactory::PendingRequest* found = nullptr;
++    CHECK(base::test::RunUntil([&] {
++      for (auto& pending : *loader_factory_.pending_requests()) {
++        if (pending.request.url == url && pending.client.is_connected()) {
++          found = &pending;
++          return true;
++        }
++      }
++      return false;
++    }));
++    return found;
++  }
++
++  void Redirect(network::TestURLLoaderFactory::PendingRequest& request,
++                const GURL& to) {
++    net::RedirectInfo redirect;
++    redirect.new_url = to;
++    redirect.new_method = request.request.method;
++    redirect.status_code = net::HTTP_TEMPORARY_REDIRECT;
++    request.client->OnReceiveRedirect(
++        redirect, network::CreateURLResponseHead(net::HTTP_TEMPORARY_REDIRECT));
++    task_environment_.RunUntilIdle();
++  }
++
++  void Respond(network::TestURLLoaderFactory::PendingRequest& request,
++               std::string_view content) {
++    mojo::ScopedDataPipeProducerHandle producer;
++    mojo::ScopedDataPipeConsumerHandle consumer;
++    CHECK_EQ(MOJO_RESULT_OK,
++             mojo::CreateDataPipe(content.size(), producer, consumer));
++    CHECK_EQ(MOJO_RESULT_OK,
++             producer->WriteAllData(base::as_byte_span(content)));
++    producer.reset();
++    request.client->OnReceiveResponse(
++        network::CreateURLResponseHead(net::HTTP_OK), std::move(consumer),
++        std::nullopt);
++    network::URLLoaderCompletionStatus status(net::OK);
++    status.decoded_body_length = base::ByteSize(content.size());
++    request.client->OnComplete(status);
++  }
++
++  size_t Follows(const network::TestURLLoaderFactory::PendingRequest& request) {
++    return request.test_url_loader->follow_redirect_params().size();
++  }
++
++  base::test::TaskEnvironment task_environment_;
++  base::ScopedTempDir temp_dir_;
++  network::TestURLLoaderFactory loader_factory_;
++  scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory_;
++  int completions_ = 0;
++  int net_error_ = 1;
++};
++
++TEST_F(RestrictedNetworkFetcherTest, RefusesHttpUrls) {
++  std::unique_ptr<NetworkFetcher> download = MakeFactory(true)->Create();
++  StartDownload(*download, GURL("http://localhost/a.crx3"));
++  ASSERT_TRUE(base::test::RunUntil([&] { return completions_ == 1; }));
++  EXPECT_EQ(net::ERR_BLOCKED_BY_CLIENT, net_error_);
++
++  std::unique_ptr<NetworkFetcher> post = MakeFactory(true)->Create();
++  StartPost(*post, GURL("http://localhost/update"));
++  ASSERT_TRUE(base::test::RunUntil([&] { return completions_ == 2; }));
++  EXPECT_EQ(net::ERR_BLOCKED_BY_CLIENT, net_error_);
++
++  task_environment_.RunUntilIdle();
++  EXPECT_EQ(2, completions_);
++  EXPECT_EQ(0u, loader_factory_.total_requests());
++}
++
++TEST_F(RestrictedNetworkFetcherTest, DownloadStopsAtRedirectToHttp) {
++  std::unique_ptr<NetworkFetcher> fetcher = MakeFactory(true)->Create();
++  StartDownload(*fetcher, GURL("https://localhost/a.crx3"));
++  network::TestURLLoaderFactory::PendingRequest* request =
++      WaitForRequest(GURL("https://localhost/a.crx3"));
++  Redirect(*request, GURL("https://mirror.localhost/a.crx3"));
++  EXPECT_EQ(1u, Follows(*request));
++  Redirect(*request, GURL("http://mirror.localhost/b.crx3"));
++
++  EXPECT_EQ(1u, Follows(*request));
++  EXPECT_EQ(1, completions_);
++  EXPECT_EQ(net::ERR_UNSAFE_REDIRECT, net_error_);
++  EXPECT_FALSE(request->client.is_connected());
+ }
+ 
++TEST_F(RestrictedNetworkFetcherTest, PostStopsAtRedirectToHttp) {
++  std::unique_ptr<NetworkFetcher> fetcher = MakeFactory(true)->Create();
++  StartPost(*fetcher, GURL("https://localhost/update"));
++  network::TestURLLoaderFactory::PendingRequest* request =
++      WaitForRequest(GURL("https://localhost/update"));
++  Redirect(*request, GURL("http://localhost/update"));
++
++  EXPECT_EQ(0u, Follows(*request));
++  EXPECT_EQ(1, completions_);
++  EXPECT_EQ(net::ERR_UNSAFE_REDIRECT, net_error_);
++  EXPECT_FALSE(request->client.is_connected());
++}
++
++TEST_F(RestrictedNetworkFetcherTest, FollowsHttpsRedirectChains) {
++  std::unique_ptr<NetworkFetcher> download = MakeFactory(true)->Create();
++  StartDownload(*download, GURL("https://localhost/a.crx3"));
++  network::TestURLLoaderFactory::PendingRequest* request =
++      WaitForRequest(GURL("https://localhost/a.crx3"));
++  Redirect(*request, GURL("https://mirror.localhost/a.crx3"));
++  Redirect(*request, GURL("https://edge.localhost/a.crx3"));
++  EXPECT_EQ(2u, Follows(*request));
++  EXPECT_EQ(0, completions_);
++  Respond(*request, "crx");
++  ASSERT_TRUE(base::test::RunUntil([&] { return completions_ == 1; }));
++  EXPECT_EQ(net::OK, net_error_);
++
++  std::unique_ptr<NetworkFetcher> post = MakeFactory(true)->Create();
++  StartPost(*post, GURL("https://localhost/update"));
++  request = WaitForRequest(GURL("https://localhost/update"));
++  Redirect(*request, GURL("https://localhost/update?moved=1"));
++  EXPECT_EQ(1u, Follows(*request));
++  Respond(*request, "{}");
++  ASSERT_TRUE(base::test::RunUntil([&] { return completions_ == 2; }));
++  EXPECT_EQ(net::OK, net_error_);
++
++  task_environment_.RunUntilIdle();
++  EXPECT_EQ(2, completions_);
++}
++
++TEST_F(RestrictedNetworkFetcherTest, RefusesHostsOutsideThePolicy) {
++  std::unique_ptr<NetworkFetcher> download = MakeFactory(true)->Create();
++  StartDownload(*download, GURL("https://other.localhost/a.crx3"));
++  ASSERT_TRUE(base::test::RunUntil([&] { return completions_ == 1; }));
++  EXPECT_EQ(net::ERR_BLOCKED_BY_CLIENT, net_error_);
++
++  std::unique_ptr<NetworkFetcher> post = MakeFactory(true)->Create();
++  StartPost(*post, GURL("https://mirror.localhost/update"));
++  ASSERT_TRUE(base::test::RunUntil([&] { return completions_ == 2; }));
++  EXPECT_EQ(net::ERR_BLOCKED_BY_CLIENT, net_error_);
++
++  std::unique_ptr<NetworkFetcher> empty_post = MakeFactory(true)->Create();
++  StartPost(*empty_post, GURL("https://localhost/update"), "");
++  ASSERT_TRUE(base::test::RunUntil([&] { return completions_ == 3; }));
++  EXPECT_EQ(net::ERR_BLOCKED_BY_CLIENT, net_error_);
++
++  task_environment_.RunUntilIdle();
++  EXPECT_EQ(3, completions_);
++  EXPECT_EQ(0u, loader_factory_.total_requests());
++}
++
++TEST_F(RestrictedNetworkFetcherTest, DownloadStopsAtRedirectToAnotherHost) {
++  std::unique_ptr<NetworkFetcher> fetcher = MakeFactory(true)->Create();
++  StartDownload(*fetcher, GURL("https://localhost/a.crx3"));
++  network::TestURLLoaderFactory::PendingRequest* request =
++      WaitForRequest(GURL("https://localhost/a.crx3"));
++  Redirect(*request, GURL("https://other.localhost/a.crx3"));
++
++  EXPECT_EQ(0u, Follows(*request));
++  EXPECT_EQ(1, completions_);
++  EXPECT_EQ(net::ERR_UNSAFE_REDIRECT, net_error_);
++  EXPECT_FALSE(request->client.is_connected());
++}
++
++TEST_F(RestrictedNetworkFetcherTest, PostStopsAtRedirectToAnotherHost) {
++  std::unique_ptr<NetworkFetcher> fetcher = MakeFactory(true)->Create();
++  StartPost(*fetcher, GURL("https://localhost/update"));
++  network::TestURLLoaderFactory::PendingRequest* request =
++      WaitForRequest(GURL("https://localhost/update"));
++  Redirect(*request, GURL("https://mirror.localhost/update"));
++
++  EXPECT_EQ(0u, Follows(*request));
++  EXPECT_EQ(1, completions_);
++  EXPECT_EQ(net::ERR_UNSAFE_REDIRECT, net_error_);
++  EXPECT_FALSE(request->client.is_connected());
++}
++
++TEST_F(RestrictedNetworkFetcherTest, DefaultFetcherFollowsRedirectsToHttp) {
++  std::unique_ptr<NetworkFetcher> download = MakeFactory(false)->Create();
++  StartDownload(*download, GURL("https://localhost/a.crx3"));
++  network::TestURLLoaderFactory::PendingRequest* request =
++      WaitForRequest(GURL("https://localhost/a.crx3"));
++  Redirect(*request, GURL("http://localhost/b.crx3"));
++  EXPECT_EQ(1u, Follows(*request));
++  Respond(*request, "crx");
++  ASSERT_TRUE(base::test::RunUntil([&] { return completions_ == 1; }));
++  EXPECT_EQ(net::OK, net_error_);
++
++  std::unique_ptr<NetworkFetcher> post = MakeFactory(false)->Create();
++  StartPost(*post, GURL("https://localhost/update"));
++  request = WaitForRequest(GURL("https://localhost/update"));
++  Redirect(*request, GURL("http://localhost/update"));
++  EXPECT_EQ(1u, Follows(*request));
++  Respond(*request, "{}");
++  ASSERT_TRUE(base::test::RunUntil([&] { return completions_ == 2; }));
++  EXPECT_EQ(net::OK, net_error_);
++}
++
++TEST_F(RestrictedNetworkFetcherTest, DownloaderFallsBackFromHttpRedirect) {
++  auto downloader = base::MakeRefCounted<UrlFetcherDownloader>(
++      nullptr, MakeFactory(true), "RestrictedNetworkFetcherTest");
++  const GURL first("https://localhost/a.crx3");
++  const GURL second("https://mirror.localhost/a.crx3");
++  int results = 0;
++  CrxDownloader::Result result;
++  downloader->StartDownload(
++      {GURL("http://localhost/a.crx3"), first, second}, kHash,
++      base::BindLambdaForTesting([&](const CrxDownloader::Result& r) {
++        ++results;
++        result = r;
++      }));
++
++  network::TestURLLoaderFactory::PendingRequest* request =
++      WaitForRequest(first);
++  Redirect(*request, GURL("http://localhost/b.crx3"));
++  EXPECT_EQ(0u, Follows(*request));
++  request = WaitForRequest(second);
++  Respond(*request, "not a crx");
++  ASSERT_TRUE(base::test::RunUntil([&] { return results == 1; }));
++  task_environment_.RunUntilIdle();
++
++  EXPECT_EQ(1, results);
++  EXPECT_EQ(std::to_underlying(CrxDownloaderError::BAD_HASH), result.error);
++  const std::vector<CrxDownloader::DownloadMetrics> metrics =
++      downloader->download_metrics();
++  ASSERT_EQ(3u, metrics.size());
++  EXPECT_EQ(net::ERR_BLOCKED_BY_CLIENT, metrics[0].error);
++  EXPECT_EQ(first, metrics[1].url);
++  EXPECT_EQ(net::ERR_UNSAFE_REDIRECT, metrics[1].error);
++  EXPECT_EQ(second, metrics[2].url);
++  EXPECT_EQ(2u, loader_factory_.total_requests());
++}
++
+ }  // namespace update_client
+--- a/chrome/browser/ui/webui/components/components_handler.cc
++++ b/chrome/browser/ui/webui/components/components_handler.cc
+@@ -13,13 +13,9 @@
+ #include "base/notreached.h"
+ #include "base/values.h"
+ #include "build/build_config.h"
+-#include "chrome/browser/profiles/profile.h"
+ #include "chrome/grit/generated_resources.h"
+-#include "components/helium_services/helium_services_helpers.h"
+-#include "components/prefs/pref_service.h"
+ #include "components/component_updater/component_updater_switches.h"
+ #include "components/update_client/crx_update_item.h"
+-#include "content/public/browser/web_contents.h"
+ #include "ui/base/l10n/l10n_util.h"
+ 
+ ComponentsHandler::ComponentsHandler(
+@@ -104,20 +100,6 @@
+ 
+ std::u16string ComponentsHandler::ServiceStatusToString(
+     update_client::ComponentState state) {
+-
+-  if (state == update_client::ComponentState::kUpdateError) {
+-    Profile* profile = Profile::FromBrowserContext(
+-        web_ui()->GetWebContents()->GetBrowserContext());
+-
+-    if (profile) {
+-      PrefService* prefs = profile->GetPrefs();
+-      if (prefs && !helium::ShouldAccessComponentUpdateService(*prefs)) {
+-        return l10n_util::GetStringUTF16(
+-          IDS_COMPONENTS_SVC_STATUS_ERROR_HELIUM_SERVICES);
+-      }
+-    }
+-  }
+-
+   switch (state) {
+     case update_client::ComponentState::kNew:
+       return l10n_util::GetStringUTF16(IDS_COMPONENTS_SVC_STATUS_NEW);
+--- a/components/component_updater/component_installer.cc
++++ b/components/component_updater/component_installer.cc
+@@ -11,7 +11,6 @@
+ #include <utility>
+ #include <vector>
+ 
+-#include "base/containers/fixed_flat_set.h"
+ #include "base/files/file_enumerator.h"
+ #include "base/files/file_path.h"
+ #include "base/files/file_util.h"
+@@ -109,22 +108,10 @@
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+   CHECK(cus);
+ 
+-  static constexpr auto kAllowedComponents =
+-      base::MakeFixedFlatSet<std::string_view>(
+-          base::sorted_unique,
+-          {
+-              "hfnkpimlhhgieaddgfemjhofmfblmnib",  // CRLSet
+-              "oimompecagnajdejgnnjijobebaeigek",  // WidevineCdm
+-          });
+   auto registration_info = base::MakeRefCounted<RegistrationInfo>();
+   installer_policy_->GetHash(&registration_info->public_key_hash);
+   registration_info->crx_id = update_client::GetCrxIdFromPublicKeyHash(
+       registration_info->public_key_hash);
+-
+-  if (!kAllowedComponents.contains(registration_info->crx_id)) {
+-    return;
+-  }
+-
+   RegisterWithInfo(
+       registration_info,
+       base::BindOnce(&ComponentUpdateService::RegisterComponent,
+--- a/components/component_updater/configurator_impl.cc
++++ b/components/component_updater/configurator_impl.cc
+@@ -134,7 +134,7 @@
+ 
+ bool ConfiguratorImpl::EnabledCupSigning() const {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+-  return false;
++  return true;
+ }
+ 
+ // The default implementation for most embedders returns an empty string.

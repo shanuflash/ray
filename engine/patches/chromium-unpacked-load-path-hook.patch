@@ -1,0 +1,51 @@
+Every unpacked load (UnpackedInstaller::Load: install, reload, Chromium-triggered reloads; LoadFromCommandLine:
+--load-extension) asks g_ray_unpacked_path_allowed with the path it was given and the path it resolved to,
+before it reads the extension. //chrome/browser/ray (ac_scripts_policy.cc) sets it: a load that names the Ray
+Scripts folder must resolve to exactly that real folder, so swapping it for a symlink can't load another
+extension under its name.
+
+--- a/extensions/browser/unpacked_installer.cc
++++ b/extensions/browser/unpacked_installer.cc
+@@ -61,6 +61,10 @@
+ using extensions::Extension;
+ using extensions::SharedModuleInfo;
+ 
++bool (*g_ray_unpacked_path_allowed)(const base::FilePath& requested,
++                                      const base::FilePath& resolved,
++                                      std::u16string* error) = nullptr;
++
+ namespace extensions {
+ 
+ namespace {
+@@ -164,6 +168,13 @@
+ 
+   if (!IsLoadingUnpackedAllowed()) {
+     ReportExtensionLoadError(kUnpackedExtensionsBlocklistedError);
++    return false;
++  }
++
++  if (std::u16string ray_error;
++      g_ray_unpacked_path_allowed &&
++      !g_ray_unpacked_path_allowed(path_in, extension_path_, &ray_error)) {
++    ReportExtensionLoadError(ray_error);
+     return false;
+   }
+ 
+@@ -379,6 +390,17 @@
+     return;
+   }
+ 
++  if (std::u16string ray_error;
++      g_ray_unpacked_path_allowed &&
++      !g_ray_unpacked_path_allowed(extension_path_, resolved_absolute_path,
++                                     &ray_error)) {
++    content::GetUIThreadTaskRunner({base::TaskPriority::USER_BLOCKING})
++        ->PostTask(FROM_HERE,
++                   base::BindOnce(&UnpackedInstaller::ReportExtensionLoadError,
++                                  this, ray_error));
++    return;
++  }
++
+   extension_path_ = resolved_absolute_path;
+   // Set priority explicitly to avoid unwanted task priority inheritance.
+   content::GetUIThreadTaskRunner({base::TaskPriority::USER_BLOCKING})

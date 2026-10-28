@@ -1,0 +1,40 @@
+--- a/chrome/browser/extensions/extension_install_prompt.cc
++++ b/chrome/browser/extensions/extension_install_prompt.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/extensions/extension_install_prompt.h"
++#include "ray/core/ac_hooks.h"  // nogncheck
+ 
+ #include <optional>
+ #include <utility>
+@@ -34,6 +35,14 @@
+ #include "ui/gfx/image/image_skia.h"
+ #include "ui/gfx/image/image_skia_rep.h"
+ 
++// Ray: RayCore (engine/raycore) may ask with its own install prompt.
++bool (*g_ray_extension_install_prompt)(
++    Profile* profile,
++    content::WebContents* parent,
++    const extensions::InstallPromptData& prompt,
++    extensions::ExtensionInstallPromptClient::DoneCallback* done_callback) =
++    nullptr;
++
+ static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+ 
+ using extensions::Extension;
+@@ -289,6 +298,14 @@
+   if (AutoConfirmPromptIfEnabled())
+     return;
+ 
++  // Ray: RayCore may show its own install prompt.
++  if (g_ray_extension_install_prompt &&
++      g_ray_extension_install_prompt(
++          profile_, show_params_->GetParentWebContents(), *prompt_,
++          &done_callback_)) {
++    return;
++  }
++
+   if (show_dialog_callback_.is_null())
+     show_dialog_callback_ = GetDefaultShowDialogCallback();
+   // TODO(crbug.com/40625151): Use OnceCallback and eliminate the need for

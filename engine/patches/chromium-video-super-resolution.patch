@@ -1,0 +1,677 @@
+--- a/components/viz/service/display/display.cc
++++ b/components/viz/service/display/display.cc
+@@ -492,6 +492,21 @@ void Display::SetDisplayColorSpaces(
+     aggregator_->SetDisplayColorSpaces(display_color_spaces_);
+ }
+ 
++#if BUILDFLAG(IS_MAC)
++void Display::SetVideoSuperResolutionAllowed(bool allowed) {
++  if (allowed == video_super_resolution_allowed_) {
++    return;
++  }
++  video_super_resolution_allowed_ = allowed;
++  if (aggregator_ && current_surface_id_.is_valid()) {
++    aggregator_->SetFullDamageForSurface(current_surface_id_);
++  }
++  if (damage_tracker_) {
++    damage_tracker_->SetRootSurfaceDamaged();
++  }
++}
++#endif
++
+ void Display::SetOutputIsSecure(bool secure) {
+   if (secure == output_is_secure_)
+     return;
+@@ -1097,6 +1112,8 @@ bool Display::DrawAndSwap(const DrawAndSwapParams& params) {
+ #if BUILDFLAG(IS_MAC)
+     swap_frame_data.frame_data.is_handling_interaction = has_interactive_frame;
+     swap_frame_data.frame_data.is_handling_animation = has_animated_frame;
++    swap_frame_data.frame_data.video_super_resolution_allowed =
++        video_super_resolution_allowed_;
+ #endif
+ 
+     // We must notify scheduler and increase |pending_swaps_| before calling
+--- a/components/viz/service/display/display.h
++++ b/components/viz/service/display/display.h
+@@ -147,6 +147,9 @@
+   void SetDisplayColorSpaces(
+       const gfx::DisplayColorSpaces& display_color_spaces);
+   void SetOutputIsSecure(bool secure);
++#if BUILDFLAG(IS_MAC)
++  void SetVideoSuperResolutionAllowed(bool allowed);
++#endif
+   void NotifyMinSupportedVsyncInterval(base::TimeDelta min_vsync_interval);
+ 
+   const SurfaceId& CurrentSurfaceId() const;
+@@ -305,6 +308,9 @@
+   gfx::DisplayColorSpaces display_color_spaces_;
+   bool visible_ = false;
+   bool output_is_secure_ = false;
++#if BUILDFLAG(IS_MAC)
++  bool video_super_resolution_allowed_ = false;
++#endif
+ 
+ #if DCHECK_IS_ON()
+   std::unique_ptr<gpu::ScopedAllowScheduleGpuTask>
+--- a/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.cc
++++ b/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.cc
+@@ -381,7 +381,13 @@
+ 
+ void RootCompositorFrameSinkImpl::SetOutputIsSecure(bool secure) {
+   display_->SetOutputIsSecure(secure);
++}
++
++#if BUILDFLAG(IS_MAC)
++void RootCompositorFrameSinkImpl::SetVideoSuperResolutionAllowed(bool allowed) {
++  display_->SetVideoSuperResolutionAllowed(allowed);
+ }
++#endif
+ 
+ void RootCompositorFrameSinkImpl::SetDisplayVSyncParameters(
+     base::TimeTicks timebase,
+--- a/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.h
++++ b/components/viz/service/frame_sinks/root_compositor_frame_sink_impl.h
+@@ -83,6 +83,9 @@
+   void SetVSyncDisplayID(int64_t display_id) override;
+ #endif
+   void SetOutputIsSecure(bool secure) override;
++#if BUILDFLAG(IS_MAC)
++  void SetVideoSuperResolutionAllowed(bool allowed) override;
++#endif
+   void SetDisplayVSyncParameters(base::TimeTicks timebase,
+                                  base::TimeDelta interval) override;
+   void ForceImmediateDrawAndSwapIfPossible() override;
+--- a/content/browser/renderer_host/browser_compositor_view_mac.h
++++ b/content/browser/renderer_host/browser_compositor_view_mac.h
+@@ -152,6 +152,8 @@
+ 
+   void SetEvictOnHide(bool evict_on_hide);
+ 
++  void SetVideoSuperResolutionAllowed(bool allowed);
++
+  private:
+   // ui::LayerObserver implementation:
+   void LayerDestroyed(ui::Layer* layer) override;
+@@ -192,6 +194,7 @@
+   std::unique_ptr<ui::LayerSurface> root_layer_;
+ 
+   SkColor background_color_ = SK_ColorWHITE;
++  bool video_super_resolution_allowed_ = false;
+ 
+   // The viz::ParentLocalSurfaceIdAllocator for the delegated frame host
+   // dispenses viz::LocalSurfaceIds that are renderered into by the renderer
+--- a/content/browser/renderer_host/browser_compositor_view_mac.mm
++++ b/content/browser/renderer_host/browser_compositor_view_mac.mm
+@@ -274,6 +274,8 @@
+         current.display_frequency);
+     recyclable_compositor_->compositor()->SetRootLayer(root_layer_.get());
+     recyclable_compositor_->compositor()->SetBackgroundColor(background_color_);
++    recyclable_compositor_->compositor()->SetVideoSuperResolutionAllowed(
++        video_super_resolution_allowed_);
+     recyclable_compositor_->widget()->SetNSView(
+         accelerated_widget_mac_ns_view_);
+     recyclable_compositor_->Unsuspend();
+@@ -454,6 +456,14 @@
+ void BrowserCompositorMac::SetEvictOnHide(bool evict_on_hide) {
+   if (delegated_frame_host_) {
+     delegated_frame_host_->SetEvictOnHide(evict_on_hide);
++  }
++}
++
++void BrowserCompositorMac::SetVideoSuperResolutionAllowed(bool allowed) {
++  video_super_resolution_allowed_ = allowed;
++  if (recyclable_compositor_) {
++    recyclable_compositor_->compositor()->SetVideoSuperResolutionAllowed(
++        allowed);
+   }
+ }
+ 
+--- a/content/browser/renderer_host/render_widget_host_view_mac.h
++++ b/content/browser/renderer_host/render_widget_host_view_mac.h
+@@ -196,6 +196,7 @@
+   viz::SurfaceId GetFallbackSurfaceIdForTesting() const override;
+   bool HasSavedCompositorFrame() const override;
+   void SetEvictOnHide(bool evict_on_hide) override;
++  void SetVideoSuperResolutionAllowed(bool allowed) override;
+ 
+   void TransformPointToRootSurface(gfx::PointF* point) override;
+   gfx::Rect GetBoundsInScreen() override;
+--- a/content/browser/renderer_host/render_widget_host_view_mac.mm
++++ b/content/browser/renderer_host/render_widget_host_view_mac.mm
+@@ -1535,6 +1535,12 @@
+ void RenderWidgetHostViewMac::SetEvictOnHide(bool evict_on_hide) {
+   if (browser_compositor_) {
+     browser_compositor_->SetEvictOnHide(evict_on_hide);
++  }
++}
++
++void RenderWidgetHostViewMac::SetVideoSuperResolutionAllowed(bool allowed) {
++  if (browser_compositor_) {
++    browser_compositor_->SetVideoSuperResolutionAllowed(allowed);
+   }
+ }
+ 
+--- a/content/public/browser/render_widget_host_view.h
++++ b/content/public/browser/render_widget_host_view.h
+@@ -343,6 +343,8 @@
+ 
+   // Sets whether the view should evict its saved compositor frame when hidden.
+   virtual void SetEvictOnHide(bool evict_on_hide) = 0;
++
++  virtual void SetVideoSuperResolutionAllowed(bool allowed) {}
+ };
+ 
+ }  // namespace content
+--- a/gpu/ipc/service/image_transport_surface_overlay_mac.h
++++ b/gpu/ipc/service/image_transport_surface_overlay_mac.h
+@@ -83,6 +83,12 @@
+       gl::GLSurface::PresentationCallback presentation_callback);
+ 
+   void CommitPresentedFrameToCA();
++#if BUILDFLAG(IS_MAC)
++  void CommitAfterVideoUpscale();
++  void ReleaseVideoUpscaleHold(uint64_t hold);
++  uint64_t video_upscale_hold_ = 0;
++  uint64_t last_video_upscale_hold_ = 0;
++#endif
+ 
+   std::unique_ptr<ui::CALayerTreeCoordinator> ca_layer_tree_coordinator_;
+ 
+--- a/gpu/ipc/service/image_transport_surface_overlay_mac.mm
++++ b/gpu/ipc/service/image_transport_surface_overlay_mac.mm
+@@ -7,6 +7,7 @@
+ #include <dawn/native/MetalBackend.h>
+ #include <dawn/webgpu_cpp.h>
+ 
++#include <algorithm>
+ #include <memory>
+ #include <sstream>
+ #include <utility>
+@@ -17,6 +18,7 @@
+ #include "base/functional/callback_helpers.h"
+ #include "base/metrics/histogram_macros.h"
+ #include "base/rand_util.h"
++#include "base/task/single_thread_task_runner.h"
+ #include "base/time/time.h"
+ #include "base/trace_event/trace_event.h"
+ #include "components/viz/common/features.h"
+@@ -124,6 +126,11 @@
+   ca_layer_tree_coordinator_ = std::make_unique<ui::CALayerTreeCoordinator>(
+       !av_disabled_at_command_line, std::move(buffer_presented_callback),
+       std::move(gl_make_current_callback), GetMTLDevice(context_state));
++#if BUILDFLAG(IS_MAC)
++  ca_layer_tree_coordinator_->SetVideoUpscaledCallback(base::BindRepeating(
++      &ImageTransportSurfaceOverlayMacEGL::CommitAfterVideoUpscale,
++      weak_ptr_factory_.GetWeakPtr()));
++#endif
+ 
+ #if BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_IOS_TVOS)
+   // The BELayerHierarchy needs to be created on a thread that supports
+@@ -195,6 +202,11 @@
+   ca_layer_tree_coordinator_->GetPendingCARendererLayerTree()
+       ->SetDisplayHDRHeadroom(data.display_hdr_headroom);
+ 
++#if BUILDFLAG(IS_MAC)
++  const bool wait_for_video_upscale = ca_layer_tree_coordinator_->UpscaleVideo(
++      data.video_super_resolution_allowed);
++#endif
++
+   ca_layer_tree_coordinator_->Present(std::move(completion_callback),
+                                       std::move(presentation_callback));
+ 
+@@ -227,12 +239,47 @@
+       return;
+     }
+   }
++
++  if (wait_for_video_upscale) {
++    const uint64_t hold = ++last_video_upscale_hold_;
++    video_upscale_hold_ = hold;
++    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
++        FROM_HERE,
++        base::BindOnce(
++            &ImageTransportSurfaceOverlayMacEGL::ReleaseVideoUpscaleHold,
++            weak_ptr_factory_.GetWeakPtr(), hold),
++        std::clamp((frame_interval_.is_zero() ? base::Hertz(60)
++                                              : frame_interval_) *
++                       0.6,
++                   base::Milliseconds(4), base::Milliseconds(10)));
++    return;
++  }
+ #endif
+ 
+   CommitPresentedFrameToCA();
+ }
+ 
++#if BUILDFLAG(IS_MAC)
++void ImageTransportSurfaceOverlayMacEGL::CommitAfterVideoUpscale() {
++  ReleaseVideoUpscaleHold(video_upscale_hold_);
++}
++
++void ImageTransportSurfaceOverlayMacEGL::ReleaseVideoUpscaleHold(
++    uint64_t hold) {
++  if (!hold || hold != video_upscale_hold_) {
++    return;
++  }
++  video_upscale_hold_ = 0;
++  if (ca_layer_tree_coordinator_->NumPendingSwaps()) {
++    CommitPresentedFrameToCA();
++  }
++}
++#endif
++
+ void ImageTransportSurfaceOverlayMacEGL::CommitPresentedFrameToCA() {
++#if BUILDFLAG(IS_MAC)
++  video_upscale_hold_ = 0;
++#endif
+   //  Do a GL fence for flush to apply back-pressure before drawing.
+   {
+     base::TimeTicks start_time = base::TimeTicks::Now();
+--- a/services/viz/privileged/mojom/compositing/display_private.mojom
++++ b/services/viz/privileged/mojom/compositing/display_private.mojom
+@@ -47,6 +47,9 @@
+   SetDisplayColorSpaces(gfx.mojom.DisplayColorSpaces display_color_spaces);
+   SetOutputIsSecure(bool secure);
+ 
++  [EnableIf=is_mac]
++  SetVideoSuperResolutionAllowed(bool allowed);
++
+   // Sets CGDirectDisplayID for GPU begin frame source.
+   [EnableIf=is_mac]
+   SetVSyncDisplayID(int64 display_id);
+--- a/ui/accelerated_widget_mac/ca_layer_tree_coordinator.h
++++ b/ui/accelerated_widget_mac/ca_layer_tree_coordinator.h
+@@ -8,6 +8,7 @@
+ #include <queue>
+ 
+ #include "base/containers/queue.h"
++#include "base/memory/weak_ptr.h"
+ #include "ui/accelerated_widget_mac/accelerated_widget_mac_export.h"
+ #include "ui/gfx/ca_layer_result.h"
+ #include "ui/gfx/presentation_feedback.h"
+@@ -18,6 +19,12 @@
+ @class CALayer;
+ @protocol MTLDevice;
+ 
++#if BUILDFLAG(IS_MAC)
++namespace raycore {
++class VideoUpscaler;
++}
++#endif
++
+ namespace ui {
+ class CARendererLayerTree;
+ 
+@@ -107,12 +114,20 @@
+ 
+   void SetMaxCALayerTrees(int cap_max_ca_layer_trees);
+ 
++#if BUILDFLAG(IS_MAC)
++  bool UpscaleVideo(bool allowed);
++  void SetVideoUpscaledCallback(base::RepeatingClosure callback);
++#endif
++
+   // Enqueue Metal backpressure fences for the current unpresented frame.
+   void EnqueueBackpressureFences(
+       std::vector<gfx::MTLSharedEventFence> metal_fences);
+ 
+  private:
+   void EnsureCAContextAndRootLayer();
++#if BUILDFLAG(IS_MAC)
++  void OnVideoUpscaled();
++#endif
+ 
+   const bool allow_remote_layers_ = true;
+   const bool allow_av_sample_buffer_display_layer_ = true;
+@@ -152,6 +167,14 @@
+ 
+   // The frames has been presented.
+   base::queue<PresentedFrame> presented_frames_;
++
++#if BUILDFLAG(IS_MAC)
++  bool video_upscaling_allowed_ = false;
++  base::RepeatingClosure video_upscaled_callback_;
++  std::unique_ptr<raycore::VideoUpscaler> video_upscaler_;
++  base::WeakPtrFactory<CALayerTreeCoordinator> video_upscaler_weak_factory_{
++      this};
++#endif
+ };
+ 
+ }  // namespace ui
+--- a/ui/accelerated_widget_mac/ca_layer_tree_coordinator.mm
++++ b/ui/accelerated_widget_mac/ca_layer_tree_coordinator.mm
+@@ -6,6 +6,7 @@
+ 
+ #import <AVFoundation/AVFoundation.h>
+ 
++#include "base/functional/bind.h"
+ #include "base/logging.h"
+ #include "base/mac/mac_util.h"
+ #include "base/task/single_thread_task_runner.h"
+@@ -23,10 +24,16 @@
+ #include "ui/gl/scoped_make_current.h"
+ 
+ #if BUILDFLAG(IS_MAC)
++#include "ray/core/ac_video_upscaler.h"  // nogncheck
+ #include "ui/display/mac/display_link_mac.h"
+ #include "ui/gl/gl_context.h"
+ #endif
+ 
++#if BUILDFLAG(IS_MAC)
++std::unique_ptr<raycore::VideoUpscaler> (*g_ray_create_video_upscaler)(
++    base::RepeatingClosure on_upscaled) = nullptr;
++#endif
++
+ namespace ui {
+ 
+ CALayerTreeCoordinator::CALayerTreeCoordinator(
+@@ -79,6 +86,46 @@
+   return unpresented_ca_renderer_layer_tree_.get();
+ }
+ 
++#if BUILDFLAG(IS_MAC)
++bool CALayerTreeCoordinator::UpscaleVideo(bool allowed) {
++  video_upscaling_allowed_ = allowed;
++  if (!video_upscaler_) {
++    if (!allowed || !g_ray_create_video_upscaler) {
++      return false;
++    }
++    video_upscaler_ = g_ray_create_video_upscaler(
++        base::BindRepeating(&CALayerTreeCoordinator::OnVideoUpscaled,
++                            video_upscaler_weak_factory_.GetWeakPtr()));
++    if (!video_upscaler_) {
++      return false;
++    }
++  }
++  return GetPendingCARendererLayerTree()->UpscaleVideo(video_upscaler_.get(),
++                                                       allowed);
++}
++
++void CALayerTreeCoordinator::SetVideoUpscaledCallback(
++    base::RepeatingClosure callback) {
++  video_upscaled_callback_ = std::move(callback);
++}
++
++void CALayerTreeCoordinator::OnVideoUpscaled() {
++  if (!video_upscaler_) {
++    return;
++  }
++  TRACE_EVENT0("gpu", "CALayerTreeCoordinator::OnVideoUpscaled");
++  bool still_pending = false;
++  if (!presented_frames_.empty() && presented_frames_.back().layer_tree) {
++    ScopedCAActionDisabler disabler;
++    still_pending = presented_frames_.back().layer_tree->UpscaleVideo(
++        video_upscaler_.get(), video_upscaling_allowed_);
++  }
++  if (!still_pending && video_upscaled_callback_) {
++    video_upscaled_callback_.Run();
++  }
++}
++#endif
++
+ void CALayerTreeCoordinator::EnqueueBackpressureFences(
+     std::vector<gfx::MTLSharedEventFence> metal_fences) {
+   pending_backpressure_metal_fences_.insert(
+--- a/ui/accelerated_widget_mac/ca_renderer_layer_tree.h
++++ b/ui/accelerated_widget_mac/ca_renderer_layer_tree.h
+@@ -19,6 +19,7 @@
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "base/memory/weak_ptr.h"
++#include "build/build_config.h"
+ #include "third_party/skia/include/core/SkColor.h"
+ #include "ui/accelerated_widget_mac/accelerated_widget_mac_export.h"
+ #include "ui/gfx/geometry/rect.h"
+@@ -31,6 +32,12 @@
+ 
+ @class AVSampleBufferDisplayLayer;
+ 
++#if BUILDFLAG(IS_MAC)
++namespace raycore {
++class VideoUpscaler;
++}
++#endif
++
+ namespace ui {
+ 
+ ACCELERATED_WIDGET_MAC_EXPORT BASE_DECLARE_FEATURE(
+@@ -72,6 +79,10 @@
+     display_hdr_headroom_ = display_hdr_headroom;
+   }
+ 
++#if BUILDFLAG(IS_MAC)
++  bool UpscaleVideo(raycore::VideoUpscaler* upscaler, bool allowed);
++#endif
++
+   // Create a CALayer tree for the scheduled layers, and set |superlayer| to
+   // have only this tree as its sublayers. If |old_tree| is non-null, then try
+   // to re-use the CALayers of |old_tree| as much as possible. |old_tree| will
+@@ -256,6 +267,11 @@
+     void UpdateMapAndMatchOldLayers(CALayerMap& old_ca_layer_map,
+                                     int& layer_order,
+                                     int& last_old_layer_order);
++
++    IOSurfaceRef ShownIOSurface() const;
++    gfx::ColorSpace ShownColorSpace() const;
++    gfx::RectF ShownContentsRect() const;
++    void CommitUpscaledToCA();
+ 
+     // Parent layer that owns `this`.
+     // Uses UnprotectedInRelease: Performance reasons (based on analysis of
+@@ -267,6 +283,7 @@
+     // their use count.
+     const gfx::ScopedInUseIOSurface io_surface_;
+     const base::apple::ScopedCFTypeRef<CVPixelBufferRef> cv_pixel_buffer_;
++    gfx::ScopedInUseIOSurface upscaled_io_surface_;
+     scoped_refptr<SolidColorContents> solid_color_contents_;
+     gfx::RectF contents_rect_;
+     gfx::RectF rect_;
+--- a/ui/accelerated_widget_mac/ca_renderer_layer_tree.mm
++++ b/ui/accelerated_widget_mac/ca_renderer_layer_tree.mm
+@@ -34,6 +34,10 @@
+ #include "ui/gfx/mac/io_surface.h"
+ #include "ui/gl/ca_renderer_layer_params.h"
+ 
++#if BUILDFLAG(IS_MAC)
++#include "ray/core/ac_video_upscaler.h"  // nogncheck
++#endif
++
+ namespace ui {
+ 
+ // Transitioning between AVSampleBufferDisplayLayer and CALayer with IOSurface
+@@ -427,6 +431,82 @@
+   has_committed_ = true;
+ }
+ 
++#if BUILDFLAG(IS_MAC)
++bool CARendererLayerTree::UpscaleVideo(raycore::VideoUpscaler* upscaler,
++                                       bool allowed) {
++  std::vector<raycore::VideoUpscaleCandidate> candidates;
++  std::vector<ContentLayer*> layers;
++  if (allowed) {
++    for (auto& clip_layer : root_layer_.clip_and_sorting_layers_) {
++      for (auto& transform_layer : clip_layer.transform_layers_) {
++        if (!transform_layer.transform_.IsPositiveScaleOrTranslation()) {
++          continue;
++        }
++        for (auto& content_layer : transform_layer.content_layers_) {
++          if (!content_layer.io_surface_ || content_layer.cv_pixel_buffer_ ||
++              content_layer.type_ == CALayerType::kHDRCopier) {
++            continue;
++          }
++          raycore::VideoUpscaleCandidate candidate;
++          candidate.source = content_layer.io_surface_.get();
++          candidate.color_space = content_layer.io_surface_color_space_;
++          candidate.contents_rect = content_layer.contents_rect_;
++          candidate.target_size =
++              transform_layer.transform_.MapRect(content_layer.rect_).size();
++          candidate.protected_video_type = content_layer.protected_video_type_;
++          candidate.has_hdr_metadata =
++              content_layer.hdr_metadata_ != gfx::HDRMetadata();
++          candidates.push_back(std::move(candidate));
++          layers.push_back(&content_layer);
++        }
++      }
++    }
++  }
++  upscaler->Process(allowed, candidates);
++  bool pending = false;
++  for (size_t i = 0; i < candidates.size(); ++i) {
++    pending |= candidates[i].pending;
++    if (!candidates[i].output ||
++        candidates[i].output.get() == layers[i]->upscaled_io_surface_.get()) {
++      continue;
++    }
++    layers[i]->upscaled_io_surface_.reset(candidates[i].output.get(),
++                                          base::scoped_policy::RETAIN);
++    if (has_committed_) {
++      TRACE_EVENT_INSTANT0("gpu", "RayVSR.LateSwap", TRACE_EVENT_SCOPE_THREAD);
++      layers[i]->CommitUpscaledToCA();
++    }
++  }
++  return pending && !has_committed_;
++}
++
++void CARendererLayerTree::ContentLayer::CommitUpscaledToCA() {
++  if (!ca_layer_) {
++    return;
++  }
++  if (type_ == CALayerType::kVideo) {
++    AVSampleBufferDisplayLayerEnqueueIOSurface(
++        av_layer_, ShownIOSurface(), ShownColorSpace(), hdr_metadata_);
++  } else if (type_ == CALayerType::kDefault) {
++    ca_layer_.contents = (__bridge id)ShownIOSurface();
++    ca_layer_.contentsRect = ShownContentsRect().ToCGRect();
++  }
++}
++#endif
++
++IOSurfaceRef CARendererLayerTree::ContentLayer::ShownIOSurface() const {
++  return upscaled_io_surface_ ? upscaled_io_surface_.get() : io_surface_.get();
++}
++
++gfx::ColorSpace CARendererLayerTree::ContentLayer::ShownColorSpace() const {
++  return upscaled_io_surface_ ? io_surface_color_space_.GetAsFullRangeRGB()
++                              : io_surface_color_space_;
++}
++
++gfx::RectF CARendererLayerTree::ContentLayer::ShownContentsRect() const {
++  return upscaled_io_surface_ ? gfx::RectF(0, 0, 1, 1) : contents_rect_;
++}
++
+ void CARendererLayerTree::MatchLayersToOldTree(CARendererLayerTree* old_tree) {
+   if (!old_tree)
+     return;
+@@ -1167,7 +1247,8 @@
+         old_layer_->io_surface_color_space_ != io_surface_color_space_ ||
+         old_layer_->cv_pixel_buffer_ != cv_pixel_buffer_ ||
+         old_layer_->solid_color_contents_ != solid_color_contents_ ||
+-        old_layer_->hdr_metadata_ != hdr_metadata_;
++        old_layer_->hdr_metadata_ != hdr_metadata_ ||
++        old_layer_->upscaled_io_surface_ != upscaled_io_surface_;
+     // If the HDR headroom has changed then the HDRCopierLayer's tone mapping
+     // may change, so re-draw this layer.
+     if (old_layer_->type_ == CALayerType::kHDRCopier &&
+@@ -1175,7 +1256,8 @@
+             tree()->display_hdr_headroom_) {
+       update_contents = true;
+     }
+-    update_contents_rect = old_layer_->contents_rect_ != contents_rect_;
++    update_contents_rect =
++        old_layer_->ShownContentsRect() != ShownContentsRect();
+     update_rect = old_layer_->rect_ != rect_;
+     update_background_color =
+         old_layer_->background_color_ != background_color_;
+@@ -1252,8 +1334,7 @@
+           }
+         } else {
+           result = AVSampleBufferDisplayLayerEnqueueIOSurface(
+-              av_layer_, io_surface_.get(), io_surface_color_space_,
+-              hdr_metadata_);
++              av_layer_, ShownIOSurface(), ShownColorSpace(), hdr_metadata_);
+           if (!result) {
+             LOG(ERROR) << "AVSampleBufferDisplayLayerEnqueueIOSurface failed";
+           }
+@@ -1266,8 +1347,8 @@
+       break;
+     case CALayerType::kDefault:
+       if (update_contents) {
+-        if (io_surface_) {
+-          ca_layer_.contents = (__bridge id)io_surface_.get();
++        if (ShownIOSurface()) {
++          ca_layer_.contents = (__bridge id)ShownIOSurface();
+         } else if (solid_color_contents_) {
+           ca_layer_.contents = solid_color_contents_->GetContents();
+         } else {
+@@ -1296,7 +1377,7 @@
+ 
+   if (update_contents_rect) {
+     if (type_ != CALayerType::kVideo)
+-      ca_layer_.contentsRect = contents_rect_.ToCGRect();
++      ca_layer_.contentsRect = ShownContentsRect().ToCGRect();
+   }
+   if (update_rect) {
+     gfx::RectF dip_rect = gfx::RectF(rect_);
+--- a/ui/compositor/compositor.cc
++++ b/ui/compositor/compositor.cc
+@@ -374,6 +374,8 @@
+     display_private_->SetOutputIsSecure(output_is_secure_);
+ #if BUILDFLAG(IS_MAC)
+     display_private_->SetVSyncDisplayID(display_id_);
++    display_private_->SetVideoSuperResolutionAllowed(
++        video_super_resolution_allowed_);
+ #endif
+     if (has_vsync_params_) {
+       display_private_->SetDisplayVSyncParameters(vsync_timebase_,
+@@ -992,7 +994,19 @@
+   output_is_secure_ = output_is_secure;
+   if (display_private_)
+     display_private_->SetOutputIsSecure(output_is_secure);
++}
++
++#if BUILDFLAG(IS_MAC)
++void Compositor::SetVideoSuperResolutionAllowed(bool allowed) {
++  if (allowed == video_super_resolution_allowed_) {
++    return;
++  }
++  video_super_resolution_allowed_ = allowed;
++  if (display_private_) {
++    display_private_->SetVideoSuperResolutionAllowed(allowed);
++  }
+ }
++#endif
+ 
+ const cc::LayerTreeDebugState& Compositor::GetLayerTreeDebugState() const {
+   return host_->GetDebugState();
+--- a/ui/compositor/compositor.h
++++ b/ui/compositor/compositor.h
+@@ -461,6 +461,9 @@
+ 
+   bool output_is_secure() const { return output_is_secure_; }
+   void SetOutputIsSecure(bool output_is_secure);
++#if BUILDFLAG(IS_MAC)
++  void SetVideoSuperResolutionAllowed(bool allowed);
++#endif
+ 
+   const cc::LayerTreeDebugState& GetLayerTreeDebugState() const;
+   void SetLayerTreeDebugState(const cc::LayerTreeDebugState& debug_state);
+@@ -687,6 +690,9 @@
+   gfx::DisplayColorSpaces display_color_spaces_;
+ 
+   bool output_is_secure_ = false;
++#if BUILDFLAG(IS_MAC)
++  bool video_super_resolution_allowed_ = false;
++#endif
+ 
+   // If true, all paint commands are recorded at pixel size instead of DIP.
+   const bool is_pixel_canvas_;
+--- a/ui/gfx/frame_data.h
++++ b/ui/gfx/frame_data.h
+@@ -42,6 +42,7 @@
+ #if BUILDFLAG(IS_MAC)
+   bool is_handling_interaction = false;
+   bool is_handling_animation = false;
++  bool video_super_resolution_allowed = false;
+ #endif
+ };
+ 

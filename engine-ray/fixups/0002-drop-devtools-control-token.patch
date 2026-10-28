@@ -1,0 +1,17 @@
+--- a/chromium/src/chrome/browser/ray/BUILD.gn
++++ b/chromium/src/chrome/browser/ray/BUILD.gn
+@@ -12,14 +12,6 @@
+     "ac_bookmarks.cc",
+     "ac_browsing_data.cc",
+     "ac_browsing_data.h",
+-    "ac_cli_control.cc",
+-    "ac_cli_token_policy.cc",
+-    "ac_cli_token_policy.h",
+-    "ac_cli_token_policy_contexts.cc",
+-    "ac_cli_token_policy_events.cc",
+-    "ac_cli_token_policy_internal.h",
+-    "ac_cli_token_policy_methods.cc",
+-    "ac_cli_token_policy_web_targets.cc",
+     "ac_cookies.cc",
+     "ac_cookies.h",
+     "ac_downloads.cc",

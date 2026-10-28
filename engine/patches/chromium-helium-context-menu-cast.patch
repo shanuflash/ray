@@ -1,0 +1,14 @@
+SPDX-License-Identifier: GPL-3.0-only
+Reverts the AppendPageItems hunk of helium/core/degoogle-context-menu.patch (GPL-3.0, The Helium Authors): the page
+menu keeps Cast…, as in Ray 0.2.39 (Cast works through chromium-cast-dialog-hook.patch, with mDNS on).
+
+--- a/chrome/browser/renderer_context_menu/render_view_context_menu.cc
++++ b/chrome/browser/renderer_context_menu/render_view_context_menu.cc
+@@ -2575,6 +2575,7 @@
+                                   IDS_CONTENT_CONTEXT_SAVEPAGEAS);
+   menu_model_.AddItemWithStringId(IDC_PRINT, IDS_CONTENT_CONTEXT_PRINT);
+   AppendLiveCaptionItem();
++  AppendMediaRouterItem();
+ 
+   if (features::IsReadAnythingMenuShuffleExperimentEnabled()) {
+     // This will be set to false in AppendRegionSearchItem() if it is called.

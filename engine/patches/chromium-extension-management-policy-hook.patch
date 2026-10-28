@@ -1,0 +1,27 @@
+RayCore registers its own extension management policy providers on every profile's ManagementPolicy, before
+the profile loads any extension (//chrome/browser/ray, ac_scripts_policy.cc). Not a GN dependency: the function
+resolves at link time in the binary we build (RayCore's chrome_dll links that target).
+
+--- a/chrome/browser/extensions/chrome_extension_system.cc
++++ b/chrome/browser/extensions/chrome_extension_system.cc
+@@ -92,6 +92,11 @@
+ 
+ static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+ 
++namespace ray {
++void RegisterManagementPolicyProviders(Profile* profile,
++                                        extensions::ManagementPolicy* policy);
++}
++
+ namespace extensions {
+ 
+ namespace {
+@@ -191,6 +196,8 @@
+         policy::features::kEnableExtensionInstallPolicyFetching));
+     management_policy_->RegisterProvider(extension_install_policy_service);
+   }
++
++  ray::RegisterManagementPolicyProviders(profile_, management_policy_.get());
+ }
+ 
+ void ChromeExtensionSystem::Shared::InitInstallGates() {

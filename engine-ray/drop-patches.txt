@@ -1,0 +1,7 @@
+# Series patches Ray leaves out (PLAN.md section 6).
+# Peek's hook: Ray has no Peek.
+chromium-temporary-tab-restore-hook.patch
+# The `ardia` command's DevTools control server: Ray's tests use --remote-debugging-port in the test build only.
+chromium-devtools-control-token.patch
+# The offline game in place of the dino.
+chromium-neterror-game.patch

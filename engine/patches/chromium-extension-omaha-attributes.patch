@@ -1,0 +1,228 @@
+--- a/chrome/browser/extensions/BUILD.gn
++++ b/chrome/browser/extensions/BUILD.gn
+@@ -388,6 +388,8 @@
+     "menu_manager_factory.h",
+     "navigation_extension_enabler.cc",
+     "navigation_extension_enabler.h",
++    "omaha_attributes_handler.cc",
++    "omaha_attributes_handler.h",
+     "open_tab_helper.cc",
+     "open_tab_helper.h",
+     "pack_extension_job.cc",
+--- a/chrome/browser/extensions/chrome_extension_system.cc
++++ b/chrome/browser/extensions/chrome_extension_system.cc
+@@ -478,6 +478,8 @@
+ void ChromeExtensionSystem::PerformActionBasedOnOmahaAttributes(
+     const std::string& extension_id,
+     const base::DictValue& attributes) {
++  extension_service()->PerformActionBasedOnOmahaAttributes(extension_id,
++                                                           attributes);
+ }
+ 
+ }  // namespace extensions
+--- a/chrome/browser/extensions/extension_service.cc
++++ b/chrome/browser/extensions/extension_service.cc
+@@ -53,6 +53,7 @@
+ #include "chrome/browser/extensions/external_provider_manager.h"
+ #include "chrome/browser/extensions/install_verifier_factory.h"
+ #include "chrome/browser/extensions/installed_loader.h"
++#include "chrome/browser/extensions/omaha_attributes_handler.h"
+ #include "chrome/browser/extensions/profile_util.h"
+ #include "chrome/browser/extensions/sync/extension_sync_service.h"
+ #include "chrome/browser/extensions/updater/chrome_extension_downloader_factory.h"
+@@ -229,6 +230,9 @@
+       extension_telemetry_service_verdict_handler_(extension_prefs,
+                                                    registry_,
+                                                    extension_registrar_),
++      omaha_attributes_handler_(extension_prefs,
++                                registry_,
++                                extension_registrar_),
+       force_installed_tracker_(registry_, profile_),
+       force_installed_metrics_(registry_, profile_, &force_installed_tracker_),
+       corrupted_extension_reinstaller_(
+@@ -506,6 +510,17 @@
+ }
+ #endif
+ 
++void ExtensionService::PerformActionBasedOnOmahaAttributes(
++    const std::string& extension_id,
++    const base::DictValue& attributes) {
++  DCHECK_CURRENTLY_ON(BrowserThread::UI);
++  omaha_attributes_handler_.PerformActionBasedOnOmahaAttributes(extension_id,
++                                                                attributes);
++  allowlist_->PerformActionBasedOnOmahaAttributes(extension_id, attributes);
++  // Show an error for the newly blocklisted extension.
++  error_controller_->ShowErrorIfNeeded();
++}
++
+ void ExtensionService::PerformActionBasedOnExtensionTelemetryServiceVerdicts(
+     const Blocklist::BlocklistStateMap& blocklist_state_map) {
+   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+--- a/chrome/browser/extensions/extension_service.h
++++ b/chrome/browser/extensions/extension_service.h
+@@ -24,6 +24,7 @@
+ #include "chrome/browser/extensions/extension_telemetry_service_verdict_handler.h"
+ #include "chrome/browser/extensions/forced_extensions/force_installed_metrics.h"
+ #include "chrome/browser/extensions/forced_extensions/force_installed_tracker.h"
++#include "chrome/browser/extensions/omaha_attributes_handler.h"
+ #include "chrome/browser/extensions/safe_browsing_verdict_handler.h"
+ #include "chrome/browser/policy/cloud/extension_install_policy_service.h"
+ #include "chrome/browser/profiles/profile_manager_observer.h"
+@@ -171,6 +172,10 @@
+ 
+   void ToggleUBlockExtension();
+ 
++  // Performs action based on Omaha attributes for the extension.
++  void PerformActionBasedOnOmahaAttributes(const std::string& extension_id,
++                                           const base::DictValue& attributes);
++
+   // Performs action based on verdicts received from the Extension Telemetry
+   // server. Currently, these verdicts are limited to off-store extensions.
+   void PerformActionBasedOnExtensionTelemetryServiceVerdicts(
+@@ -389,6 +394,8 @@
+   ExtensionTelemetryServiceVerdictHandler
+       extension_telemetry_service_verdict_handler_;
+ 
++  // Needs `extension_registrar_` during construction.
++  OmahaAttributesHandler omaha_attributes_handler_;
+ 
+   // Tracker of enterprise policy forced installation.
+   ForceInstalledTracker force_installed_tracker_;
+--- a/extensions/browser/updater/update_service.cc
++++ b/extensions/browser/updater/update_service.cc
+@@ -131,6 +131,13 @@
+       break;
+   }
+ 
++  if (should_perform_action_on_omaha_attributes) {
++    base::DictValue attributes = GetExtensionOmahaAttributes(item);
++    // Note that it's important to perform actions even if |attributes| is
++    // empty, missing values may default to false and have associated logic.
++    ExtensionSystem::Get(browser_context_)
++        ->PerformActionBasedOnOmahaAttributes(item.id, attributes);
++  }
+ }
+ 
+ UpdateService::UpdateService(
+--- a/extensions/browser/extension_registrar.cc
++++ b/extensions/browser/extension_registrar.cc
+@@ -909,27 +909,119 @@
+ 
+ void ExtensionRegistrar::OnBlocklistStateRemoved(
+     const std::string& extension_id) {
++  if (blocklist_prefs::IsExtensionBlocklisted(extension_id, extension_prefs_)) {
++    return;
++  }
++
++  // Clear acknowledged state.
++  blocklist_prefs::RemoveAcknowledgedBlocklistState(
++      extension_id, BitMapBlocklistState::BLOCKLISTED_MALWARE,
++      extension_prefs_);
++
++  scoped_refptr<const Extension> extension =
++      registry_->blocklisted_extensions().GetByID(extension_id);
++  DCHECK(extension);
++  registry_->RemoveBlocklisted(extension_id);
++  AddExtension(extension.get());
+ }
+ 
+ void ExtensionRegistrar::OnBlocklistStateAdded(
+     const std::string& extension_id) {
++  DCHECK(
++      blocklist_prefs::IsExtensionBlocklisted(extension_id, extension_prefs_));
++  // The extension was already acknowledged by the user, it should already be in
++  // the unloaded state.
++  if (blocklist_prefs::HasAcknowledgedBlocklistState(
++          extension_id, BitMapBlocklistState::BLOCKLISTED_MALWARE,
++          extension_prefs_)) {
++    DCHECK(registry_->blocklisted_extensions().GetIDs().contains(extension_id));
++    return;
++  }
++
++  scoped_refptr<const Extension> extension =
++      registry_->GetInstalledExtension(extension_id);
++  registry_->AddBlocklisted(extension);
++  RemoveExtension(extension_id, UnloadedExtensionReason::BLOCKLIST);
+ }
+ 
+ void ExtensionRegistrar::OnGreylistStateRemoved(
+     const std::string& extension_id) {
++  bool is_on_sb_list = (blocklist_prefs::GetSafeBrowsingExtensionBlocklistState(
++                            extension_id, extension_prefs_) !=
++                        BitMapBlocklistState::NOT_BLOCKLISTED);
++  bool is_on_omaha_list =
++      blocklist_prefs::HasAnyOmahaGreylistState(extension_id, extension_prefs_);
++  if (is_on_sb_list || is_on_omaha_list) {
++    return;
++  }
++  // Clear all acknowledged states so the extension will still get disabled if
++  // it is added to the greylist again.
++  blocklist_prefs::ClearAcknowledgedGreylistStates(extension_id,
++                                                   extension_prefs_);
++  RemoveDisableReasonAndMaybeEnable(extension_id,
++                                    disable_reason::DISABLE_GREYLIST);
++
++  // A user can enable and disable a force-installed extension while it is
++  // greylisted. If a user disables an extension while greylisted, the
++  // extension gets a DISABLE_USER_ACTION disable reason assigned to it. So
++  // remove the DISABLE_USER_ACTION disable reason as well when a
++  // force-installed extension gets "un-greylisted" to allow the extension
++  // to be re-enabled.
++  const Extension* extension = registry_->GetInstalledExtension(extension_id);
++  if (extension && extension_system_->management_policy()->MustRemainEnabled(
++                       extension, nullptr)) {
++    RemoveDisableReasonAndMaybeEnable(extension_id,
++                                      disable_reason::DISABLE_USER_ACTION);
++  }
+ }
+ 
+ void ExtensionRegistrar::OnGreylistStateAdded(const std::string& extension_id,
+                                               BitMapBlocklistState new_state) {
++#if DCHECK_IS_ON()
++  bool has_new_state_on_sb_list =
++      (blocklist_prefs::GetSafeBrowsingExtensionBlocklistState(
++           extension_id, extension_prefs_) == new_state);
++  bool has_new_state_on_omaha_list = blocklist_prefs::HasOmahaBlocklistState(
++      extension_id, new_state, extension_prefs_);
++  DCHECK(has_new_state_on_sb_list || has_new_state_on_omaha_list);
++#endif
++  if (blocklist_prefs::HasAcknowledgedBlocklistState(extension_id, new_state,
++                                                     extension_prefs_)) {
++    // If the extension is already acknowledged, don't disable it again
++    // because it can be already re-enabled by the user. This could happen if
++    // the extension is added to the SafeBrowsing blocklist, and then
++    // subsequently marked by Omaha. In this case, we don't want to disable the
++    // extension twice.
++    return;
++  }
++
++  // Set the current greylist states to acknowledge immediately because the
++  // extension is disabled silently. Clear the other acknowledged state because
++  // when the state changes to another greylist state in the future, we'd like
++  // to disable the extension again.
++  blocklist_prefs::UpdateCurrentGreylistStatesAsAcknowledged(extension_id,
++                                                             extension_prefs_);
++  DisableExtension(extension_id, {disable_reason::DISABLE_GREYLIST});
+ }
+ 
+ void ExtensionRegistrar::BlocklistExtensionForTest(
+     const std::string& extension_id) {
++  blocklist_prefs::SetSafeBrowsingExtensionBlocklistState(
++      extension_id, BitMapBlocklistState::BLOCKLISTED_MALWARE,
++      extension_prefs_);
++  OnBlocklistStateAdded(extension_id);
+ }
+ 
+ void ExtensionRegistrar::GreylistExtensionForTest(
+     const std::string& extension_id,
+     const BitMapBlocklistState& state) {
++  blocklist_prefs::SetSafeBrowsingExtensionBlocklistState(extension_id, state,
++                                                          extension_prefs_);
++  if (state == BitMapBlocklistState::NOT_BLOCKLISTED) {
++    OnGreylistStateRemoved(extension_id);
++  } else {
++    OnGreylistStateAdded(extension_id, state);
++  }
+ }
+ 
+ void ExtensionRegistrar::OnUnpackedExtensionReloadFailed(

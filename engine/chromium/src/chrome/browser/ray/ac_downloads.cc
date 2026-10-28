@@ -1,0 +1,438 @@
+// Copyright 2026 Ray. Apache-2.0.
+
+#include "chrome/browser/ray/ac_downloads.h"
+
+#include <algorithm>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "ray/core/ac_launch_switches.h"
+#include "base/files/file_path.h"
+#include "base/functional/bind.h"
+#include "base/json/values_util.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/scoped_observation.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
+#include "chrome/browser/download/download_crx_util.h"
+#include "chrome/browser/download/download_prefs.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_observer.h"
+#include "chrome/common/pref_names.h"
+#include "components/prefs/pref_service.h"
+#include "components/download/content/public/all_download_item_notifier.h"
+#include "components/download/public/common/download_interrupt_reasons.h"
+#include "components/download/public/common/download_item.h"
+#include "content/public/browser/download_item_utils.h"
+#include "content/public/browser/download_manager.h"
+#include "extensions/browser/webstore_installer.h"
+
+namespace ray {
+namespace {
+
+using download::DownloadItem;
+
+constexpr base::TimeDelta kProgressInterval = base::Milliseconds(100);
+
+const char* StateName(const DownloadItem& item) {
+  switch (item.GetState()) {
+    case DownloadItem::COMPLETE:
+      return "finished";
+    case DownloadItem::CANCELLED:
+      return "cancelled";
+    case DownloadItem::INTERRUPTED:
+      return "failed";
+    default:
+      return "downloading";
+  }
+}
+
+bool Listed(DownloadItem* item) {
+  if (item->IsTransient() ||
+      item->GetDownloadSource() == download::DownloadSource::EXTENSION_INSTALLER ||
+      extensions::WebstoreInstaller::GetAssociatedApproval(*item)) {
+    return false;
+  }
+  content::BrowserContext* context =
+      content::DownloadItemUtils::GetBrowserContext(item);
+  return !context || !download_crx_util::IsTrustedExtensionDownload(
+                         Profile::FromBrowserContext(context), *item);
+}
+
+bool IsOffTheRecord(DownloadItem* item) {
+  content::BrowserContext* context =
+      content::DownloadItemUtils::GetBrowserContext(item);
+  return context && context->IsOffTheRecord();
+}
+
+void UseTestDownloadsDir(Profile* profile) {
+  const std::optional<std::string> dir =
+      raycore::InstanceValue("downloads-dir");
+  if (!dir || dir->empty()) {
+    return;
+  }
+  profile->GetPrefs()->SetDefaultPrefValue(
+      prefs::kDownloadDefaultDirectory,
+      base::FilePathToValue(base::FilePath(*dir)));
+}
+
+base::DictValue Describe(DownloadItem* item) {
+  base::FilePath path = item->GetTargetFilePath();
+  if (path.empty()) {
+    path = item->GetFullPath();
+  }
+  base::FilePath name = item->GetFileNameToReportUser();
+  if (name.empty()) {
+    name = path.BaseName();
+  }
+  const int64_t total = item->GetTotalBytes();
+  return base::DictValue()
+      .Set("id", item->GetGuid())
+      .Set("url", item->GetOriginalUrl().spec())
+      .Set("filename", name.value())
+      .Set("path", path.value())
+      .Set("state", StateName(*item))
+      .Set("paused", item->IsPaused())
+      .Set("received", static_cast<double>(item->GetReceivedBytes()))
+      .Set("total", total > 0 ? static_cast<double>(total) : -1.0)
+      .Set("speed", static_cast<double>(item->CurrentSpeed()))
+      .Set("mimeType", item->GetMimeType())
+      .Set("dangerous", item->IsDangerous() || item->IsInsecure())
+      .Set("error", item->GetLastReason() ==
+                            download::DOWNLOAD_INTERRUPT_REASON_NONE
+                        ? base::Value()
+                        : base::Value(download::DownloadInterruptReasonToString(
+                              item->GetLastReason())))
+      .Set("offTheRecord", IsOffTheRecord(item))
+      .Set("startTime", item->GetStartTime().InMillisecondsFSinceUnixEpoch());
+}
+
+class DownloadsState;
+
+class Watch : public download::AllDownloadItemNotifier::Observer,
+              public ProfileObserver {
+ public:
+  Watch(DownloadsState* owner, Profile* profile);
+  ~Watch() override = default;
+
+  Profile* profile() const { return profile_; }
+  content::DownloadManager* manager() const { return notifier_.GetManager(); }
+
+ private:
+  void OnDownloadCreated(content::DownloadManager*, DownloadItem* item) override;
+  void OnDownloadUpdated(content::DownloadManager*, DownloadItem* item) override;
+  void OnDownloadRemoved(content::DownloadManager*, DownloadItem* item) override;
+
+  void OnProfileWillBeDestroyed(Profile* profile) override;
+
+  raw_ptr<DownloadsState> owner_;
+  raw_ptr<Profile> profile_;
+  download::AllDownloadItemNotifier notifier_;
+  base::ScopedObservation<Profile, ProfileObserver> observation_{this};
+};
+
+class DownloadsState : public ProfileState {
+ public:
+  explicit DownloadsState(Profile* profile) : ProfileState(profile) {
+    watches_.push_back(std::make_unique<Watch>(this, profile));
+    for (Profile* off_the_record : profile->GetAllOffTheRecordProfiles()) {
+      OnOffTheRecordProfileCreated(off_the_record);
+    }
+  }
+
+  std::vector<DownloadItem*> All() const {
+    std::vector<DownloadItem*> items;
+    for (const auto& watch : watches_) {
+      if (content::DownloadManager* manager = watch->manager()) {
+        content::DownloadManager::DownloadVector some;
+        manager->GetAllDownloads(&some);
+        for (DownloadItem* item : some) {
+          if (Listed(item)) {
+            items.push_back(item);
+          }
+        }
+      }
+    }
+    std::sort(items.begin(), items.end(), [](DownloadItem* a, DownloadItem* b) {
+      return a->GetStartTime() > b->GetStartTime();
+    });
+    return items;
+  }
+
+  DownloadItem* Find(const std::string& id) const {
+    if (id.empty()) {
+      return nullptr;
+    }
+    for (const auto& watch : watches_) {
+      if (content::DownloadManager* manager = watch->manager()) {
+        if (DownloadItem* item = manager->GetDownloadByGuid(id)) {
+          return item;
+        }
+      }
+    }
+    return nullptr;
+  }
+
+  void Changed(DownloadItem* item) {
+    if (!Listed(item)) {
+      if (auto it = entries_.find(item->GetGuid()); it != entries_.end()) {
+        const bool emitted = it->second.emitted;
+        entries_.erase(it);
+        if (emitted) {
+          Post("downloads.removed", base::DictValue().Set("id", item->GetGuid()));
+        }
+      }
+      return;
+    }
+    Entry& entry = entries_[item->GetGuid()];
+    const DownloadItem::DownloadState state = item->GetState();
+    if (state == DownloadItem::IN_PROGRESS) {
+      entry.live = true;
+    }
+    if (!entry.live) {
+      return;
+    }
+    const base::TimeTicks now = base::TimeTicks::Now();
+    const bool dangerous = item->IsDangerous() || item->IsInsecure();
+    if (state == DownloadItem::IN_PROGRESS && entry.emitted &&
+        entry.paused == item->IsPaused() && entry.dangerous == dangerous &&
+        now - entry.last_emit < kProgressInterval) {
+      return;
+    }
+    entry.emitted = true;
+    entry.paused = item->IsPaused();
+    entry.dangerous = dangerous;
+    entry.last_emit = now;
+    Post("downloads.changed",
+         base::DictValue().Set("download", Describe(item)));
+  }
+
+  void Removed(DownloadItem* item) {
+    if (!Listed(item)) {
+      return;
+    }
+    entries_.erase(item->GetGuid());
+    Post("downloads.removed", base::DictValue().Set("id", item->GetGuid()));
+  }
+
+  void Drop(Profile* profile) {
+    auto it = std::find_if(
+        watches_.begin(), watches_.end(),
+        [profile](const auto& watch) { return watch->profile() == profile; });
+    if (it == watches_.end()) {
+      return;
+    }
+    std::unique_ptr<Watch> watch = std::move(*it);
+    watches_.erase(it);
+    if (content::DownloadManager* manager = watch->manager()) {
+      content::DownloadManager::DownloadVector items;
+      manager->GetAllDownloads(&items);
+      for (DownloadItem* item : items) {
+        Removed(item);
+      }
+    }
+  }
+
+ private:
+  struct Entry {
+    bool live = false;
+    bool emitted = false;
+    bool paused = false;
+    bool dangerous = false;
+    base::TimeTicks last_emit;
+  };
+
+  void OnOffTheRecordProfileCreated(Profile* off_the_record) override {
+    for (const auto& watch : watches_) {
+      if (watch->profile() == off_the_record) {
+        return;
+      }
+    }
+    watches_.push_back(std::make_unique<Watch>(this, off_the_record));
+  }
+
+  void Release() override {
+    weak_factory_.InvalidateWeakPtrs();
+    watches_.clear();
+    entries_.clear();
+  }
+
+  void Post(const char* topic, base::DictValue payload) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(
+            [](base::WeakPtr<DownloadsState> state, const char* topic,
+               base::DictValue payload) {
+              if (state) {
+                Emit(topic, state->profile(), std::move(payload));
+              }
+            },
+            weak_factory_.GetWeakPtr(), topic, std::move(payload)));
+  }
+
+  std::vector<std::unique_ptr<Watch>> watches_;
+  std::map<std::string, Entry> entries_;
+  base::WeakPtrFactory<DownloadsState> weak_factory_{this};
+};
+
+Watch::Watch(DownloadsState* owner, Profile* profile)
+    : owner_(owner),
+      profile_(profile),
+      notifier_(profile->GetDownloadManager(), this) {
+  UseTestDownloadsDir(profile);
+  if (profile->IsOffTheRecord()) {
+    observation_.Observe(profile);
+  }
+}
+
+void Watch::OnDownloadCreated(content::DownloadManager*, DownloadItem* item) {
+  owner_->Changed(item);
+}
+
+void Watch::OnDownloadUpdated(content::DownloadManager*, DownloadItem* item) {
+  owner_->Changed(item);
+}
+
+void Watch::OnDownloadRemoved(content::DownloadManager*, DownloadItem* item) {
+  owner_->Removed(item);
+}
+
+void Watch::OnProfileWillBeDestroyed(Profile* profile) {
+  observation_.Reset();
+  owner_->Drop(profile);
+}
+
+DownloadItem* DownloadFor(Call& call) {
+  DownloadItem* item =
+      StateFor<DownloadsState>(call.profile()).Find(call.String("id"));
+  if (!item) {
+    call.TakeReply().Error("no such download");
+  }
+  return item;
+}
+
+base::DictValue DownloadSettings(Profile* profile) {
+  DownloadPrefs* prefs = DownloadPrefs::FromBrowserContext(profile);
+  return base::DictValue()
+      .Set("folder", prefs->DownloadPath().value())
+      .Set("askWhereToSave", prefs->PromptForDownload())
+      .Set("managed", prefs->IsDownloadPathManaged());
+}
+
+}
+}
+
+AC_ENGINE_CALL(ac_downloads_settings) {
+  ray::Call call(profile_dir, args_json, reply, context);
+  if (!call) {
+    return;
+  }
+  call.TakeReply().Send(ray::DownloadSettings(call.profile()));
+}
+
+AC_ENGINE_CALL(ac_downloads_set_settings) {
+  ray::Call call(profile_dir, args_json, reply, context);
+  if (!call) {
+    return;
+  }
+  DownloadPrefs* download_prefs =
+      DownloadPrefs::FromBrowserContext(call.profile());
+  if (download_prefs->IsDownloadPathManaged()) {
+    return call.TakeReply().Error("downloads are set by policy");
+  }
+  if (const std::string* folder = call.args().FindString("folder")) {
+    const base::FilePath path(*folder);
+    if (!path.IsAbsolute()) {
+      return call.TakeReply().Error("the folder must be an absolute path");
+    }
+    download_prefs->SetDownloadPath(path);
+  }
+  if (std::optional<bool> ask = call.args().FindBool("askWhereToSave")) {
+    call.profile()->GetPrefs()->SetBoolean(prefs::kPromptForDownload, *ask);
+  }
+  call.TakeReply().Send(ray::DownloadSettings(call.profile()));
+}
+
+AC_ENGINE_CALL(ac_downloads_list) {
+  ray::Call call(profile_dir, args_json, reply, context);
+  if (!call) {
+    return;
+  }
+  base::ListValue downloads;
+  for (download::DownloadItem* item :
+       ray::StateFor<ray::DownloadsState>(call.profile()).All()) {
+    downloads.Append(ray::Describe(item));
+  }
+  call.TakeReply().Send(
+      base::DictValue().Set("downloads", std::move(downloads)));
+}
+
+AC_ENGINE_CALL(ac_downloads_cancel) {
+  ray::Call call(profile_dir, args_json, reply, context);
+  if (!call) {
+    return;
+  }
+  if (download::DownloadItem* item = ray::DownloadFor(call)) {
+    item->Cancel(true);
+    call.TakeReply().Ok();
+  }
+}
+
+AC_ENGINE_CALL(ac_downloads_pause) {
+  ray::Call call(profile_dir, args_json, reply, context);
+  if (!call) {
+    return;
+  }
+  if (download::DownloadItem* item = ray::DownloadFor(call)) {
+    item->Pause();
+    call.TakeReply().Ok();
+  }
+}
+
+AC_ENGINE_CALL(ac_downloads_resume) {
+  ray::Call call(profile_dir, args_json, reply, context);
+  if (!call) {
+    return;
+  }
+  if (download::DownloadItem* item = ray::DownloadFor(call)) {
+    if (!item->CanResume()) {
+      return call.TakeReply().Error("can't resume");
+    }
+    item->Resume(true);
+    call.TakeReply().Ok();
+  }
+}
+
+AC_ENGINE_CALL(ac_downloads_keep) {
+  ray::Call call(profile_dir, args_json, reply, context);
+  if (!call) {
+    return;
+  }
+  if (download::DownloadItem* item = ray::DownloadFor(call)) {
+    if (item->IsInsecure()) {
+      item->ValidateInsecureDownload();
+    } else if (item->IsDangerous()) {
+      item->ValidateDangerousDownload();
+    }
+    call.TakeReply().Ok();
+  }
+}
+
+AC_ENGINE_CALL(ac_downloads_remove) {
+  ray::Call call(profile_dir, args_json, reply, context);
+  if (!call) {
+    return;
+  }
+  if (download::DownloadItem* item = ray::DownloadFor(call)) {
+    if (!item->IsDone()) {
+      return call.TakeReply().Error("download in progress");
+    }
+    item->Remove();
+    call.TakeReply().Ok();
+  }
+}

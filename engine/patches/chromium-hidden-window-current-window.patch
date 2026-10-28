@@ -1,0 +1,37 @@
+--- a/chrome/browser/extensions/chrome_extension_function_details.cc
++++ b/chrome/browser/extensions/chrome_extension_function_details.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/extensions/chrome_extension_function_details.h"
++#include "ray/core/ac_hooks.h"  // nogncheck
+ 
+ #include "chrome/browser/extensions/browser_extension_window_controller.h"
+ #include "chrome/browser/extensions/window_controller.h"
+@@ -44,7 +45,13 @@
+       // Only return the found controller if it's not about to be deleted,
+       // otherwise fall through to finding another one.
+       if (!window_controller->GetBrowserWindowInterface()
+-               ->IsDeleteScheduled()) {
++               ->IsDeleteScheduled() &&
++          // Ray: extension pages RayCore shows outside any tab strip
++          // (its popups, side panels) sit in hidden windows: their "current
++          // window" is the last active one, as for Chrome's popups.
++          !(g_ray_hidden_from_extensions &&
++            g_ray_hidden_from_extensions(
++                window_controller->GetBrowserWindowInterface()))) {
+         return window_controller;
+       }
+     }
+@@ -60,6 +67,11 @@
+   WindowController* window_controller = nullptr;
+   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+       [&](BrowserWindowInterface* browser) {
++        // Ray: RayCore's hidden windows.
++        if (g_ray_hidden_from_extensions &&
++            g_ray_hidden_from_extensions(browser)) {
++          return true;  // Continue iterating.
++        }
+         if (browser->GetProfile() == profile ||
+             (function_->include_incognito_information() &&
+              browser->GetProfile()->GetOriginalProfile() == profile)) {

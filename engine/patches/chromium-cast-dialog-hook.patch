@@ -1,0 +1,45 @@
+--- a/chrome/browser/ui/views/media_router/media_router_dialog_controller_views.cc
++++ b/chrome/browser/ui/views/media_router/media_router_dialog_controller_views.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/views/media_router/media_router_dialog_controller_views.h"
++#include "ray/core/ac_hooks.h"  // nogncheck
+ 
+ #include <memory>
+ 
+@@ -31,6 +32,12 @@
+ 
+ using content::WebContents;
+ 
++bool (*g_ray_wants_cast_dialog)(content::WebContents* initiator) = nullptr;
++bool (*g_ray_cast_dialog)(content::WebContents* initiator,
++                            media_router::MediaRouterUI* ui,
++                            base::ScopedClosureRunner* fullscreen_blocker) =
++    nullptr;
++
+ namespace media_router {
+ 
+ namespace {
+@@ -50,6 +57,10 @@
+ 
+ bool MediaRouterDialogControllerViews::ShowMediaRouterDialogForPresentation(
+     std::unique_ptr<StartPresentationContext> context) {
++  if (g_ray_wants_cast_dialog && g_ray_wants_cast_dialog(initiator())) {
++    return MediaRouterDialogController::ShowMediaRouterDialogForPresentation(
++        std::move(context));
++  }
+   // Block tab fullscreen to prevent UI spoofing. The GMC device picker is a
+   // trusted browser surface that should not coexist with attacker-controlled
+   // fullscreen content.
+@@ -115,6 +126,10 @@
+     return;
+   }
+   browser = browser_after_drop;
++  if (g_ray_cast_dialog &&
++      g_ray_cast_dialog(initiator(), ui_.get(), &*blocker)) {
++    return;
++  }
+   fullscreen_blocker_ = std::move(*blocker);
+ 
+   BrowserView* browser_view =

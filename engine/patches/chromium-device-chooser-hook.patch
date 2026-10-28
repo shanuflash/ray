@@ -1,0 +1,62 @@
+--- a/chrome/browser/ui/views/permissions/chooser_bubble_ui.cc
++++ b/chrome/browser/ui/views/permissions/chooser_bubble_ui.cc
+@@ -14,6 +14,7 @@
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+ #include "chrome/browser/ui/dialogs/browser_dialogs.h"
++#include "ray/core/ac_hooks.h"  // nogncheck
+ #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
+ #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
+ #include "chrome/browser/ui/views/chrome_widget_sublevel.h"
+@@ -222,6 +223,13 @@
+ 
+ BEGIN_METADATA(ChooserBubbleUiViewDelegate)
+ END_METADATA
++
++// Ray: RayCore (engine/raycore) shows its own chooser for the tabs it hosts.
++bool (*g_ray_device_chooser)(
++    content::WebContents* contents,
++    std::unique_ptr<permissions::ChooserController>* controller,
++    base::ScopedClosureRunner* fullscreen_blocker,
++    base::OnceClosure* close_closure) = nullptr;
+ 
+ namespace chrome {
+ 
+@@ -280,6 +288,15 @@
+   return ChooserDialogHost{browser, contents, std::move(*fullscreen_blocker)};
+ }
+ 
++bool ShowRayDeviceChooser(
++    ChooserDialogHost& host,
++    std::unique_ptr<permissions::ChooserController>& controller,
++    base::OnceClosure* close_closure) {
++  return g_ray_device_chooser &&
++         g_ray_device_chooser(host.contents, &controller,
++                                &host.fullscreen_blocker, close_closure);
++}
++
+ #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+ base::OnceClosure ShowDeviceChooserDialogForExtension(
+     content::RenderFrameHost* owner,
+@@ -292,6 +309,10 @@
+   if (!host) {
+     return base::DoNothing();
+   }
++  base::OnceClosure ray_close_closure;
++  if (ShowRayDeviceChooser(*host, controller, &ray_close_closure)) {
++    return ray_close_closure;
++  }
+ 
+   auto* browser_view = BrowserView::GetBrowserViewForBrowser(host->browser);
+   if (!browser_view) {
+@@ -353,6 +374,10 @@
+   if (!host) {
+     return base::DoNothing();
+   }
++  base::OnceClosure ray_close_closure;
++  if (ShowRayDeviceChooser(*host, controller, &ray_close_closure)) {
++    return ray_close_closure;
++  }
+   BrowserWindowInterface* browser = host->browser;
+ 
+   auto bubble = std::make_unique<ChooserBubbleUiViewDelegate>(

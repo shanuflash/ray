@@ -1,0 +1,34 @@
+--- a/extensions/common/permissions/permissions_data.cc
++++ b/extensions/common/permissions/permissions_data.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "extensions/common/permissions/permissions_data.h"
++#include "ray/core/ac_content_hooks.h"  // nogncheck
+ 
+ #include <algorithm>
+ #include <memory>
+@@ -30,6 +31,9 @@
+ 
+ using extensions::mojom::APIPermissionID;
+ 
++bool (*g_ray_restricted_component_extension)(
++    const extensions::ExtensionId& extension_id) = nullptr;
++
+ namespace extensions {
+ 
+ namespace {
+@@ -127,8 +131,12 @@
+ 
+ bool PermissionsData::IsRestrictedUrl(const GURL& document_url,
+                                       std::string* error) const {
+-  if (CanExecuteScriptEverywhere(extension_id_, location_))
++  if (CanExecuteScriptEverywhere(extension_id_, location_) &&
++      !(location_ == mojom::ManifestLocation::kComponent &&
++        g_ray_restricted_component_extension &&
++        g_ray_restricted_component_extension(extension_id_))) {
+     return false;
++  }
+ 
+   if (g_policy_delegate &&
+       g_policy_delegate->IsRestrictedUrl(document_url, error)) {
