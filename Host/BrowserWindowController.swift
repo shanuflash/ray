@@ -187,7 +187,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let items = downloads.items
     let active = items.filter { $0.active && !$0.waiting }
     let progress = active.isEmpty ? nil : active.map(\.fraction).reduce(0, +) / Double(active.count)
-    sidebar.setDownloads(shown: !items.isEmpty, progress: progress)
+    sidebar.setDownloads(progress: progress)
     if let downloadsList, let downloadsPopover {
       downloadsList.show(items)
       downloadsPopover.contentSize = downloadsList.fittingSize
@@ -230,7 +230,6 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   private func layoutIfNeededForDownloads() {
-    if !sidebar.downloadsShown { sidebar.setDownloads(shown: true, progress: nil) }
     sidebar.layoutSubtreeIfNeeded()
   }
 

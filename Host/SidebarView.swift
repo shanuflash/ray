@@ -161,7 +161,6 @@ final class SidebarView: NSView {
     reloadButton.action = #selector(reload)
     downloadsButton.target = self
     downloadsButton.action = #selector(showDownloads)
-    downloadsButton.isHidden = true
     downloadsRing.fillColor = nil
     downloadsRing.lineWidth = 2
     downloadsRing.lineCap = .round
@@ -373,7 +372,7 @@ final class SidebarView: NSView {
     show(favoritesGlow, at: favoritesLit ? NSRect(origin: .zero, size: tilesView.frame.size).insetBy(dx: -4, dy: -4) : nil)
     if rows > 0 { y += tilesHeight + 10 }
 
-    let footer: CGFloat = downloadsButton.isHidden ? 0 : 40
+    let footer: CGFloat = 40
     place(scrollView, NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y - inset - footer)), entry: nil)
     var rowY: CGFloat = 0
     for slot in pinnedSlots {
@@ -811,18 +810,15 @@ final class SidebarView: NSView {
   @objc private func reload() { delegate?.sidebarReload(self) }
   @objc private func showDownloads() { delegate?.sidebarDownloads(self, anchor: downloadsButton) }
 
-  /// The downloads button shows once anything has downloaded this session; while files are coming in, a ring
-  /// around it fills with their progress.
-  func setDownloads(shown: Bool, progress: Double?) {
-    if downloadsButton.isHidden == shown { needsLayout = true }
-    downloadsButton.isHidden = !shown
+  /// The downloads button is always in the footer; while files are coming in, a ring around it fills with their
+  /// progress.
+  func setDownloads(progress: Double?) {
     downloadsRing.strokeColor = NSColor.controlAccentColor.cgColor
     downloadsRing.isHidden = progress == nil
     downloadsRing.strokeEnd = CGFloat(progress ?? 0)
   }
 
   var downloadsAnchor: NSView { downloadsButton }
-  var downloadsShown: Bool { !downloadsButton.isHidden }
 
   private func reuse<V: NSView>(_ views: [V], count: Int, in parent: NSView, make: () -> V) -> [V] {
     var views = views
