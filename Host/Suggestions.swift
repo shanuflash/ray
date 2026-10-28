@@ -87,6 +87,8 @@ final class FaviconCache {
 }
 
 final class SearchSuggestions {
+  static let endpoint = TestEnvironment["RAY_SUGGEST_URL"]
+    ?? "https://suggestqueries.google.com/complete/search?client=firefox&q=%s"
   static var userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
   private static let minimumInterval: TimeInterval = 0.1
   private static let warmInterval: TimeInterval = 30
@@ -100,24 +102,12 @@ final class SearchSuggestions {
     return URLSession(configuration: configuration)
   }()
   private var cache: [String: [String]] = [:]
-  private var cachedEndpoint: String?
   private var shown: (query: String, results: [String]) = ("", [])
   private var lastRequest = Date.distantPast
   private var scheduled: DispatchWorkItem?
   private var wanted = ""
 
-  /// Answers belong to the endpoint that gave them: another default engine starts from nothing.
-  private func syncEndpoint() {
-    let endpoint = SearchEngine.suggestionsTemplate
-    guard endpoint != cachedEndpoint else { return }
-    cachedEndpoint = endpoint
-    cache = [:]
-    shown = ("", [])
-    scheduled?.cancel()
-  }
-
   func current(for query: String) -> [String] {
-    syncEndpoint()
     let key = query.lowercased()
     if let exact = cache[key] { return exact }
     guard !shown.query.isEmpty, key.hasPrefix(shown.query) else { return [] }
@@ -125,14 +115,12 @@ final class SearchSuggestions {
   }
 
   func warm() {
-    syncEndpoint()
-    guard cachedEndpoint != nil, Date().timeIntervalSince(lastRequest) > Self.warmInterval else { return }
+    guard Date().timeIntervalSince(lastRequest) > Self.warmInterval else { return }
     lastRequest = Date()
     send("", then: nil)
   }
 
   func fetch(_ query: String, then done: @escaping () -> Void) {
-    syncEndpoint()
     let key = query.lowercased()
     wanted = key
     scheduled?.cancel()
@@ -152,15 +140,18 @@ final class SearchSuggestions {
   }
 
   private func send(_ key: String, then done: (() -> Void)?) {
-    guard let endpoint = cachedEndpoint, let url = URL(string: SearchEngine.searchURL(for: key, template: endpoint)) else { return }
+    let encoded = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))) ?? key
+    guard let url = URL(string: Self.endpoint.replacingOccurrences(of: "%s", with: encoded)) else { return }
     var request = URLRequest(url: url)
     request.assumesHTTP3Capable = true
     request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
     request.setValue(Locale.preferredLanguages.prefix(3).joined(separator: ","), forHTTPHeaderField: "Accept-Language")
     session.dataTask(with: request) { [weak self] data, _, _ in
-      guard let done, let data, let list = SearchEngine.parseSuggestions(data) else { return }
+      guard let done, let data,
+            let json = try? JSONSerialization.jsonObject(with: data) as? [Any],
+            json.count > 1, let list = json[1] as? [String] else { return }
       DispatchQueue.main.async {
-        guard let self, self.cachedEndpoint == endpoint else { return }
+        guard let self else { return }
         self.cache[key] = list
         if self.wanted.hasPrefix(key), key.count >= self.shown.query.count || !self.wanted.hasPrefix(self.shown.query) {
           self.shown = (key, list)
@@ -168,17 +159,6 @@ final class SearchSuggestions {
         if self.wanted.hasPrefix(key) { done() }
       }
     }.resume()
-  }
-}
-
-extension SearchEngine {
-  /// Asks the engine for the profile's default search engine (what ray://settings › Search engine edits); `changed`
-  /// runs on the main thread when the answer differs from what Ray had. Until a reply arrives the last known one
-  /// stays in use. A private window follows its main profile's choice, so pass that profile.
-  static func refresh(profile: ArdiaCoreProfile, changed: (() -> Void)? = nil) {
-    EngineCalls.call("ac_search_engines_list", profile: profile) { reply in
-      if apply(reply) { changed?() }
-    }
   }
 }
 
@@ -251,13 +231,14 @@ enum Suggestions {
   private static func typedSuggestion(_ query: String) -> Suggestion? {
     guard let url = AddressInput.url(for: query) else { return nil }
     if AddressInput.isSearch(url) {
-      return Suggestion(kind: .search(url), title: query, detail: "Search \(SearchEngine.displayName)", icon: magnifier)
+      return Suggestion(kind: .search(url), title: query, detail: "Search Google", icon: magnifier)
     }
     return Suggestion(kind: .url(url), title: AddressInput.display(for: url), detail: "Open", icon: globe)
   }
 
   private static func searchSuggestion(_ text: String) -> Suggestion? {
-    let url = SearchEngine.searchURL(for: text)
+    let query = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))) ?? text
+    let url = AddressInput.searchTemplate.replacingOccurrences(of: "%s", with: query)
     return Suggestion(kind: .search(url), title: text, detail: "", icon: magnifier)
   }
 

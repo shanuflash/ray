@@ -1,9 +1,8 @@
 import AppKit
 
 enum AddressInput {
-  /// The default engine's search URL (`%s` stands for the query): the profile's choice as the engine last reported it,
-  /// else Google. See `SearchEngine`.
-  static var searchTemplate: String { SearchEngine.searchTemplate }
+  static let searchTemplate = TestEnvironment["RAY_SEARCH_URL"]
+    ?? "https://www.google.com/search?q=%s"
 
   private static let passThroughSchemes: Set<String> = ["http", "https", "file", "chrome", "about", "data", "view-source"]
 
@@ -24,7 +23,8 @@ enum AddressInput {
     if !text.contains(" "), let host = hostPart(of: text), isHost(host) {
       return (isLocal(host) ? "http://" : "https://") + text
     }
-    return SearchEngine.searchURL(for: text)
+    let query = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))) ?? text
+    return searchTemplate.replacingOccurrences(of: "%s", with: query)
   }
 
   /// Chrome settings pages Ray's own Settings window stands in for, and the pane each opens: Appearance and behavior
@@ -50,7 +50,7 @@ enum AddressInput {
   }
 
   static func isSearch(_ url: String) -> Bool {
-    SearchEngine.isResults(url, of: searchTemplate)
+    url.hasPrefix(searchTemplate.replacingOccurrences(of: "%s", with: ""))
   }
 
   static func host(of url: String) -> String {

@@ -44,10 +44,6 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
 - `EngineCalls`: calls the engine's exported `ac_*` C functions (`dlsym`, JSON in, JSON reply), e.g.
   `ac_history_query`. Their arguments are in `third_party/ardia/engine/chromium/src/chrome/browser/ardia/ac_*.cc`.
   `EngineEvents` is the one engine event sink (`downloads.changed`, …), handed out by topic.
-- `SearchEngine`: the profile's default search engine from `ac_search_engines_list` (what ray://settings › Search
-  engine edits), refreshed at launch and whenever the command bar opens. Its templates are untrusted: https (http
-  for localhost), a host, `%s` once, else Google for searches and no remote suggestions. `RAY_SEARCH_URL` /
-  `RAY_SUGGEST_URL` still override in the test app (`searchengine real` lifts the search one).
 - Pinned folders are `SidebarEntry`s of kind `.folder` inside `state.pinned`, kept in tree order with `parentID`
   links; `SidebarState.normalizePinned()` rebuilds a valid tree after every change and on load.
 - `Extensions` (puzzle button in the sidebar address field, action popups in an NSPopover, install prompt),

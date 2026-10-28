@@ -167,36 +167,6 @@ enum TestCommands {
     return "ok"
   }
 
-  /// `searchengine real|pinned|refresh`: `real` lifts the RAY_SEARCH_URL override so the profile's own default
-  /// engine answers searches (suggestions stay on the fixture), `pinned` puts it back; `refresh` asks the engine for the default again and
-  /// replies (as JSON, once it answers) with what the engine said and what Ray took from it.
-  private static func searchEngine(_ argument: String, line: String) {
-    func reply(_ text: String) {
-      FileHandle.standardError.write("[ray-test] \(line) -> \(text)\n".data(using: .utf8)!)
-    }
-    switch argument {
-    case "real", "pinned":
-      SearchEngine.useEngine(argument == "real")
-      reply("ok")
-    case "refresh":
-      guard let profile = AppController.shared.current?.mainProfile else { return reply("no window") }
-      EngineCalls.call("ac_search_engines_list", profile: profile) { raw in
-        SearchEngine.apply(raw)
-        let engines = raw?["engines"] as? [[String: Any]] ?? []
-        let engineDefault = engines.first { $0["default"] as? Bool == true }
-        let report: [String: Any] = [
-          "engineName": engineDefault?["name"] ?? NSNull(), "engineURL": engineDefault?["url"] ?? NSNull(),
-          "engineSuggestions": engineDefault?["suggestionsUrl"] ?? NSNull(), "count": engines.count,
-          "template": SearchEngine.searchTemplate, "suggestions": SearchEngine.suggestionsTemplate ?? NSNull(),
-          "typed": AddressInput.url(for: "ray test") ?? NSNull(), "label": SearchEngine.displayName,
-        ]
-        reply((try? JSONSerialization.data(withJSONObject: report)).flatMap { String(data: $0, encoding: .utf8) } ?? "bad")
-      }
-    default:
-      reply("usage: searchengine real|pinned|refresh")
-    }
-  }
-
   private static func run(_ line: String) {
     let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
     guard let command = parts.first else { return }
@@ -204,7 +174,6 @@ enum TestCommands {
     let window = AppController.shared.current?.window
     let editor = window?.firstResponder as? NSTextView
     var result = "ok"
-    if command == "searchengine" { return searchEngine(argument, line: line) }
     switch command {
     case "menu":
       if !NSApp.sendAction(Selector(argument + ":"), to: AppController.shared, from: nil) { result = "no action" }

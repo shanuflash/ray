@@ -1235,7 +1235,6 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       commandBar = bar
     }
     searches.warm()
-    SearchEngine.refresh(profile: mainProfile) { [weak self] in self?.refreshSuggestions() }
     sidebar.setNewTabActive(commandBarMode == .newTab)
     bar.present(query: query)
     refreshSuggestions()
@@ -1702,7 +1701,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
         [
           "mode": commandBarMode.rawValue, "query": bar.field.stringValue, "selected": bar.selectedIndex,
           "rowsFullyVisible": bar.rowsFullyVisible,
-          "rows": bar.suggestions.map { ["kind": $0.kindName, "title": $0.title, "detail": $0.detail] },
+          "rows": bar.suggestions.map { ["kind": $0.kindName, "title": $0.title] },
         ] as [String: Any]
       } ?? NSNull(),
       "tabs": tabs.map { tab in
