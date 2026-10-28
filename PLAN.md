@@ -221,7 +221,11 @@ Iframes only reach the first check; `main`'s body compiles only in top frames.
 ### M4: Ship (weeks 13–16)
 - Phase B engine build (section 6) or, if staying on the prebuilt for personal use, skip it.
 - Developer ID signing, notarization, DMG, Sparkle auto-updates.
-- Arc import (`packages/import`): Arc stops working on 2026-12-22.
+- Arc import (`packages/import`): Arc stops working on 2026-12-22. Favorites, pinned tabs and folders are done
+  (File › Import from Arc…, 2026-10-28).
+- **Arc cookie import waits for Phase B (decided 2026-10-28):** it needs Arc's "Arc Safe Storage" keychain key, and
+  the sessions it brings in must be stored under Ray's own "Ray Safe Storage" item, not the prebuilt engine's mock
+  keychain, where they'd sit on disk effectively unencrypted.
 - **Exit:** a notarized DMG that installs, updates itself and imports an Arc profile.
 
 ### M5: Ongoing
