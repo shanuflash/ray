@@ -1049,6 +1049,30 @@ const checks = {
     for (const key of ["NSCameraUsageDescription", "NSMicrophoneUsageDescription", "NSLocationUsageDescription", "NSBluetoothAlwaysUsageDescription"])
       assert(plist.includes(`<key>${key}</key>`), `Info.plist lacks ${key}`);
   },
+  async "updater-config"() {
+    // Self-update (Sparkle): the feed, the key and the version keys are in Info.plist, Sparkle.framework is embedded
+    // and signed, and the test build never starts the updater (so a check run can't reach the feed).
+    const plist = JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", join(app, "Contents/Info.plist")], { encoding: "utf8" }));
+    assert(plist.SUFeedURL === "https://github.com/shanuflash/ray/releases/latest/download/appcast.xml", `SUFeedURL is ${plist.SUFeedURL}`);
+    assert(typeof plist.SUPublicEDKey === "string" && plist.SUPublicEDKey.length > 0, "Info.plist lacks SUPublicEDKey");
+    assert(plist.SUPublicEDKey === readFileSync(join(root, "Branding/sparkle-public-key.txt"), "utf8").trim(), "SUPublicEDKey isn't Branding/sparkle-public-key.txt");
+    assert(plist.SUEnableAutomaticChecks === true && plist.SUScheduledCheckInterval === 86400, "automatic daily checks aren't on");
+    const version = Object.fromEntries(readFileSync(join(root, "VERSION"), "utf8").trim().split("\n").map((l) => l.split("=")));
+    assert(plist.CFBundleShortVersionString === version.version, `CFBundleShortVersionString ${plist.CFBundleShortVersionString} != VERSION ${version.version}`);
+    assert(/^\d+$/.test(plist.CFBundleVersion) && plist.CFBundleVersion === version.build, `CFBundleVersion ${plist.CFBundleVersion} != VERSION build ${version.build}`);
+    const framework = join(app, "Contents/Frameworks/Sparkle.framework");
+    const lock = Object.fromEntries(readFileSync(join(root, "sparkle.lock"), "utf8").trim().split("\n").map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
+    const frameworkInfo = JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", join(framework, "Versions/B/Resources/Info.plist")], { encoding: "utf8" }));
+    assert(frameworkInfo.CFBundleShortVersionString === lock.version, `embedded Sparkle is ${frameworkInfo.CFBundleShortVersionString}, sparkle.lock says ${lock.version}`);
+    for (const part of ["Versions/B/Autoupdate", "Versions/B/Updater.app"])
+      assert(existsSync(join(framework, part)), `Sparkle.framework lacks ${part}`);
+    assert(!existsSync(join(framework, "Versions/B/XPCServices")), "Sparkle's XPC services (sandbox only) are embedded");
+    execFileSync("codesign", ["--verify", "--deep", "--strict", framework]);
+    execFileSync("codesign", ["--verify", "--deep", "--strict", app]);
+    assert(execFileSync("otool", ["-L", join(app, "Contents/MacOS/Ray")], { encoding: "utf8" }).includes("@rpath/Sparkle.framework/"), "Ray isn't linked against Sparkle");
+    await command("state");
+    assert(state().updater?.started === false && state().updater?.reason === "test build", `the test build started the updater: ${JSON.stringify(state().updater)}`);
+  },
   async "private-window"() {
     const mainEntry = state().activeEntry;
     await command("menu newPrivateWindow");

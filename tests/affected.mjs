@@ -42,6 +42,11 @@ export const areas = {
   "tools/rebrand-pak.py": ["about-panel", "settings-trimmed"],
   "tools/trim-settings-pak.py": ["about-panel", "settings-trimmed"],
   "Branding/": ["about-panel"],
+  // Self-update (Sparkle): the build's Info.plist keys, the embedded framework, and the updater staying off in tests.
+  "Branding/sparkle-public-key.txt": ["updater-config"],
+  "VERSION": ["updater-config", "about-panel"],
+  "sparkle.lock": ["updater-config"],
+  "scripts/fetch-sparkle.sh": ["updater-config"],
 
   // BrowserWindowController: by section. Lines outside them (properties, init) run everything.
   "Host/BrowserWindowController.swift#Layout": [...sidebarMotion, ...pageSurface, "page-toolbar", "site-controls",
@@ -90,6 +95,7 @@ export const areas = {
   "Host/SiteControls.swift": ["site-controls", "extensions"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/Toast.swift": ["copy-url"],
+  "Host/Updater.swift": ["updater-config"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift": ["folder-rename", "tile-hover"],
@@ -100,6 +106,7 @@ export const areas = {
   "tests/changed.mjs": [],
   "scripts/test.sh": [],
   "scripts/relaunch.sh": [],
+  "scripts/release.sh": [],
   "scripts/run-hidden.sh": [],
   "scripts/fetch-engine.sh": [],
   "CLAUDE.md": [],

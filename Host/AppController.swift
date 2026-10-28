@@ -34,6 +34,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
       forName: RaySettings.didChange, object: nil, queue: .main) { _ in MainMenu.applyShortcutSettings() }
     installReservedKeyRouting()
     TestCommands.start()
+    Updater.shared.start()
     openMainWindow(startURL: TestEnvironment["RAY_START_URL"])
   }
 
@@ -184,6 +185,9 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
 
   @objc func newTab(_ sender: Any?) { current?.beginNewTab() }
 
+  /// Ray › Check for Updates…
+  @objc func checkForUpdates(_ sender: Any?) { Updater.shared.checkForUpdates(sender) }
+
   /// The About panel, laid out like Arc's: version, the Chromium engine version, and what Ray is built on.
   @objc func showAbout(_ sender: Any?) {
     let center = NSMutableParagraphStyle()
@@ -271,6 +275,7 @@ extension AppController: NSMenuItemValidation {
     switch item.action {
     case #selector(goBack(_:)): return current?.activeTab?.canGoBack ?? false
     case #selector(goForward(_:)): return current?.activeTab?.canGoForward ?? false
+    case #selector(checkForUpdates(_:)): return Updater.shared.canCheck
     case #selector(toggleToolbar(_:)):
       item.state = current?.toolbarShown == true ? .on : .off
       return current != nil

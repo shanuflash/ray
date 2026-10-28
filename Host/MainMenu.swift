@@ -6,6 +6,7 @@ enum MainMenu {
 
     main.addItem(submenu("Ray", [
       item("About Ray", #selector(AppController.showAbout(_:)), nil, target: target),
+      item("Check for Updates…", #selector(AppController.checkForUpdates(_:)), nil, target: target),
       .separator(),
       item("Settings…", #selector(AppController.showSettings(_:)), ",", target: target),
       .separator(),

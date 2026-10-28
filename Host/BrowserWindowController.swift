@@ -1715,6 +1715,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     func tabID(_ entry: SidebarEntry) -> Any { entry.isLive ? Int(entry.tab!.tabId) : NSNull() }
     state["settings"] = RaySettings.shared.debug
     state["settingsWindow"] = SettingsWindowController.shared.debug
+    state["updater"] = Updater.shared.debug
     state["menuKeys"] = [
       "copyURL": MainMenu.keyEquivalent(of: #selector(AppController.copyURL(_:))) ?? NSNull(),
       "toggleSidebar": MainMenu.keyEquivalent(of: #selector(AppController.toggleSidebar(_:))) ?? NSNull(),

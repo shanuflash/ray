@@ -7,7 +7,22 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 fw_name="Chromium Framework"
 fw_src=$("$root/scripts/fetch-engine.sh")
 bundle_id=${RAY_BUNDLE_ID:-dev.shanus.ray}
-version=0.0.1
+# Version and build number live in VERSION (scripts/release.sh bumps them); Sparkle compares the build number.
+while IFS='=' read -r key value; do
+  case "$key" in version|build) printf -v "$key" '%s' "$value" ;; esac
+done < "$root/VERSION"
+[[ "$version" =~ ^[0-9]+(\.[0-9]+)*$ && "$build" =~ ^[0-9]+$ ]] || { echo "error: VERSION is malformed" >&2; exit 1; }
+# Sparkle 2: embedded in both apps (the test app never starts it), updates come from the release feed and are
+# accepted only with an EdDSA signature that matches this public key (Branding/sparkle-public-key.txt; the private
+# half lives in the maintainer's login keychain, see CLAUDE.md "Shipping to friends").
+sparkle_dir=$("$root/scripts/fetch-sparkle.sh")
+feed_url="https://github.com/shanuflash/ray/releases/latest/download/appcast.xml"
+sparkle_key=$(grep -v '^#' "$root/Branding/sparkle-public-key.txt" | tr -d '[:space:]')
+[[ "$sparkle_key" =~ ^[A-Za-z0-9+/=_]+$ ]] || { echo "error: Branding/sparkle-public-key.txt is malformed" >&2; exit 1; }
+if [[ "$sparkle_key" == REPLACE_* ]]; then
+  echo "warning: Branding/sparkle-public-key.txt is still the placeholder; this build can't update itself" >&2
+  echo "         (run Sparkle's generate_keys once, see CLAUDE.md \"Shipping to friends\")" >&2
+fi
 identity=${RAY_SIGN_IDENTITY:--}
 sign() { codesign --force --timestamp=none --sign "$identity" "$@" 2>/dev/null; }
 
@@ -28,6 +43,10 @@ build() {
   rm -rf "$app"
   mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks" "$app/Contents/Resources"
   cp -cR "$fw_src" "$app/Contents/Frameworks/"
+  cp -cR "$sparkle_dir/Sparkle.framework" "$app/Contents/Frameworks/"
+  # The XPC services are for sandboxed apps only (sparkle-project.org/documentation/sandboxing); Ray isn't sandboxed.
+  rm -rf "$app/Contents/Frameworks/Sparkle.framework/XPCServices" \
+    "$app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices"
   local fw_version
   fw_version=$(ls "$app/Contents/Frameworks/$fw_name.framework/Versions" | grep -v Current)
   # The engine's own pages call the browser "Ardia" and show its logo; they say "Ray" and show Ray's icon instead.
@@ -38,7 +57,7 @@ build() {
   # stops the build, set -e) if the engine's page moved the code this edits.
   python3 -I "$root/tools/trim-settings-pak.py" "$res/resources.pak"
 
-  xcrun swiftc -O -target arm64-apple-macos14.0 -swift-version 5 "$@" \
+  xcrun swiftc -O -target arm64-apple-macos14.0 -swift-version 5 "$@" -F "$sparkle_dir" -framework Sparkle \
     -import-objc-header "$root/Host/Bridging.h" -Xcc -I"$root/vendor/ardiacore" \
     "$root"/Host/*.swift \
     -Xlinker "$app/Contents/Frameworks/$fw_name.framework/Versions/$fw_version/$fw_name" \
@@ -64,9 +83,13 @@ build() {
   <key>CFBundleDisplayName</key><string>$name</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
-  <key>CFBundleVersion</key><string>$version</string>
+  <key>CFBundleVersion</key><string>$build</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSPrincipalClass</key><string>BrowserCrApplication</string>
+  <key>SUFeedURL</key><string>$feed_url</string>
+  <key>SUPublicEDKey</key><string>$sparkle_key</string>
+  <key>SUEnableAutomaticChecks</key><true/>
+  <key>SUScheduledCheckInterval</key><integer>86400</integer>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
   <!-- What macOS shows when a site you allowed first asks for these; without them it kills the app (as Chrome declares). -->
@@ -87,6 +110,11 @@ PLIST
     [ -e "$helper" ] && sign "$helper"
   done
   sign "$app/Contents/Frameworks/$fw_name.framework"
+  # Sparkle's helpers first, then the framework around them, then the app (inside out).
+  local sparkle="$app/Contents/Frameworks/Sparkle.framework/Versions/B"
+  sign "$sparkle/Autoupdate"
+  sign "$sparkle/Updater.app"
+  sign "$app/Contents/Frameworks/Sparkle.framework"
   sign "$app/Contents/MacOS/Ray"
   sign "$app"
   codesign --verify --deep --strict "$app"
