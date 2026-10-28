@@ -1,6 +1,6 @@
 import AppKit
 
-final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDelegate {
+final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegate {
   static let shared = AppController()
 
   private(set) var windows: [BrowserWindowController] = []
@@ -18,7 +18,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   func noteFocused(_ controller: BrowserWindowController) { lastFocused = controller }
 
   func engineDidStart() {
-    guard let engine = ArdiaCoreEngine.shared else { return }
+    guard let engine = RayCoreEngine.shared else { return }
     NSLog("[ray] engine started (Chromium %@)", engine.chromiumVersion)
     if let major = engine.chromiumVersion.split(separator: ".").first {
       SearchSuggestions.userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -45,7 +45,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
       if !launchedInBackground { open.window.makeKeyAndOrderFront(nil) }
       return open
     }
-    guard let engine = ArdiaCoreEngine.shared else { return nil }
+    guard let engine = RayCoreEngine.shared else { return nil }
     let controller = makeWindow(profile: engine.defaultProfile)
     controller.present(background: launchedInBackground)
     controller.restore(startURL: startURL)
@@ -91,11 +91,11 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     RaySettings.shared.flush()
   }
 
-  func engineWindowForNewBrowser(of profile: ArdiaCoreProfile, type: String) -> ArdiaCoreWindow? {
+  func engineWindowForNewBrowser(of profile: RayCoreProfile, type: String) -> RayCoreWindow? {
     guard type == "normal" || type == "popup" else { return nil }
     if let window = windows.first(where: { $0.profile === profile }) { return window.coreWindow }
     // A link from another app while no window is open brings the normal window back for it.
-    if !profile.offTheRecord, profile === ArdiaCoreEngine.shared?.defaultProfile { return openMainWindow()?.coreWindow }
+    if !profile.offTheRecord, profile === RayCoreEngine.shared?.defaultProfile { return openMainWindow()?.coreWindow }
     // A private page opened from elsewhere (say "Open Link in Incognito Window") gets a private window of its own,
     // never a normal one.
     if profile.offTheRecord, let main = windows.first(where: { !$0.isPrivate })?.profile {
@@ -110,29 +110,29 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     Shortcuts.isReserved(event)
   }
 
-  func engine(_ engine: ArdiaCoreEngine, permissionRequest request: [String: Any], tab: ArdiaCoreTab) {
+  func engine(_ engine: RayCoreEngine, permissionRequest request: [String: Any], tab: RayCoreTab) {
     guard let id = request["id"] as? String else { return }
     guard let controller = windows.first(where: { $0.owns(tab) }) else {
-      ArdiaCoreEngine.resolvePermission(id, result: "dismiss", remember: false)
+      RayCoreEngine.resolvePermission(id, result: "dismiss", remember: false)
       return
     }
     controller.permissions.add(request, tab: tab)
   }
 
-  func engine(_ engine: ArdiaCoreEngine, permissionRequestDismissed requestId: String) {
+  func engine(_ engine: RayCoreEngine, permissionRequestDismissed requestId: String) {
     windows.forEach { $0.permissions.dismissed(requestId) }
   }
 
-  func engine(_ engine: ArdiaCoreEngine, extensionInstallPrompt prompt: [String: Any], tab: ArdiaCoreTab?) {
+  func engine(_ engine: RayCoreEngine, extensionInstallPrompt prompt: [String: Any], tab: RayCoreTab?) {
     let controller = tab.flatMap { tab in windows.first { $0.owns(tab) } } ?? current
     guard let controller else {
-      if let id = prompt["requestId"] as? String { ArdiaCoreEngine.resolveExtensionInstallPrompt(id, accepted: false) }
+      if let id = prompt["requestId"] as? String { RayCoreEngine.resolveExtensionInstallPrompt(id, accepted: false) }
       return
     }
     controller.extensions.showInstallPrompt(prompt, in: controller.window)
   }
 
-  func engine(_ engine: ArdiaCoreEngine, extensionActionPopup popup: [String: Any], tab: ArdiaCoreTab) -> Bool {
+  func engine(_ engine: RayCoreEngine, extensionActionPopup popup: [String: Any], tab: RayCoreTab) -> Bool {
     guard let id = popup["extensionId"] as? String, let controller = windows.first(where: { $0.owns(tab) }) else {
       return false
     }
@@ -143,7 +143,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   /// File › New Private Window (⇧⌘N): a window on the profile's off-the-record side. Nothing it does is saved, and
   /// its cookies and history go when the last private window closes.
   @objc func newPrivateWindow(_ sender: Any?) {
-    guard let engine = ArdiaCoreEngine.shared else { return }
+    guard let engine = RayCoreEngine.shared else { return }
     let main = current.map { $0.mainProfile } ?? engine.defaultProfile
     engine.offTheRecordProfile(for: main) { [weak self] profile, _ in
       guard let self, let profile else { return }
@@ -153,7 +153,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     }
   }
 
-  private func makeWindow(profile: ArdiaCoreProfile, main: ArdiaCoreProfile? = nil) -> BrowserWindowController {
+  private func makeWindow(profile: RayCoreProfile, main: RayCoreProfile? = nil) -> BrowserWindowController {
     let directory = profile.offTheRecord ? nil : (dataDirectory as NSString).deletingLastPathComponent
     let controller = BrowserWindowController(
       profile: profile, mainProfile: main ?? profile, store: SidebarStore(directory: directory))
@@ -171,7 +171,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     quitting = true
     windows.forEach { $0.prepareForQuit() }
     RaySettings.shared.flush()
-    ArdiaCoreEngine.shared?.quit()
+    RayCoreEngine.shared?.quit()
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -202,7 +202,7 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
       if let link, let url = URL(string: link) { attributes[.link] = url }
       credits.append(NSAttributedString(string: text, attributes: attributes))
     }
-    let engine = ArdiaCoreEngine.shared?.chromiumVersion ?? ""
+    let engine = RayCoreEngine.shared?.chromiumVersion ?? ""
     if !engine.isEmpty { add("Chromium Engine Version \(engine)\n") }
     add("Ray is made possible by the ")
     add("Chromium", link: "https://www.chromium.org/")

@@ -42,7 +42,13 @@ build() {
   shift 3
   rm -rf "$app"
   mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks" "$app/Contents/Resources"
-  cp -cR "$fw_src" "$app/Contents/Frameworks/"
+  # Ray's own engine is copied out of ~/chromium-build under the chromium lock, so a build running there can't hand
+  # us a half-written framework.
+  if [[ "$fw_src" == "$HOME/chromium-build/"* ]]; then
+    "$root/scripts/locked" chromium --wait 500 -- cp -cR "$fw_src" "$app/Contents/Frameworks/"
+  else
+    cp -cR "$fw_src" "$app/Contents/Frameworks/"
+  fi
   cp -cR "$sparkle_dir/Sparkle.framework" "$app/Contents/Frameworks/"
   # The XPC services are for sandboxed apps only (sparkle-project.org/documentation/sandboxing); Ray isn't sandboxed.
   rm -rf "$app/Contents/Frameworks/Sparkle.framework/XPCServices" \
@@ -58,7 +64,7 @@ build() {
   python3 -I "$root/tools/trim-settings-pak.py" "$res/resources.pak"
 
   xcrun swiftc -O -target arm64-apple-macos14.0 -swift-version 5 "$@" -F "$sparkle_dir" -framework Sparkle \
-    -import-objc-header "$root/Host/Bridging.h" -Xcc -I"$root/vendor/ardiacore" \
+    -import-objc-header "$root/Host/Bridging.h" -Xcc -I"$root/engine/raycore/src/ray/core/public" \
     "$root"/Host/*.swift \
     -Xlinker "$app/Contents/Frameworks/$fw_name.framework/Versions/$fw_version/$fw_name" \
     -Xlinker -rpath -Xlinker @executable_path/../Frameworks \

@@ -15,7 +15,7 @@ final class SidebarEntry: Codable {
   var url: String
   var title: String
   var lastActive: Date
-  var tab: ArdiaCoreTab?
+  var tab: RayCoreTab?
   /// The pinned folder this item sits in; nil at the top level (and for favorites and today's tabs).
   var parentID: UUID?
   /// For folders: whether its items show. Optional so older files still load.
@@ -99,7 +99,7 @@ final class SidebarState: Codable {
 
   var allEntries: [SidebarEntry] { favorites + pinned + today }
 
-  func entry(for tab: ArdiaCoreTab) -> SidebarEntry? {
+  func entry(for tab: RayCoreTab) -> SidebarEntry? {
     allEntries.first { $0.tab === tab }
   }
 

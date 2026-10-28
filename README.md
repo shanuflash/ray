@@ -19,9 +19,10 @@ Not yet: Spaces, drag and drop, permission prompts (requests are refused), downl
 
 ## Engine
 
-Ray runs on the prebuilt engine from [Ardia](https://github.com/mantrakp04/ardia): Chromium 156 with
-[Helium](https://github.com/imputnet/helium)'s de-Googling patches and Ardia's hosting layer. `engine.lock` pins the
-exact build by SHA-256; `scripts/fetch-engine.sh` downloads and checks it.
+Ray's engine is Chromium 156 with [Helium](https://github.com/imputnet/helium)'s de-Googling patches and
+[Ardia](https://github.com/mantrakp04/ardia)'s hosting layer, built from `engine/` (Ardia's engine, renamed for Ray
+by `tools/engine/sync-engine.sh`). Building it takes about 45 GB of disk and a few hours the first time: the steps
+are in `engine/patches/build/` (1, 3, 4, 2, 5), and `scripts/fetch-engine.sh` finds the result.
 
 ## Build
 
@@ -46,5 +47,5 @@ with real accounts:
 
 ## License
 
-GPL-3.0 (`LICENSE`), as the engine it ships with is built with Helium's GPL-3.0 patches. `vendor/ardiacore/ArdiaCore.h`
-is from Ardia under Apache-2.0 (`LICENSE.Apache-2.0`); see `NOTICE`.
+GPL-3.0 (`LICENSE`), as the engine it ships with is built with Helium's GPL-3.0 patches. `engine/` is
+from Ardia under Apache-2.0 (`LICENSE.Apache-2.0`); see `NOTICE`.

@@ -1,6 +1,6 @@
 import AppKit
 
-final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCoreTabDelegate, SidebarViewDelegate,
+final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate, SidebarViewDelegate,
   CommandBarDelegate, FindBarDelegate, PageToolbarDelegate {
   enum CommandBarMode: String {
     case newTab
@@ -10,8 +10,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private static let margin: CGFloat = 8
   private static let logsState = TestEnvironment["RAY_LOG_STATE"] == "1"
 
-  let coreWindow: ArdiaCoreWindow
-  let profile: ArdiaCoreProfile
+  let coreWindow: RayCoreWindow
+  let profile: RayCoreProfile
   var onClose: (() -> Void)?
 
   private let root = WindowDragArea()
@@ -70,25 +70,25 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   var activeEntry: SidebarEntry? { state.activeEntryID.flatMap(state.entry(id:)) }
 
-  func owns(_ tab: ArdiaCoreTab) -> Bool { state.entry(for: tab) != nil }
+  func owns(_ tab: RayCoreTab) -> Bool { state.entry(for: tab) != nil }
   /// The puzzle button in the sidebar's address field, or the sliders button while that field is hidden.
   var extensionsAnchor: NSView { sidebar.showsAddress ? sidebar.extensionsAnchor : toolbar.siteButton }
 
-  var activeTab: ArdiaCoreTab? { activeEntry.flatMap { $0.isLive ? $0.tab : nil } }
+  var activeTab: RayCoreTab? { activeEntry.flatMap { $0.isLive ? $0.tab : nil } }
 
-  var tabs: [ArdiaCoreTab] { state.allEntries.compactMap { $0.isLive ? $0.tab : nil } }
+  var tabs: [RayCoreTab] { state.allEntries.compactMap { $0.isLive ? $0.tab : nil } }
 
   /// The normal profile behind this window: itself, or for a private window the profile it's the private side of.
-  let mainProfile: ArdiaCoreProfile
+  let mainProfile: RayCoreProfile
   var isPrivate: Bool { profile.offTheRecord }
 
-  init(profile: ArdiaCoreProfile, mainProfile: ArdiaCoreProfile, store: SidebarStore) {
+  init(profile: RayCoreProfile, mainProfile: RayCoreProfile, store: SidebarStore) {
     self.profile = profile
     self.mainProfile = mainProfile
     self.store = store
     state = store.load() ?? SidebarState()
     state.archiveStaleToday()
-    coreWindow = ArdiaCoreWindow(contentRect: NSRect(x: 0, y: 0, width: 1360, height: 860))
+    coreWindow = RayCoreWindow(contentRect: NSRect(x: 0, y: 0, width: 1360, height: 860))
     super.init()
     coreWindow.delegate = self
     coreWindow.activeProfile = profile
@@ -454,7 +454,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   // MARK: Find in page
 
   private var findBar: FindBarView?
-  private weak var findTab: ArdiaCoreTab?
+  private weak var findTab: RayCoreTab?
 
   func showFind() {
     guard let tab = activeTab else { return }
@@ -571,7 +571,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     siteControls?.frame = NSRect(x: right - size.width, y: top - size.height, width: size.width, height: size.height)
   }
 
-  private func siteControlsAction(_ action: SiteControlsView.Action, tab: ArdiaCoreTab) {
+  private func siteControlsAction(_ action: SiteControlsView.Action, tab: RayCoreTab) {
     let origin = siteControls?.origin
     closeSiteControls()
     switch action {
@@ -758,7 +758,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     if entry.tab !== tab { bind(entry, tab) }
   }
 
-  private func bind(_ entry: SidebarEntry, _ tab: ArdiaCoreTab) {
+  private func bind(_ entry: SidebarEntry, _ tab: RayCoreTab) {
     entry.tab = tab
     tab.delegate = self
     pages.attach(tab)
@@ -1312,7 +1312,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     pages.bounds.contains(pages.convert(point, from: nil)) && commandBar == nil
   }
 
-  private func focusPage(_ tab: ArdiaCoreTab) {
+  private func focusPage(_ tab: RayCoreTab) {
     window.makeFirstResponder(tab.view)
     tab.focus()
   }
@@ -1363,9 +1363,9 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     return nil
   }
 
-  // MARK: ArdiaCoreWindowDelegate
+  // MARK: RayCoreWindowDelegate
 
-  func window(_ window: ArdiaCoreWindow, didInsert tab: ArdiaCoreTab, opener: ArdiaCoreTab?, disposition: String) {
+  func window(_ window: RayCoreWindow, didInsert tab: RayCoreTab, opener: RayCoreTab?, disposition: String) {
     TestEnvironment.log("tab \(tab.tabId) inserted (\(disposition))")
     if state.entry(for: tab) != nil { return }
     if let entry = loadingEntry, entry.tab == nil {
@@ -1382,7 +1382,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     }
   }
 
-  func window(_ window: ArdiaCoreWindow, didRemove tab: ArdiaCoreTab) {
+  func window(_ window: RayCoreWindow, didRemove tab: RayCoreTab) {
     guard let entry = state.entry(for: tab) else { return }
     if closing {
       pages.detach(tab)
@@ -1407,32 +1407,32 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     changed("remove")
   }
 
-  func window(_ window: ArdiaCoreWindow, didActivate tab: ArdiaCoreTab) {
+  func window(_ window: RayCoreWindow, didActivate tab: RayCoreTab) {
     if let entry = state.entry(for: tab), entry.id != state.activeEntryID { select(entry) }
   }
 
-  func window(_ window: ArdiaCoreWindow, devToolsDidChangeFor tab: ArdiaCoreTab, view devToolsView: NSView?) {
+  func window(_ window: RayCoreWindow, devToolsDidChangeFor tab: RayCoreTab, view devToolsView: NSView?) {
     if tab === activeTab { pages.setDevTools(devToolsView) }
     logState("devTools")
   }
 
-  func window(_ window: ArdiaCoreWindow, preHandleKeyEvent event: NSEvent) -> Bool {
+  func window(_ window: RayCoreWindow, preHandleKeyEvent event: NSEvent) -> Bool {
     Shortcuts.isReserved(event) && (NSApp.mainMenu?.performKeyEquivalent(with: event) ?? false)
   }
 
-  func window(_ window: ArdiaCoreWindow, handleKeyEvent event: NSEvent) -> Bool {
+  func window(_ window: RayCoreWindow, handleKeyEvent event: NSEvent) -> Bool {
     event.type == .keyDown && (NSApp.mainMenu?.performKeyEquivalent(with: event) ?? false)
   }
 
-  func windowShouldClose(_ window: ArdiaCoreWindow) -> Bool {
+  func windowShouldClose(_ window: RayCoreWindow) -> Bool {
     prepareForQuit()
     DispatchQueue.main.async { [weak self] in self?.onClose?() }
     return true
   }
 
-  // MARK: ArdiaCoreTabDelegate
+  // MARK: RayCoreTabDelegate
 
-  private func tabChanged(_ tab: ArdiaCoreTab, event: String) {
+  private func tabChanged(_ tab: RayCoreTab, event: String) {
     guard !closing, let entry = state.entry(for: tab) else { return }
     entry.remember()
     sidebar.refresh(entry)
@@ -1447,14 +1447,14 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     logState(event)
   }
 
-  func tab(_ tab: ArdiaCoreTab, didFindMatches count: Int32, active: Int32, final: Bool) {
+  func tab(_ tab: RayCoreTab, didFindMatches count: Int32, active: Int32, final: Bool) {
     guard tab === findTab, let findBar else { return }
     findBar.setMatches(Int(count), active: Int(active))
     if final { logState("find") }
   }
 
-  func tabDidChangeTitle(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "title") }
-  func tabDidChangeURL(_ tab: ArdiaCoreTab) {
+  func tabDidChangeTitle(_ tab: RayCoreTab) { tabChanged(tab, event: "title") }
+  func tabDidChangeURL(_ tab: RayCoreTab) {
     // Chrome's own settings page moved itself to Appearance (its left menu does that in place): Ray's window is
     // Appearance, so the tab goes back to where it was and the window opens.
     if !closing, let entry = state.entry(for: tab), let pane = AddressInput.nativeSettingsPane(for: tab.url) {
@@ -1468,11 +1468,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     }
     tabChanged(tab, event: "url")
   }
-  func tabDidChangeFavicon(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "favicon") }
-  func tabDidChangeNavigationState(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "navigation") }
-  func tabDidChangeSecurity(_ tab: ArdiaCoreTab) { tabChanged(tab, event: "security") }
+  func tabDidChangeFavicon(_ tab: RayCoreTab) { tabChanged(tab, event: "favicon") }
+  func tabDidChangeNavigationState(_ tab: RayCoreTab) { tabChanged(tab, event: "navigation") }
+  func tabDidChangeSecurity(_ tab: RayCoreTab) { tabChanged(tab, event: "security") }
 
-  func tabDidCommitDocument(_ tab: ArdiaCoreTab) {
+  func tabDidCommitDocument(_ tab: RayCoreTab) {
     // On the next turn of the run loop, by which time the engine has set its own zoom for the new page.
     DispatchQueue.main.async { [weak self, weak tab] in
       guard let self, let tab else { return }
@@ -1482,16 +1482,16 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     }
   }
 
-  func tabDidChangeZoom(_ tab: ArdiaCoreTab) { noteZoomChanged(tab) }
+  func tabDidChangeZoom(_ tab: RayCoreTab) { noteZoomChanged(tab) }
 
-  func tabDidChangeLoading(_ tab: ArdiaCoreTab) {
+  func tabDidChangeLoading(_ tab: RayCoreTab) {
     pages.updateProgress(for: tab)
     if tab === activeTab { updateToolbarLoading() }
     if !tab.loading { TestEnvironment.log("tab \(tab.tabId) loaded \(tab.url)") }
     if tab === activeTab { logState("loading") }
   }
 
-  func tabDidChangeProgress(_ tab: ArdiaCoreTab) {
+  func tabDidChangeProgress(_ tab: RayCoreTab) {
     pages.updateProgress(for: tab)
     if tab === activeTab {
       updateToolbarLoading()
@@ -1499,12 +1499,12 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     }
   }
 
-  func tab(_ tab: ArdiaCoreTab, didFailLoad url: String, code: Int32, description text: String) {
+  func tab(_ tab: RayCoreTab, didFailLoad url: String, code: Int32, description text: String) {
     TestEnvironment.log("tab \(tab.tabId) failed \(url) (\(code) \(text))")
   }
 
   func tab(
-    _ tab: ArdiaCoreTab, didReceivePageMessage kind: String, json: String, frame frameId: String, main: Bool,
+    _ tab: RayCoreTab, didReceivePageMessage kind: String, json: String, frame frameId: String, main: Bool,
     origin: String
   ) {
     if kind == "hello" && main { TestEnvironment.log("page channel ready in tab \(tab.tabId) (\(origin))") }
@@ -1551,7 +1551,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   /// A tab that ended up on that page (Chrome's settings navigated itself there, or a link opened it): the window
   /// opens, and the tab goes back to where it was, or closes if it has nowhere to go back to.
-  private func leaveNativeSettings(_ tab: ArdiaCoreTab, _ entry: SidebarEntry, pane: String) {
+  private func leaveNativeSettings(_ tab: RayCoreTab, _ entry: SidebarEntry, pane: String) {
     SettingsWindowController.shared.show(pane: pane)
     if tab.canGoBack {
       tab.goBack()
@@ -1567,7 +1567,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   /// Settings › Page zoom is Ray's own: the engine keeps zoom per host, so Ray sets the default when a navigation
   /// commits on a host the user hasn't zoomed, and remembers the hosts they did zoom (⌘+ / ⌘−) so those keep their
   /// level. Hosts are never logged in a normal run.
-  private func zoomHost(of tab: ArdiaCoreTab) -> String? {
+  private func zoomHost(of tab: RayCoreTab) -> String? {
     guard let origin = tab.committedOrigin, let components = URLComponents(string: origin),
           let scheme = components.scheme?.lowercased(), scheme == "http" || scheme == "https",
           let host = components.host?.lowercased(), !host.isEmpty else { return nil }
@@ -1578,7 +1578,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     RaySettings.shared.isZoomed(host) || privateZoomed.contains(host)
   }
 
-  private func setZoom(_ tab: ArdiaCoreTab, to factor: Double) {
+  private func setZoom(_ tab: RayCoreTab, to factor: Double) {
     guard abs(tab.zoomFactor - factor) > 0.002 else { return }
     applyingZoom = true
     tab.zoomFactor = factor
@@ -1587,7 +1587,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   /// A tab's page just committed, or the default changed: a host the user zoomed keeps its own level, any other
   /// gets the default.
-  private func settleZoom(of tab: ArdiaCoreTab) {
+  private func settleZoom(of tab: RayCoreTab) {
     guard !closing, !tab.closed, let host = zoomHost(of: tab) else {
       zoomHosts[tab.tabId] = nil
       return
@@ -1600,7 +1600,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   /// The engine says a tab's zoom changed. While Ray is setting it, or a navigation is still settling (the host
   /// isn't the one Ray last settled), that's not the user; anything else on a host that isn't marked yet is.
-  private func noteZoomChanged(_ tab: ArdiaCoreTab) {
+  private func noteZoomChanged(_ tab: RayCoreTab) {
     guard !applyingZoom, !closing, let host = zoomHost(of: tab), zoomHosts[tab.tabId] == host, !isUserZoomed(host),
           abs(tab.zoomFactor - RaySettings.shared.values.defaultZoom) > 0.002 else { return }
     if isPrivate { privateZoomed.insert(host) } else { RaySettings.shared.markZoomed(host) }
@@ -1608,7 +1608,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   }
 
   /// A site's Reset in the site controls: back to following the default.
-  func resetZoom(of tab: ArdiaCoreTab) {
+  func resetZoom(of tab: RayCoreTab) {
     guard let host = zoomHost(of: tab) else {
       tab.zoomFactor = 1
       return
@@ -1721,6 +1721,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     state["settings"] = RaySettings.shared.debug
     state["settingsWindow"] = SettingsWindowController.shared.debug
     state["updater"] = Updater.shared.debug
+    state["safeStorage"] = ["mode": safeStorage.mode.rawValue, "note": safeStorage.note, "moved": safeStorage.moved]
     state["menuKeys"] = [
       "copyURL": MainMenu.keyEquivalent(of: #selector(AppController.copyURL(_:))) ?? NSNull(),
       "toggleSidebar": MainMenu.keyEquivalent(of: #selector(AppController.toggleSidebar(_:))) ?? NSNull(),

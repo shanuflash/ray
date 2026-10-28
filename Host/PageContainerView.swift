@@ -1,7 +1,7 @@
 import AppKit
 
 final class PageContainerView: NSView {
-  private(set) var shown: ArdiaCoreTab?
+  private(set) var shown: RayCoreTab?
   private var devTools: NSView?
   private var hideGeneration: [Int32: Int] = [:]
   private let progressLayer = CALayer()
@@ -63,7 +63,7 @@ final class PageContainerView: NSView {
     return state
   }
 
-  func attach(_ tab: ArdiaCoreTab) {
+  func attach(_ tab: RayCoreTab) {
     let page = tab.view
     guard page.superview !== self else { return }
     page.removeFromSuperview()
@@ -72,7 +72,7 @@ final class PageContainerView: NSView {
     addSubview(page, positioned: .below, relativeTo: nil)
   }
 
-  func detach(_ tab: ArdiaCoreTab) {
+  func detach(_ tab: RayCoreTab) {
     if tab.view.superview === self { tab.view.removeFromSuperview() }
     if shown === tab {
       shown = nil
@@ -80,7 +80,7 @@ final class PageContainerView: NSView {
     }
   }
 
-  func show(_ tab: ArdiaCoreTab) {
+  func show(_ tab: RayCoreTab) {
     attach(tab)
     let previous = shown
     guard previous !== tab else { return }
@@ -185,7 +185,7 @@ final class PageContainerView: NSView {
     progressLayer.backgroundColor.flatMap { NSColor(cgColor: $0) }.map { ProfileColor.hex(of: $0) } ?? ""
   }
 
-  func updateProgress(for tab: ArdiaCoreTab) {
+  func updateProgress(for tab: RayCoreTab) {
     guard tab === shown else { return }
     CATransaction.begin()
     CATransaction.setAnimationDuration(0.2)
@@ -200,7 +200,7 @@ final class PageContainerView: NSView {
     CATransaction.commit()
   }
 
-  private func noteHiddenLater(_ tab: ArdiaCoreTab) {
+  private func noteHiddenLater(_ tab: RayCoreTab) {
     let generation = hideGeneration[tab.tabId, default: 0]
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self, weak tab] in
       guard let self, let tab, !tab.closed, tab !== self.shown,

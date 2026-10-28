@@ -213,14 +213,24 @@ Iframes only reach the first check; `main`'s body compiles only in top frames.
 - Unused engine pieces (Peek's temporary-tab hook, content-blocker navigation hold) stay in the binary, idle.
 
 **Phase B (M4, or sooner if we need an engine change): own build.**
-- Hardware: Apple Silicon, 64 GB RAM preferred, 250 GB+ free APFS. This Mac (M3 Pro, 36 GB, 140 GB free) needs an
-  external SSD or another machine; first build estimated 6–10 h here.
-- Scripted rename map (`ArdiaCore`→`NovaCore`, `//ardia/core`→`//nova/core`, `chrome/browser/ardia`,
-  `g_ardia_`, `ac_`, `ardia_namesub.py` strings, bundle id, keychain item, icons), so Ardia's later engine commits
-  can be run through it and cherry-picked.
-- Patch review: drop `chromium-temporary-tab-restore-hook` (Peek), `chromium-devtools-control-token` (Ardia CLI)
-  unless the harness uses it, `chromium-neterror-game`; drop the content-blocker navigation-hold code; keep the
-  hosting, de-Googling, Web Store and power patches. Decide the rest one by one.
+- Hardware: Apple Silicon; about 45 GB of disk for the source and build (`~/chromium-build` on the internal disk, no
+  external SSD). Build steps from Ardia's `docs/engine-build.md` (1 sync, 3 Helium, 4 series, 2 gn args, 5 build),
+  under the `chromium` lock (`scripts/locked`). Never clean the build cache: incremental builds depend on it.
+- Scripted rename map, `tools/engine/sync-engine.sh <ardia checkout>`: `rename-ardia.py` writes `engine/` from
+  Ardia's (`ArdiaCore`→`RayCore`, `//ardia/core`→`//ray/core`, `chrome/browser/ray`, `g_ray_`, `ray_namesub.py`,
+  bundle id `dev.shanus.ray`, keychain item "Ray Safe Storage", links; `ac_` calls keep their names), then
+  `apply-ray.py` applies Ray's own changes from `engine-ray/`. Never edit `engine/` by hand; a later Ardia commit is
+  run through the same script and the diff cherry-picked.
+- Patch review (`engine-ray/drop-patches.txt`): dropped `chromium-temporary-tab-restore-hook` (Peek),
+  `chromium-devtools-control-token` (Ardia CLI; the harness doesn't use it) and `chromium-neterror-game`. Still
+  in: the content-blocker navigation hold (idle: Ray loads no blocker). Kept the hosting, de-Googling, Web Store
+  and power patches. Decide the rest one by one.
+- Keychain: the real app leaves the mock keychain. On its first launch, `Host/SafeStorage.swift` makes
+  "Ray Safe Storage", re-encrypts the profile's databases from the mock key to it (originals kept a week in
+  `Safe Storage Migration/backup`) and only then starts the engine. Test builds stay on the mock keychain; the
+  `safe-storage-migration` check runs the real path against the engine's file keychain. Until Ray is signed with a
+  stable identity (Developer ID, or at least one self-signed certificate), macOS asks for the keychain once after
+  each update, because an ad-hoc signature changes every build.
 - Chromium bump every 4 weeks (or follow Ardia's bumps via the rename map).
 
 ---

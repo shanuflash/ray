@@ -5,11 +5,12 @@ import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { createServer as createSecureServer } from "node:https";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, statSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateSync, crc32 } from "node:zlib";
+import { createDecipheriv, pbkdf2Sync } from "node:crypto";
 
 /** A square PNG of one colour, for fixture icons. */
 function solidPNG(size) {
@@ -48,8 +49,19 @@ const pages = {
   "/long": `<title>Long</title><style>body{margin:0;font:16px/1.6 sans-serif}p{margin:0 16px 12px}</style>` +
     Array.from({ length: 120 }, (_, i) => `<p id=p${i}>Paragraph ${i}: the quick brown fox jumps over the lazy dog, again and again, to make lines wrap differently at different widths.</p>`).join(""),
 };
+// Requests to /safe-storage/…, with the cookies they carried (the safe-storage-migration check).
+const safeStorageRequests = [];
 function serve(req, res) {
   const url = new URL(req.url, "http://x");
+  if (url.pathname.startsWith("/safe-storage/")) {
+    safeStorageRequests.push({ path: url.pathname, cookie: req.headers.cookie ?? "" });
+    const headers = { "content-type": "text/html" };
+    // Only when the browser didn't send it: a relaunch reloads this page, and must show the stored cookie, not a new one.
+    if (url.pathname === "/safe-storage/set" && !/ray_safe=/.test(req.headers.cookie ?? ""))
+      headers["set-cookie"] = `ray_safe=${url.searchParams.get("v")}; Max-Age=86400; Path=/`;
+    res.writeHead(200, headers);
+    return res.end("<title>Safe storage</title><p>safe storage</p>");
+  }
   if (url.pathname === "/suggest") {
     const q = url.searchParams.get("q") ?? "";
     res.writeHead(200, { "content-type": "application/json" });
@@ -1118,6 +1130,88 @@ const checks = {
     await until("private page gone", async () => !(await targets()).some((t) => t.url.includes("/b?private")), 8000);
     assert(state().activeEntry === mainEntry, "the normal window changed while the private one was open");
   },
+  async "safe-storage-migration"() {
+    // Ray 0.1's data, encrypted under the mock keychain's public key, moves to Ray's own key on the first launch
+    // that leaves the mock keychain: cookies survive, the database stops opening with the mock key, and the move
+    // happens once. The engine's file keychain (RAY_KEYCHAIN=file) stands in for the login keychain, so this never
+    // touches the user's. Own instances on their own data dir, next to the main one.
+    const dir = mkdtempSync(join(tmpdir(), "ray-safe-storage-"));
+    const token = `t${process.pid}x${Date.now()}`;
+    const running = [];
+    const start = (env) => {
+      let log = "";
+      const proc = spawn(join(app, "Contents/MacOS/Ray"), [], {
+        env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_DATA_DIR: dir,
+          RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.safe`, ...env },
+        stdio: ["pipe", "ignore", "pipe"],
+      });
+      proc.stdin.on("error", () => {});
+      proc.stderr.setEncoding("utf8");
+      proc.stderr.on("data", (chunk) => (log += chunk));
+      const it = { proc, log: () => log, exit: new Promise((r) => proc.on("exit", (code, signal) => r(code ?? signal))) };
+      running.push(it);
+      return it;
+    };
+    const stop = async (it) => {
+      it.proc.stdin.write("menu quit\n");
+      const code = await Promise.race([it.exit, sleep(15000).then(() => "timeout")]);
+      assert(code !== "timeout", "a safe-storage instance didn't quit within 15 s");
+    };
+    // The first /safe-storage/ request after `mark`: a relaunch restores the last tab (/safe-storage/set) rather than
+    // opening RAY_START_URL, and that request carries the cookies the engine read back from disk.
+    const firstSince = (mark) => safeStorageRequests[mark];
+    const keyOf = (password) => pbkdf2Sync(password, "saltysalt", 1003, 16, "sha1");
+    const open = (hex, key) => {
+      const value = Buffer.from(hex, "hex");
+      if (value.subarray(0, 3).toString() !== "v10") return null;
+      try {
+        const decipher = createDecipheriv("aes-128-cbc", key, Buffer.alloc(16, " "));
+        return Buffer.concat([decipher.update(value.subarray(3)), decipher.final()]).toString("latin1");
+      } catch { return null; }
+    };
+    const cookieDB = join(dir, "Chromium/Default/Cookies");
+    const stored = () => execFileSync("sqlite3", ["-readonly", cookieDB, "SELECT hex(encrypted_value) FROM cookies WHERE name = 'ray_safe'"], { encoding: "utf8" }).trim();
+    // A failure names the instance's own last log lines (it isn't the main instance whose log the runner prints).
+    const waitFor = async (what, it, fn) => {
+      try { await until(what, fn, 20000); } catch (error) {
+        throw new Error(`${error.message}; its log: ${it.log().split("\n").filter((l) => l.trim()).slice(-6).join(" | ").slice(-1500)}`);
+      }
+    };
+    try {
+      // 1. Ray 0.1: the mock keychain. A persistent cookie, written to disk when the instance quits.
+      let mark = safeStorageRequests.length;
+      const old = start({ RAY_START_URL: `${origin}/safe-storage/set?v=${token}` });
+      await waitFor("cookie set", old, () => firstSince(mark));
+      await sleep(500);
+      await stop(old);
+      const mockKey = keyOf("mock_password");
+      assert(open(stored(), mockKey)?.endsWith(token), "the cookie isn't stored under the mock key to begin with");
+      // 2. The move: the cookie comes back, now under the key in the (file) keychain only.
+      mark = safeStorageRequests.length;
+      const moved = start({ RAY_KEYCHAIN: "file" });
+      await waitFor("page after the move", moved, () => firstSince(mark));
+      assert(firstSince(mark).cookie.includes(`ray_safe=${token}`), `the cookie was lost in the move: ${JSON.stringify(firstSince(mark))}`);
+      assert(/safe storage: keychain, migrated, [1-9]\d* values moved/.test(moved.log()), `no move logged: ${moved.log().match(/safe storage:.*/)?.[0]}`);
+      await stop(moved);
+      const password = readFileSync(join(dir, "Chromium/Test Safe Storage Key"));
+      assert(password.length === 24, `keychain password is ${password.length} bytes`);
+      const value = stored();
+      assert(open(value, keyOf(password))?.endsWith(token), "the cookie isn't under Ray's key");
+      assert(open(value, mockKey) === null, "the cookie still opens with the mock key");
+      assert(existsSync(join(dir, "Chromium/Ray Safe Storage")), "no marker after the move");
+      assert(existsSync(join(dir, "Safe Storage Migration/backup/Default/Cookies")), "no backup of the original");
+      // 3. Once only.
+      mark = safeStorageRequests.length;
+      const again = start({ RAY_KEYCHAIN: "file" });
+      await waitFor("page on the next launch", again, () => firstSince(mark));
+      assert(firstSince(mark).cookie.includes(`ray_safe=${token}`), "the cookie was lost on the next launch");
+      assert(/safe storage: keychain, ready, 0 values moved/.test(again.log()), `moved again: ${again.log().match(/safe storage:.*/)?.[0]}`);
+      await stop(again);
+      rmSync(dir, { recursive: true, force: true });
+    } finally {
+      for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
+    }
+  },
   async "test-app-needs-data-dir"() {
     // A test instance with no (or an empty) RAY_DATA_DIR must refuse to start rather than open the user's profile.
     // CFFIXED_USER_HOME points the home folder at a scratch dir, so even a regression here can't reach real data.
@@ -1544,13 +1638,14 @@ const checks = {
     await key("", t2);
     await key("", t1);
     await command("state");
-    assert(state().tabCycle?.order.length === 4, "no walk in progress while Control is held");
+    // (Every live tab is in the walk; earlier checks can leave more open than these four.)
+    assert(state().tabCycle?.order.length >= 4, "no walk in progress while Control is held");
     await key("shift ", t2);
     await command("key ctrlup");
     await until("walk settled", async () => { await command("state"); return state().tabCycle === null; });
     // Settled on T2: it is now the most recent; the rest keep their order (T4, T3, T1).
     const ids = (list) => list.map((e) => e.tab);
-    assert(JSON.stringify(state().recentOrder) === JSON.stringify(ids([t2, t4, t3, t1])), `recent order ${state().recentOrder}, wanted ${ids([t2, t4, t3, t1])}`);
+    assert(JSON.stringify(state().recentOrder.slice(0, 4)) === JSON.stringify(ids([t2, t4, t3, t1])), `recent order ${state().recentOrder}, wanted ${ids([t2, t4, t3, t1])} first`);
     // A quick press and release goes back to the tab you were just on.
     await key("", t4);
     await command("key ctrlup");
@@ -1733,7 +1828,8 @@ const checks = {
     // tab, from a navigation in the page and typed (ray:// or chrome://).
     const noSearchPage = async (why) => {
       await command("state");
-      assert(state().tabs.length === tabCount + 1 && !state().tabs.some((t) => /\/search/i.test(t.url)), `${why}: ${state().tabs.map((t) => t.url)}`);
+      // Only settings addresses count: earlier checks can leave the fixture's own /search page open.
+      assert(state().tabs.length === tabCount + 1 && !state().tabs.some((t) => /^chrome:\/\/settings\/search/i.test(t.url)), `${why}: ${state().tabs.map((t) => t.url)}`);
       assert(!state().settingsWindow.open, `${why} opened Ray's Settings window`);
       const r = await read();
       assert(r.searchPage === 0 && !r.views.includes("search") && r.last === "/performance", `${why} shows ${r.last} ${r.views}`);

@@ -8,16 +8,16 @@ final class PermissionPrompts {
     let id: String
     let origin: String
     let kinds: [String]
-    weak var tab: ArdiaCoreTab?
+    weak var tab: RayCoreTab?
   }
 
   private var queue: [Request] = []
   private var view: PermissionPromptView?
   var onChange: (() -> Void)?
   /// Where the prompt goes (top left of the page card) and the tab shown there.
-  var host: (() -> (parent: NSView, frame: NSRect, activeTab: ArdiaCoreTab?))?
+  var host: (() -> (parent: NSView, frame: NSRect, activeTab: RayCoreTab?))?
 
-  func add(_ request: [String: Any], tab: ArdiaCoreTab) {
+  func add(_ request: [String: Any], tab: RayCoreTab) {
     guard let id = request["id"] as? String, let origin = request["origin"] as? String else { return }
     queue.append(Request(id: id, origin: origin, kinds: request["permissions"] as? [String] ?? [], tab: tab))
     update()
@@ -51,7 +51,7 @@ final class PermissionPrompts {
 
   private func answer(_ id: String, _ result: String, remember: Bool) {
     queue.removeAll { $0.id == id }
-    ArdiaCoreEngine.resolvePermission(id, result: result, remember: remember)
+    RayCoreEngine.resolvePermission(id, result: result, remember: remember)
     update()
   }
 

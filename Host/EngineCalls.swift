@@ -14,7 +14,7 @@ enum EngineCalls {
   private static let defaultHandle = UnsafeMutableRawPointer(bitPattern: -2)
 
   static func call(
-    _ name: String, profile: ArdiaCoreProfile, args: [String: Any] = [:],
+    _ name: String, profile: RayCoreProfile, args: [String: Any] = [:],
     completion: @escaping ([String: Any]?) -> Void
   ) {
     guard let symbol = dlsym(defaultHandle, name),

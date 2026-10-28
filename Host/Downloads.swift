@@ -46,13 +46,13 @@ final class DownloadsController {
   /// Newest first: the profile's download history, then this session's as they come.
   private(set) var items: [Item] = []
   var onChange: ((_ newlyWaiting: Bool) -> Void)?
-  private let profile: ArdiaCoreProfile
+  private let profile: RayCoreProfile
   /// A private window lists only private downloads and a normal one only normal ones, never each other's.
   private let offTheRecord: Bool
 
   /// `profile` is the normal profile (the engine's download calls work on it and report private downloads with an
   /// offTheRecord flag).
-  init(profile: ArdiaCoreProfile, offTheRecord: Bool) {
+  init(profile: RayCoreProfile, offTheRecord: Bool) {
     self.profile = profile
     self.offTheRecord = offTheRecord
     EngineEvents.on("downloads.changed") { [weak self] payload in

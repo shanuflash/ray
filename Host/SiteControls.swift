@@ -29,7 +29,7 @@ final class SiteControlsView: NSView {
 
   /// The site's origin (from the engine), or nil for pages without one (ray:// pages, files).
   let origin: String?
-  private let profile: ArdiaCoreProfile
+  private let profile: RayCoreProfile
   private let security: String
   private let host: String
   private let zoom: Double
@@ -49,7 +49,7 @@ final class SiteControlsView: NSView {
   private let moreButton = PanelTile(symbol: "ellipsis", label: "More")
   private(set) var settings: [(type: String, value: String, isDefault: Bool)] = []
 
-  init(origin: String?, url: String, profile: ArdiaCoreProfile, security: String, isInternal: Bool, extensions: [Extension],
+  init(origin: String?, url: String, profile: RayCoreProfile, security: String, isInternal: Bool, extensions: [Extension],
        zoom: Double, defaultZoom: Double = 1, resetZoom: @escaping () -> Void) {
     self.origin = origin
     self.profile = profile

@@ -2,7 +2,7 @@ import AppKit
 
 struct Suggestion {
   enum Kind {
-    case tab(ArdiaCoreTab)
+    case tab(RayCoreTab)
     case url(String)
     case search(String)
     case history(String)
@@ -41,7 +41,7 @@ final class HistoryCache {
   private(set) var entries: [HistoryEntry] = []
   private var loading = false
 
-  func refresh(profile: ArdiaCoreProfile, then done: @escaping () -> Void) {
+  func refresh(profile: RayCoreProfile, then done: @escaping () -> Void) {
     if loading { return }
     loading = true
     EngineCalls.call("ac_history_query", profile: profile, args: ["maxUrls": 3000, "maxVisits": 1]) { [weak self] reply in
@@ -66,7 +66,7 @@ final class FaviconCache {
 
   func image(for page: String) -> NSImage? { images[page] }
 
-  func load(_ pages: [String], profile: ArdiaCoreProfile, then done: @escaping () -> Void) {
+  func load(_ pages: [String], profile: RayCoreProfile, then done: @escaping () -> Void) {
     let wanted = pages.filter { images[$0] == nil && !missing.contains($0) && !requested.contains($0) }
     guard !wanted.isEmpty else { return }
     requested.formUnion(wanted)
@@ -172,7 +172,7 @@ enum Suggestions {
   static let emptyQueryRows = 5
 
   static func build(
-    query raw: String, tabs: [ArdiaCoreTab], active: ArdiaCoreTab?, history: [HistoryEntry], searches: [String],
+    query raw: String, tabs: [RayCoreTab], active: RayCoreTab?, history: [HistoryEntry], searches: [String],
     favicon: (String) -> NSImage? = { _ in nil }
   ) -> [Suggestion] {
     let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -248,7 +248,7 @@ enum Suggestions {
     return AddressInput.isSearch(url)
   }
 
-  private static func tabSuggestion(_ tab: ArdiaCoreTab) -> Suggestion {
+  private static func tabSuggestion(_ tab: RayCoreTab) -> Suggestion {
     let host = host(of: tab.url)
     return Suggestion(
       kind: .tab(tab), title: tab.title.isEmpty ? AddressInput.display(for: tab.url) : tab.title,

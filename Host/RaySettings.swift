@@ -160,7 +160,7 @@ final class RaySettings {
   /// Levels the engine already holds for hosts when Ray first tracks zoom are the user's own (they were set with
   /// ⌘+ / ⌘−, or in Chrome's pages): mark those hosts once, so the default never overwrites them. `then` runs once
   /// that is done, now if it already was.
-  func adoptExistingZoom(profile: ArdiaCoreProfile, then: @escaping () -> Void) {
+  func adoptExistingZoom(profile: RayCoreProfile, then: @escaping () -> Void) {
     if values.zoomAdopted { return then() }
     zoomWaiters.append(then)
     guard zoomWaiters.count == 1 else { return }

@@ -2,7 +2,7 @@ import AppKit
 
 /// A window's extensions: the list from the engine, the menu behind the address bar's puzzle button (Arc keeps
 /// extensions there), action popups in a popover under that button, and Chrome's install prompt as a sheet.
-final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDelegate {
+final class ExtensionsController: NSObject, NSPopoverDelegate, RayCoreTabDelegate {
   struct Item {
     let id: String
     let name: String
@@ -12,17 +12,17 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
   }
 
   private(set) var items: [Item] = []
-  private let profile: ArdiaCoreProfile
-  private let coreWindow: ArdiaCoreWindow
+  private let profile: RayCoreProfile
+  private let coreWindow: RayCoreWindow
   var onChange: (() -> Void)?
   var openPage: ((String) -> Void)?
 
   private var popover: NSPopover?
-  private var popupTab: ArdiaCoreTab?
+  private var popupTab: RayCoreTab?
   private(set) var popupURL: String?
   private var prompt: (id: String, name: String, alert: NSAlert, add: NSButton)?
 
-  init(profile: ArdiaCoreProfile, coreWindow: ArdiaCoreWindow) {
+  init(profile: RayCoreProfile, coreWindow: RayCoreWindow) {
     self.profile = profile
     self.coreWindow = coreWindow
     super.init()
@@ -49,7 +49,7 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
 
   // MARK: Menu
 
-  func menu(for tab: ArdiaCoreTab?, anchor: NSView) -> NSMenu {
+  func menu(for tab: RayCoreTab?, anchor: NSView) -> NSMenu {
     let menu = NSMenu()
     let enabled = items.filter(\.enabled)
     let states = tab?.actionStates(forExtensions: enabled.map(\.id)) ?? [:]
@@ -92,14 +92,14 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
   }
 
   /// Runs an extension's toolbar action on a tab; an action with a popup opens it under the anchor.
-  func run(_ id: String, on tab: ArdiaCoreTab, anchor: NSView) {
+  func run(_ id: String, on tab: RayCoreTab, anchor: NSView) {
     if tab.executeExtensionAction(id) == "popup" { showPopup(for: id, tab: tab, anchor: anchor) }
   }
 
   // MARK: Popup
 
   /// Opens the extension's own popup page (only a chrome-extension:// page of that extension) in a popover.
-  func showPopup(for id: String, tab: ArdiaCoreTab, anchor: NSView) {
+  func showPopup(for id: String, tab: RayCoreTab, anchor: NSView) {
     let state = tab.actionStates(forExtensions: [id])[id] as? [String: Any]
     guard let url = state?["popup"] as? String, url.hasPrefix("chrome-extension://\(id)/"),
           anchor.window != nil else { return }
@@ -145,12 +145,12 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
     onChange?()
   }
 
-  func tab(_ tab: ArdiaCoreTab, preferredSizeDidChange size: NSSize) {
+  func tab(_ tab: RayCoreTab, preferredSizeDidChange size: NSSize) {
     guard tab === popupTab else { return }
     popover?.contentSize = Self.clamp(size)
   }
 
-  func tabWillClose(_ tab: ArdiaCoreTab) {
+  func tabWillClose(_ tab: RayCoreTab) {
     if tab === popupTab { popover?.close() }
   }
 
@@ -166,7 +166,7 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
   func showInstallPrompt(_ request: [String: Any], in window: NSWindow?) {
     guard let id = request["requestId"] as? String else { return }
     guard let window, prompt == nil else {
-      ArdiaCoreEngine.resolveExtensionInstallPrompt(id, accepted: false)
+      RayCoreEngine.resolveExtensionInstallPrompt(id, accepted: false)
       return
     }
     let name = Self.plain(request["name"] as? String ?? "this extension", limit: 60)
@@ -191,7 +191,7 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
     alert.beginSheetModal(for: window) { [weak self] response in
       guard let self else { return }
       self.prompt = nil
-      ArdiaCoreEngine.resolveExtensionInstallPrompt(id, accepted: response == .alertSecondButtonReturn)
+      RayCoreEngine.resolveExtensionInstallPrompt(id, accepted: response == .alertSecondButtonReturn)
       self.refresh()
       self.onChange?()
     }
@@ -228,10 +228,10 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
 
 private final class RunChoice {
   let id: String
-  weak var tab: ArdiaCoreTab?
+  weak var tab: RayCoreTab?
   weak var anchor: NSView?
 
-  init(id: String, tab: ArdiaCoreTab?, anchor: NSView) {
+  init(id: String, tab: RayCoreTab?, anchor: NSView) {
     self.id = id
     self.tab = tab
     self.anchor = anchor

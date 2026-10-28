@@ -22,21 +22,51 @@ do {
   exit(1)
 }
 
+// The engine's key for cookies and passwords: "Ray Safe Storage" in the login keychain, after moving a data dir from
+// Ray 0.1's mock keychain (Host/SafeStorage.swift). Test builds stay on the mock keychain unless a check asks for the
+// engine's file keychain (RAY_KEYCHAIN=file), which takes the real path without touching the user's keychain.
+let safeStorage: SafeStorage.Report = {
+  guard !TestEnvironment.isTestBuild || TestEnvironment["RAY_KEYCHAIN"] == "file" else {
+    return SafeStorage.Report(mode: .mock, note: "test build")
+  }
+  let keychain: SafeStorageKeychain = TestEnvironment.isTestBuild
+    ? FileKeychain(path: (dataDirectory as NSString).appendingPathComponent("Test Safe Storage Key"))
+    : LoginKeychain()
+  return SafeStorage.prepare(dataDirectory: dataDirectory, keychain: keychain)
+}()
+TestEnvironment.log("safe storage: \(safeStorage.mode.rawValue), \(safeStorage.note), \(safeStorage.moved) values moved")
+if safeStorage.mode == .blocked {
+  NSLog("[ray] safe storage: %@", safeStorage.note)
+  let alert = NSAlert()
+  alert.messageText = "Ray couldn't finish updating your saved data."
+  alert.informativeText = "Your cookies and saved passwords are being moved to Ray's key in your login keychain, "
+    + "and that stopped part way. Nothing is lost: quit and open Ray again to finish."
+  alert.addButton(withTitle: "Quit")
+  alert.runModal()
+  exit(1)
+}
+
 var engineArguments = [
   CommandLine.arguments.first ?? "Ray",
   "--user-data-dir=\(dataDirectory)",
   "--profile-directory=Default",
-  "--use-mock-keychain",
   "--disable-stack-profiler",
   "--disable-features=MacAppCodeSignClone,DevToolsAcceptDebuggingConnections,AutofillAiWalletPrivatePasses"
     + (launchedInBackground ? ",MacWebContentsOcclusion" : ""),
   "--enable-features=WebContentsDiscard,"
     + "ImprovedStartupBestEffortDelay:StartupDelayStopOnLoadingTimedOut/true,"
     + "CPUMeasurementInFreezingPolicy:freezing_visible_protection_time/0s,"
-    + "InfiniteTabsFreezing:ardia_unconnected_unfreeze_interval/600s,"
+    + "InfiniteTabsFreezing:ray_unconnected_unfreeze_interval/600s,"
     // No ThrottleMainFrameTo60Hz (Ardia's battery choice): pages keep the display's full 120 Hz, as in Chrome.
     + "UrgentMainFrameForInput",
 ]
+if safeStorage.mode == .mock || TestEnvironment.isTestBuild {
+  // Test builds always pass it: the engine's test switches (its file keychain) only work on the mock keychain.
+  engineArguments.append("--use-mock-keychain")
+}
+if TestEnvironment.isTestBuild, safeStorage.mode == .keychain, let base = TestEnvironment["RAY_DATA_DIR"] {
+  engineArguments += ["--ray-data-dir=\(base)", "--ray-test=keychain=file"]
+}
 if TestEnvironment["RAY_ENGINE_FEATURES"] == "none" {
   engineArguments.removeAll { $0.hasPrefix("--enable-features=") }
 }
@@ -59,4 +89,4 @@ let argv = engineArguments.map { UnsafePointer<CChar>(strdup($0)!) }
 let argvBuffer = UnsafeMutablePointer<UnsafePointer<CChar>>.allocate(capacity: argv.count)
 argvBuffer.initialize(from: argv, count: argv.count)
 
-exit(ArdiaCoreEngine.run(withArgc: Int32(argv.count), argv: argvBuffer, delegate: AppController.shared))
+exit(RayCoreEngine.run(withArgc: Int32(argv.count), argv: argvBuffer, delegate: AppController.shared))

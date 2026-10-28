@@ -27,4 +27,9 @@ xcrun swiftc -target arm64-apple-macos14.0 -D RAY_TEST_HOOKS "$root/Host/Address
   "$root/Host/TestEnvironment.swift" "$root/Host/ProfileColor.swift" "$root/build/tests/main.swift" \
   -o "$root/build/tests/address-input"
 "$root/build/tests/address-input"
+mkdir -p "$root/build/tests/safe-storage"
+cp "$root/tests/SafeStorageTests.swift" "$root/build/tests/safe-storage/main.swift"
+xcrun swiftc -target arm64-apple-macos14.0 -D RAY_TEST_HOOKS "$root/Host/SafeStorage.swift" \
+  "$root/build/tests/safe-storage/main.swift" -o "$root/build/tests/safe-storage-tests"
+"$root/build/tests/safe-storage-tests"
 node "$root/tests/checks.mjs" "$@"

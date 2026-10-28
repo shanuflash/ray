@@ -71,9 +71,19 @@ publicly or create accounts.
   window's controls), `settings open|close|link|press <control> [n]|snap <path>`, `zoom in|out|reset`, and
   `key tab ctrl keywin` / `key ctrlup` for ⌃Tab walks. The state log has `settings`, `settingsWindow`, `menuKeys`,
   `recentOrder`, `tabCycle` and each tab's `zoom`.
-- `vendor/ardiacore/ArdiaCore.h`: the engine's public API, copied from Ardia at the tag in `engine.lock`. Must match
-  the engine binary; update both together.
-- `engine.lock`: the pinned prebuilt engine (tree, release, sha256). `scripts/fetch-engine.sh` downloads and checks it.
+- `engine/`: Ray's engine source (Phase B), generated: `tools/engine/sync-engine.sh` renames Ardia's `engine/`
+  (`rename-ardia.py`: ArdiaCore→RayCore, bundle id, "Ray Safe Storage", links) and applies `engine-ray/` (dropped
+  patches, removed files, fixups). Never edit `engine/` by hand. Its public API is
+  `engine/raycore/src/ray/core/public/RayCore.h`. Built in `~/chromium-build` (steps 1, 3, 4, 2, 5 of
+  `engine/patches/build/`, under `scripts/locked chromium`; never clean that build cache).
+- `engine.lock`: `source=local` builds against `~/chromium-build/…/out/Release_GN_arm64/Chromium Framework.framework`
+  (`RAY_ENGINE_FRAMEWORK` overrides); `ardia_tag` is the Ardia source `engine/` was made from.
+  `scripts/fetch-engine.sh` resolves it.
+- `SafeStorage` (`Host/SafeStorage.swift`): before the engine starts, moves a Ray 0.1 data dir from the mock
+  keychain's key to "Ray Safe Storage" in the login keychain (once; marker `Chromium/Ray Safe Storage`, originals a
+  week in `Safe Storage Migration/backup`), and decides `--use-mock-keychain`: only test builds and a launch whose
+  move couldn't start keep it. State log `safeStorage`; test builds use the engine's file keychain with
+  `RAY_KEYCHAIN=file` (check `safe-storage-migration`), never the login keychain.
 - `sparkle.lock`: the pinned Sparkle 2 release (version, URL, sha256); `scripts/fetch-sparkle.sh` downloads, checks
   and unpacks it into `build/sparkle/<version>` (tarball cached in `~/Library/Caches/Ray/sparkle`). Never committed.
   `VERSION` (`version=`, `build=`) is the one place the app's version comes from; `Branding/sparkle-public-key.txt`
@@ -121,7 +131,8 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   macOS 15+ try to open it once and use System Settings › Privacy & Security › Open Anyway. Updates after that
   install without the prompt. Each update changes the ad-hoc signature, so macOS may ask again for camera, microphone
   and location.
-- Friends' builds run on the mock keychain like yours (see PLAN.md).
+- From the Phase B engine on, cookies and passwords are under "Ray Safe Storage" in the login keychain. An ad-hoc
+  signature changes every build, so macOS asks once after each update to let Ray use that item ("Always Allow").
 
 ## Testing
 - Per change: `scripts/build-app.sh && scripts/test.sh --changed`. It runs the unit tests, then only the checks the
@@ -194,10 +205,10 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
 - **Test and debug hooks** (`TestCommands`, `[ray-state]` logs, DevTools port, `RAY_*` overrides) work only when
   their `RAY_*` variable is set, and are never reachable from a page or a normal launch.
 - **Logs:** no URLs, titles, page messages, cookies or credentials in `NSLog` in normal runs.
-- **Secrets:** never in `Sidebar.json`, logs or tests. While on the prebuilt engine (mock keychain), Ray isn't for
-  real accounts.
+- **Secrets:** never in `Sidebar.json`, logs or tests. Test builds run on the mock keychain (or the engine's file
+  keychain); never let a test instance read or write the login keychain.
 - **Monitors:** global event monitors watch pointer position only, never keys; none in test instances.
-- **Engine:** `engine.lock` pins the SHA-256; on every bump, note the Chromium version against current Chrome stable.
+- **Engine:** on every Chromium bump (`engine.lock`'s `chromium`), note it against current Chrome stable.
 - **Every security-relevant behaviour gets a check** in `tests/checks.mjs`.
 
 ## Key routing
@@ -228,6 +239,6 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
 - UI hot paths (sidebar, tab rows, window chrome) are AppKit + Core Animation, never SwiftUI. Animations run on
   layers, not main-thread timers. A tab switch shows the page before any store update.
 - No Peek, no WebKit, no built-in content blocker, no Ardia performance messages in the page script.
-- Ray always runs with `--use-mock-keychain` while it's on Ardia's prebuilt engine: that engine's keychain item
-  is "Ardia Safe Storage", which belongs to the user's real Ardia. Never let Ray read it. Our own engine build
-  (Phase B) gets a "Ray Safe Storage" item and drops the switch.
+- Ray's keychain item is "Ray Safe Storage" (account "Ray"). Never let Ray read "Ardia Safe Storage" (the user's real
+  Ardia) or any other browser's item, except as an explicit import the user asks for. Test builds stay on
+  `--use-mock-keychain`.
