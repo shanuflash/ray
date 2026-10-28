@@ -1087,6 +1087,9 @@ const checks = {
     assert(execFileSync("otool", ["-L", join(app, "Contents/MacOS/Ray")], { encoding: "utf8" }).includes("@rpath/Sparkle.framework/"), "Ray isn't linked against Sparkle");
     await command("state");
     assert(state().updater?.started === false && state().updater?.reason === "test build", `the test build started the updater: ${JSON.stringify(state().updater)}`);
+    // The app keeps no HTTP cache, so a check always fetches the current feed (a cached redirect once pinned 0.1.0).
+    await command("state");
+    assert(state().updater?.urlCacheBytes === 0, `the app still has an HTTP cache: ${JSON.stringify(state().updater)}`);
   },
   async "private-window"() {
     const mainEntry = state().activeEntry;

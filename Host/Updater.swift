@@ -15,6 +15,10 @@ final class Updater: NSObject {
 
   func start() {
     guard controller == nil else { return }
+    // No HTTP cache for the app's own downloads (Sparkle's feed; suggestions use an ephemeral session): macOS's shared
+    // URLCache kept GitHub's `latest/download` redirect despite its `no-cache`, so 0.1.0 went on fetching the old
+    // feed and reported itself up to date after 0.1.1 shipped. Set before Sparkle builds its URLSession.
+    URLCache.shared = URLCache(memoryCapacity: 0, diskCapacity: 0, directory: nil)
     if TestEnvironment.isTestBuild {
       offReason = "test build"
       return
@@ -43,6 +47,7 @@ final class Updater: NSObject {
       "started": controller != nil, "reason": offReason ?? NSNull(),
       "feed": Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String ?? NSNull(),
       "publicKeyValid": Self.hasRealPublicKey,
+      "urlCacheBytes": URLCache.shared.diskCapacity + URLCache.shared.memoryCapacity,
     ]
   }
 }
