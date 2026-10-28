@@ -218,7 +218,14 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     NotificationCenter.default.addObserver(self, selector: #selector(downloadsClosed), name: NSPopover.didCloseNotification, object: popover)
     downloadsPopover = popover
     downloadsList = list
-    popover.show(relativeTo: sidebar.downloadsAnchor.bounds, of: sidebar.downloadsAnchor, preferredEdge: .maxY)
+    // From the footer button while the sidebar shows; otherwise from the page's bottom left corner.
+    let anchor = sidebar.downloadsAnchor
+    if sidebarOnScreen, anchor.window != nil {
+      popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+    } else {
+      popover.show(relativeTo: NSRect(x: pages.frame.minX + 24, y: pages.frame.minY + 12, width: 1, height: 1),
+                   of: root, preferredEdge: .maxY)
+    }
     logState("downloads")
   }
 
@@ -226,6 +233,9 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     if !sidebar.downloadsShown { sidebar.setDownloads(shown: true, progress: nil) }
     sidebar.layoutSubtreeIfNeeded()
   }
+
+  /// The sidebar is in view: docked and shown, or peeking.
+  private var sidebarOnScreen: Bool { peeking || (!state.sidebarHidden && dockSpring.value > 0.99) }
 
   @objc private func downloadsClosed() {
     downloadsPopover = nil
@@ -1137,6 +1147,12 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
         "keepReady": downloadsList?.row(for: $0.id)?.keepReady ?? false,
       ] },
       "downloadsOpen": downloadsPopover != nil,
+      "downloadsButton": {
+        let button = sidebar.downloadsAnchor
+        guard !button.isHidden, let height = window.contentView?.bounds.height else { return "" }
+        let frame = button.convert(button.bounds, to: nil)
+        return String(format: "%.1f,%.1f", frame.minX, height - frame.maxY)
+      }(),
       "extensions": extensions.items.map { ["id": $0.id, "name": $0.name, "enabled": $0.enabled] },
       "extensionPopup": extensions.popupURL ?? NSNull(),
       "installPrompt": extensions.promptState ?? NSNull(),

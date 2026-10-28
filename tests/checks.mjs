@@ -759,6 +759,10 @@ const checks = {
     assert(existsSync(item.path), "no file on disk");
     await command("dlopen");
     await until("list open", () => state().downloadsOpen);
+    // The button sits bottom left in the sidebar's footer.
+    const [bx, by] = state().downloadsButton.split(",").map(Number);
+    const windowHeight = Number(state().windowFrame.match(/-?[\d.]+/g)[3]);
+    assert(bx < 40 && by > windowHeight - 80, `downloads button at ${bx},${by}`);
     downloadedName = item.filename;
   },
   async "download-insecure-blocked"() {

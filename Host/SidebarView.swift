@@ -301,7 +301,8 @@ final class SidebarView: NSView {
     reloadButton.frame = NSRect(x: bounds.width - inset - 32 - 2, y: rowCenter - 16, width: 32, height: 32)
     forwardButton.frame = reloadButton.frame.offsetBy(dx: -34, dy: 0)
     backButton.frame = forwardButton.frame.offsetBy(dx: -34, dy: 0)
-    downloadsButton.frame = backButton.frame.offsetBy(dx: -34, dy: 0)
+    // Downloads sit in the sidebar's footer, bottom left, where Arc keeps its footer buttons.
+    downloadsButton.frame = NSRect(x: 13, y: bounds.height - 8 - 32, width: 32, height: 32)
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     downloadsRing.frame = downloadsButton.bounds
@@ -372,7 +373,8 @@ final class SidebarView: NSView {
     show(favoritesGlow, at: favoritesLit ? NSRect(origin: .zero, size: tilesView.frame.size).insetBy(dx: -4, dy: -4) : nil)
     if rows > 0 { y += tilesHeight + 10 }
 
-    place(scrollView, NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y - inset)), entry: nil)
+    let footer: CGFloat = downloadsButton.isHidden ? 0 : 40
+    place(scrollView, NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y - inset - footer)), entry: nil)
     var rowY: CGFloat = 0
     for slot in pinnedSlots {
       if case let (row, entry, depth)? = slot {
@@ -812,6 +814,7 @@ final class SidebarView: NSView {
   /// The downloads button shows once anything has downloaded this session; while files are coming in, a ring
   /// around it fills with their progress.
   func setDownloads(shown: Bool, progress: Double?) {
+    if downloadsButton.isHidden == shown { needsLayout = true }
     downloadsButton.isHidden = !shown
     downloadsRing.strokeColor = NSColor.controlAccentColor.cgColor
     downloadsRing.isHidden = progress == nil
