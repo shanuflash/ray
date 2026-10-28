@@ -817,13 +817,15 @@ const checks = {
     await until("sidebar back", () => !state().sidebar.hidden);
   },
   async "download-insecure-blocked"() {
-    // A file over plain HTTP from a secure page never lands (the engine cancels Chrome's insecure download).
+    // A file over plain HTTP from a secure page never lands without Keep. This engine cancels Chrome's insecure
+    // download; a newer one may hold it as dangerous (Ardia 0.2.42 shows Keep/Discard for that). Either way nothing
+    // is on disk until Keep is pressed, and this check never presses it.
     const insecure = origin.replace("127.0.0.1", "ray.test");
     await send("Target.createTarget", { url: `${secureOrigin}/b?dl` });
     const { sessionId } = await session(secureOrigin);
     await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
     await evaluate(sessionId, `(() => { const a = document.createElement("a"); a.href = ${JSON.stringify(insecure + "/files/held.txt")}; a.click(); })()`);
-    const item = await until("blocked", () => state().downloads.find((d) => d.filename === "held.txt" && d.state !== "downloading"), 15000);
+    const item = await until("blocked", () => state().downloads.find((d) => d.filename === "held.txt" && (d.state !== "downloading" || d.dangerous)), 15000);
     assert(item.state !== "finished", "an insecure download finished");
     await sleep(500);
     assert(!existsSync(join(dataDir, "Downloads", "held.txt")), "an insecure download was saved");
