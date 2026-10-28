@@ -34,6 +34,9 @@ build() {
   local res="$app/Contents/Frameworks/$fw_name.framework/Versions/$fw_version/Resources"
   python3 -I "$root/tools/rebrand-pak.py" --logos "$logos" \
     "$res"/*.lproj/locale.pak "$res/chrome_100_percent.pak" "$res/chrome_200_percent.pak" "$res/resources.pak"
+  # Ray has its own Settings window for Appearance and Profiles: they leave the engine's settings page. Exits 1 (and
+  # stops the build, set -e) if the engine's page moved the code this edits.
+  python3 -I "$root/tools/trim-settings-pak.py" "$res/resources.pak"
 
   xcrun swiftc -O -target arm64-apple-macos14.0 -swift-version 5 "$@" \
     -import-objc-header "$root/Host/Bridging.h" -Xcc -I"$root/vendor/ardiacore" \

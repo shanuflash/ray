@@ -96,12 +96,20 @@ for (level, url, expected) in lookCases where ConnectionLook.of(level: level, ur
   failures += 1
   print("FAIL look(\(level ?? "nil"), \(url)) = \(ConnectionLook.of(level: level, url: url)), want \(expected)")
 }
-// ray://settings/appearance and chrome://settings/appearance open the native Settings window; nothing else does.
+// ray://settings/appearance, chrome://settings/appearance and the Profiles pages open the native Settings window; nothing else does.
 let paneCases: [(String, String?)] = [
   ("chrome://settings/appearance", "appearance"),
   ("ray://settings/appearance", "appearance"),
   ("RAY://Settings/Appearance/", "appearance"),
   ("chrome://settings/appearance?x=1#y", "appearance"),
+  ("chrome://settings/fonts", "appearance"),
+  ("chrome://settings/people", "appearance"),
+  ("ray://settings/people", "appearance"),
+  ("ray://settings/Profiles/", "appearance"),
+  ("chrome://settings/manageProfile", "appearance"),
+  ("chrome://settings/people/x", nil),
+  ("chrome://settings/peopleish", nil),
+  ("chrome://extensions/people", nil),
   ("chrome://settings", nil),
   ("chrome://settings/", nil),
   ("chrome://settings/privacy", nil),

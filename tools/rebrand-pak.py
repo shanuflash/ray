@@ -39,7 +39,8 @@ def png_size(data: bytes) -> tuple[int, int] | None:
     return struct.unpack(">II", data[16:24])
 
 
-def rebrand(data: bytes, logos: str | None) -> bytes | None:
+def split_pak(data: bytes):
+    """A pak v5 file as (ids, bodies, alias bytes), or None for another version."""
     version, encoding = struct.unpack_from("<IB", data, 0)
     if version != 5:
         return None
@@ -48,6 +49,28 @@ def rebrand(data: bytes, logos: str | None) -> bytes | None:
     entries = [struct.unpack_from("<HI", data, table + 6 * i) for i in range(count + 1)]
     alias_bytes = data[table + 6 * (count + 1): table + 6 * (count + 1) + 4 * aliases]
     bodies = [data[entries[i][1]:entries[i + 1][1]] for i in range(count)]
+    return [entries[i][0] for i in range(count)], entries[count][0], bodies, alias_bytes, data[:table]
+
+
+def join_pak(header: bytes, ids: list, sentinel_id: int, bodies: list, alias_bytes: bytes) -> bytes:
+    count = len(ids)
+    out = bytearray(header)
+    offset = len(header) + 6 * (count + 1) + len(alias_bytes)
+    for i in range(count):
+        out += struct.pack("<HI", ids[i], offset)
+        offset += len(bodies[i])
+    out += struct.pack("<HI", sentinel_id, offset)
+    out += alias_bytes
+    for body in bodies:
+        out += body
+    return bytes(out)
+
+
+def rebrand(data: bytes, logos: str | None) -> bytes | None:
+    parsed = split_pak(data)
+    if parsed is None:
+        return None
+    ids, sentinel_id, bodies, alias_bytes, header = parsed
     changed = False
     for i, body in enumerate(bodies):
         if logos and hashlib.sha256(body).hexdigest() in ARDIA_LOGOS:
@@ -67,17 +90,7 @@ def rebrand(data: bytes, logos: str | None) -> bytes | None:
         changed = changed or bodies[i] != body
     if not changed:
         return None
-    start = table + 6 * (count + 1) + 4 * aliases
-    out = bytearray(data[:table])
-    offset = start
-    for i in range(count):
-        out += struct.pack("<HI", entries[i][0], offset)
-        offset += len(bodies[i])
-    out += struct.pack("<HI", entries[count][0], offset)
-    out += alias_bytes
-    for body in bodies:
-        out += body
-    return bytes(out)
+    return join_pak(header, ids, sentinel_id, bodies, alias_bytes)
 
 
 def main() -> int:

@@ -52,7 +52,10 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   StorableSidebar.json only when asked), `Toast` (Arc's top-right note, "Copied Current URL").
 - `Spring`: a CADisplayLink spring. `dockSpring` (⌘S) and `peekSpring` drive `layout()` every frame.
 - `Branding/Ray.icon` (Icon Composer; `actool` builds Assets.car + Ray.icns) and `tools/rebrand-pak.py` (renames
-  "Ardia" to "Ray" and swaps Ardia's logos in the engine's .pak files at build time).
+  "Ardia" to "Ray" and swaps Ardia's logos in the engine's .pak files at build time) and
+  `tools/trim-settings-pak.py` (takes Profiles and Appearance and behavior out of the engine's chrome://settings page in
+  `resources.pak`, also at build time; Ray's own Settings window has them, and `AddressInput.nativeSettingsPane` sends
+  those addresses there).
 - `Resources/page_script.js`: runs in every frame; iframes return on its first line. Only `hello` today.
 - `tests/`: `checks.mjs` (DevTools + `[ray-state]` log checks on a hidden instance), `AddressInputTests.swift`,
   `affected.mjs` (which checks each file or `// MARK:` section can affect) and `changed.mjs` (diff → checks).
@@ -105,6 +108,11 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   previous commit (`git stash -u`, build, run, `git stash pop`) and compare.
 
 ## Gotchas (learnt the hard way)
+- The settings-page trim (`tools/trim-settings-pak.py`) edits minified code of one engine version, matched by exact
+  patterns, and the build stops with a message naming the pattern when one moves. On an engine bump, run the build, and
+  if it stops, re-read `shared.rollup.js` (the resource that holds `function createPageVisibility()`; decompress it
+  from resources.pak) and fix the patterns, then run `settings-trimmed`. The bare `/` route's top-level page must be one
+  that draws on `/` (Search engine); Privacy draws nothing there.
 - Shifted menu key equivalents must be uppercase ("C" for ⇧⌘C); real and synthetic ⇧-keys arrive uppercase.
 - Chrome's window swallows reserved shortcuts (⌘W with no tab) before the menu sees them: `AppController` routes
   `Shortcuts.isReserved` keys to the main menu from an app-local keyDown monitor. A menu item that

@@ -1602,6 +1602,68 @@ const checks = {
     await until("settings tab closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === settingsTab); });
     await command(`row ${entryOfTab(tabFor("/a").id).id}`);
   },
+  async "settings-trimmed"() {
+    // The engine's settings page has no Profiles or Appearance and behavior (tools/trim-settings-pak.py): Ray's own
+    // Settings window has them.
+    await resetSettings();
+    await closeSettingsWindow().catch(() => {});
+    const tabCount = state().tabs.length;
+    await send("Target.createTarget", { url: "chrome://settings/" });
+    const page = await session("chrome://settings");
+    const sid = page.sessionId;
+    // Every element matching a selector, through every shadow root: the page is all web components.
+    const deep = `const deep = (root, sel, out = []) => { for (const el of root.querySelectorAll("*")) if (el.shadowRoot) deep(el.shadowRoot, sel, out); root.querySelectorAll(sel).forEach((e) => out.push(e)); return out; };`;
+    await until("settings page drawn", async () => (await evaluate(sid, `(() => { ${deep} return deep(document, "a[role=menuitem]").length > 0 && deep(document, "settings-main").length > 0; })()`)) === true, 15000);
+    const read = () => evaluate(sid, `(() => { ${deep}
+      const main = deep(document, "settings-main")[0];
+      return {
+        menu: deep(document, "a[role=menuitem]").map((a) => ({ id: a.id, href: a.getAttribute("href"), text: a.textContent.trim().replace(/\\s+/g, " "), shown: !a.hidden && a.offsetWidth > 0 })),
+        views: [...main.shadowRoot.querySelectorAll("[slot=view]")].map((v) => v.id),
+        last: main.lastRoute_ && main.lastRoute_.path,
+        removed: deep(document, "settings-appearance-page-index, settings-appearance-page, settings-people-page-index, settings-people-page, settings-manage-profile").length,
+      };
+    })()`);
+    const found = await read();
+    const shownMenu = found.menu.filter((m) => m.shown);
+    for (const gone of ["people", "appearance"])
+      assert(!found.menu.some((m) => m.id === gone || m.href === `/${gone}`), `the settings menu still has ${gone}: ${JSON.stringify(found.menu.map((m) => m.id))}`);
+    for (const label of ["Profiles", "Appearance and behavior"])
+      assert(!found.menu.some((m) => m.text === label), `the settings menu still says ${label}`);
+    assert(shownMenu.length >= 8 && ["privacy", "search", "system"].every((id) => shownMenu.some((m) => m.id === id)),
+      `the rest of the menu went too: ${JSON.stringify(shownMenu.map((m) => m.id))}`);
+    assert(!found.views.includes("people") && !found.views.includes("appearance"), `sections on the page: ${found.views}`);
+    assert(found.views.includes("privacy") && found.views.includes("search"), `other sections went: ${found.views}`);
+    assert(found.removed === 0, `${found.removed} Appearance or Profiles elements on the page`);
+    assert(found.last && found.last !== "/appearance" && found.last !== "/people", `the page opened on ${found.last}`);
+    if (process.env.SNAP_DIR) {
+      // The section's rows load when the page is idle; a picture is only worth taking once they're there.
+      await until("rows drawn", async () => (await evaluate(sid, `(() => { ${deep} return deep(document, "cr-link-row").length > 0; })()`)) === true, 8000).catch(() => {});
+      const shot = await send("Page.captureScreenshot", { format: "png" }, sid);
+      writeFileSync(join(process.env.SNAP_DIR, "settings-trimmed.png"), Buffer.from(shot.data, "base64"));
+    }
+    // Search can't bring them back.
+    for (const query of ["theme", "profile", "bookmarks bar"]) {
+      await evaluate(sid, `(async () => { ${deep} await deep(document, "settings-main")[0].searchContents(${JSON.stringify(query)}); })()`);
+      const result = await read();
+      assert(result.removed === 0 && !result.views.includes("people") && !result.views.includes("appearance"), `searching "${query}" brought them back`);
+    }
+    // A navigation to the Profiles page opens Ray's window and the tab goes back to the settings page it came from.
+    const settingsTab = state().active;
+    await evaluate(sid, `location.href = "chrome://settings/people"`);
+    await until("window opened for the Profiles page", async () => { await command("state"); return state().settingsWindow.open; });
+    await until("tab left Profiles", async () => { await command("state"); return !state().tabs.some((t) => t.url.includes("/people")); }, 6000);
+    await closeSettingsWindow();
+    await until("tab back on the settings page", async () => { await command("state"); return state().tabs.find((t) => t.id === settingsTab)?.url === "chrome://settings/"; }, 6000);
+    await command(`rowaction close ${entryOfTab(settingsTab).id}`);
+    await until("settings tab closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === settingsTab); });
+    // Typed, it opens the window and loads nothing.
+    await goTo("ray://settings/people");
+    await until("window opened for the typed Profiles address", async () => { await command("state"); return state().settingsWindow.open; });
+    await sleep(300);
+    await command("state");
+    assert(state().tabs.length === tabCount && !state().tabs.some((t) => t.url.includes("/people")), "typing the Profiles address loaded a page");
+    await closeSettingsWindow();
+  },
   async "sidebar-toggle"() {
     await needsFrames();
     const x = () => Number(state().cardFrame.match(/-?[\d.]+/g)[0]);

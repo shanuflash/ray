@@ -27,16 +27,26 @@ enum AddressInput {
     return searchTemplate.replacingOccurrences(of: "%s", with: query)
   }
 
-  /// The pane of Ray's own Settings window that a `chrome://settings/<pane>` (or `ray://`) address stands for. Only
-  /// Appearance is native; Chrome's other settings pages still load as they are. The address is a URL the engine or
-  /// `url(for:)` gave, never something a page said about itself.
+  /// Chrome settings pages Ray's own Settings window stands in for, and the pane each opens: Appearance and behavior
+  /// (`/appearance`, its `/fonts` page), and Profiles (`/people` and the pages under it), whose colour is in
+  /// Appearance. The engine's page has neither any more (tools/trim-settings-pak.py), so a typed or in-page address
+  /// to one of them goes to the window, never to a page that would only show something else.
+  private static let nativeSettingsPaths: [String: String] = [
+    "appearance": "appearance", "fonts": "appearance",
+    "people": "appearance", "profiles": "appearance", "manageprofile": "appearance", "account": "appearance",
+    "googleservices": "appearance", "signout": "appearance", "importdata": "appearance",
+  ]
+
+  /// The pane of Ray's own Settings window that a `chrome://settings/<page>` (or `ray://`) address stands for; Chrome's
+  /// other settings pages still load as they are. The address is a URL the engine or `url(for:)` gave, never
+  /// something a page said about itself.
   static func nativeSettingsPane(for url: String) -> String? {
     guard let components = URLComponents(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
           let scheme = components.scheme?.lowercased(), scheme == "chrome" || scheme == internalScheme,
           components.host?.lowercased() == "settings", components.user == nil, components.password == nil
     else { return nil }
     let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
-    return path == "appearance" ? "appearance" : nil
+    return nativeSettingsPaths[path]
   }
 
   static func isSearch(_ url: String) -> Bool {

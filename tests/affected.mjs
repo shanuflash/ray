@@ -19,7 +19,7 @@ const pageSurface = ["switch-back-latency", "top-strip-click", "toggle-keeps-pag
 
 const settings = ["settings-window", "settings-minimal-url", "settings-loading-progress", "settings-theme",
   "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling",
-  "settings-shortcuts", "settings-routes", "settings-persist"];
+  "settings-shortcuts", "settings-routes", "settings-trimmed", "settings-persist"];
 
 export const areas = {
   // Central: windows, menus, key routing, saved state, the engine bridge.
@@ -38,6 +38,9 @@ export const areas = {
   "engine.lock": "all",
   "scripts/build-app.sh": "all",
   "tools/": "all",
+  // The pak tools only touch the engine's own pages: the rebranded About page, and the trimmed settings page.
+  "tools/rebrand-pak.py": ["about-panel", "settings-trimmed"],
+  "tools/trim-settings-pak.py": ["about-panel", "settings-trimmed"],
   "Branding/": ["about-panel"],
 
   // BrowserWindowController: by section. Lines outside them (properties, init) run everything.
@@ -59,7 +62,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",
   "Host/BrowserWindowController.swift#ArdiaCoreWindowDelegate": [...pages, "private-window", "close-last-window"],
   "Host/BrowserWindowController.swift#ArdiaCoreTabDelegate": [...pages, ...permissions, "page-toolbar", "page-loading",
-    "site-controls", "find-in-page", "settings-zoom", "settings-routes"],
+    "site-controls", "find-in-page", "settings-zoom", "settings-routes", "settings-trimmed"],
   "Host/BrowserWindowController.swift#Settings": [...settings, "page-toolbar", "page-loading"],
   "Host/BrowserWindowController.swift#Page zoom": ["settings-zoom", "settings-private-zoom", "settings-window", "site-controls"],
   "Host/BrowserWindowController.swift#State log": [],
@@ -72,7 +75,7 @@ export const areas = {
   "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder"],
   "Host/SidebarView.swift#Downloads panel": ["downloads"],
 
-  "Host/AddressInput.swift": [...commandBar, "page-toolbar", "site-controls"],
+  "Host/AddressInput.swift": [...commandBar, "page-toolbar", "site-controls", "settings-routes", "settings-trimmed"],
   "Host/RaySettings.swift": "all",
   "Host/SettingsWindow.swift": settings,
   "Host/ArcImport.swift": ["arc-import"],
