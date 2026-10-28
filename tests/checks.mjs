@@ -907,6 +907,11 @@ const checks = {
     await until("/a active", () => state().active === tabFor("/a").id);
     await until("address", async () => { await command("state"); return state().toolbar?.address === origin.replace("http://", "") + "/a"; });
     if (process.env.SNAP_DIR) await command(`toolbarsnap ${join(process.env.SNAP_DIR, "toolbar.png")}`);
+    // A plain-http page on the user's own machine gets no warning in either address field, and both centre the text.
+    for (const [name, field] of [["toolbar", state().toolbar.field], ["sidebar", state().addressField]]) {
+      assert(field.look === "local" && field.icon === false, `${name} field warns on a local page: ${JSON.stringify(field)}`);
+      assert(Math.abs(field.textOffset) <= 0.5, `${name} text is ${field.textOffset} pt off the middle`);
+    }
     const cardTop = () => { const [, y, , h] = state().cardFrame.match(/-?[\d.]+/g).map(Number); return y + h; };
     const withBar = cardTop();
     await command("menu toggleToolbar");
@@ -929,7 +934,7 @@ const checks = {
     const setting = (title) => panel()?.settings.find((s) => s.title === title)?.value;
     await open();
     assert(panel().origin === origin, `panel's site is ${panel().origin}`);
-    assert(panel().security === "Not Secure", `an http page says ${panel().security}`);
+    assert(panel().security === "Local", `a page on this machine says ${panel().security}`);
     assert(panel().tiles.join() === "share,copyLink,find,cast", `tiles ${panel().tiles}`);
     await until("pop-ups row", async () => { await command("state"); return setting("Pop-ups and Redirects") === "Blocked"; });
     if (process.env.SNAP_DIR) await command(`sitesnap ${join(process.env.SNAP_DIR, "site-controls.png")}`);

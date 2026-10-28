@@ -74,6 +74,28 @@ where AddressInput.autocompletes(candidateHost: candidate, typedHost: typed, que
   failures += 1
   print("FAIL autocompletes(\(candidate), typed: \(typed ?? "nil"), \(query)) != \(expected)")
 }
-let total = cases.count + displayCases.count + pillCases.count + autocompleteCases.count
+// Dev hosts never warn; plain http elsewhere is a quiet open lock; red only for a real site's bad certificate.
+let lookCases: [(String?, String, ConnectionLook)] = [
+  ("insecure", "http://localhost:3000/", .local),
+  ("insecure", "http://127.0.0.1:8080/x", .local),
+  ("insecure", "http://[::1]:8080/", .local),
+  ("insecure", "http://app.localhost/", .local),
+  ("insecure", "http://shanu.surveysparrow.test/", .local),
+  ("certificateError", "https://shanu.surveysparrow.test/", .local),
+  ("insecure", "http://example.com/", .open),
+  (nil, "http://example.com/", .open),
+  ("insecure", "http://127.0.0.1.evil.com/", .open),
+  ("insecure", "http://test.example.com/", .open),
+  ("insecure", "http://192.168.1.10/", .open),
+  ("certificateError", "https://example.com/", .broken),
+  ("mixed", "https://example.com/", .partly),
+  ("secure", "https://example.com/", .quiet),
+  ("none", "chrome://settings", .quiet),
+]
+for (level, url, expected) in lookCases where ConnectionLook.of(level: level, url: url) != expected {
+  failures += 1
+  print("FAIL look(\(level ?? "nil"), \(url)) = \(ConnectionLook.of(level: level, url: url)), want \(expected)")
+}
+let total = cases.count + displayCases.count + pillCases.count + autocompleteCases.count + lookCases.count
 print(failures == 0 ? "all \(total) passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)

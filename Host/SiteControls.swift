@@ -47,7 +47,7 @@ final class SiteControlsView: NSView {
   private let moreButton = PanelTile(symbol: "ellipsis", label: "More")
   private(set) var settings: [(type: String, value: String, isDefault: Bool)] = []
 
-  init(origin: String?, profile: ArdiaCoreProfile, security: String, isInternal: Bool, extensions: [Extension],
+  init(origin: String?, url: String, profile: ArdiaCoreProfile, security: String, isInternal: Bool, extensions: [Extension],
        zoom: Double, resetZoom: @escaping () -> Void) {
     self.origin = origin
     self.profile = profile
@@ -87,7 +87,7 @@ final class SiteControlsView: NSView {
     addSubview(settingsHeader)
     divider.boxType = .separator
     addSubview(divider)
-    securityPill.show(level: security, isInternal: isInternal, host: host)
+    securityPill.show(level: security, isInternal: isInternal, host: host, url: url)
     addSubview(securityPill)
     moreButton.round = true
     moreButton.onPress = { [weak self] in self?.showMore() }
@@ -600,19 +600,25 @@ private final class SecurityPill: NSView {
     layer?.backgroundColor = PanelColors.tile.cgColor
   }
 
-  func show(level: String, isInternal: Bool, host: String) {
+  func show(level: String, isInternal: Bool, host: String, url: String) {
     let symbol: String, tint: NSColor, tip: String
-    switch level {
-    case "secure":
+    switch (level, ConnectionLook.of(level: level, url: url)) {
+    case ("secure", _):
       (text, symbol, tint) = ("Secure", "lock.fill", .labelColor)
       tip = "Your connection to \(host) is secure."
-    case "mixed":
+    case (_, .local):
+      (text, symbol, tint) = ("Local", "laptopcomputer", .labelColor)
+      tip = "\(host) is one of your own development sites."
+    case (_, .partly):
       (text, symbol, tint) = ("Partly Secure", "lock.trianglebadge.exclamationmark.fill", .systemOrange)
       tip = "Parts of this page on \(host) aren't secure."
-    case "insecure", "certificateError":
+    case (_, .broken):
       (text, symbol, tint) = ("Not Secure", "lock.slash.fill", .systemRed)
-      tip = level == "certificateError" ? "The certificate for \(host) isn't valid." : "Your connection to \(host) isn't secure."
-    case "local":
+      tip = "The certificate for \(host) isn't valid."
+    case (_, .open):
+      (text, symbol, tint) = ("Not Secure", "lock.open.fill", .secondaryLabelColor)
+      tip = "Your connection to \(host) isn't encrypted."
+    case ("local", _):
       (text, symbol, tint) = ("File", "doc", .labelColor)
       tip = "This page is a file on your Mac."
     default:

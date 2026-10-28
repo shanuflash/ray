@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 enum AddressInput {
   static let searchTemplate = TestEnvironment["RAY_SEARCH_URL"]
@@ -109,5 +109,60 @@ enum AddressInput {
     if host == "localhost" || host.hasSuffix(".localhost") || host.hasPrefix("[") { return true }
     let parts = host.split(separator: ".")
     return parts.count == 4 && parts.allSatisfy { UInt8($0) != nil }
+  }
+}
+
+/// How the address shows a page's connection. Chrome counts loopback hosts as trustworthy and never warns on them;
+/// Ray also stays quiet on `*.localhost` and `*.test`, names that only ever point at the user's own dev servers.
+/// Plain http elsewhere gets a grey open lock, like Chrome's grey "Not secure"; red is kept for a certificate error
+/// on a real site, the one case worth stopping for.
+enum ConnectionLook: Equatable {
+  case quiet, local, open, partly, broken
+
+  /// `level` is the engine's security level for the tab (`secure`, `mixed`, `insecure`, `certificateError`, …).
+  static func of(level: String?, url: String) -> ConnectionLook {
+    let components = URLComponents(string: url)
+    let level = level ?? (components?.scheme == "http" ? "insecure" : "none")
+    switch level {
+    case "insecure", "certificateError":
+      if isDevHost(components?.host ?? "") { return .local }
+      return level == "insecure" ? .open : .broken
+    case "mixed": return .partly
+    default: return .quiet
+    }
+  }
+
+  static func isDevHost(_ host: String) -> Bool {
+    let host = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+    if host == "localhost" || host.hasSuffix(".localhost") || host.hasSuffix(".test") || host == "::1" { return true }
+    let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+    return parts.count == 4 && parts.allSatisfy { UInt8($0) != nil } && parts[0] == "127"
+  }
+
+  /// The icon beside the address, if any.
+  var symbol: String? {
+    switch self {
+    case .quiet, .local: return nil
+    case .open: return "lock.open.fill"
+    case .partly: return "lock.trianglebadge.exclamationmark.fill"
+    case .broken: return "lock.slash.fill"
+    }
+  }
+
+  var tint: NSColor {
+    switch self {
+    case .broken: return .systemRed
+    case .partly: return .systemOrange
+    default: return .tertiaryLabelColor
+    }
+  }
+
+  var label: String {
+    switch self {
+    case .open: return "Not secure"
+    case .partly: return "Partly secure"
+    case .broken: return "Certificate not valid"
+    default: return ""
+    }
   }
 }

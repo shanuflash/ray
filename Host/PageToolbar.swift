@@ -71,6 +71,7 @@ final class PageToolbarView: NSView {
   }
 
   var addressText: String { address.text }
+  var addressDebug: [String: Any] { address.debug }
 
   @objc private func toggleSidebar() { delegate?.toolbarToggleSidebar(self) }
   @objc private func back() { delegate?.toolbarBack(self) }
@@ -115,6 +116,7 @@ private final class ToolbarAddressView: NSView {
   private let securityIcon = NSImageView()
   private var hovered = false
   private(set) var text = ""
+  private(set) var look = ConnectionLook.quiet
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -153,22 +155,19 @@ private final class ToolbarAddressView: NSView {
 
   override func mouseDown(with event: NSEvent) { onClick?() }
 
+  var debug: [String: Any] {
+    layoutSubtreeIfNeeded()
+    return ["look": "\(look)", "icon": !securityIcon.isHidden, "textOffset": label.frame.midY - bounds.midY]
+  }
+
   func show(url: String, security: String?) {
     text = Self.text(for: url)
     label.stringValue = text
-    let level = security ?? (URLComponents(string: url)?.scheme == "http" ? "insecure" : "none")
-    switch level {
-    case "insecure", "certificateError":
-      securityIcon.image = NSImage(systemSymbolName: "lock.slash.fill", accessibilityDescription: "Not secure")
-      securityIcon.contentTintColor = .systemRed
-      securityIcon.isHidden = text.isEmpty
-    case "mixed":
-      securityIcon.image = NSImage(systemSymbolName: "lock.trianglebadge.exclamationmark.fill", accessibilityDescription: "Partly secure")
-      securityIcon.contentTintColor = .systemOrange
-      securityIcon.isHidden = text.isEmpty
-    default:
-      securityIcon.isHidden = true
-    }
+    let look = ConnectionLook.of(level: security, url: url)
+    securityIcon.image = look.symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: look.label) }
+    securityIcon.contentTintColor = look.tint
+    securityIcon.isHidden = text.isEmpty || look.symbol == nil
+    self.look = look
     needsLayout = true
   }
 
@@ -191,6 +190,8 @@ private final class ToolbarAddressView: NSView {
     let mid = bounds.height / 2
     securityIcon.frame = NSRect(x: 8, y: mid - 8, width: 16, height: 16)
     let x: CGFloat = securityIcon.isHidden ? 8 : 28
-    label.frame = NSRect(x: x, y: mid - 9, width: max(0, bounds.width - x - 8), height: 18)
+    // One line tall, so the text sits on the middle (a label draws from its frame's top).
+    let line = ceil(label.intrinsicContentSize.height)
+    label.frame = NSRect(x: x, y: (mid - line / 2).rounded(), width: max(0, bounds.width - x - 8), height: line)
   }
 }

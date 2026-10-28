@@ -472,7 +472,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let level = tab.securityInfo["level"] as? String ?? "none"
     let isInternal = URLComponents(string: tab.url)?.scheme.map { ["chrome", AddressInput.internalScheme].contains($0) } ?? false
     let panel = SiteControlsView(
-      origin: tab.committedOrigin, profile: profile, security: level, isInternal: isInternal, extensions: items,
+      origin: tab.committedOrigin, url: tab.url, profile: profile, security: level, isInternal: isInternal, extensions: items,
       zoom: tab.zoomFactor, resetZoom: { [weak tab] in tab?.zoomFactor = 1 })
     panel.onAction = { [weak self, weak tab] action in
       guard let self, let tab, !tab.closed else { return }
@@ -1365,6 +1365,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "active": activeTab.map { Int($0.tabId) } ?? NSNull(),
       "activeEntry": self.state.activeEntryID?.uuidString ?? NSNull(),
       "address": sidebar.addressText,
+      "addressField": sidebar.addressDebug,
       "pages": pages.debugState,
       "cardFrame": NSStringFromRect(pages.frame),
       "windowFrame": NSStringFromRect(window.frame),
@@ -1373,7 +1374,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowOnActiveSpace": window.isOnActiveSpace,
       "fullScreen": isFullScreen,
       "toolbar": toolbarShown ? [
-        "address": toolbar.addressText, "frame": NSStringFromRect(toolbar.frame),
+        "address": toolbar.addressText, "frame": NSStringFromRect(toolbar.frame), "field": toolbar.addressDebug,
         "navigation": state.sidebarHidden,
       ] as [String: Any] : NSNull(),
       "private": isPrivate,

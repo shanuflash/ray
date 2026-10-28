@@ -288,6 +288,8 @@ final class SidebarView: NSView {
   }
 
   var addressText: String { addressPill.text }
+  /// For tests: the connection look, whether its icon shows, and how far the text's middle is from the field's.
+  var addressDebug: [String: Any] { addressPill.debug }
 
   func setExtensionsShown(_ shown: Bool) { addressPill.extensionsShown = shown }
   var extensionsAnchor: NSView { addressPill.extensionsButton }
@@ -1081,6 +1083,7 @@ final class AddressPill: NSView {
     }
   }
   private(set) var text = ""
+  private(set) var look = ConnectionLook.quiet
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -1090,9 +1093,7 @@ final class AddressPill: NSView {
     label.font = .systemFont(ofSize: 13)
     label.textColor = .secondaryLabelColor
     label.lineBreakMode = .byTruncatingHead
-    securityIcon.image = NSImage(systemSymbolName: "lock.slash.fill", accessibilityDescription: "Not secure")
     securityIcon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
-    securityIcon.contentTintColor = .systemRed
     searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
     searchIcon.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
     searchIcon.contentTintColor = .tertiaryLabelColor
@@ -1126,6 +1127,11 @@ final class AddressPill: NSView {
 
   @objc private func showExtensions() { onExtensions?(extensionsButton) }
 
+  var debug: [String: Any] {
+    layoutSubtreeIfNeeded()
+    return ["look": "\(look)", "icon": !securityIcon.isHidden, "textOffset": label.frame.midY - bounds.midY]
+  }
+
   func show(url: String, security: String?) {
     let components = URLComponents(string: url)
     let hasHost = !(components?.host ?? "").isEmpty
@@ -1135,20 +1141,11 @@ final class AddressPill: NSView {
     label.lineBreakMode = hasHost ? .byTruncatingHead : .byTruncatingTail
     label.textColor = empty ? .tertiaryLabelColor : .secondaryLabelColor
     searchIcon.isHidden = !empty
-    let level = security ?? (components?.scheme == "http" ? "insecure" : "none")
-    switch level {
-    case "insecure", "certificateError":
-      securityIcon.image = NSImage(systemSymbolName: "lock.slash.fill", accessibilityDescription: "Not secure")
-      securityIcon.contentTintColor = .systemRed
-      securityIcon.isHidden = empty
-    case "mixed":
-      securityIcon.image = NSImage(
-        systemSymbolName: "lock.trianglebadge.exclamationmark.fill", accessibilityDescription: "Partly secure")
-      securityIcon.contentTintColor = .systemOrange
-      securityIcon.isHidden = empty
-    default:
-      securityIcon.isHidden = true
-    }
+    let look = ConnectionLook.of(level: security, url: url)
+    securityIcon.image = look.symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: look.label) }
+    securityIcon.contentTintColor = look.tint
+    securityIcon.isHidden = empty || look.symbol == nil
+    self.look = look
     needsLayout = true
   }
 
@@ -1160,7 +1157,9 @@ final class AddressPill: NSView {
     let x: CGFloat = securityIcon.isHidden && searchIcon.isHidden ? 12 : 34
     extensionsButton.frame = NSRect(x: bounds.width - 32, y: mid - 13, width: 26, height: 26)
     let right: CGFloat = extensionsShown ? 36 : 12
-    label.frame = NSRect(x: x, y: mid - 10, width: bounds.width - x - right, height: 20)
+    // The label draws from its frame's top, so a frame of exactly one line keeps the text on the field's middle.
+    let line = ceil(label.intrinsicContentSize.height)
+    label.frame = NSRect(x: x, y: (mid - line / 2).rounded(), width: bounds.width - x - right, height: line)
   }
 }
 
