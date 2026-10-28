@@ -3,6 +3,11 @@
 A macOS (14+, Apple Silicon) Chromium browser with Arc's sidebar, pinned tabs and pinned tiles. Native AppKit +
 Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of truth for decisions.
 
+**Before any work, read PLAN.md's "Goal and roadmap" and "Open decisions (owner)" and keep them in mind:** the most
+Arc-feeling browser on real, de-Googled Chromium for Mac, launching into Arc's shutdown on 2026-12-22. Weigh every
+choice against Arc's feel, real Chromium with working extensions, and painless switching from Arc. Never post
+publicly or create accounts.
+
 ## Layout
 - `Host/`: the native app in Swift + AppKit. `Bridging.h` exposes the engine API. `BrowserWindowController` owns a
   window's tabs; `SidebarView` is the address field and tab list; `PageContainerView` shows one page at a time

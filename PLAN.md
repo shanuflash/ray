@@ -4,10 +4,47 @@ Goal: a macOS-only, Chromium-only browser with Arc's sidebar, pinned tabs and pi
 smoothness, and as fast as Chrome or better. UI: native AppKit + Core Animation. No React Native, no SwiftUI on hot
 paths, no WebKit, no Gecko, no Electron.
 
-Working name: **`Nova`** (placeholder until decided).
+Name: **Ray** (decided 2026-10-27, section 11), but see the open decision below about how searchable it is.
 
 Source for everything referenced: github.com/mantrakp04/ardia at `main`, 2026-10-27 (v0.2.41, Chromium
 156.0.8078.47, Helium 0.20.1).
+
+## Goal and roadmap
+
+Read this first, every run. Every decision, design or code, should serve the end goal; when a choice doesn't, say
+so.
+
+**End goal:** Ray becomes the most Arc-feeling browser on real, de-Googled Chromium for Mac, and a popular
+open-source project (users and GitHub stars). Arc shuts down on **2026-12-22**, and that migration is our launch
+window. Every decision serves three things:
+- **Arc's feel:** native AppKit + Core Animation, motion fitted to Arc, and performance gates on every release
+  (section 9 targets, measured, never regressing silently).
+- **Real Chromium with working extensions:** Chrome Web Store extensions behave as they do in Chrome.
+- **Painless switching from Arc:** your Arc setup comes over in one go, and Arc's shortcuts work.
+
+**Roadmap, in order:**
+1. **Phase B engine** (section 6): our own build, the rename map, a "Ray Safe Storage" keychain item, and migrating
+   mock-keychain data (decrypt with the known mock key, re-encrypt under the real one). Keep our own patches few,
+   small and in separate files from Ardia's, so following Ardia's Chromium bumps stays cheap.
+2. **Spaces.**
+3. **Full Arc import:** Spaces, pinned tabs, folders, cookies.
+4. **Distribution:** Developer ID signing, a notarized DMG, Sparkle updates, a Homebrew cask.
+5. **Launch prep:** a README that opens with a short motion video/GIF, a one-line pitch and the install command; a
+   side-by-side video with Arc; CONTRIBUTING and good-first-issue labels; regular tagged releases with readable
+   notes.
+6. **Launch week around 2026-12-22.** The owner posts; Claude prepares the drafts, the demo build and answers to
+   likely questions.
+7. **After launch:** quick issue triage, and periodic performance comparisons against Zen, Crest and Chrome.
+
+Claude never posts anything publicly or creates accounts; the owner does.
+
+## Open decisions (owner)
+
+Recorded for the owner to decide. Don't act on them until they do.
+
+| Topic | Question |
+|---|---|
+| Name | "Ray" is hard to search: it collides with ray-project/ray, Raycast and Spatie Ray. Keep it, or rename before launch? |
 
 ## Decisions so far
 
