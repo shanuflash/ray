@@ -858,7 +858,11 @@ const checks = {
     await sleep(800);
     const saved = existsSync(join(dataDir, "Sidebar.json")) ? readFileSync(join(dataDir, "Sidebar.json"), "utf8") : "";
     assert(!saved.includes("b?private"), "a private tab was saved to Sidebar.json");
-    await command("closewindow");
+    // ⌘W closes the private tab, then with no tab left, the window.
+    await command("key w cmd");
+    await until("private tab closed", async () => { await command("state"); return state().private === true && state().active === null; }, 5000);
+    // (With no page focused, a hidden test window drops synthetic keys; the menu command is what ⌘W runs.)
+    await command("menu closeTab");
     await until("back to the normal window", async () => { await command("state"); return state().private === false; }, 5000);
     await until("private page gone", async () => !(await targets()).some((t) => t.url.includes("/b?private")), 8000);
     assert(state().activeEntry === mainEntry, "the normal window changed while the private one was open");

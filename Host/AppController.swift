@@ -6,9 +6,16 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
   private(set) var windows: [BrowserWindowController] = []
   private var quitting = false
 
+  /// The window used last: the key window, else the one most recently shown or focused (Ray in the background has
+  /// no key window, and menu commands still belong to the window you were in).
   var current: BrowserWindowController? {
-    windows.first { $0.window === NSApp.keyWindow } ?? windows.first { $0.window === NSApp.mainWindow } ?? windows.last
+    windows.first { $0.window === NSApp.keyWindow } ?? lastFocused.flatMap { last in windows.first { $0 === last } }
+      ?? windows.first { $0.window === NSApp.mainWindow } ?? windows.last
   }
+
+  private weak var lastFocused: BrowserWindowController?
+
+  func noteFocused(_ controller: BrowserWindowController) { lastFocused = controller }
 
   func engineDidStart() {
     guard let engine = ArdiaCoreEngine.shared else { return }

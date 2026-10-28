@@ -419,7 +419,11 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   func findBarClose(_ bar: FindBarView) { closeFind() }
 
+  @objc private func windowBecameKey() { AppController.shared.noteFocused(self) }
+
   func present(background: Bool) {
+    AppController.shared.noteFocused(self)
+    NotificationCenter.default.addObserver(self, selector: #selector(windowBecameKey), name: NSWindow.didBecomeKeyNotification, object: window)
     extensions.refresh()
     _ = downloads
     window.center()
@@ -566,8 +570,12 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     }
   }
 
+  /// ⌘W: closes the active tab; with no tab open, the window (as Chrome and Arc do).
   func closeActive() {
-    guard let entry = activeEntry else { return }
+    guard let entry = activeEntry else {
+      window.performClose(nil)
+      return
+    }
     if entry.isLive {
       entry.tab?.close()
     } else if entry.kind == .today {
