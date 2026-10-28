@@ -125,6 +125,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     window.acceptsMouseMovedEvents = true
   }
 
+  // MARK: Layout
+
   @objc private func hostResized() { layout() }
 
   @objc private func fullScreenChanged() {
@@ -192,6 +194,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     }
   }
 
+  // MARK: Extensions and downloads
+
   private(set) lazy var extensions: ExtensionsController = {
     let controller = ExtensionsController(profile: profile, coreWindow: coreWindow)
     controller.onChange = { [weak self, weak controller] in
@@ -255,6 +259,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   func toggleDownloads() {
     sidebar.downloadsOpen ? closeDownloads() : showDownloads()
   }
+
+  // MARK: Test snapshots
 
   /// For tests: draws the page toolbar into a PNG (light appearance), to look at its design.
   func snapshotToolbar(to path: String) -> Bool {
