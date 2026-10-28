@@ -57,14 +57,15 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     addSubview(panel)
 
     searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
-    searchIcon.symbolConfiguration = .init(pointSize: 15, weight: .semibold)
+    // Sizes measured against Arc's command bar (2026-10-28): field 18 pt, icon 13 pt, rows 13 pt medium.
+    searchIcon.symbolConfiguration = .init(pointSize: 13, weight: .semibold)
     searchIcon.contentTintColor = .secondaryLabelColor
     panel.addSubview(searchIcon)
 
     field.isBordered = false
     field.drawsBackground = false
     field.focusRingType = .none
-    field.font = .systemFont(ofSize: 20)
+    field.font = .systemFont(ofSize: 18)
     field.placeholderString = "Search or Enter URL…"
     field.cell?.isScrollable = true
     field.cell?.usesSingleLineMode = true
@@ -281,7 +282,7 @@ private final class SuggestionCell: NSTableCellView {
     iconBox.addSubview(icon)
     label.lineBreakMode = .byTruncatingTail
     label.cell?.truncatesLastVisibleLine = true
-    action.font = .systemFont(ofSize: 15, weight: .medium)
+    action.font = .systemFont(ofSize: 13, weight: .medium)
     action.alignment = .right
     arrowBox.wantsLayer = true
     arrowBox.layer?.cornerRadius = 6
@@ -306,8 +307,9 @@ private final class SuggestionCell: NSTableCellView {
     let actionWidth = isTab ? ceil(action.intrinsicContentSize.width) : 0
     action.frame = NSRect(x: arrowBox.frame.minX - 9 - actionWidth, y: mid - 10, width: actionWidth, height: 20)
     let right = (isTab ? action.frame.minX : arrowBox.frame.minX) - 16
-    label.frame = NSRect(
-      x: CommandBarView.contentInset, y: mid - 10, width: max(0, right - CommandBarView.contentInset), height: 20)
+    // Row text lines up with the typed text above it, as in Arc.
+    let textX = CommandBarView.contentInset - 3
+    label.frame = NSRect(x: textX, y: mid - 9, width: max(0, right - textX), height: 18)
   }
 
   override func viewDidChangeEffectiveAppearance() {
@@ -321,7 +323,7 @@ private final class SuggestionCell: NSTableCellView {
     if case .tab = suggestion.kind { isTab = true } else { isTab = false }
     let text = NSMutableAttributedString(
       string: suggestion.title,
-      attributes: [.font: NSFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: NSColor.labelColor])
+      attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.labelColor])
     let detail: String
     switch suggestion.kind {
     case .tab: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
@@ -331,7 +333,7 @@ private final class SuggestionCell: NSTableCellView {
     if !detail.isEmpty {
       text.append(NSAttributedString(
         string: " — " + detail,
-        attributes: [.font: NSFont.systemFont(ofSize: 15, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor]))
+        attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.secondaryLabelColor]))
     }
     label.attributedStringValue = text
     updateAccessory()
