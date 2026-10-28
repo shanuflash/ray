@@ -906,7 +906,15 @@ const checks = {
     await command(`row ${entryFor(tabFor("/a").id).id}`);
     await until("/a active", () => state().active === tabFor("/a").id);
     await until("address", async () => { await command("state"); return state().toolbar?.address === origin.replace("http://", "") + "/a"; });
-    if (process.env.SNAP_DIR) await command(`toolbarsnap ${join(process.env.SNAP_DIR, "toolbar.png")}`);
+    if (process.env.SNAP_DIR) {
+      await command(`toolbarsnap ${join(process.env.SNAP_DIR, "toolbar.png")}`);
+      await command("menu toggleSidebar");
+      await until("sidebar hidden", async () => { await command("state"); return state().toolbar?.navigation === true; });
+      await sleep(400);
+      await command(`toolbarsnap ${join(process.env.SNAP_DIR, "toolbar-sidebar-hidden.png")}`);
+      await command("menu toggleSidebar");
+      await until("sidebar back", async () => { await command("state"); return state().toolbar?.navigation === false; });
+    }
     // A plain-http page on the user's own machine gets no warning in either address field, and both centre the text.
     for (const [name, field] of [["toolbar", state().toolbar.field], ["sidebar", state().addressField]]) {
       assert(field.look === "local" && field.icon === false, `${name} field warns on a local page: ${JSON.stringify(field)}`);

@@ -15,7 +15,12 @@ protocol PageToolbarDelegate: AnyObject {
 /// docked sidebar has its own, so they're not repeated here. The sidebar's own address field
 /// shows regardless; View › Show Address Bar on Page turns this one off.
 final class PageToolbarView: NSView {
-  static let height: CGFloat = 40
+  /// Ardia's bar: 41 pt tall, 30 pt buttons centred 21.2 pt down at 21, 56, 92 and 127 pt, the address field
+  /// 30 pt tall from 145 pt (8 pt in when the docked sidebar has the buttons instead).
+  static let height: CGFloat = 41
+  private static let buttonSize: CGFloat = 30
+  private static let buttonTop: CGFloat = 6
+  private static let centers: [CGFloat] = [21, 56, 92, 127]
   weak var delegate: PageToolbarDelegate?
 
   private let sidebarButton = PageToolbarView.button("sidebar.left", "Show Sidebar")
@@ -82,16 +87,15 @@ final class PageToolbarView: NSView {
 
   override func layout() {
     super.layout()
-    let mid = bounds.height / 2
-    var x: CGFloat = 4
-    for button in [sidebarButton, backButton, forwardButton, reloadButton] where !button.isHidden {
-      button.frame = NSRect(x: x, y: mid - 14, width: 28, height: 28)
-      x += button === sidebarButton ? 36 : 30
+    let size = Self.buttonSize, top = Self.buttonTop
+    for (button, center) in zip([sidebarButton, backButton, forwardButton, reloadButton], Self.centers) {
+      button.frame = NSRect(x: center - size / 2, y: top, width: size, height: size)
     }
-    siteButton.frame = NSRect(x: bounds.width - 4 - 28, y: mid - 14, width: 28, height: 28)
-    copyButton.frame = NSRect(x: siteButton.frame.minX - 30, y: mid - 14, width: 28, height: 28)
-    let right = copyButton.isHidden ? bounds.width - 4 : copyButton.frame.minX - 6
-    address.frame = NSRect(x: x + 4, y: mid - 14, width: max(0, right - x - 4), height: 28)
+    let left: CGFloat = showsNavigation ? 145 : 8
+    siteButton.frame = NSRect(x: bounds.width - 8 - size, y: top, width: size, height: size)
+    copyButton.frame = NSRect(x: siteButton.frame.minX - size + 2, y: top, width: size, height: size)
+    let right = copyButton.isHidden ? bounds.width - 12 : copyButton.frame.minX - 4
+    address.frame = NSRect(x: left, y: top, width: max(0, right - left), height: size)
   }
 
   private static func button(_ symbol: String, _ label: String) -> HoverIconButton {
@@ -121,12 +125,10 @@ private final class ToolbarAddressView: NSView {
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    layer?.cornerRadius = 7
+    layer?.cornerRadius = 8
     layer?.cornerCurve = .continuous
-    label.font = .systemFont(ofSize: 13)
-    label.textColor = .secondaryLabelColor
     label.lineBreakMode = .byTruncatingTail
-    securityIcon.symbolConfiguration = .init(pointSize: 11, weight: .medium)
+    securityIcon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
     securityIcon.isHidden = true
     addSubview(securityIcon)
     addSubview(label)
@@ -146,11 +148,30 @@ private final class ToolbarAddressView: NSView {
   override func mouseEntered(with event: NSEvent) {
     hovered = true
     needsDisplay = true
+    render()
   }
 
   override func mouseExited(with event: NSEvent) {
     hovered = false
     needsDisplay = true
+    render()
+  }
+
+  private var parts = (host: "", trail: "")
+
+  /// The host in medium weight, as Ardia and Dia show it; the rest of the address in grey only while hovered.
+  private func render() {
+    let font = NSFont.systemFont(ofSize: 13)
+    let shown = NSMutableAttributedString(string: parts.host, attributes: [
+      .font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.labelColor,
+    ])
+    if hovered, !parts.trail.isEmpty {
+      shown.append(NSAttributedString(string: parts.trail, attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]))
+    }
+    let style = NSMutableParagraphStyle()
+    style.lineBreakMode = .byTruncatingTail
+    shown.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: shown.length))
+    label.attributedStringValue = shown
   }
 
   override func mouseDown(with event: NSEvent) { onClick?() }
@@ -161,8 +182,9 @@ private final class ToolbarAddressView: NSView {
   }
 
   func show(url: String, security: String?) {
-    text = Self.text(for: url)
-    label.stringValue = text
+    parts = Self.parts(for: url)
+    text = parts.host + parts.trail
+    render()
     let look = ConnectionLook.of(level: security, url: url)
     securityIcon.image = look.symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: look.label) }
     securityIcon.contentTintColor = look.tint
@@ -172,23 +194,24 @@ private final class ToolbarAddressView: NSView {
   }
 
   /// Host (without www.) and path, as Dia shows it; built-in pages as ray://.
-  static func text(for url: String) -> String {
-    guard !url.isEmpty else { return "" }
+  static func parts(for url: String) -> (host: String, trail: String) {
+    guard !url.isEmpty else { return ("", "") }
     let shown = AddressInput.display(for: url)
     guard let components = URLComponents(string: shown), let host = components.host, !host.isEmpty else {
-      return AddressInput.pillText(for: url)
+      return (AddressInput.pillText(for: url), "")
     }
-    if components.scheme == AddressInput.internalScheme { return shown }
+    if components.scheme == AddressInput.internalScheme { return (shown, "") }
     let bareHost = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     let port = components.port.map { ":\($0)" } ?? ""
     let path = components.percentEncodedPath == "/" ? "" : components.percentEncodedPath
-    return bareHost + port + path
+    return (bareHost + port, path)
   }
 
   override func layout() {
     super.layout()
     let mid = bounds.height / 2
-    securityIcon.frame = NSRect(x: 8, y: mid - 8, width: 16, height: 16)
+    // Ardia's lock: 7 pt in, 18 wide, the text 3 pt after it.
+    securityIcon.frame = NSRect(x: 7, y: (mid - 9).rounded(), width: 18, height: 18)
     let x: CGFloat = securityIcon.isHidden ? 8 : 28
     // One line tall, so the text sits on the middle (a label draws from its frame's top).
     let line = ceil(label.intrinsicContentSize.height)
