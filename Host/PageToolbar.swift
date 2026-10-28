@@ -252,7 +252,7 @@ private final class ToolbarAddressView: NSView {
 
   override func layout() {
     super.layout()
-    wash.layout(in: bounds, flipped: layer?.isGeometryFlipped ?? false, appearance: effectiveAppearance)
+    wash.layout(in: bounds, appearance: effectiveAppearance)
     let mid = bounds.height / 2
     // Ardia's lock: 7 pt in, 18 wide, the text 3 pt after it.
     securityIcon.frame = NSRect(x: 7, y: (mid - 9).rounded(), width: 18, height: 18)
@@ -263,17 +263,21 @@ private final class ToolbarAddressView: NSView {
   }
 }
 
-/// The colours of the loading wash and its line, in one place so a later "colour from the page" setting can set
-/// `current`. Close to Dia's lavender.
+/// The colours of the loading wash and its line, in one place so the profile's colour can set `current` once
+/// profiles exist. Measured from Dia: the wash is barely there at the field's top (≈3%) and deepens toward its
+/// bottom edge (≈15%), over a pale line (#DBAAFF on white).
 struct LoadingTint {
-  var wash: NSColor
+  var washTop: NSColor
+  var washBottom: NSColor
   var line: NSColor
 
-  static var current = LoadingTint(
-    wash: dynamic(light: NSColor(srgbRed: 0.60, green: 0.42, blue: 0.90, alpha: 0.20),
-                  dark: NSColor(srgbRed: 0.62, green: 0.48, blue: 1.00, alpha: 0.24)),
-    line: dynamic(light: NSColor(srgbRed: 0.58, green: 0.36, blue: 0.90, alpha: 0.95),
-                  dark: NSColor(srgbRed: 0.70, green: 0.55, blue: 1.00, alpha: 0.90)))
+  static var current = LoadingTint(accent: NSColor(srgbRed: 0.56, green: 0.24, blue: 1.0, alpha: 1))
+
+  init(accent: NSColor) {
+    washTop = Self.dynamic(light: accent.withAlphaComponent(0.03), dark: accent.withAlphaComponent(0.05))
+    washBottom = Self.dynamic(light: accent.withAlphaComponent(0.15), dark: accent.withAlphaComponent(0.2))
+    line = Self.dynamic(light: accent.withAlphaComponent(0.34), dark: accent.withAlphaComponent(0.5))
+  }
 
   static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
     NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
@@ -289,11 +293,12 @@ private final class LoadingWash {
   let host = CALayer()
   private let sweep = CALayer()
   private let fill = CAGradientLayer()
-  private let line = CAGradientLayer()
+  private let line = CALayer()
+  /// Feathers the sweep's leading edge (wash and line alike).
+  private let feather = CAGradientLayer()
 
   static let feather: CGFloat = 120
-  static let lineFeather: CGFloat = 36
-  static let lineHeight: CGFloat = 1.5
+  static let lineHeight: CGFloat = 1
   /// Ardia's minimum is 8%; a little more so the first step shows.
   static let minimum = 0.1
   static let stepDuration: CFTimeInterval = 0.4
@@ -321,11 +326,12 @@ private final class LoadingWash {
     host.cornerCurve = .continuous
     sweep.anchorPoint = .zero
     sweep.opacity = 0
-    for gradient in [fill, line] {
-      gradient.startPoint = CGPoint(x: 0, y: 0.5)
-      gradient.endPoint = CGPoint(x: 1, y: 0.5)
-      sweep.addSublayer(gradient)
-    }
+    sweep.addSublayer(fill)
+    sweep.addSublayer(line)
+    feather.startPoint = CGPoint(x: 0, y: 0.5)
+    feather.endPoint = CGPoint(x: 1, y: 0.5)
+    feather.colors = [CGColor.black, CGColor.black, CGColor.clear]
+    sweep.mask = feather
     host.addSublayer(sweep)
   }
 
@@ -341,7 +347,7 @@ private final class LoadingWash {
     CATransaction.commit()
   }
 
-  func layout(in bounds: NSRect, flipped: Bool, appearance: NSAppearance) {
+  func layout(in bounds: NSRect, appearance: NSAppearance) {
     guard size != bounds.size else { return }
     size = bounds.size
     applyTint(for: appearance)
@@ -349,21 +355,27 @@ private final class LoadingWash {
       host.frame = bounds
       sweep.bounds = CGRect(x: 0, y: 0, width: travel, height: bounds.height)
       fill.frame = sweep.bounds
+      // The field is a flipped view, so its sublayers run top down (its layer's isGeometryFlipped doesn't say so).
+      // Deeper toward the field's bottom edge, where the line runs.
+      fill.startPoint = CGPoint(x: 0.5, y: 0)
+      fill.endPoint = CGPoint(x: 0.5, y: 1)
       let lineHeight = Self.lineHeight
-      line.frame = CGRect(x: 0, y: flipped ? bounds.height - lineHeight : 0, width: travel, height: lineHeight)
-      fill.locations = [0, NSNumber(value: Double(1 - Self.feather / travel)), 1]
-      line.locations = [0, NSNumber(value: Double(1 - Self.lineFeather / travel)), 1]
+      line.frame = CGRect(x: 0, y: bounds.height - lineHeight, width: travel, height: lineHeight)
+      feather.frame = sweep.bounds
+      feather.locations = [0, NSNumber(value: Double(1 - Self.feather / travel)), 1]
       sweep.position = CGPoint(x: origin(active || finishing ? fraction : 0), y: 0)
     }
   }
 
   func applyTint(for appearance: NSAppearance) {
     let tint = LoadingTint.current
-    var colours = (wash: CGColor.clear, line: CGColor.clear)
-    appearance.performAsCurrentDrawingAppearance { colours = (tint.wash.cgColor, tint.line.cgColor) }
+    var colours = (top: CGColor.clear, bottom: CGColor.clear, line: CGColor.clear)
+    appearance.performAsCurrentDrawingAppearance {
+      colours = (tint.washTop.cgColor, tint.washBottom.cgColor, tint.line.cgColor)
+    }
     quietly {
-      fill.colors = [colours.wash, colours.wash, colours.wash.copy(alpha: 0) ?? .clear]
-      line.colors = [colours.line, colours.line, colours.line.copy(alpha: 0) ?? .clear]
+      fill.colors = [colours.top, colours.bottom]
+      line.backgroundColor = colours.line
     }
   }
 
