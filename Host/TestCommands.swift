@@ -31,6 +31,8 @@ enum TestCommands {
     if parts.contains("shift") { flags.insert(.shift) }
     if parts.contains("opt") { flags.insert(.option) }
     if parts.contains("ctrl") { flags.insert(.control) }
+    // `keywin`: make the window key first (without ordering it front), so the press takes AppKit's real key path.
+    if parts.contains("keywin") { window.makeKey() }
     // A real keyboard reports the shifted character (⇧⌘C arrives as "C"), even ignoring modifiers.
     let shown = flags.contains(.shift) ? character.uppercased() : character
     for type in [NSEvent.EventType.keyDown, .keyUp] {
@@ -38,7 +40,8 @@ enum TestCommands {
         with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
         windowNumber: window.windowNumber, context: nil, characters: shown, charactersIgnoringModifiers: shown,
         isARepeat: false, keyCode: code) else { return "no event" }
-      NSApp.sendEvent(event)
+      // keywin presses go through the event queue, as real keystrokes do (local event monitors see them there).
+      if parts.contains("keywin") { NSApp.postEvent(event, atStart: false) } else { NSApp.sendEvent(event) }
     }
     return "ok"
   }

@@ -30,11 +30,25 @@ final class AppController: NSObject, ArdiaCoreEngineDelegate, NSApplicationDeleg
     }
     NSApp.delegate = self
     MainMenu.install(target: self)
+    installReservedKeyRouting()
     TestCommands.start()
     let controller = makeWindow(profile: engine.defaultProfile)
     controller.present(background: launchedInBackground)
     controller.restore(startURL: TestEnvironment["RAY_START_URL"])
     controller.searches.warm()
+  }
+
+  /// Chrome's reserved shortcuts (⌘W, ⌘T, ⌘N, …) go to Ray's menu before Chrome's window can take them. With a page
+  /// focused the engine already asks Ray first (preHandleKeyEvent), but with no page (an empty window) Chrome's
+  /// window class ran its own command, and ⌘W on an empty window did nothing. App-local, keys to Ray's own windows
+  /// only; nothing global.
+  private func installReservedKeyRouting() {
+    NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+      guard let self, Shortcuts.isReserved(event), let window = event.window,
+            self.windows.contains(where: { $0.window === window }),
+            NSApp.mainMenu?.performKeyEquivalent(with: event) == true else { return event }
+      return nil
+    }
   }
 
   func engineQuitCancelled() {
@@ -201,7 +215,11 @@ extension AppController: NSMenuItemValidation {
     switch item.action {
     case #selector(goBack(_:)): return current?.activeTab?.canGoBack ?? false
     case #selector(goForward(_:)): return current?.activeTab?.canGoForward ?? false
-    case #selector(closeTab(_:)), #selector(reload(_:)), #selector(reloadIgnoringCache(_:)), #selector(toggleDevTools(_:)):
+    case #selector(closeTab(_:)):
+      // With no tab open, ⌘W closes the window, as in Chrome and Arc.
+      item.title = current?.activeEntry == nil ? "Close Window" : "Close Tab"
+      return current != nil
+    case #selector(reload(_:)), #selector(reloadIgnoringCache(_:)), #selector(toggleDevTools(_:)):
       return current?.activeTab != nil
     default: return true
     }

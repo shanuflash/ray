@@ -843,10 +843,11 @@ const checks = {
   async "private-window"() {
     const mainEntry = state().activeEntry;
     await command("menu newPrivateWindow");
-    await until("private window", () => state().private === true && state().commandBar);
+    // Both windows log; ask for the current one's state so the normal window's own updates don't race this.
+    await until("private window", async () => { await command("state"); return state().private === true && state().commandBar; });
     await command(`type ${origin}/b?private`);
     await command("enter");
-    await until("private page", () => state().private === true && state().tabs.some((t) => t.url.includes("/b?private")));
+    await until("private page", async () => { await command("state"); return state().private === true && state().tabs.some((t) => t.url.includes("/b?private")); });
     assert(state().sidebar.favorites.length === 0 && state().sidebar.pinned.length === 0, "a private window started with saved tabs");
     // Cookies set in the private window stay there, on the same site.
     const priv = await session("/b?private");
@@ -861,8 +862,7 @@ const checks = {
     // ⌘W closes the private tab, then with no tab left, the window.
     await command("key w cmd");
     await until("private tab closed", async () => { await command("state"); return state().private === true && state().active === null; }, 5000);
-    // (With no page focused, a hidden test window drops synthetic keys; the menu command is what ⌘W runs.)
-    await command("menu closeTab");
+    await command("key w cmd keywin");
     await until("back to the normal window", async () => { await command("state"); return state().private === false; }, 5000);
     await until("private page gone", async () => !(await targets()).some((t) => t.url.includes("/b?private")), 8000);
     assert(state().activeEntry === mainEntry, "the normal window changed while the private one was open");
