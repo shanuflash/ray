@@ -7,6 +7,8 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
     let id: String
     let name: String
     let enabled: Bool
+    /// The extension's own icon (from its manifest), for when its toolbar action hasn't set one.
+    let icon: String?
   }
 
   private(set) var items: [Item] = []
@@ -31,7 +33,7 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
       guard let self, let list = reply?["extensions"] as? [[String: Any]] else { return }
       self.items = list.compactMap { info in
         guard let id = info["id"] as? String, let name = info["name"] as? String else { return nil }
-        return Item(id: id, name: name, enabled: info["enabled"] as? Bool ?? false)
+        return Item(id: id, name: name, enabled: info["enabled"] as? Bool ?? false, icon: info["icon"] as? String)
       }
       self.onChange?()
     }
@@ -58,7 +60,7 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
       let entry = NSMenuItem(title: title, action: #selector(run(_:)), keyEquivalent: "")
       entry.target = self
       entry.representedObject = RunChoice(id: item.id, tab: tab, anchor: anchor)
-      entry.image = (state?["icon"] as? String).flatMap(Self.image(fromDataURL:))
+      entry.image = icon(for: item, state: state)
         ?? NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: nil)
       entry.image?.size = NSSize(width: 16, height: 16)
       entry.isEnabled = tab != nil && (state?["enabled"] as? Bool ?? true)
@@ -72,6 +74,12 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
     store.target = self
     menu.addItem(store)
     return menu
+  }
+
+  /// The action's icon for this tab, else the extension's own, as Chrome's toolbar falls back (an action's icon
+  /// loads late, and some extensions only ever set one from their background page).
+  func icon(for item: Item, state: [String: Any]?) -> NSImage? {
+    (state?["icon"] as? String).flatMap(Self.image(fromDataURL:)) ?? item.icon.flatMap(Self.image(fromDataURL:))
   }
 
   @objc private func openManage() { openPage?("chrome://extensions") }
@@ -98,10 +106,15 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
     closePopup()
     guard let page = coreWindow.openExtensionView(url, profile: profile, kind: "popup") else { return }
     page.delegate = self
+    // Chrome's base under an extension popup is white (a dark-scheme page paints its own dark canvas over it);
+    // without one the popover's glass shows through pages that leave their background unset.
+    page.contentsBackgroundColor = .white
     popupTab = page
     popupURL = url
     let controller = NSViewController()
     let container = NSView(frame: NSRect(origin: .zero, size: Self.clamp(page.preferredSize)))
+    container.wantsLayer = true
+    container.layer?.backgroundColor = NSColor.white.cgColor
     page.view.frame = container.bounds
     page.view.autoresizingMask = [.width, .height]
     container.addSubview(page.view)
@@ -204,9 +217,11 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, ArdiaCoreTabDeleg
     return single.count > limit ? String(single.prefix(limit)) + "…" : single
   }
 
+  /// An image from a base64 `data:image/…` URL (the engine's icons; manifests may use any image type).
   static func image(fromDataURL url: String) -> NSImage? {
-    guard url.hasPrefix("data:image/png;base64,"),
-          let data = Data(base64Encoded: String(url.dropFirst("data:image/png;base64,".count))) else { return nil }
+    guard url.hasPrefix("data:image/"), let comma = url.firstIndex(of: ","),
+          url[..<comma].hasSuffix(";base64"),
+          let data = Data(base64Encoded: String(url[url.index(after: comma)...])) else { return nil }
     return NSImage(data: data)
   }
 }

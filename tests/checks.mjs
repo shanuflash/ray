@@ -9,6 +9,28 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, readdi
 import { tmpdir, homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { deflateSync, crc32 } from "node:zlib";
+
+/** A square PNG of one colour, for fixture icons. */
+function solidPNG(size) {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(12 + data.length);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body) >>> 0, 8 + data.length);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header[8] = 8; header[9] = 2;
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array(size).fill([230, 90, 40]).flat())]);
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header),
+    chunk("IDAT", deflateSync(Buffer.concat(Array(size).fill(row)))), chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const app = join(root, "build/RayTests.app");
@@ -728,7 +750,10 @@ const checks = {
     writeFileSync(join(dir, "manifest.json"), JSON.stringify({
       manifest_version: 3, name: "Ray Fixture", version: "1.0",
       action: { default_title: "Fixture", default_popup: "popup.html" },
+      // Only the extension's own icon, none for its action: the toolbar falls back to it, as Chrome's does.
+      icons: { 16: "icon.png", 48: "icon.png" },
     }));
+    writeFileSync(join(dir, "icon.png"), solidPNG(48));
     writeFileSync(join(dir, "popup.html"), `<!doctype html><body style="width:220px;height:90px">fixture popup</body>`);
     const from = stderr.length;
     await command(`extinstall ${dir}`);
@@ -742,6 +767,11 @@ const checks = {
     assert(![...state().sidebar.today, ...state().sidebar.pinned].some((e) => e.url.startsWith("chrome-extension://")), "popup in the sidebar");
     await command("extclose");
     await until("popup closed", () => state().extensionPopup === null);
+    await command("menu toggleSiteControls");
+    await until("panel lists it", async () => { await command("state"); return state().siteControls?.extensions.includes(id); });
+    assert(state().siteControls.extensionIcons[id] === true, "the panel's tile has no icon for an extension with one");
+    await command("menu toggleSiteControls");
+    await until("panel closed", async () => { await command("state"); return state().siteControls === null; });
     await until("popup page gone", async () => !(await targets()).some((t) => t.url.startsWith(`chrome-extension://${id}/`)), 8000);
   },
   async "extension-prompt"() {

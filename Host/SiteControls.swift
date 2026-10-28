@@ -37,6 +37,7 @@ final class SiteControlsView: NSView {
 
   private let quickTiles: [(name: String, tile: PanelTile)]
   private var extensionTiles: [(id: String, tile: PanelTile)] = []
+  private var extensionIcons: [String: Bool] = [:]
   private let addTile = PanelTile(symbol: "plus", label: "Get Extensions")
   private let extensionsHeader = SiteControlsView.header("Extensions")
   private let settingsHeader = SiteControlsView.header("Settings")
@@ -78,6 +79,7 @@ final class SiteControlsView: NSView {
       tile.isEnabled = item.enabled
       tile.onPress = { [weak self] in self?.onAction?(.runExtension(item.id)) }
       extensionTiles.append((item.id, tile))
+      extensionIcons[item.id] = item.icon != nil
       addSubview(tile)
     }
     addTile.onPress = { [weak self] in self?.onAction?(.addExtension) }
@@ -349,6 +351,7 @@ final class SiteControlsView: NSView {
       "security": securityPill.text,
       "tiles": quickTiles.map(\.name),
       "extensions": extensionTiles.map(\.id),
+      "extensionIcons": extensionIcons,
       "settings": rows.map { ["title": $0.title, "value": $0.subtitle] },
       "frame": NSStringFromRect(frame),
     ]

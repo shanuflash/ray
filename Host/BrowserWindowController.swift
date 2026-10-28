@@ -466,7 +466,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let items = enabled.map { item -> SiteControlsView.Extension in
       let state = states[item.id] as? [String: Any]
       return .init(id: item.id, name: item.name,
-                   icon: (state?["icon"] as? String).flatMap(ExtensionsController.image(fromDataURL:)),
+                   icon: extensions.icon(for: item, state: state),
                    enabled: state?["enabled"] as? Bool ?? true)
     }
     let level = tab.securityInfo["level"] as? String ?? "none"
