@@ -1,7 +1,7 @@
 import AppKit
 
 final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCoreTabDelegate, SidebarViewDelegate,
-  CommandBarDelegate, FindBarDelegate {
+  CommandBarDelegate, FindBarDelegate, PageToolbarDelegate {
   enum CommandBarMode: String {
     case newTab
     case currentTab
@@ -18,6 +18,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
   private let sidebar = SidebarView()
   private let floating = FloatingSidebarFrame()
   private let pages = PageContainerView()
+  private let toolbar = PageToolbarView()
+  var toolbarShown: Bool { state.pageToolbar ?? true }
   private var commandBar: CommandBarView?
   private var commandBarMode = CommandBarMode.newTab
   private let history = HistoryCache()
@@ -78,6 +80,8 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     root.autoresizingMask = [.width, .height]
     root.wantsLayer = true
     root.addSubview(pages)
+    toolbar.delegate = self
+    root.addSubview(toolbar)
     root.addSubview(sidebar)
     root.addSubview(floating)
     floating.isHidden = true
@@ -156,7 +160,18 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     // Whole points only: Chrome's content layer follows the page by CALayer autoresizing, which rounds each
     // step to a point, so fractional sizes made the page creep a little further on every ⌘S.
     let left = cardX.rounded(), right = (bounds.width - edge).rounded()
-    let bottom = edge.rounded(), top = (bounds.height - edge).rounded()
+    let bottom = edge.rounded()
+    var top = (bounds.height - edge).rounded()
+    toolbar.isHidden = !toolbarShown
+    if toolbarShown {
+      // The address bar sits above the card, at the window's top edge, across the card's width.
+      let height = PageToolbarView.height
+      toolbar.frame = NSRect(x: left, y: bounds.height - height, width: max(0, right - left), height: height)
+      toolbar.showsSidebarButton = state.sidebarHidden && !peeking
+      // In full screen with the sidebar away, keep clear of the window buttons that slide in at the top left.
+      toolbar.leadingInset = isFullScreen && left < 80 ? 70 : 0
+      top = (bounds.height - height).rounded()
+    }
     pages.frame = NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
     pages.cornerRadius = isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
     permissions.update()
@@ -237,6 +252,19 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
 
   func toggleDownloads() {
     sidebar.downloadsOpen ? closeDownloads() : showDownloads()
+  }
+
+  /// For tests: draws the page toolbar into a PNG (light appearance), to look at its design.
+  func snapshotToolbar(to path: String) -> Bool {
+    let view = toolbar
+    let old = view.appearance
+    view.appearance = NSAppearance(named: .aqua)
+    defer { view.appearance = old }
+    view.layoutSubtreeIfNeeded()
+    guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return false }
+    view.cacheDisplay(in: view.bounds, to: rep)
+    guard let png = rep.representation(using: .png, properties: [:]) else { return false }
+    return (try? png.write(to: URL(fileURLWithPath: path))) != nil
   }
 
   /// For tests: draws the open downloads list into a PNG, to look at its design.
@@ -476,7 +504,30 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     sidebar.show(favorites: state.favorites, pinned: state.pinned, today: state.today, active: activeEntry)
     sidebar.showAddress(activeEntry)
     sidebar.setNavigation(canGoBack: activeTab?.canGoBack ?? false, canGoForward: activeTab?.canGoForward ?? false)
+    updateToolbar()
   }
+
+  private func updateToolbar() {
+    let entry = activeEntry
+    let level = entry.flatMap { $0.isLive ? $0.tab?.securityInfo["level"] as? String : nil }
+    toolbar.show(url: entry?.currentURL ?? "", security: level,
+                 canGoBack: activeTab?.canGoBack ?? false, canGoForward: activeTab?.canGoForward ?? false)
+  }
+
+  /// View › Show Address Bar on Page.
+  func toggleToolbar() {
+    state.pageToolbar = !toolbarShown
+    layout()
+    store.save(state)
+    logState("toolbar")
+  }
+
+  func toolbarToggleSidebar(_ toolbar: PageToolbarView) { toggleSidebar() }
+  func toolbarBack(_ toolbar: PageToolbarView) { activeTab?.goBack() }
+  func toolbarForward(_ toolbar: PageToolbarView) { activeTab?.goForward() }
+  func toolbarReload(_ toolbar: PageToolbarView) { activeTab?.reload() }
+  func toolbarEditAddress(_ toolbar: PageToolbarView) { focusAddress() }
+  func toolbarCopyLink(_ toolbar: PageToolbarView) { copyURL() }
 
   private var forcedOpen: Bool { state.sidebarHidden && activeEntry.map { !$0.isLive } ?? true }
 
@@ -1104,6 +1155,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     if entry.id == state.activeEntryID {
       sidebar.showAddress(entry)
       sidebar.setNavigation(canGoBack: tab.canGoBack, canGoForward: tab.canGoForward)
+      updateToolbar()
     }
     store.save(state)
     logState(event)
@@ -1165,6 +1217,10 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
       "fullScreen": isFullScreen,
+      "toolbar": toolbarShown ? [
+        "address": toolbar.addressText, "frame": NSStringFromRect(toolbar.frame),
+        "sidebarButton": state.sidebarHidden && !peeking,
+      ] as [String: Any] : NSNull(),
       "private": isPrivate,
       "arcImport": arcImportShown ?? NSNull(),
       "permission": permissions.shown ?? NSNull(),

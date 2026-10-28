@@ -187,6 +187,8 @@ enum TestCommands {
            (try? png.write(to: URL(fileURLWithPath: argument))) != nil { result = "ok" }
         panel.close()
       }
+    case "toolbarsnap":
+      if AppController.shared.current?.snapshotToolbar(to: argument) != true { result = "no toolbar" }
     case "dlsnap":
       if AppController.shared.current?.snapshotDownloads(to: argument) != true { result = "no list" }
     case "dlopen":

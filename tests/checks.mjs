@@ -495,18 +495,21 @@ const checks = {
     await send("Target.activateTarget", { targetId: target.targetId });
     await until("/a active", () => state().active === tabFor("/a")?.id && oneVisibleActive());
     await evaluate(sessionId, `window.__downs = []; addEventListener("mousedown", (e) => __downs.push([e.clientX, e.clientY]), true); true`);
-    const frame = state().windowFrame;
-    await sleep(Number(process.env.STRIP_WAIT ?? 300));
-    child.stdin.write("hit 400 14\n");
-    await sleep(100);
-    console.log("     hit:", (stderr.match(/\[ray-test\] hit 400 14 -> (.*)/) || [])[1], "pages:", JSON.stringify(state().pages));
-    await command("drag 400 14 120 60");
-    await sleep(300);
-    const downs = await evaluate(sessionId, `JSON.stringify(window.__downs)`);
-    assert(JSON.parse(downs).length === 1, `page saw mousedowns ${downs}`);
-    await command("menu newTab");
-    await command("escape");
-    assert(state().windowMovable === true, "window left unmovable after the drag");
+    // The strip is the page's own top edge, which only meets the window's top with the address bar off.
+    const toolbar = state().toolbar != null;
+    if (toolbar) await command("menu toggleToolbar");
+    try {
+      await sleep(Number(process.env.STRIP_WAIT ?? 300));
+      await command("drag 400 14 120 60");
+      await sleep(300);
+      const downs = await evaluate(sessionId, `JSON.stringify(window.__downs)`);
+      assert(JSON.parse(downs).length === 1, `page saw mousedowns ${downs}`);
+      await command("menu newTab");
+      await command("escape");
+      assert(state().windowMovable === true, "window left unmovable after the drag");
+    } finally {
+      if (toolbar) await command("menu toggleToolbar");
+    }
   },
   async "pin-unload-restore"() {
     const id = state().activeEntry;
@@ -866,6 +869,21 @@ const checks = {
     await until("back to the normal window", async () => { await command("state"); return state().private === false; }, 5000);
     await until("private page gone", async () => !(await targets()).some((t) => t.url.includes("/b?private")), 8000);
     assert(state().activeEntry === mainEntry, "the normal window changed while the private one was open");
+  },
+  async "page-toolbar"() {
+    // The address bar above the page shows host and path, and View › Show Address Bar on Page turns it off.
+    const entryFor = (tabId) => ["favorites", "pinned", "today"].flatMap((k) => state().sidebar[k]).find((e) => e.tab === tabId);
+    await command(`row ${entryFor(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
+    await until("address", async () => { await command("state"); return state().toolbar?.address === origin.replace("http://", "") + "/a"; });
+    if (process.env.SNAP_DIR) await command(`toolbarsnap ${join(process.env.SNAP_DIR, "toolbar.png")}`);
+    const cardTop = () => { const [, y, , h] = state().cardFrame.match(/-?[\d.]+/g).map(Number); return y + h; };
+    const withBar = cardTop();
+    await command("menu toggleToolbar");
+    await until("bar off", async () => { await command("state"); return state().toolbar === null; });
+    assert(cardTop() > withBar, `the page didn't grow into the bar's room (${withBar} -> ${cardTop()})`);
+    await command("menu toggleToolbar");
+    await until("bar on", async () => { await command("state"); return state().toolbar !== null; });
   },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]

@@ -91,6 +91,8 @@ final class SidebarState: Codable {
   var sidebarHidden = false
   /// Whether the window was full screen, to reopen that way. Optional so older files still load.
   var fullScreen: Bool?
+  /// View › Show Address Bar on Page (on unless turned off).
+  var pageToolbar: Bool?
 
   var allEntries: [SidebarEntry] { favorites + pinned + today }
 
