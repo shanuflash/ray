@@ -119,6 +119,6 @@ echo "Ray $version (build $build) is ready in $out:"
 ls -lh "$out" | sed 's/^/  /'
 echo
 echo "Nothing is published. When you've tried it, run these in order:"
-printf '  git add VERSION && git commit -m %q && git push\n' "chore: release $version"
-printf '  gh release create v%s %q %q \\\n    --repo %s --target %q --title %q --notes-file %q --latest\n' \
-  "$version" "$out/$archive" "$out/appcast.xml" "$repo" "$branch" "Ray $version" "$notes_file"
+printf '  git add VERSION && git commit -m "chore: release %s" && git push\n' "$version"
+printf '  gh release create v%s \\\n    "%s" \\\n    "%s" \\\n    --repo %s --target %s --title "Ray %s" \\\n    --notes-file "%s" --latest\n' \
+  "$version" "$out/$archive" "$out/appcast.xml" "$repo" "$branch" "$version" "$notes_file"
