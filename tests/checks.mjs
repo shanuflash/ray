@@ -776,6 +776,64 @@ const checks = {
     await command("enter");
     await until("committed by Enter", async () => { await command("state"); return folderRow().title === "Work"; });
   },
+  async "folder-animation"() {
+    await needsFrames();
+    await command("state");
+    if (state().sidebarFrames.reduceMotion === "1") throw new Skip("Reduce Motion is on, so folders don't animate");
+    const { folder, a, b } = folderIDs;
+    const toggle = () => command(`rowaction togglefolder ${folder}`);
+    const folderOpen = () => state().sidebar.pinned.find((e) => e.id === folder).open;
+    // The folder's own animation has ended when the app says so (it counts the frames it drew part-way).
+    const done = (what) => until(what, async () => { await command("state"); return state().sidebarFrames.folding === "0"; }, 3000, 30);
+    const chevron = () => state().sidebarFrames.chevrons.split("|").find((c) => c.startsWith(folder)).split("=")[1].split(",").map(Number);
+    // The active tab stays in sight inside a closed folder, so make another one active first.
+    await command(`row ${b}`);
+    await until("b active", () => state().activeEntry === b);
+    await settle();
+    assert(folderOpen() === true, "the folder starts closed");
+    const below = frameOf(b).y, child = frameOf(a).y;
+    const [openDx, openDy, midX, midY] = chevron();
+    assert(Math.abs(openDx) < 0.6 && openDy > 2, `an open folder's chevron points ${openDx},${openDy}, not down`);
+    await toggle();
+    await until("closed", async () => { await command("state"); return folderOpen() === false; });
+    await done("close animation");
+    let frames = state().sidebarFrames;
+    assert(Number(frames.foldSteps) >= 3, `closing drew over ${frames.foldSteps} frames`);
+    assert(frames.hidden.includes(a) && frames.collapsing === "", `the child ended hidden:${frames.hidden} collapsing:${frames.collapsing}`);
+    assert(frames.faded === "", `rows left faded: ${frames.faded}`);
+    assert(frameOf(b).y === below - 41, `the row below is at ${frameOf(b).y}, was ${below}`);
+    const [closedDx, closedDy, cx, cy] = chevron();
+    assert(closedDx > 2 && Math.abs(closedDy) < 0.6, `a closed folder's chevron points ${closedDx},${closedDy}, not right`);
+    assert(Math.abs(cx - midX) < 0.6 && Math.abs(cy - midY) < 0.6, `the chevron moved while turning: ${midX},${midY} -> ${cx},${cy}`);
+    await toggle();
+    await until("open", async () => { await command("state"); return folderOpen() === true; });
+    await done("open animation");
+    frames = state().sidebarFrames;
+    assert(Number(frames.foldSteps) >= 3, `opening drew over ${frames.foldSteps} frames`);
+    assert(!frames.hidden.includes(a) && frames.collapsing === "" && frames.faded === "", `the child didn't come back: ${JSON.stringify(frames)}`);
+    assert(frameOf(a).y === child && frameOf(b).y === below, "rows weren't back in place after opening");
+    assert(chevron().join() === [openDx, openDy, midX, midY].join(), "the chevron didn't turn back");
+    // Toggling again mid-animation reverses from where things are drawn and ends in the right place.
+    await toggle();
+    await toggle();
+    await done("reopened mid-close");
+    await settle();
+    frames = state().sidebarFrames;
+    assert(folderOpen() === true && !frames.hidden.includes(a) && frames.faded === "" && frames.collapsing === "", "close then open left it wrong");
+    assert(frameOf(a).y === child && frameOf(b).y === below, "close then open moved rows");
+    assert((await commandResult(`hit ${frameOf(a).cx} ${frameOf(a).cy}`)).startsWith("SidebarRowView"), "the child can't be hit after reopening");
+    await toggle();
+    await toggle();
+    await toggle();
+    await done("closed mid-open");
+    await settle();
+    frames = state().sidebarFrames;
+    assert(folderOpen() === false && frames.hidden.includes(a) && frames.collapsing === "" && frames.faded === "", `open, close, open, close left it wrong: ${frames.hidden}`);
+    assert(frameOf(b).y < below, "the row below stayed down after closing");
+    await toggle();
+    await until("open at the end", async () => { await command("state"); return folderOpen() === true; });
+    await done("final open");
+  },
   async "folder-drag-in"() {
     const { folder, b } = folderIDs;
     await settle();

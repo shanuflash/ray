@@ -68,7 +68,13 @@ private final class SidebarDrag {
 /// Neighbours make room and the dropped item settles on a critically damped spring (ω 90 rad/s, about 70 ms),
 /// as Ardia measured Dia's sidebar.
 private enum Slide {
-  static func move(_ view: NSView, to frame: NSRect) {
+  /// A folder opening or closing: the same critically damped spring, softer (ω 30 rad/s, about 0.2 s), so the rows
+  /// below can be seen sliding to their places.
+  static let foldStiffness: CGFloat = 900, foldDamping: CGFloat = 60
+
+  static func isMoving(_ view: NSView) -> Bool { view.layer?.animation(forKey: "slide.position") != nil }
+
+  static func move(_ view: NSView, to frame: NSRect, soft: Bool = false) {
     guard view.frame != frame else { return }
     guard let layer = view.layer else {
       view.frame = frame
@@ -80,8 +86,8 @@ private enum Slide {
     CATransaction.setDisableActions(true)
     view.frame = frame
     CATransaction.commit()
-    add("position", from: NSValue(point: fromPosition), to: NSValue(point: layer.position), on: layer)
-    add("bounds", from: NSValue(rect: fromBounds), to: NSValue(rect: layer.bounds), on: layer)
+    add("position", from: NSValue(point: fromPosition), to: NSValue(point: layer.position), on: layer, soft: soft)
+    add("bounds", from: NSValue(rect: fromBounds), to: NSValue(rect: layer.bounds), on: layer, soft: soft)
   }
 
   static func stop(_ view: NSView) {
@@ -89,15 +95,15 @@ private enum Slide {
     view.layer?.removeAnimation(forKey: "slide.bounds")
   }
 
-  private static func add(_ key: String, from: NSValue, to: NSValue, on layer: CALayer) {
+  private static func add(_ key: String, from: NSValue, to: NSValue, on layer: CALayer, soft: Bool) {
     guard from != to else {
       layer.removeAnimation(forKey: "slide." + key)
       return
     }
     let animation = CASpringAnimation(keyPath: key)
     animation.mass = 1
-    animation.stiffness = 8100
-    animation.damping = 180
+    animation.stiffness = soft ? foldStiffness : 8100
+    animation.damping = soft ? foldDamping : 180
     animation.fromValue = from
     animation.toValue = to
     animation.duration = animation.settlingDuration
@@ -153,6 +159,13 @@ final class SidebarView: NSView {
   private var drag: SidebarDrag?
   private var pendingShow: (() -> Void)?
   private var landing: [UUID: NSRect] = [:]
+  /// Each folder's last open state, to tell a toggle (animated) from any other refresh.
+  private var folderOpen: [UUID: Bool] = [:]
+  /// Set by `show` when a folder opened or closed; the next layout slides rows and fades its children.
+  private var foldPending = false
+  /// Frames in which a fold was drawn part-way, and whether one is still running (test builds only; see `probeFold`).
+  private(set) var foldSteps = 0
+  private var foldLink: CADisplayLink?
   private var autoscroll: CADisplayLink?
   private static let liftDistance: CGFloat = 4
   private static let folderIndent: CGFloat = 16
@@ -237,6 +250,10 @@ final class SidebarView: NSView {
       return
     }
     pendingShow = nil
+    let open = Dictionary(pinned.filter(\.isFolder).map { ($0.id, $0.isOpen ?? true) }, uniquingKeysWith: { first, _ in first })
+    foldPending = foldPending || window != nil && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+      && open.contains { id, now in folderOpen[id].map { $0 != now } ?? false }
+    folderOpen = open
     self.favorites = favorites
     self.pinned = pinned
     self.today = today
@@ -253,7 +270,9 @@ final class SidebarView: NSView {
       tile.menu = menu(for: entry)
     }
     for (row, entry) in zip(pinnedRows + todayRows, pinned + today) {
+      row.animatesFold = foldPending
       row.show(entry, icon: entry.isFolder ? nil : delegate?.sidebarIcon(for: entry), selected: entry === active)
+      row.animatesFold = false
       row.onClick = { [weak self] part in self?.clicked(entry, part: part) }
       row.onPointer = { [weak self, weak row] event in
         if let self, let row { self.pointer(event, on: row, entry: entry) }
@@ -374,8 +393,36 @@ final class SidebarView: NSView {
     }
     let rowFor = Dictionary(zip(pinned.map(\.id), pinnedRows), uniquingKeysWith: { first, _ in first })
     let shownPinned = Set(pinnedRest.map { ObjectIdentifier($0.entry) })
+    // A folder that just opened or closed: its children fade and slide, the rows below slide (only the layers'
+    // presentation moves; the views are at their final frames, so hit-testing is right all along).
+    let folding = foldPending && dragged == nil
+    foldPending = false
+    if folding {
+      foldSteps = 0
+      probeFold()
+    }
+    var appearing = Set<UUID>()
     for (row, entry) in zip(pinnedRows, pinned) {
-      row.isHidden = !shownPinned.contains(ObjectIdentifier(entry)) && entry !== dragged
+      let shown = shownPinned.contains(ObjectIdentifier(entry)) || entry === dragged
+      if shown {
+        if row.isHidden, folding {
+          appearing.insert(entry.id)
+          row.alphaValue = 0
+        }
+        if row.collapsing, !folding {
+          row.alphaValue = 1
+          row.layer?.removeAnimation(forKey: "fold.opacity")
+        }
+        row.isHidden = false
+        row.collapsing = false
+      } else if row.collapsing {
+        // Still fading out from an earlier toggle: its completion hides it.
+      } else if folding && !row.isHidden {
+        row.collapsing = true
+      } else {
+        row.isHidden = true
+        row.alphaValue = 1
+      }
       row.dropTarget = entry.id == litFolder
     }
     var pinnedSlots: [(SidebarRowView, SidebarEntry, Int)?] = pinnedRest.compactMap { item in
@@ -383,6 +430,8 @@ final class SidebarView: NSView {
     }
     if let pinnedGapSlot { pinnedSlots.insert(nil, at: min(pinnedGapSlot, pinnedSlots.count)) }
     let todaySlots = slots(todayRows, today, gap: todayGap)
+    foldingNow = folding
+    defer { foldingNow = false }
 
     let columns = tileSlots.isEmpty ? 1 : min(tileSlots.count, 4)
     let rows = tileSlots.isEmpty ? 0 : Int(ceil(Double(tileSlots.count) / Double(columns)))
@@ -407,13 +456,40 @@ final class SidebarView: NSView {
     let footer: CGFloat = 40
     place(scrollView, NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y - inset - footer)), entry: nil)
     var rowY: CGFloat = 0
+    var placed: [UUID: NSRect] = [:]
+    let byID = Dictionary(pinned.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    // Where a row that isn't (or wasn't) showing sits: folded into its nearest visible folder.
+    func collapsed(_ entry: SidebarEntry, among visible: [UUID: NSRect]) -> NSRect? {
+      var parent = entry.parentID, steps = 0
+      while let id = parent, steps < 64 {
+        if let frame = visible[id], !appearing.contains(id) { return frame }
+        parent = byID[id]?.parentID
+        steps += 1
+      }
+      return nil
+    }
     for slot in pinnedSlots {
       if case let (row, entry, depth)? = slot {
         // Each folder level steps in 16 pt, as Arc's and Ardia's folders do.
         let indent = CGFloat(depth) * Self.folderIndent
-        place(row, NSRect(x: inset + indent, y: rowY, width: width - indent, height: Self.rowHeight), entry: entry)
+        let frame = NSRect(x: inset + indent, y: rowY, width: width - indent, height: Self.rowHeight)
+        placed[entry.id] = frame
+        if folding {
+          foldPlace(row, frame, from: appearing.contains(entry.id) ? collapsed(entry, among: placed) : nil, alpha: 1)
+        } else {
+          place(row, frame, entry: entry)
+        }
       }
       rowY += Self.rowHeight
+    }
+    for (row, entry) in zip(pinnedRows, pinned) where row.collapsing {
+      guard let frame = collapsed(entry, among: placed) else {
+        row.collapsing = false
+        row.isHidden = true
+        row.alphaValue = 1
+        continue
+      }
+      if folding { foldPlace(row, frame, from: nil, alpha: 0) } else { Slide.move(row, to: frame, soft: true) }
     }
     separator.isHidden = pinnedSlots.isEmpty
     if !separator.isHidden {
@@ -481,6 +557,62 @@ final class SidebarView: NSView {
     if let frame { place(hint, frame, entry: nil) }
   }
 
+  // MARK: Folder fold
+
+  /// True while the layout that began a fold is placing views.
+  private var foldingNow = false
+
+  /// Sets a frame and a fade for one pinned row of a folding layout: from where it is drawn now (or `start`, for a
+  /// row that appears from inside its folder), sliding on the soft spring, fading towards `alpha`. A row that fades
+  /// out is hidden when it's done, unless it was toggled back by then.
+  private func foldPlace(_ row: SidebarRowView, _ frame: NSRect, from start: NSRect?, alpha: CGFloat) {
+    row.foldToken &+= 1
+    let token = row.foldToken
+    CATransaction.begin()
+    CATransaction.setCompletionBlock { [weak row] in
+      guard let row, row.foldToken == token, row.collapsing else { return }
+      row.collapsing = false
+      row.isHidden = true
+      row.alphaValue = 1
+    }
+    if let start {
+      Slide.stop(row)
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      row.frame = NSRect(x: frame.minX, y: start.minY, width: frame.width, height: frame.height)
+      CATransaction.commit()
+    }
+    Slide.move(row, to: frame, soft: true)
+    row.fade(to: alpha)
+    CATransaction.commit()
+  }
+
+  /// Test builds only: counts the frames in which a pinned row is drawn part-way through a fold (the layers'
+  /// animations run on the render server, so nothing else in the app sees them), and says when the last one ends.
+  private func probeFold() {
+    #if RAY_TEST_HOOKS
+    guard foldLink == nil else { return }
+    let link = displayLink(target: self, selector: #selector(sampleFold(_:)))
+    link.add(to: .main, forMode: .common)
+    foldLink = link
+    #endif
+  }
+
+  @objc private func sampleFold(_ link: CADisplayLink) {
+    var running = false, between = false
+    for row in pinnedRows + todayRows {
+      guard let layer = row.layer else { continue }
+      if Slide.isMoving(row) || layer.animation(forKey: "fold.opacity") != nil { running = true }
+      if let shown = layer.presentation(),
+         abs(shown.position.y - layer.position.y) > 0.5 || abs(shown.opacity - layer.opacity) > 0.02 { between = true }
+    }
+    if between { foldSteps += 1 }
+    if !running {
+      link.invalidate()
+      foldLink = nil
+    }
+  }
+
   /// Sets a frame: springs there while a drag is lifted, lands from where a dropped item was, else jumps.
   private func place(_ view: NSView, _ frame: NSRect, entry: SidebarEntry?) {
     if let entry, let start = landing[entry.id], let parent = view.superview {
@@ -492,6 +624,9 @@ final class SidebarView: NSView {
       Slide.move(view, to: frame)
     } else if isDragging {
       Slide.move(view, to: frame)
+    } else if foldingNow || Slide.isMoving(view) {
+      // A fold in flight keeps going when something else refreshes the layout.
+      Slide.move(view, to: frame, soft: true)
     } else if view.frame != frame {
       Slide.stop(view)
       view.frame = frame
@@ -729,7 +864,7 @@ final class SidebarView: NSView {
       let frame = glow.convert(glow.bounds, to: nil)
       frames[name] = String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
     }
-    frames["hidden"] = shownViews.filter { view, _ in view.isHidden }.map { $0.1.id.uuidString }.joined(separator: ",")
+    frames["hidden"] = shownViews.filter { view, _ in view.isHidden || (view as? SidebarRowView)?.collapsing == true }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["litFolder"] = zip(pinnedRows, pinned).first { $0.0.dropTarget }?.1.id.uuidString ?? ""
     frames["renaming"] = zip(pinnedRows, pinned).first { $0.0.isRenaming }?.1.id.uuidString ?? ""
     if let done = pinnedRows.lazy.compactMap({ $0.doneButtonFrame }).first {
@@ -737,6 +872,14 @@ final class SidebarView: NSView {
     }
     frames["hoveredTile"] = zip(tiles, favorites).first { $0.0.hovered }?.1.id.uuidString ?? ""
     frames["hoverShown"] = zip(tiles, favorites).filter { $0.0.hoverShown }.map { $0.1.id.uuidString }.joined(separator: ",")
+    frames["foldSteps"] = String(foldSteps)
+    frames["reduceMotion"] = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? "1" : "0"
+    frames["collapsing"] = zip(pinnedRows, pinned).filter { $0.0.collapsing }.map { $0.1.id.uuidString }.joined(separator: ",")
+    frames["folding"] = foldLink == nil ? "0" : "1"
+    frames["faded"] = zip(pinnedRows, pinned).filter { $0.0.alphaValue < 1 && !$0.0.isHidden && !$0.0.collapsing }
+      .map { $0.1.id.uuidString }.joined(separator: ",")
+    frames["chevrons"] = zip(pinnedRows, pinned).filter { $0.1.isFolder }
+      .map { "\($0.1.id.uuidString)=\($0.0.chevronTip)" }.joined(separator: "|")
     frames["hoverFades"] = String(FavoriteTileView.fadesStarted)
     frames["tilesTracked"] = tiles.allSatisfy { tile in tile.trackingAreas.contains { $0.owner === tile } } ? "1" : "0"
     frames["alive"] = shownViews.filter { view, _ in
@@ -1322,6 +1465,14 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   private let chevron = NSImageView()
   private(set) var isFolderRow = false
   private var editor: NSTextField?
+  /// A folder row hidden-in-waiting: fading out into its folder, ignoring the pointer, until its fade ends.
+  var collapsing = false
+  /// Lets a stale fade-out completion know it was overtaken.
+  var foldToken = 0
+  /// Set while the sidebar shows a refresh that toggled a folder, so the chevron turns instead of jumping.
+  var animatesFold = false
+  private var shownFolder: UUID?
+  private var chevronOpen: Bool?
   /// The "Done" button at the end of the field while renaming.
   private let doneButton = NSButton()
   private var onRenamed: ((String?) -> Void)?
@@ -1413,6 +1564,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
 
   // Only the close button handles its own clicks; the icon and labels would keep a drag for themselves.
   override func hitTest(_ point: NSPoint) -> NSView? {
+    if collapsing { return nil }
     guard let hit = super.hitTest(point) else { return nil }
     if let editor, hit === editor || hit.isDescendant(of: editor) { return hit }
     if hit === doneButton { return hit }
@@ -1504,6 +1656,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     closable = false
     let open = entry.isOpen ?? true
     icon.image = NSImage(systemSymbolName: open ? "folder" : "folder.fill", accessibilityDescription: "Folder")
+    let turns = animatesFold && shownFolder == entry.id && chevronOpen != nil && chevronOpen != open
     icon.contentTintColor = .secondaryLabelColor
     icon.alphaValue = 1
     residency.show(entry, in: self)
@@ -1512,15 +1665,67 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     title.textColor = .labelColor
     subtitle.isHidden = true
     chevron.isHidden = editor != nil
-    CATransaction.begin()
-    CATransaction.setDisableActions(true)
-    chevron.layer?.setAffineTransform(.identity)
-    CATransaction.commit()
-    chevron.image = NSImage(systemSymbolName: open ? "chevron.down" : "chevron.right", accessibilityDescription: nil)
+    setChevron(open: open, animated: turns)
+    shownFolder = entry.id
+    chevronOpen = open
     toolTip = nil
     updateClose()
     needsLayout = true
     needsDisplay = true
+  }
+
+  /// The chevron always points right and turns a quarter (clockwise, to point down) as the folder opens.
+  private func setChevron(open: Bool, animated: Bool) {
+    guard let layer = chevron.layer else { return }
+    chevron.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)
+    // AppKit's backing layers turn about their anchor point, which isn't always the middle: turn about the middle.
+    let angle: CGFloat = open ? -.pi / 2 : 0
+    let d = CGPoint(x: (layer.anchorPoint.x - 0.5) * layer.bounds.width, y: (layer.anchorPoint.y - 0.5) * layer.bounds.height)
+    let turned = CGPoint(x: cos(angle) * d.x - sin(angle) * d.y, y: sin(angle) * d.x + cos(angle) * d.y)
+    let transform = CGAffineTransform(a: cos(angle), b: sin(angle), c: -sin(angle), d: cos(angle),
+                                      tx: turned.x - d.x, ty: turned.y - d.y)
+    let from = layer.presentation()?.transform ?? layer.transform
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    layer.setAffineTransform(transform)
+    CATransaction.commit()
+    guard animated else {
+      layer.removeAnimation(forKey: "fold.chevron")
+      return
+    }
+    let turn = CABasicAnimation(keyPath: "transform")
+    turn.fromValue = NSValue(caTransform3D: from)
+    turn.toValue = NSValue(caTransform3D: layer.transform)
+    turn.duration = 0.2
+    turn.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+    layer.add(turn, forKey: "fold.chevron")
+  }
+
+  /// For tests: where the chevron's tip and middle are in the row, as "tipDx,tipDy,midX,midY" with y down.
+  var chevronTip: String {
+    guard let own = chevron.layer, let rowLayer = layer else { return "" }
+    let middle = own.convert(CGPoint(x: own.bounds.midX, y: own.bounds.midY), to: rowLayer)
+    let tip = own.convert(CGPoint(x: own.bounds.maxX, y: own.bounds.midY), to: rowLayer)
+    let down: CGFloat = rowLayer.isGeometryFlipped ? 1 : -1
+    let middleY = rowLayer.isGeometryFlipped ? middle.y : rowLayer.bounds.height - middle.y
+    return String(format: "%.1f,%.1f,%.1f,%.1f", tip.x - middle.x, down * (tip.y - middle.y), middle.x, middleY)
+  }
+
+  /// Fades the row to `alpha` from where it is drawn now (the layer's presentation while a fade runs).
+  func fade(to alpha: CGFloat, from start: Float? = nil) {
+    guard let layer else { return }
+    let from = start ?? (layer.animation(forKey: "fold.opacity") != nil ? layer.presentation()?.opacity : nil) ?? layer.opacity
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    alphaValue = alpha
+    CATransaction.commit()
+    guard from != Float(alpha) else { return }
+    let animation = CABasicAnimation(keyPath: "opacity")
+    animation.fromValue = from
+    animation.toValue = Float(alpha)
+    animation.duration = 0.16
+    animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+    layer.add(animation, forKey: "fold.opacity")
   }
 
   /// Edits the title in place: Return keeps it, Escape or an empty name keeps the old one.

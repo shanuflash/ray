@@ -57,6 +57,7 @@ export const areas = {
     "site-controls", "find-in-page"],
   "Host/BrowserWindowController.swift#State log": [],
 
+  "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
   "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder"],
   "Host/SidebarView.swift#Downloads panel": ["downloads"],
 
