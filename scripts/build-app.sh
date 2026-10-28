@@ -66,6 +66,14 @@ build() {
   <key>NSPrincipalClass</key><string>BrowserCrApplication</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+  <!-- What macOS shows when a site you allowed first asks for these; without them it kills the app (as Chrome declares). -->
+  <key>NSCameraUsageDescription</key><string>Websites you allow can use your camera.</string>
+  <key>NSCameraUseContinuityCameraDeviceType</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Websites you allow can use your microphone.</string>
+  <key>NSAudioCaptureUsageDescription</key><string>Websites you allow can capture your Mac's audio when you share your screen.</string>
+  <key>NSLocationUsageDescription</key><string>Websites you allow can use your location.</string>
+  <key>NSLocationWhenInUseUsageDescription</key><string>Websites you allow can use your location.</string>
+  <key>NSBluetoothAlwaysUsageDescription</key><string>Websites you allow can connect to Bluetooth devices.</string>
 </dict></plist>
 PLIST
 
