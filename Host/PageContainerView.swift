@@ -43,7 +43,7 @@ final class PageContainerView: NSView {
 
   var debugState: [String: Any] {
     let page = shown?.view
-    var state: [String: Any] = ["pageFrame": page.map { NSStringFromRect($0.frame) } ?? ""]
+    var state: [String: Any] = ["pageFrame": page.map { NSStringFromRect($0.frame) } ?? "", "progressLine": progressShown]
     if let page {
       state["pageSubviews"] = page.subviews.map {
         "\(type(of: $0)) \(NSStringFromRect($0.frame)) hidden=\($0.isHidden)"
@@ -159,11 +159,23 @@ final class PageContainerView: NSView {
     progressLayer.frame = NSRect(x: 0, y: 0, width: progressFrame.width, height: 2)
   }
 
+  /// The page's own thin load line, for when the address bar above the page (which shows the load itself) is off.
+  var showsProgress = true {
+    didSet {
+      guard !showsProgress, oldValue else { return }
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      progressLayer.opacity = 0
+      CATransaction.commit()
+    }
+  }
+  var progressShown: Bool { progressLayer.opacity > 0 }
+
   func updateProgress(for tab: ArdiaCoreTab) {
     guard tab === shown else { return }
     CATransaction.begin()
     CATransaction.setAnimationDuration(0.2)
-    if tab.loading {
+    if tab.loading && showsProgress {
       progressLayer.opacity = 1
       progressLayer.frame.size.width = bounds.width * CGFloat(max(0.1, tab.progress))
     } else {

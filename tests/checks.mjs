@@ -961,6 +961,8 @@ const checks = {
     const first = await loadSlow("stop");
     assert(first.loading.toolbar.field.stopButton === true, "the reload button isn't a stop button while loading");
     assert(first.loading.toolbar.field.wash === true, "no wash while loading");
+    // One indicator: the page's own thin line stays off while the address bar shows the load.
+    assert(!first.seen().some((s) => s.pages?.progressLine), "the page's own load line showed under the address bar");
     if (process.env.SNAP_DIR) await command(`toolbarsnap ${join(process.env.SNAP_DIR, "toolbar-loading.png")}`);
     await until("progress between 0 and 1", () => first.seen().find((s) => s.toolbar.field.loading && s.toolbar.field.progress > 0 && s.toolbar.field.progress < 1), 3000, 25);
     await command("toolbarreload");

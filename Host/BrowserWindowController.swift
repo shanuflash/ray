@@ -167,6 +167,7 @@ final class BrowserWindowController: NSObject, ArdiaCoreWindowDelegate, ArdiaCor
     let bottom = edge.rounded()
     var top = (bounds.height - edge).rounded()
     toolbar.isHidden = !toolbarShown
+    pages.showsProgress = !toolbarShown
     if toolbarShown {
       // The address bar sits above the card, at the window's top edge, across the card's width.
       let height = PageToolbarView.height
