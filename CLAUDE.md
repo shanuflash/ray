@@ -68,6 +68,13 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
 - `vendor/ardiacore/ArdiaCore.h`: the engine's public API, copied from Ardia at the tag in `engine.lock`. Must match
   the engine binary; update both together.
 - `engine.lock`: the pinned prebuilt engine (tree, release, sha256). `scripts/fetch-engine.sh` downloads and checks it.
+- `sparkle.lock`: the pinned Sparkle 2 release (version, URL, sha256); `scripts/fetch-sparkle.sh` downloads, checks
+  and unpacks it into `build/sparkle/<version>` (tarball cached in `~/Library/Caches/Ray/sparkle`). Never committed.
+  `VERSION` (`version=`, `build=`) is the one place the app's version comes from; `Branding/sparkle-public-key.txt`
+  is the EdDSA public key `build-app.sh` writes into `SUPublicEDKey`.
+- `Host/Updater.swift`: Ray › Check for Updates… (`SPUStandardUpdaterController`). It starts only in the real app and
+  only with a real `SUPublicEDKey`; the test app never creates it (state log `updater`, check `updater-config`).
+- `scripts/release.sh <version> [--notes file]`: builds, zips, signs and writes the appcast under `build/release/`.
 - `third_party/ardia/`: read-only reference clone of Ardia at `ardia_tag` (gitignored). Read it for behaviour; don't
   build from it.
 - `third_party/crest/`: read-only reference clone of Crest (gitignored), another native-Mac Chromium browser.
@@ -86,6 +93,29 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
   local fixture pages). Add a check for every behaviour you add or fix.
 - Engine delegate methods are `@optional`: a Swift name that's slightly off compiles with only a "nearly matches"
   warning and is never called. Treat those warnings as errors.
+
+## Shipping to friends
+Ray updates itself with Sparkle 2: the feed is `https://github.com/shanuflash/ray/releases/latest/download/appcast.xml`
+(each release carries its own `appcast.xml` next to `Ray-<version>.zip`, and GitHub's `latest` redirect serves the
+newest release's). The app is ad-hoc signed (no Developer ID), so trust comes from Sparkle's EdDSA signature: the
+archive must verify against the `SUPublicEDKey` baked into the *installed* Ray (Sparkle's `SUUpdateValidator`; an
+ad-hoc code signature changes every build and isn't what's trusted, it only has to be valid and not removed).
+- **One-time key setup:** run `build/sparkle/<version>/bin/generate_keys` (after any build). The private key goes into
+  your login keychain (item "Private key for signing Sparkle updates"); it prints the public key, which you put in
+  `Branding/sparkle-public-key.txt`. The private key never leaves the keychain: not in the repo, not in logs, not in
+  CI; back it up only with `generate_keys -x` into a password manager, never a commit. If it's lost, installed copies
+  can't be updated and friends must reinstall by hand. Until the real public key is in, builds warn and the updater
+  stays off.
+- **Cut a release:** commit everything, then `scripts/release.sh 0.2.0 --notes notes.md`. It bumps `VERSION`, builds
+  `build/Ray.app`, zips it with `ditto` (a zip serves both first installs and Sparkle), signs it from the keychain,
+  writes and checks `build/release/0.2.0/appcast.xml` and prints the `git commit` and `gh release create …` commands.
+  It publishes nothing; run those yourself after trying the zip.
+- **First install is not notarized:** friends unzip, drag Ray to Applications (not run from Downloads: macOS runs
+  unmoved apps translocated, read-only, and Sparkle can't replace them), then right-click › Open (macOS 14), or on
+  macOS 15+ try to open it once and use System Settings › Privacy & Security › Open Anyway. Updates after that
+  install without the prompt. Each update changes the ad-hoc signature, so macOS may ask again for camera, microphone
+  and location.
+- Friends' builds run on the mock keychain like yours (see PLAN.md).
 
 ## Testing
 - Per change: `scripts/build-app.sh && scripts/test.sh --changed`. It runs the unit tests, then only the checks the

@@ -283,6 +283,8 @@ Targets, measured with `xbench.mjs` against Chrome, Helium and our previous rele
    keychain item is "Ardia Safe Storage", which is the real Ardia's; Ray runs with `--use-mock-keychain` until
    Phase B, so its saved passwords and cookies are encrypted with a fixed, public key. Don't keep real passwords
    in Ray before Phase B.
+   Friends' builds run on mock keychain (user's decision, 2026-10-28); when Ray has its own engine and keychain
+   item, an update migrates their data by decrypting with the known mock key and re-encrypting under the real one.
 5. **No Widevine:** streaming sites with DRM won't play.
 6. **Build hardware** for Phase B.
 
