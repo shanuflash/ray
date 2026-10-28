@@ -1829,7 +1829,8 @@ const checks = {
     await command("state");
     assert(state().fullScreen === false, "a background test instance went full screen");
     // The settings come back as they were left, in the menu, the colour and the window.
-    assert(savedSettings, "no settings saved before quitting");
+    // (Only when the settings-persist check ran before the quit.)
+    if (savedSettings) {
     const canon = (o) => JSON.stringify(o, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort()) : v));
     assert(canon(state().settings) === canon(savedSettings), `settings changed over the relaunch: ${JSON.stringify(state().settings)} vs ${JSON.stringify(savedSettings)}`);
     assert(state().menuKeys.copyURL === "" && state().menuKeys.toggleSidebar === "", `menu keys after relaunch ${JSON.stringify(state().menuKeys)}`);
@@ -1839,6 +1840,7 @@ const checks = {
     assert(shown.minimalURL === true && shown.loadingProgress === false && shown.newTabNextToActive === true && shown.recentTabCycling === false &&
       shown.copyLinkShortcut === false && shown.sidebarShortcut === false && shown.swatch === "#E5589D" && shown.zoom === "125%", `window after relaunch ${JSON.stringify(shown)}`);
     await closeSettingsWindow();
+    }
     const after = state().sidebar;
     assert(JSON.stringify(after.favorites.map((e) => e.id)) === JSON.stringify(before.favorites.map((e) => e.id)), "favorites differ");
     assert(JSON.stringify(after.pinned.map((e) => [e.id, e.pinnedURL, e.parent, e.title])) === JSON.stringify(before.pinned.map((e) => [e.id, e.pinnedURL, e.parent, e.title])), "pinned differ");

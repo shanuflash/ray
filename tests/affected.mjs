@@ -30,7 +30,7 @@ export const areas = {
   "Host/EngineCalls.swift": "all",
   "Host/TestEnvironment.swift": "all",
   // Colours only: the checks that read a colour or draw with it.
-  "Host/ProfileColor.swift": ["page-loading", "site-controls", "tile-hover", "drag-to-favorite"],
+  "Host/ProfileColor.swift": ["page-loading", "site-controls", "tile-hover", "drag-to-favorite", "settings-theme", "settings-window"],
   "Host/main.swift": "all",
   "Host/Bridging.h": "all",
   "Resources/": "all",
