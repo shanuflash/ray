@@ -30,7 +30,9 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
    decision in PLAN.md.
 
 **Smaller**
-8. Media controls in the sidebar (now playing, play/pause), and a sound icon and mute on tabs.
+8. Media controls in the sidebar (now playing, play/pause), and a sound icon and mute on tabs. Mute the tab only
+   (Chrome's per-tab mute, kept across navigation); Mute Site as its own choice behind ⌥ (Ardia 0.2.43-nightly.4
+   moved to this after a site-wide mute surprised users; `docs/ARDIA-WATCH.md`).
 9. Automatic picture-in-picture when you switch away from a playing video (`setAutoPictureInPicture`).
 10. Duplicate tab (`duplicateTab:profile:foreground:`).
 11. Boosts: per-site CSS/JS, zapping elements.
@@ -39,6 +41,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 14. Easels, Notes, Library.
 15. Sidebar on the right.
 16. Sync between Macs.
+17. Collapse the pinned section: a "Pinned" toggle on the divider above Today; collapsed, only the entry holding
+    the active tab shows (Ardia 0.2.43-nightly.4, its most-asked issue).
 
 **Left out on purpose:** Arc Max's AI features.
 
@@ -65,9 +69,13 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 13. Extension side panels and extension keyboard shortcuts (`extensionSidePanel`, `extensionActionShortcut`).
 14. Installing imported extensions: the engine's `ac_extensions_install` takes a folder or a .crx, not a Web Store id.
 15. Web notifications: from the engine's alerts helper, not checked (?).
+16. Install an extension by dropping a .crx on the window, "Allow User Scripts" per extension (Tampermonkey and
+    other userscript managers), and Export Bookmarks as HTML. The engine calls come with Ardia's
+    engine-2f172eb50b89 (`ac_extension_drop.mm` and the `engine:extensionInstallFailed:tab:` delegate,
+    `ac_extensions_configure` `userScripts`, `ac_bookmarks_export_html`); Ray needs the sync and the UI.
 
 **Default browser**
-16. **Make Ray the default browser** from Ray: a "Default browser" row with a Make Default button in Settings, a step
+17. **Make Ray the default browser** from Ray: a "Default browser" row with a Make Default button in Settings, a step
     in the onboarding (after the import, "Open links from other apps in Ray?"), and a gentle note when Ray isn't the
     default (Chrome's infobar, Arc's prompt). Uses `NSWorkspace.setDefaultApplication(at:toOpenURLsWithScheme:)`,
     which shows macOS's own confirmation. Ray already declares http/https and HTML and opens their links, so it
@@ -115,6 +123,11 @@ items above. The revamp that gives these a home is PLAN.md section 13.
     (Ray has the menu item only).
 20. Downloads folder and "ask where to save" in Ray's Settings (only on Chrome's page today).
 21. Battery saver.
+22. Memory Saver rows: on/off, Moderate / Balanced / Maximum, "Always keep these sites active" (Ardia's Settings ›
+    Advanced › Performance, through the engine's `ac_memory_saver` from engine-2f172eb50b89). Today only on
+    chrome://settings/performance, and off by default (see Known limitations).
+23. Compact toolbar: the address bar above the page at 28 pt instead of 41, so a 16:9 video in web full screen
+    fills a maximized window (Ardia 0.2.43-nightly.1).
 
 **Left out on purpose:** WebKit engine and website rules (decided no), setup codes, the `ardia` command-line tool,
 tab groups and meeting groups (Arc has none), video upscaling, crash reports and usage stats; a choice of when
@@ -146,6 +159,23 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 9. **Accent contrast elsewhere.** `ProfileColor.visible(on:)` keeps a black or white profile colour visible in the
    onboarding only; the sidebar selection and hover, loading glow, downloads ring, Settings' switches, command bar
    selection and site controls' "on" states would benefit too (owner to decide).
+10. **Engine behind Chrome stable.** Chromium 156.0.8078.47; Chrome stable for Mac is 156.0.8078.75 and 157
+    (chromiumdash, 2026-10-29), and Ardia hasn't bumped. Fix: the next engine rebuild bumps 156's patch level and
+    takes Ardia's engine-2f172eb50b89 together (`docs/ARDIA-WATCH.md`, `docs/CHROMIUM-WATCH.md`). Found 2026-10-29.
+11. **No tab sleeping at all.** Ray's engine skips Helium's `memory-saving-by-default.patch` "because it would fight
+    Ray's own tab sleeping", but Ray has none (that was Ardia's app), so background tabs never sleep unless the user
+    turns Memory Saver on in chrome://settings/performance. Fix: take Ardia's engine-2f172eb50b89 (drops the skip,
+    Memory Saver on by default, as Helium and now Ardia). Found 2026-10-29.
+12. **Engine and extensions likely always in English.** Chrome takes its UI locale from the app bundle's
+    localizations, and Ray's Info.plist (`scripts/build-app.sh`) declares none, so chrome:// pages and every
+    extension's `chrome.i18n` probably run in en-US whatever the Mac's language (Ardia found and fixed this in
+    `b13d9f79`). Not tried in Ray. Fix: declare Chromium's 55 desktop locales in `CFBundleLocalizations`; Ray's own
+    UI stays English. Found 2026-10-29.
+13. **A cancelled Save As may leave a "Cancelled" row** in the downloads panel: `Downloads` lists Chrome's item
+    before the save panel gives it a path (Ardia's bug, fixed in 0.2.43-nightly.3). Not tried in Ray. Fix: list a
+    download once it has a path, drop one cancelled before it had one. Found 2026-10-29.
+14. **Reserved keys short of Helium's set.** `Shortcuts.isReserved` lacks Developer Tools (⌥⌘I), F12 and Search Tabs
+    (⇧⌘A), so a page that cancels keydown can keep them (Ardia `dd242aac`). Found 2026-10-29.
 
 ## Done
 
