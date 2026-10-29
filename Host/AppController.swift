@@ -294,6 +294,18 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     return event.modifierFlags.contains(.shift)
   }
   @objc func selectTab(_ sender: NSMenuItem) { current?.selectTab(number: sender.tag) }
+
+  // MARK: Welcome again
+
+  /// Ray › Show Welcome Again (⌥ over Settings…): the first run from its welcome, for anyone who never saw it (an
+  /// existing Settings.json counts as onboarded). Over the frontmost normal window, never a private one; its import
+  /// writes into this profile, as File › Import from Browser… does.
+  @objc func showWelcomeAgain(_ sender: Any?) {
+    let front = NSApp.orderedWindows.lazy.compactMap { shown in self.windows.first { $0.window === shown && !$0.isPrivate } }.first
+    let window = front ?? openMainWindow()
+    if let window, !launchedInBackground { window.window.makeKeyAndOrderFront(nil) }
+    window?.showOnboarding(.firstRun)
+  }
 }
 
 extension AppController: NSMenuItemValidation {

@@ -299,6 +299,12 @@ enum TestCommands {
       AppController.shared.current?.extensions.closePopup()
     case "onboarding":
       result = onboarding(argument)
+    case "winsize":
+      // `winsize <width> <height>`: the current window's content size (the window's minimum still holds).
+      let size = argument.split(separator: " ").compactMap { Double($0) }
+      if size.count == 2, let window { window.setContentSize(NSSize(width: size[0], height: size[1])) } else {
+        result = "usage: winsize <width> <height>"
+      }
     case "arcimport":
       if AppController.shared.current?.answerArcImport(argument == "accept") != true { result = "no prompt" }
     case "import":

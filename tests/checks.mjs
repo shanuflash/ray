@@ -1289,17 +1289,31 @@ const checks = {
       const arcPreview = JSON.parse(await cmd(it, "importcheck preview arc Default"));
       assert(arcPreview.counts.pinnedTabs === 6 && arcPreview.counts.favorites === 3 && arcPreview.counts.openTabs === 2,
         `Arc's preview counts: ${JSON.stringify(arcPreview)}`);
-      assert(arcPreview.summary === "2 spaces, 6 pinned tabs, 2 profiles", `Arc's summary: ${arcPreview.summary}`);
+      // The summary is one short line: the two most telling counts (spaces and pinned tabs for Arc; open tabs and
+      // bookmarks for the rest), then the profiles.
+      assert(arcPreview.summary === "2 spaces, 6 pinned tabs · 2 profiles", `Arc's summary: ${arcPreview.summary}`);
       const chromePreview = JSON.parse(await cmd(it, "importcheck preview chrome Default"));
       assert(chromePreview.counts.history > 2000 && chromePreview.counts.bookmarks > 0 && chromePreview.counts.passwords > 0
         && chromePreview.counts.cookies > 0, `Chrome's preview counts: ${JSON.stringify(chromePreview)}`);
+      const plural = (n, word) => `${n.toLocaleString("en-US")} ${word}${n === 1 ? "" : "s"}`;
+      const chromeLead = [[chromePreview.counts.openTabs, "open tab"], [chromePreview.counts.bookmarks, "bookmark"],
+        [chromePreview.counts.pinnedTabs, "pinned tab"]].filter(([n]) => n > 0).slice(0, 2).map(([n, w]) => plural(n, w)).join(", ");
+      assert(chromePreview.summary === `${chromeLead} · 2 profiles`, `Chrome's summary: ${chromePreview.summary} (want ${chromeLead} · 2 profiles)`);
 
       // Arc: favorites, each space's pinned tabs in a folder named after it (two spaces), Today's tabs.
       const arc = await runImport(it, "arc Default pinnedTabs,favorites,openTabs");
       assert(JSON.stringify(arc.import.failed) === "{}", `Arc import failed: ${JSON.stringify(arc.import.failed)}`);
       assert(arc.import.imported.pinnedTabs === 6 && arc.import.imported.favorites === 3 && arc.import.imported.openTabs === 2,
         `Arc imported: ${JSON.stringify(arc.import.imported)}`);
+      assert(JSON.stringify(arc.import.existing) === "{}", `Arc found tabs already in a new sidebar: ${JSON.stringify(arc.import.existing)}`);
       const sidebar = arc.sidebar;
+      // The same again: nothing comes in twice, and the import says they were already here (not "0").
+      const again = await runImport(it, "arc Default pinnedTabs,favorites,openTabs");
+      assert(again.import.imported.pinnedTabs === 0 && again.import.imported.favorites === 0 && again.import.imported.openTabs === 0
+        && again.import.existing.pinnedTabs === 6 && again.import.existing.favorites === 3 && again.import.existing.openTabs === 2,
+        `Arc again: ${JSON.stringify(again.import)}`);
+      assert(again.import.events.some((e) => e.finished === "pinnedTabs" && e.count === 0 && e.existing === 6), `events ${JSON.stringify(again.import.events)}`);
+      assert(["favorites", "pinned", "today"].every((k) => again.sidebar[k].length === sidebar[k].length), "the second Arc import added tabs");
       assert(sidebar.favorites.map((e) => e.pinnedURL).join() === "https://mail.example.com/,https://music.example/,https://maps.example/",
         `favorites: ${sidebar.favorites.map((e) => e.pinnedURL)}`);
       const folder = (title) => sidebar.pinned.find((e) => e.kind === "folder" && e.title === title);
@@ -1324,7 +1338,8 @@ const checks = {
         const ended = events.findIndex((e) => e.finished === item || e.failed === item);
         assert(started >= 0 && ended > started, `${item}: events ${JSON.stringify(events)}`);
       }
-      // Chrome's pinned Mail is Arc's favorite already: never twice.
+      // Chrome's pinned Mail is Arc's favorite already: never twice, and counted as already here.
+      assert(result.import.existing.pinnedTabs >= 1, `Chrome's Mail not counted as already here: ${JSON.stringify(result.import.existing)}`);
       const everywhere = ["favorites", "pinned", "today"].flatMap((k) => result.sidebar[k]);
       assert(everywhere.filter((e) => e.url === "https://mail.example.com/").length === 1, "a tab came in twice");
       assert(result.sidebar.today.some((e) => e.url === "https://docs.example.com/"), "Chrome's open tabs aren't in Today");
@@ -2310,7 +2325,7 @@ const checks = {
       running.push(it);
       return it;
     };
-    const run = async (it, line) => {
+    const run = async (it, line, expect = "ok") => {
       const marker = `[ray-test] ${line} -> `;
       const from = it.log.length;
       it.proc.stdin.write(line + "\n");
@@ -2318,7 +2333,7 @@ const checks = {
         const at = it.log.indexOf(marker, from);
         return at >= 0 ? it.log.slice(at + marker.length).split("\n")[0] : null;
       }, 20000);
-      assert(result === "ok", `${line}: ${result}`);
+      assert(result === expect, `${line}: ${result}`);
     };
     const probe = async (it) => { await run(it, "state"); return it.states.at(-1); };
     const flow = async (it) => (await probe(it))?.onboarding;
@@ -2352,10 +2367,13 @@ const checks = {
       o = await reach(first, "source step", (o) => o.step === "source" && o.sourcesLoaded && o.sources[0]?.summary, 15000);
       assert(o.sources[0].id === "arc" && o.sources[0].recommended && o.source === "arc" && o.sources.filter((s) => s.recommended).length === 1,
         `sources ${JSON.stringify(o.sources)}`);
-      assert(o.sources[0].summary === "2 spaces, 6 pinned tabs, 2 profiles", `Arc's summary ${o.sources[0].summary}`);
+      assert(o.sources[0].summary === "2 spaces, 6 pinned tabs · 2 profiles", `Arc's summary ${o.sources[0].summary}`);
       const arcProfiles = o.sources[0].profiles;
       assert(arcProfiles.length === 2 && o.profilePicker && o.profile === arcProfiles[0] && o.freshLink && o.back === "Back" && o.dot === 1,
         `source step ${JSON.stringify(o)}`);
+      // However many browsers, the card fits the window with room around it (the list scrolls if it must).
+      o = await reach(first, "source card settled", (o) => o.cardMargin >= 40 && o.sourceList?.selectedVisible, 3000);
+      assert(o.cardInWindow && o.sourceList.offset === 0, `source card ${o.cardFrame} margin ${o.cardMargin} list ${JSON.stringify(o.sourceList)}`);
       await snap(first, "2-source");
       const single = o.sources.find((s) => s.profiles.length === 1);
       if (single) {
@@ -2367,21 +2385,22 @@ const checks = {
       await run(first, `onboarding profile ${arcProfiles[1]}`);
       await reach(first, "Arc's other profile", (o) => o.source === "arc" && o.profile === arcProfiles[1]);
       await run(first, `onboarding profile ${arcProfiles[0]}`);
-      // 3. What to bring: all Arc gives, ticked but extensions (a list only for now), counts where the preview has them;
-      // the unlock note follows the key-locked ticks.
+      // 3. What to bring: all Arc gives, ticked but extensions (nothing installs them yet: "coming later", and it can't
+      // be ticked), counts where the preview has them; the unlock note follows the key-locked ticks.
       await run(first, "onboarding next");
       o = await reach(first, "items step", (o) => o.step === "items" && o.profile === arcProfiles[0]);
       assert(o.title === "Bring from Arc" && o.items.length === 9 && o.checked.join() === o.items.filter((i) => i !== "extensions").join()
         && o.unlockNote && o.primary === "Import", `items step ${JSON.stringify(o)}`);
       assert(o.counts.pinnedTabs === 6 && o.counts.favorites === 3 && o.counts.autofill === undefined, `counts ${JSON.stringify(o.counts)}`);
+      assert(o.itemDetails.extensions === "coming later" && o.itemDetails.pinnedTabs === "6", `item details ${JSON.stringify(o.itemDetails)}`);
       await snap(first, "3-items");
+      await run(first, "onboarding toggle extensions", "coming later");
       for (const item of ["passwords", "cookies", "autofill"]) await run(first, `onboarding toggle ${item}`);
       o = await flow(first);
       assert(!o.unlockNote && !o.checked.includes("passwords"), `unlock note without locked items ${JSON.stringify(o)}`);
-      for (const item of ["passwords", "cookies", "autofill", "extensions", "history"]) await run(first, `onboarding toggle ${item}`);
+      for (const item of ["passwords", "cookies", "autofill", "history"]) await run(first, `onboarding toggle ${item}`);
       o = await flow(first);
-      assert(o.unlockNote && o.checked.length === 8 && o.checked.includes("extensions") && !o.checked.includes("history"), `ticks ${JSON.stringify(o.checked)}`);
-      await run(first, "onboarding toggle extensions");
+      assert(o.unlockNote && o.checked.length === 7 && !o.checked.includes("extensions") && !o.checked.includes("history"), `ticks ${JSON.stringify(o.checked)}`);
       // Back and forth keeps the choice.
       await run(first, "onboarding back");
       await reach(first, "back to source", (o) => o.step === "source");
@@ -2402,6 +2421,10 @@ const checks = {
         `rows ${JSON.stringify(o.rows)}`);
       assert(o.rows.every((r) => r.state === "done" || (r.state === "failed" && r.reason)), `rows ${JSON.stringify(o.rows)}`);
       assert(["passwords", "cookies"].every((item) => row(item).state === "failed"), `key-locked rows without the key ${JSON.stringify(o.rows)}`);
+      assert(row("pinnedTabs").text === "6" && row("favorites").text === "3", `row texts ${JSON.stringify(o.rows)}`);
+      // A reason shows on one line, cut if long; the whole of it is the row's tooltip.
+      assert(o.rowTips.length === o.rows.length && o.rows.every((r, i) => r.state === "failed" ? o.rowTips[i].tip === r.reason : o.rowTips[i].tip === null),
+        `row tooltips ${JSON.stringify(o.rowTips)} rows ${JSON.stringify(o.rows)}`);
       const imported = await probe(first);
       assert(imported.sidebar.favorites.length === favoritesBefore + 3 && imported.sidebar.pinned.some((e) => e.kind === "folder" && e.title === "Personal"),
         `the sidebar after the import ${JSON.stringify(imported.sidebar)}`);
@@ -2409,6 +2432,11 @@ const checks = {
       // 5. Colour: a swatch goes through Settings › Theme's own call, so the profile's colour follows.
       await run(first, "onboarding next");
       await reach(first, "theme step", (o) => o.step === "theme");
+      // A black profile colour: the card's marks (dots, ticks, the progress line, links) stay visible on the dark card.
+      await run(first, "setting theme #000000");
+      o = await reach(first, "black theme", (o) => o.markContrast.dark >= 3);
+      assert(o.markContrast.light >= 3 && o.markContrast.dark >= 3, `mark contrast with black ${JSON.stringify(o.markContrast)}`);
+      await snap(first, "6-theme-black");
       await run(first, "onboarding swatch 1");
       const themed = await probe(first);
       assert(themed.settings.theme.setting === "#2F6BEA" && themed.settings.theme.accent === "#2F6BEA" && themed.onboarding.swatch === "#2F6BEA",
@@ -2434,7 +2462,42 @@ const checks = {
       assert(o.mode === "importOnly" && o.dots === 3 && o.dot === 0 && !o.freshLink && o.back === "Cancel" && o.source === "arc",
         `import from browser ${JSON.stringify(o)}`);
       await snap(second, "8-import-from-browser");
+      // The smallest window: the card shrinks to fit with 40 pt to spare and the browsers scroll, Arc on top and chosen;
+      // choosing the last one scrolls it into view.
+      await run(second, "winsize 720 460");
+      o = await reach(second, "small window", (o) => o.sourceList?.scrollable && Number(o.cardFrame.split(",")[3]) <= 380);
+      assert(o.cardMargin >= 40 && o.cardInWindow && o.source === "arc" && o.sourceList.selectedVisible && o.sourceList.offset === 0,
+        `small window card ${o.cardFrame} margin ${o.cardMargin} list ${JSON.stringify(o.sourceList)}`);
+      await snap(second, "8b-source-small-window");
+      await run(second, `onboarding choose ${o.sources.at(-1).id}`);
+      o = await reach(second, "last source in view", (o) => o.source === o.sources.at(-1).id && o.sourceList.selectedVisible && o.sourceList.offset > 0);
+      await run(second, "onboarding choose arc");
       await run(second, "onboarding escape");
+      await gone(second);
+      // Ray › Show Welcome Again (⌥ over Settings…) replays the first run on an onboarded profile.
+      const replay = await probe(second);
+      assert(replay.welcomeAgainItem?.alternate && replay.welcomeAgainItem.option && replay.welcomeAgainItem.key === ","
+        && replay.welcomeAgainItem.after === "Settings…", `Show Welcome Again item ${JSON.stringify(replay.welcomeAgainItem)}`);
+      await run(second, "menu showWelcomeAgain");
+      o = await reach(second, "welcome again", (o) => o.step === "welcome");
+      assert(o.mode === "firstRun" && o.dots === 6 && o.cardMargin >= 40, `welcome again ${JSON.stringify(o)}`);
+      // Importing what's already in the sidebar says so, rather than 0.
+      await run(second, "onboarding next");
+      await reach(second, "source again", (o) => o.step === "source" && o.sourcesLoaded && o.source === "arc");
+      await run(second, "onboarding next");
+      await reach(second, "items again", (o) => o.step === "items");
+      for (const item of ["history", "bookmarks", "passwords", "cookies", "autofill"]) await run(second, `onboarding toggle ${item}`);
+      await run(second, "onboarding import");
+      o = await reach(second, "import again done", (o) => o.step === "importing" && o.imported, 60000);
+      const againRow = (item) => o.rows.find((r) => r.item === item);
+      assert(againRow("pinnedTabs").count === 0 && againRow("pinnedTabs").existing === 6 && againRow("pinnedTabs").text === "6 already here"
+        && againRow("favorites").text === "3 already here", `already here rows ${JSON.stringify(o.rows)}`);
+      await snap(second, "8c-already-here");
+      await run(second, "onboarding next");
+      await reach(second, "theme again", (o) => o.step === "theme");
+      await run(second, "onboarding next");
+      await reach(second, "keys again", (o) => o.step === "keys");
+      await run(second, "onboarding finish");
       await gone(second);
       // Start fresh goes straight to the colour; a key Settings turned off isn't offered.
       await run(second, "setting copyLinkShortcut off");

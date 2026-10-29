@@ -74,13 +74,23 @@ struct ImportPreview {
 
 enum ImportEvent {
   case started(ImportItem)
-  case finished(ImportItem, count: Int)
+  /// `count` came in; `existing` were already in Ray and were left as they were (the sidebar never takes a URL
+  /// twice), so a 0 can say "already here" rather than look like nothing was found.
+  case finished(ImportItem, count: Int, existing: Int = 0)
   /// The user denied the Keychain prompt, the data was unreadable, the engine refused it…: the other items go on.
   case failed(ImportItem, reason: String)
 }
 
+/// What an import added to the sidebar, per kind (folders not counted), and what was there already.
+struct SidebarImportCounts {
+  var favorites = 0, pinned = 0, today = 0
+  var alreadyFavorites = 0, alreadyPinned = 0, alreadyToday = 0
+}
+
 struct ImportSummary {
   var imported: [ImportItem: Int] = [:]
+  /// Per item, how many were already in Ray (only where some were).
+  var existing: [ImportItem: Int] = [:]
   var failed: [ImportItem: String] = [:]
 }
 

@@ -21,7 +21,7 @@ enum OnboardingStep: String {
 
 /// One chosen item while it moves in.
 enum ImportRowState: Equatable {
-  case waiting, running, done(Int), failed(String)
+  case waiting, running, done(Int, existing: Int), failed(String)
 
   var name: String {
     switch self {
@@ -70,10 +70,11 @@ private final class ImportBackend {
 }
 
 extension ImportItem {
-  /// The row's title in these screens: extensions come across as a list only for now (none get installed).
-  var onboardingTitle: String { self == .extensions ? "Extensions (list only, installing comes later)" : title }
+  /// Shown but not offered yet: nothing installs extensions, so a tick would bring nothing. The row says so
+  /// ("coming later") and can't be ticked, rather than offering a box that does nothing.
+  var comingLater: Bool { self == .extensions }
   /// Ticked by default: everything that really comes across.
-  var onByDefault: Bool { self != .extensions }
+  var onByDefault: Bool { !comingLater }
 }
 
 // MARK: Overlay
@@ -223,9 +224,29 @@ final class OnboardingView: NSView {
 
   private var index: Int { mode.steps.firstIndex(of: step) ?? 0 }
 
+  /// Room kept above and below the card: it never touches the window's edges, however small the window.
+  static let windowMargin: CGFloat = 40
+
+  /// The tallest the card may be in this window.
+  var maxCardHeight: CGFloat {
+    bounds.height > 0 ? max(Self.footerHeight + 160, bounds.height - Self.windowMargin * 2) : .greatestFiniteMagnitude
+  }
+
+  /// The tallest a step's own content may be (the source list scrolls to stay within it).
+  var maxStepHeight: CGFloat { maxCardHeight - Self.footerHeight }
+
   private var targetHeight: CGFloat {
     let content = stepView?.fittingHeight(width: Self.cardWidth) ?? 0
-    return max(Self.minCardHeight, ceil(content + Self.footerHeight))
+    return min(maxCardHeight, max(Self.minCardHeight, ceil(content + Self.footerHeight)))
+  }
+
+  /// The window got taller or shorter: the card follows at once (a spring here would lag the drag).
+  override func setFrameSize(_ newSize: NSSize) {
+    let resized = newSize.height != frame.height
+    super.setFrameSize(newSize)
+    guard resized, let stepView, !closing else { return }
+    stepView.frame.size.height = stepView.fittingHeight(width: Self.cardWidth)
+    heightSpring.jump(to: targetHeight)
   }
 
   private func go(to next: OnboardingStep) {
@@ -510,7 +531,7 @@ final class OnboardingView: NSView {
   }
 
   fileprivate func toggle(_ item: ImportItem) {
-    guard selectedSource?.items.contains(item) == true, step == .items else { return }
+    guard selectedSource?.items.contains(item) == true, step == .items, !item.comingLater else { return }
     if checked.contains(item) { checked.remove(item) } else { checked.insert(item) }
     refresh()
   }
@@ -544,7 +565,7 @@ final class OnboardingView: NSView {
     guard running else { return }
     switch event {
     case .started(let item): setRow(item, .running)
-    case .finished(let item, let count): setRow(item, .done(count))
+    case .finished(let item, let count, let existing): setRow(item, .done(count, existing: existing))
     case .failed(let item, let reason): setRow(item, .failed(reason))
     }
     refresh()
@@ -553,7 +574,7 @@ final class OnboardingView: NSView {
   private func importFinished(_ summary: ImportSummary) {
     for (at, row) in rows.enumerated() where row.state == .waiting || row.state == .running {
       if let count = summary.imported[row.item] {
-        rows[at].state = .done(count)
+        rows[at].state = .done(count, existing: summary.existing[row.item] ?? 0)
       } else {
         rows[at].state = .failed(summary.failed[row.item] ?? "Nothing came across")
       }
@@ -628,7 +649,11 @@ final class OnboardingView: NSView {
       "unlockNote": (stepView as? ItemsStepView)?.unlockNoteShown ?? false,
       "rows": rows.map { row -> [String: Any] in
         var out: [String: Any] = ["item": row.item.rawValue, "state": row.state.name]
-        if case .done(let count) = row.state { out["count"] = count }
+        if case .done(let count, let existing) = row.state {
+          out["count"] = count
+          out["existing"] = existing
+          out["text"] = ProgressRowView.doneText(count: count, existing: existing)
+        }
         if case .failed(let reason) = row.state { out["reason"] = reason }
         return out
       },
@@ -639,6 +664,12 @@ final class OnboardingView: NSView {
       "back": card.back.isHidden ? NSNull() : card.back.title,
       "cardFrame": String(format: "%.0f,%.0f,%.0f,%.0f", frame.minX, height - frame.maxY, frame.width, frame.height),
       "cardInWindow": content.contains(frame),
+      "markContrast": ["light": ProfileColor.contrast(OnboardingColors.mark, OnboardingColors.card, appearance: .aqua),
+                       "dark": ProfileColor.contrast(OnboardingColors.mark, OnboardingColors.card, appearance: .darkAqua)],
+      "cardMargin": min(frame.minY - content.minY, content.maxY - frame.maxY).rounded(),
+      "sourceList": (stepView as? SourceStepView)?.listDebug ?? NSNull(),
+      "itemDetails": (stepView as? ItemsStepView)?.details ?? [:],
+      "rowTips": (stepView as? ImportingStepView)?.tips ?? [],
       "focused": window?.firstResponder === self,
     ]
   }
@@ -667,6 +698,7 @@ final class OnboardingView: NSView {
       guard words.count == 2, let item = ImportItem(rawValue: words[1]), let row = (stepView as? ItemsStepView)?.row(item) else {
         return "no such item"
       }
+      guard row.offered else { return "coming later" }
       row.press()
     case "swatch":
       guard words.count == 2, let n = Int(words[1]), (stepView as? ThemeStepView)?.pressSwatch(n) == true else { return "no swatch" }
@@ -711,11 +743,17 @@ private enum OnboardingColors {
   static let idleDot = dynamic(dark: NSColor(white: 1, alpha: 0.2), light: NSColor(white: 0, alpha: 0.16))
   static let boxOff = dynamic(dark: NSColor(white: 1, alpha: 0.3), light: NSColor(white: 0, alpha: 0.25))
 
+  /// The profile's colour for marks on the card (dots, ticks, the progress line, links, tints): the colour itself,
+  /// or as near to it as stays visible there (a black profile colour on the dark card). Filled buttons keep the
+  /// exact colour.
+  static let mark = ProfileColor.visible(on: card)
+
+  /// A tint of `mark` (row selection and hover, the badge's fill).
   static func accent(_ light: CGFloat, dark: CGFloat) -> NSColor {
     NSColor(name: nil) { appearance in
       let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-      var resolved = ProfileColor.accent
-      appearance.performAsCurrentDrawingAppearance { resolved = ProfileColor.accent.usingColorSpace(.sRGB) ?? ProfileColor.accent }
+      var resolved = mark
+      appearance.performAsCurrentDrawingAppearance { resolved = mark.usingColorSpace(.sRGB) ?? mark }
       return resolved.withAlphaComponent(isDark ? dark : light)
     }
   }
@@ -801,6 +839,24 @@ fileprivate final class FlippedClipView: NSView {
   override var isFlipped: Bool { true }
 }
 
+/// A scroll view whose scroller shows only while it scrolls (overlay style, whatever System Settings says: the list
+/// is short and the cut row says it goes on), and that doesn't move the window.
+fileprivate final class QuietScrollView: NSScrollView {
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    super.scrollerStyle = .overlay
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var scrollerStyle: NSScroller.Style {
+    get { .overlay }
+    set { super.scrollerStyle = .overlay }
+  }
+
+  override var mouseDownCanMoveWindow: Bool { false }
+}
+
 /// Where you are: a dot per step, the current one a short pill in the profile's colour.
 fileprivate final class StepDots: NSView {
   var count = 0 { didSet { if count != oldValue { rebuild() } } }
@@ -838,7 +894,7 @@ fileprivate final class StepDots: NSView {
 
   override func updateLayer() {
     for (at, dot) in dots.enumerated() {
-      dot.backgroundColor = (at == index ? ProfileColor.accent : OnboardingColors.idleDot).cgColor
+      dot.backgroundColor = (at == index ? OnboardingColors.mark : OnboardingColors.idleDot).cgColor
     }
   }
 
@@ -1072,6 +1128,11 @@ fileprivate final class WelcomeStepView: OnboardingStepView {
 
 fileprivate final class SourceStepView: OnboardingStepView {
   private var rows: [SourceRowView] = []
+  /// The rows scroll once there are more than the window has room for (the card always fits the window).
+  private let list = QuietScrollView()
+  private let listDocument = FlippedClipView()
+  private var revealSelection = false
+  private var shownSelection: String?
   private let empty = wrapping("", size: 13)
   private let profileLabel = oneLine("Profile", size: 12, weight: .medium, color: .secondaryLabelColor)
   private let profiles = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -1081,6 +1142,16 @@ fileprivate final class SourceStepView: OnboardingStepView {
     super.init(flow: flow)
     titleLabel.stringValue = "Where are you coming from?"
     subtitleLabel.stringValue = "Browsers found on this Mac."
+    list.drawsBackground = false
+    list.contentView.drawsBackground = false
+    list.hasVerticalScroller = true
+    list.hasHorizontalScroller = false
+    list.autohidesScrollers = true
+    list.horizontalScrollElasticity = .none
+    list.verticalScrollElasticity = .automatic
+    list.borderType = .noBorder
+    list.documentView = listDocument
+    addSubview(list)
     addSubview(empty)
     profiles.controlSize = .small
     profiles.font = .systemFont(ofSize: 12)
@@ -1127,14 +1198,33 @@ fileprivate final class SourceStepView: OnboardingStepView {
     rows = flow.sources.map { source in
       let row = SourceRowView(source: source)
       row.onClick = { [weak flow] in flow?.choose(source.id) }
-      addSubview(row)
+      listDocument.addSubview(row)
       return row
     }
+  }
+
+  private static let rowPitch = SourceRowView.height + 2
+
+  /// For the state log: the list's height, its rows' whole height, how far it's scrolled, and whether it scrolls.
+  var listDebug: [String: Any] {
+    let content = listDocument.frame.height
+    return ["height": list.frame.height, "content": content, "scrollable": content > list.frame.height + 0.5,
+            "offset": list.contentView.bounds.minY, "selectedVisible": selectedRowVisible]
+  }
+
+  private var selectedRowVisible: Bool {
+    guard let row = rows.first(where: \.selected) else { return false }
+    return list.contentView.documentVisibleRect.contains(row.frame.insetBy(dx: 1, dy: 1))
   }
 
   override func refresh() {
     syncRows()
     let selected = flow.selectedSource
+    if selected?.id != shownSelection {
+      // A choice made below the fold (or from a test) scrolls into view; the first one is at the top already.
+      revealSelection = shownSelection != nil
+      shownSelection = selected?.id
+    }
     for row in rows {
       guard let source = flow.sources.first(where: { $0.id == row.sourceID }) else { continue }
       row.selected = source.id == selected?.id
@@ -1171,10 +1261,33 @@ fileprivate final class SourceStepView: OnboardingStepView {
       if apply { empty.frame = NSRect(x: Self.inset, y: y, width: width - Self.inset * 2, height: height) }
       y += height + 8
     }
-    for row in rows {
-      if apply { row.frame = NSRect(x: x, y: y, width: width - x * 2, height: SourceRowView.height) }
-      y += SourceRowView.height + 2
+    // The list takes what the window leaves after everything under it; cut through a row when it scrolls, so it
+    // plainly goes on.
+    var below: CGFloat = 20
+    if !profiles.isHidden { below += 10 + max(profiles.fittingSize.height, lineHeight(profileLabel)) }
+    if !fresh.isHidden { below += 14 + fresh.intrinsicContentSize.height }
+    let pitch = Self.rowPitch
+    let natural = rows.isEmpty ? 0 : CGFloat(rows.count) * pitch - 2
+    var listHeight = natural
+    let room = flow.maxStepHeight - y - below
+    if natural > room {
+      let whole = max(2, floor((room - SourceRowView.height / 2) / pitch))
+      listHeight = min(natural, whole * pitch + (SourceRowView.height / 2).rounded())
     }
+    if apply {
+      let listWidth = width - x * 2
+      list.isHidden = rows.isEmpty
+      list.frame = NSRect(x: x, y: y, width: listWidth, height: listHeight)
+      listDocument.frame = NSRect(x: 0, y: 0, width: listWidth, height: natural)
+      for (at, row) in rows.enumerated() {
+        row.frame = NSRect(x: 0, y: CGFloat(at) * pitch, width: listWidth, height: SourceRowView.height)
+      }
+      if revealSelection, let row = rows.first(where: \.selected) {
+        revealSelection = false
+        listDocument.scrollToVisible(row.frame.insetBy(dx: 0, dy: -4))
+      }
+    }
+    y += listHeight
     if !profiles.isHidden {
       y += 10
       let size = profiles.fittingSize
@@ -1295,7 +1408,7 @@ fileprivate final class Badge: NSView {
     layer?.backgroundColor = OnboardingColors.accent(0.14, dark: 0.24).cgColor
     let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     // The colour itself reads on its own pale fill in light; in dark a lighter mix of it does.
-    label.textColor = dark ? ProfileColor.accent.blended(withFraction: 0.35, of: .white) : ProfileColor.accent
+    label.textColor = dark ? OnboardingColors.mark.blended(withFraction: 0.35, of: .white) : OnboardingColors.mark
   }
 
   override func layout() {
@@ -1327,12 +1440,12 @@ fileprivate final class OnboardingLink: NSView {
   override func layout() {
     super.layout()
     label.frame = bounds
-    label.textColor = ProfileColor.accent
+    label.textColor = OnboardingColors.mark
   }
 
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
-    label.textColor = ProfileColor.accent
+    label.textColor = OnboardingColors.mark
   }
 
   override func mouseDown(with event: NSEvent) { onClick?() }
@@ -1374,13 +1487,17 @@ fileprivate final class ItemsStepView: OnboardingStepView {
 
   var unlockNoteShown: Bool { !note.isHidden }
 
+  /// What each row shows where the count goes, for the state log.
+  var details: [String: String] { Dictionary(uniqueKeysWithValues: rows.map { ($0.item.rawValue, $0.count) }) }
+
   func row(_ item: ImportItem) -> CheckRowView? { rows.first { $0.item == item } }
 
   override func refresh() {
     let counts = flow.selectedSource.flatMap { flow.preview(of: $0)?.counts } ?? [:]
     for row in rows {
       row.isOn = flow.checked.contains(row.item)
-      row.count = counts[row.item].flatMap { Self.counts.string(from: NSNumber(value: $0)) } ?? ""
+      // What can't come across yet says so where the count goes.
+      row.count = row.item.comingLater ? "coming later" : counts[row.item].flatMap { Self.counts.string(from: NSNumber(value: $0)) } ?? ""
     }
     note.isHidden = !flow.needsUnlock
     lock.isHidden = note.isHidden
@@ -1429,11 +1546,11 @@ fileprivate final class CheckBox: NSView {
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
   override func updateLayer() {
-    layer?.backgroundColor = (isOn ? ProfileColor.accent : .clear).cgColor
+    layer?.backgroundColor = (isOn ? OnboardingColors.mark : .clear).cgColor
     layer?.borderWidth = isOn ? 0 : 1.5
     layer?.borderColor = OnboardingColors.boxOff.cgColor
     tick.isHidden = !isOn
-    tick.contentTintColor = ProfileColor.foreground(on: ProfileColor.accent)
+    tick.contentTintColor = ProfileColor.foreground(on: OnboardingColors.mark)
   }
 
   override func layout() {
@@ -1442,7 +1559,8 @@ fileprivate final class CheckBox: NSView {
   }
 }
 
-/// One thing to bring: box, symbol, title, and the count on the right when the preview knows it.
+/// One thing to bring: box, symbol, title, and the count on the right when the preview knows it. Something Ray can't
+/// bring yet (extensions) is quiet: an empty faint box, "coming later" where the count goes, and no tick.
 fileprivate final class CheckRowView: NSView {
   static let height: CGFloat = 30
   let item: ImportItem
@@ -1463,7 +1581,7 @@ fileprivate final class CheckRowView: NSView {
 
   init(item: ImportItem) {
     self.item = item
-    title = oneLine(item.onboardingTitle, size: 13)
+    title = oneLine(item.title, size: 13)
     super.init(frame: .zero)
     wantsLayer = true
     layer?.cornerRadius = 8
@@ -1475,7 +1593,16 @@ fileprivate final class CheckRowView: NSView {
     countLabel.alignment = .right
     for view in [box, icon, title, countLabel] as [NSView] { addSubview(view) }
     setAccessibilityRole(.checkBox)
-    setAccessibilityLabel(item.onboardingTitle)
+    setAccessibilityLabel(item.title)
+    if !offered {
+      box.alphaValue = 0.45
+      icon.alphaValue = 0.5
+      title.textColor = .secondaryLabelColor
+      countLabel.font = .systemFont(ofSize: 12)
+      countLabel.textColor = .tertiaryLabelColor
+      setAccessibilityEnabled(false)
+      setAccessibilityHelp("Coming later")
+    }
     addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
 
@@ -1486,8 +1613,11 @@ fileprivate final class CheckRowView: NSView {
   override var mouseDownCanMoveWindow: Bool { false }
   override func hitTest(_ point: NSPoint) -> NSView? { frame.contains(point) ? self : nil }
 
+  /// Whether it can be ticked at all.
+  var offered: Bool { !item.comingLater }
+
   override func updateLayer() {
-    layer?.backgroundColor = (hovered ? PanelColors.tile : .clear).cgColor
+    layer?.backgroundColor = (hovered && offered ? PanelColors.tile : .clear).cgColor
   }
 
   override func layout() {
@@ -1503,8 +1633,8 @@ fileprivate final class CheckRowView: NSView {
   override func mouseEntered(with event: NSEvent) { hovered = true; needsDisplay = true }
   override func mouseExited(with event: NSEvent) { hovered = false; needsDisplay = true }
   override func mouseDown(with event: NSEvent) { press() }
-  func press() { onToggle?() }
-  override func accessibilityPerformPress() -> Bool { press(); return true }
+  func press() { if offered { onToggle?() } }
+  override func accessibilityPerformPress() -> Bool { press(); return offered }
   override func accessibilityValue() -> Any? { NSNumber(value: isOn ? 1 : 0) }
 }
 
@@ -1525,6 +1655,9 @@ fileprivate final class ImportingStepView: OnboardingStepView {
   }
 
   required init?(coder: NSCoder) { fatalError() }
+
+  /// Each row's tooltip and whether its line is cut short, for the state log.
+  var tips: [[String: Any]] { rows.map { ["tip": $0.toolTip ?? NSNull(), "truncated": $0.detailTruncated] } }
 
   override func refresh() {
     let failures = flow.rows.filter { if case .failed = $0.state { true } else { false } }.count
@@ -1579,7 +1712,7 @@ fileprivate final class ProgressBar: NSView {
 
   override func updateLayer() {
     layer?.backgroundColor = PanelColors.tile.cgColor
-    fill.backgroundColor = ProfileColor.accent.cgColor
+    fill.backgroundColor = OnboardingColors.mark.cgColor
   }
 
   override func layout() {
@@ -1615,7 +1748,7 @@ fileprivate final class Spinner: NSView {
 
   override var wantsUpdateLayer: Bool { true }
 
-  override func updateLayer() { arc.strokeColor = ProfileColor.accent.cgColor }
+  override func updateLayer() { arc.strokeColor = OnboardingColors.mark.cgColor }
 
   override func layout() {
     super.layout()
@@ -1652,7 +1785,7 @@ fileprivate final class ProgressRowView: NSView {
   private var state = ImportRowState.waiting
 
   init(item: ImportItem) {
-    title = oneLine(item.onboardingTitle, size: 13)
+    title = oneLine(item.title, size: 13)
     super.init(frame: .zero)
     icon.image = NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)
     icon.symbolConfiguration = .init(pointSize: 13, weight: .regular)
@@ -1660,6 +1793,9 @@ fileprivate final class ProgressRowView: NSView {
     tick.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Done")
     tick.symbolConfiguration = .init(pointSize: 14, weight: .medium)
     detail.alignment = .right
+    detail.usesSingleLineMode = true
+    detail.maximumNumberOfLines = 1
+    detail.cell?.truncatesLastVisibleLine = true
     for view in [icon, title, spinner, tick, detail] as [NSView] { addSubview(view) }
     show(.waiting)
   }
@@ -1681,28 +1817,45 @@ fileprivate final class ProgressRowView: NSView {
       detail.stringValue = ""
     case .running:
       detail.stringValue = ""
-    case .done(let count):
+    case .done(let count, let existing):
       tick.isHidden = false
       detail.textColor = .secondaryLabelColor
-      detail.stringValue = NumberFormatter.localizedString(from: NSNumber(value: count), number: .decimal)
+      detail.stringValue = Self.doneText(count: count, existing: existing)
     case .failed(let reason):
       title.alphaValue = 0.6
       icon.alphaValue = 0.6
       detail.textColor = .tertiaryLabelColor
-      detail.stringValue = reason
+      // One line, cut at the end; the whole reason is the row's tooltip.
+      detail.stringValue = reason.split(whereSeparator: \.isNewline).joined(separator: " ")
     }
+    if case .failed(let reason) = state { toolTip = reason } else { toolTip = nil }
     needsDisplay = true
     needsLayout = true
   }
 
+  /// What came in, said honestly: "12"; "4 · 2 already here"; "6 already here" when all of it was in Ray before;
+  /// "None found" when there was nothing to bring.
+  static func doneText(count: Int, existing: Int) -> String {
+    func number(_ n: Int) -> String { NumberFormatter.localizedString(from: NSNumber(value: n), number: .decimal) }
+    switch (count, existing) {
+    case (0, 0): return "None found"
+    case (0, _): return "\(number(existing)) already here"
+    case (_, 0): return number(count)
+    default: return "\(number(count)) · \(number(existing)) already here"
+    }
+  }
+
+  /// The detail line's text is wider than its frame (so it shows cut, with the tooltip holding the rest).
+  var detailTruncated: Bool { !detail.stringValue.isEmpty && widthOf(detail) > detail.frame.width + 1 }
+
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
-    tick.contentTintColor = ProfileColor.accent
+    tick.contentTintColor = OnboardingColors.mark
   }
 
   override func layout() {
     super.layout()
-    tick.contentTintColor = ProfileColor.accent
+    tick.contentTintColor = OnboardingColors.mark
     let mid = bounds.height / 2
     icon.frame = NSRect(x: 8, y: (mid - 9).rounded(), width: 18, height: 18)
     let right = bounds.width - 8

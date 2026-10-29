@@ -400,13 +400,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   /// Adds imported sidebar items (File › Import from Arc…, ImportSession): favorites, pinned tabs and folders, and
   /// Today's tabs, all closed until clicked. Nothing already in the sidebar comes in twice, and a folder with nothing
-  /// new inside is left out. Returns how many tabs of each kind came in (folders not counted).
+  /// new inside is left out. Returns how many tabs of each kind came in, and how many were already there (folders not
+  /// counted).
   @discardableResult
   func addImported(
     favorites: [ArcImport.Node], pinned: [ArcImport.Node], today: [ArcImport.Node], event: String = "import"
-  ) -> (favorites: Int, pinned: Int, today: Int) {
+  ) -> SidebarImportCounts {
     var known = Set(state.allEntries.filter { !$0.isFolder }.map { $0.pinnedURL ?? $0.url })
-    var counts = (favorites: 0, pinned: 0, today: 0)
+    var counts = SidebarImportCounts()
     func tabs(_ nodes: [ArcImport.Node]) -> [(url: String, title: String)] {
       nodes.flatMap { node -> [(url: String, title: String)] in
         switch node {
@@ -415,7 +416,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         }
       }
     }
-    for tab in tabs(favorites) where known.insert(tab.url).inserted {
+    for tab in tabs(favorites) {
+      guard known.insert(tab.url).inserted else { counts.alreadyFavorites += 1; continue }
       state.favorites.append(SidebarEntry(kind: .favorite, url: tab.url, title: tab.title))
       counts.favorites += 1
     }
@@ -424,7 +426,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       for node in nodes {
         switch node {
         case .tab(let url, let title):
-          guard known.insert(url).inserted else { continue }
+          guard known.insert(url).inserted else { counts.alreadyPinned += 1; continue }
           let entry = SidebarEntry(kind: .pinned, url: url, title: title)
           entry.parentID = parent
           added.append(entry)
@@ -443,7 +445,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     add(pinned, in: nil)
     state.pinned += added
     state.normalizePinned()
-    for tab in tabs(today) where known.insert(tab.url).inserted {
+    for tab in tabs(today) {
+      guard known.insert(tab.url).inserted else { counts.alreadyToday += 1; continue }
       state.today.append(SidebarEntry(kind: .today, url: tab.url, title: tab.title))
       counts.today += 1
     }
@@ -458,7 +461,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     var events = log["events"] as? [[String: Any]] ?? []
     switch event {
     case .started(let item): events.append(["started": item.rawValue])
-    case .finished(let item, let count): events.append(["finished": item.rawValue, "count": count])
+    case .finished(let item, let count, let existing):
+      events.append(["finished": item.rawValue, "count": count, "existing": existing])
     case .failed(let item, let reason): events.append(["failed": item.rawValue, "reason": reason])
     case nil: break
     }
@@ -466,6 +470,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     log["done"] = summary != nil
     if let summary {
       log["imported"] = Dictionary(uniqueKeysWithValues: summary.imported.map { ($0.key.rawValue, $0.value) })
+      log["existing"] = Dictionary(uniqueKeysWithValues: summary.existing.map { ($0.key.rawValue, $0.value) })
       log["failed"] = Dictionary(uniqueKeysWithValues: summary.failed.map { ($0.key.rawValue, $0.value) })
     }
     importLog = log
@@ -1911,6 +1916,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "settings": MainMenu.keyEquivalent(of: #selector(AppController.showSettings(_:))) ?? NSNull(),
       "savePage": MainMenu.keyEquivalent(of: #selector(AppController.savePage(_:))) ?? NSNull(),
     ] as [String: Any]
+    state["welcomeAgainItem"] = MainMenu.alternateInfo(of: #selector(AppController.showWelcomeAgain(_:))) ?? NSNull()
     state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
       .sorted { $0.lastActive > $1.lastActive }.map(tabID)
     state["tabCycle"] = tabCycle.map { ["order": $0.order.map(tabID), "index": $0.index] as [String: Any] } ?? NSNull()

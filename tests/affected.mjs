@@ -24,6 +24,7 @@ const settings = ["settings-window", "settings-minimal-url", "settings-loading-p
 export const areas = {
   // Central: windows, menus, key routing, saved state, the engine bridge.
   "Host/AppController.swift": "all",
+  "Host/AppController.swift#Welcome again": ["onboarding"],
   "Host/MainMenu.swift": "all",
   "Host/Shortcuts.swift": "all",
   "Host/SidebarModel.swift": "all",
@@ -125,7 +126,7 @@ export const areas = {
   "Importer/": ["import-browser", "onboarding"],
   "Importer/Tests/": [],
   "Host/ImportSession.swift": ["import-browser", "onboarding"],
-  "Host/ImportWriter.swift": ["import-browser"],
+  "Host/ImportWriter.swift": ["import-browser", "onboarding"],
   "tests/affected.mjs": [],
   "tests/changed.mjs": [],
   "scripts/test.sh": [],

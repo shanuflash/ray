@@ -9,6 +9,8 @@ enum MainMenu {
       item("Check for Updates…", #selector(AppController.checkForUpdates(_:)), nil, target: target),
       .separator(),
       item("Settings…", #selector(AppController.showSettings(_:)), ",", target: target),
+      // Held ⌥ turns Settings… into this (an alternate shares the key, so ⌥⌘, opens it too).
+      optionAlternate(item("Show Welcome Again", #selector(AppController.showWelcomeAgain(_:)), ",", [.command, .option], target: target)),
       item("Clear Browsing Data…", #selector(AppController.clearBrowsingData(_:)), backspace, [.command, .shift], target: target),
       .separator(),
       item("Hide Ray", #selector(NSApplication.hide(_:)), "h", target: NSApp),
@@ -136,6 +138,21 @@ enum MainMenu {
   /// For tests: the key a menu item answers to now ("" for none).
   static func keyEquivalent(of action: Selector) -> String? {
     NSApp.mainMenu.flatMap { find(action, in: $0) }?.keyEquivalent
+  }
+
+  /// For tests: an item's key, whether it shows only while ⌥ is held, and the item it stands in for.
+  static func alternateInfo(of action: Selector) -> [String: Any]? {
+    guard let main = NSApp.mainMenu, let item = find(action, in: main), let menu = item.menu else { return nil }
+    let at = menu.index(of: item)
+    let before = at > 0 ? menu.items[at - 1] : nil
+    return ["title": item.title, "key": item.keyEquivalent, "option": item.keyEquivalentModifierMask.contains(.option),
+            "alternate": item.isAlternate, "after": before?.title ?? NSNull()]
+  }
+
+  /// An item that replaces the one before it while ⌥ is held (same key, ⌥ added).
+  private static func optionAlternate(_ entry: NSMenuItem) -> NSMenuItem {
+    entry.isAlternate = true
+    return entry
   }
 
   /// ⌫ as a key equivalent (Clear Browsing Data is ⇧⌘⌫ in Chrome).

@@ -231,19 +231,20 @@ enum ImportCounter {
     return ImportPreview(counts: shown, summary: summary(shown, spaces: spaces, profiles: source.profiles.count))
   }
 
-  /// "3 spaces, 42 pinned tabs, 2 profiles"; "12 open tabs, 340 bookmarks"…
+  /// The two most telling counts, then the profiles: "3 spaces, 42 pinned tabs · 2 profiles"; "12 open tabs, 340
+  /// bookmarks". One line in the source list, so never more.
   static func summary(_ counts: [ImportItem: Int], spaces: Int?, profiles: Int) -> String {
-    var parts: [String] = []
-    if let spaces, spaces > 0 { parts.append(ImportShape.plural(spaces, "space")) }
-    // A browser with spaces (Arc, Zen): its spaces and pinned tabs; any other: its tabs and bookmarks.
-    let words: [(ImportItem, String)] = spaces != nil
-      ? [(.pinnedTabs, "pinned tab")] : [(.pinnedTabs, "pinned tab"), (.openTabs, "open tab"), (.bookmarks, "bookmark")]
-    for (item, word) in words {
-      if let n = counts[item], n > 0 { parts.append(ImportShape.plural(n, word)) }
-    }
-    if parts.isEmpty, let n = counts[.history], n > 0 { parts.append(ImportShape.plural(n, "page in history", "pages in history")) }
-    if profiles > 1 { parts.append(ImportShape.plural(profiles, "profile")) }
-    return parts.joined(separator: ", ")
+    // A browser with spaces (Arc, Zen): its spaces and pinned tabs first; any other: its tabs and bookmarks.
+    var candidates: [(Int?, String, String?)] = spaces != nil
+      ? [(spaces, "space", nil), (counts[.pinnedTabs], "pinned tab", nil), (counts[.openTabs], "open tab", nil),
+         (counts[.bookmarks], "bookmark", nil)]
+      : [(counts[.openTabs], "open tab", nil), (counts[.bookmarks], "bookmark", nil), (counts[.pinnedTabs], "pinned tab", nil)]
+    candidates.append((counts[.history], "page in history", "pages in history"))
+    let parts = candidates.compactMap { n, word, words in n.flatMap { $0 > 0 ? ImportShape.plural($0, word, words) : nil } }
+    let lead = parts.prefix(2).joined(separator: ", ")
+    guard profiles > 1 else { return lead }
+    let more = ImportShape.plural(profiles, "profile")
+    return lead.isEmpty ? more : "\(lead) · \(more)"
   }
 
   /// One number from a copy of a SQLite file (never the browser's own file, which it may hold open).
@@ -313,9 +314,10 @@ final class ImportRun: @unchecked Sendable {
   private func emit(_ event: ImportEvent) {
     switch event {
     case .started: break
-    case .finished(let item, let count):
+    case .finished(let item, let count, let existing):
       begin([item])
       summary.imported[item] = count
+      if existing > 0 { summary.existing[item] = existing }
     case .failed(let item, let reason):
       begin([item])
       summary.failed[item] = reason
@@ -445,9 +447,9 @@ final class ImportRun: @unchecked Sendable {
     for item in wanted {
       if let reason = failures[item] { emit(.failed(item, reason: reason)); continue }
       switch item {
-      case .pinnedTabs: emit(.finished(item, count: counts.pinned))
-      case .favorites: emit(.finished(item, count: counts.favorites))
-      default: emit(.finished(item, count: counts.today))
+      case .pinnedTabs: emit(.finished(item, count: counts.pinned, existing: counts.alreadyPinned))
+      case .favorites: emit(.finished(item, count: counts.favorites, existing: counts.alreadyFavorites))
+      default: emit(.finished(item, count: counts.today, existing: counts.alreadyToday))
       }
     }
   }
@@ -539,8 +541,10 @@ final class ImportRun: @unchecked Sendable {
       switch item {
       case .openTabs:
         let today = data.tabs.compactMap(ImportShape.node)
-        let counts = DispatchQueue.main.sync { [controller] in controller.addImported(favorites: [], pinned: [], today: today) }
-        emit(.finished(item, count: counts.today))
+        let counts = DispatchQueue.main.sync { [controller] in
+          controller.addImported(favorites: [], pinned: [], today: today)
+        }
+        emit(.finished(item, count: counts.today, existing: counts.alreadyToday))
       case .history:
         let entries = data.profiles.first { $0.name == nil }?.history ?? data.profiles.first?.history ?? []
         var written = 0
