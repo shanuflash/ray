@@ -400,6 +400,31 @@ Shortcuts · Advanced/About. Profiles and Spaces arrive with Spaces (Crest lists
 sidebar). Live Folders and Calendar get panes only when those features exist. "All Chrome Settings…" stays as a
 link at the bottom of the list.
 
+**What goes in each pane.** ✓ = in Ray's Settings window today; (menu) or (Chrome page) = Ray has it elsewhere;
+the rest is new (numbers are `docs/MISSING.md`, "From Ardia's settings").
+- **General:** default browser, Make Default (Chrome #16, in progress); open Ray at login (9); warn before ⌘Q and
+  before closing a window with several tabs (10); on quit, keep tabs and windows or start fresh (11); downloads
+  folder and ask where to save (22, Chrome page); updates: check and install automatically, channel, version and
+  Check Now (21, menu); import from another browser (menu).
+- **Tabs & Sidebar:** "Feel like Arc"; where new tabs go, top, bottom or next to current (8; ✓ as a "next to the
+  active tab" switch); where the New Tab button sits (8); archive Today tabs after 12 h, 24 h, 7 days or 30 days
+  (7); ⌃Tab in recent order ✓; share tabs across windows (17); show sidebar button and Clear button (15); hide
+  toolbar while scrolling (14); fade icons of unloaded tabs (18); haptic bump on reorder (19); media controls and
+  auto picture-in-picture once built (Arc #8, #9).
+- **Appearance:** theme colour ✓, a gradient with Spaces (5); Light, Dark or Automatic (12); address bar on the
+  page or in the sidebar (menu); minimal URL ✓; loading progress ✓; default page zoom ✓; thin scroll bars (20);
+  app icon (13).
+- **Search:** default engine, custom site searches, suggestions (1).
+- **Privacy & Security:** every site's permissions, zoom levels, apps allowed to open links, clear site data (6,
+  Chrome page); clear browsing data (menu); content blocker if decided (Arc #7).
+- **Passwords:** offer to save and fill, saved passwords behind Touch ID, CSV import and export (6, Chrome page).
+- **Autofill:** save and fill addresses and cards, their lists (6, Chrome page).
+- **Extensions:** installed list with switches, details and site access, Web Store, add from a link, load
+  unpacked (6, Chrome page); extension shortcuts (Chrome #13).
+- **Shortcuts:** ⇧⌘C copies the link ✓; ⌘S toggles the sidebar ✓; ⌘Z reopens a closed tab outside text fields
+  (16); edit any shortcut (4).
+- **Advanced/About:** version, source code, licenses; All Chrome Settings….
+
 **Toolkit:** AppKit, though "Decisions so far" allows SwiftUI for Settings: it reuses `RaySwitch` and the
 sidebar's look directly. Owner to confirm.
 
