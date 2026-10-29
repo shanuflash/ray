@@ -53,6 +53,9 @@ const pages = {
       document.body.append(frame);
     }, 300));</script>`,
   "/c": `<title>Page C</title><button id=close onclick="window.close()">close</button>`,
+  // In-page anchors: same-document navigations that only change the address's fragment.
+  "/anchors": `<title>Anchors</title><a id=jump href="#release-v0.2.43-nightly.1">jump</a>
+    <div style="height:3000px"></div><h2 id=release-v0.2.43-nightly.1>v0.2.43</h2>`,
   "/h": `<title>Hist Page</title><p>history</p>`,
   "/find": `<title>Find</title><p>banana one</p><p>apple</p><p>banana two</p><p>banana three</p>`,
   "/search": `<title>Search</title><p>results</p>`,
@@ -1889,6 +1892,58 @@ const checks = {
     await until("host only from the menu", async () => { await command("state"); return shown() === host && state().settings.minimalURL === true; });
     await resetSettings();
     await until("full again", async () => { await command("state"); return shown() === `${host}/a`; });
+  },
+  async "address-fragment"() {
+    // The full address shows the fragment, also after an in-page #anchor (a same-document navigation), as Chrome
+    // does; View Source shows view-source: and then the inner address by the same rules.
+    await resetSettings();
+    const host = origin.replace("http://", "");
+    const field = () => state().toolbar?.field;
+    const fragment = "#release-v0.2.43-nightly.1";
+    await goTo(`${origin}/anchors`, true);
+    await until("anchors page", async () => {
+      await command("state");
+      return activeTabState()?.url === `${origin}/anchors` && state().toolbar?.address === `${host}/anchors`;
+    });
+    const page = state().active;
+    const { sessionId } = await session("/anchors");
+    await clickElement(sessionId, "#jump");
+    await until("the anchor's fragment shows", async () => {
+      await command("state");
+      return activeTabState()?.url === `${origin}/anchors${fragment}` && state().toolbar?.address === `${host}/anchors${fragment}`;
+    });
+    assert(field().host === host && field().trail === `/anchors${fragment}` && field().shown === `${host}/anchors${fragment}`,
+      `anchor: ${JSON.stringify(field())}`);
+    // A fragment set by script, kept percent-encoded as the URL has it.
+    await evaluate(sessionId, `location.hash = "caf%C3%A9"; 0`);
+    await until("script's fragment shows", async () => { await command("state"); return field()?.shown === `${host}/anchors#caf%C3%A9`; });
+    // Minimal: the host only, fragment and all hidden with the path.
+    await setSetting("minimalURL", "on");
+    await until("minimal", async () => { await command("state"); return field()?.shown === host; });
+    assert(state().toolbar.address === `${host}/anchors#caf%C3%A9`, `minimal changed the address: ${state().toolbar.address}`);
+    await setSetting("minimalURL", "off");
+    // View Source (⌥⌘U): `view-source:` in grey, then the inner host and the rest.
+    await command("key u cmd opt keywin");
+    await until("source tab", async () => { await command("state"); return activeTabState()?.url.startsWith(`view-source:${origin}/anchors`); });
+    const source = activeTabState().url;
+    const inner = source.slice("view-source:".length).replace(origin, "");
+    await until("source address", async () => { await command("state"); return state().toolbar?.address === `view-source:${host}${inner}`; });
+    assert(field().lead === "view-source:" && field().host === host && field().trail === inner,
+      `view source: ${JSON.stringify(field())}`);
+    if (process.env.SNAP_DIR) await command(`toolbarsnap ${join(process.env.SNAP_DIR, "toolbar-view-source.png")}`);
+    // Judged by the inner URL: plain http on 127.0.0.1 is a dev host, so no lock; the sidebar pill names it too.
+    assert(field().look === "local" && field().icon === false, `view source look: ${field().look}, icon ${field().icon}`);
+    assert(state().address === `view-source:${host.split(":")[0]}`, `sidebar address shows ${state().address}`);
+    await command("menu closeTab");
+    await until("back on the page", async () => { await command("state"); return state().active === page; });
+    // A host too long for the field loses its start, never its end, and the path gives way to it.
+    const long = ["a", "b", "c", "d"].map((c) => c.repeat(60)).join(".") + ".localhost";
+    const port = new URL(origin).port;
+    await goTo(`http://${long}:${port}/anchors`);
+    await until("long host", async () => { await command("state"); return field()?.host === `${long}:${port}`; });
+    assert(field().elided === "head" && field().shown === `${long}:${port}`, `long host: ${JSON.stringify(field())}`);
+    await command("menu closeTab");
+    await until("anchors tab closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === page); });
   },
   async "settings-loading-progress"() {
     await resetSettings();

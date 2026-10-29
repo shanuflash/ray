@@ -74,7 +74,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Site controls": ["site-controls", "extensions", "copy-url", "find-in-page"],
   "Host/BrowserWindowController.swift#Entries": "all",
   "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab"],
-  "Host/BrowserWindowController.swift#Page toolbar": ["page-toolbar", "page-loading", "load-sweep-once", "site-controls",
+  "Host/BrowserWindowController.swift#Page toolbar": ["page-toolbar", "address-fragment", "page-loading", "load-sweep-once", "site-controls",
     "sidebar-toggle"],
   "Host/BrowserWindowController.swift#Sidebar visibility": [...sidebarMotion, "page-toolbar", "downloads"],
   "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url", "onboarding"],
@@ -82,7 +82,8 @@ export const areas = {
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",
   "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "private-window", "close-last-window"],
   "Host/BrowserWindowController.swift#RayCoreTabDelegate": [...pages, ...permissions, "page-toolbar", "page-loading",
-    "load-sweep-once", "site-controls", "find-in-page", "settings-zoom", "settings-routes", "settings-trimmed"],
+    "load-sweep-once", "site-controls", "find-in-page", "settings-zoom", "settings-routes", "settings-trimmed",
+    "address-fragment"],
   "Host/BrowserWindowController.swift#Settings": [...settings, "page-toolbar", "page-loading"],
   "Host/BrowserWindowController.swift#Page commands": ["page-commands"],
   "Host/BrowserWindowController.swift#Page zoom": ["settings-zoom", "settings-private-zoom", "settings-window", "site-controls",
@@ -92,12 +93,18 @@ export const areas = {
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
   "Host/SidebarView.swift": [...drag, "folder-create", "folder-toggle", "folder-rename", "folder-animation",
     "folder-drag-in", "folder-drag-folder", "folder-out-and-delete", "tile-hover", "favorites", "pin-unload-restore",
-    "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads"],
+    "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
   "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder"],
   "Host/SidebarView.swift#Downloads panel": ["downloads"],
 
-  "Host/AddressInput.swift": [...commandBar, "page-toolbar", "site-controls", "settings-routes", "settings-trimmed"],
+  "Host/AddressInput.swift": [...commandBar, "page-toolbar", "site-controls", "settings-routes", "settings-trimmed",
+    "address-fragment"],
+  // How the page address bar splits an address (lead, host, rest), and which URL a view-source: one is about.
+  "Host/AddressInput.swift#Address display": ["address-fragment", "page-toolbar", "settings-minimal-url", "site-controls",
+    "page-commands"],
+  // The helpers that read what was typed: the command bar's.
+  "Host/AddressInput.swift#Typed addresses": [...commandBar, "settings-routes"],
   "Host/RaySettings.swift": "all",
   "Host/SettingsWindow.swift": [...settings, "onboarding"],
   "Host/ArcImport.swift": ["arc-import"],
@@ -114,7 +121,7 @@ export const areas = {
   "Host/Extensions.swift": ["extensions", "extension-prompt", "site-controls"],
   "Host/FindBar.swift": ["find-in-page"],
   "Host/PageContainerView.swift": pageSurface,
-  "Host/PageToolbar.swift": ["page-toolbar", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle",
+  "Host/PageToolbar.swift": ["page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle",
     "top-strip-click"],
   // Which loads the address field sweeps for.
   "Host/LoadSweep.swift": ["page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar"],

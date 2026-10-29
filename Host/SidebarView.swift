@@ -1335,7 +1335,8 @@ final class AddressPill: NSView {
   }
 
   func show(url: String, security: String?) {
-    let components = URLComponents(string: url)
+    // A view-source: address's host is its inner URL's: a long one loses its start there too.
+    let components = URLComponents(string: AddressInput.innerURL(of: url))
     let hasHost = !(components?.host ?? "").isEmpty
     text = AddressInput.pillText(for: url)
     let empty = text.isEmpty

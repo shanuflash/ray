@@ -28,6 +28,9 @@ let cases: [(String, String?)] = [
   ("file:///tmp/a.html", "file:///tmp/a.html"),
   ("javascript:alert(1)", nil),
   ("JavaScript:alert(1)", nil),
+  ("data:text/html,<p>x</p>", "data:text/html,<p>x</p>"),
+  ("view-source:https://example.com/x#f", "view-source:https://example.com/x#f"),
+  ("view-source:ray://settings/help", "view-source:chrome://settings/help"),
   ("  ", nil),
   ("hello world", search("hello%20world")),
   ("swift", search("swift")),
@@ -48,6 +51,10 @@ let displayCases: [(String, String)] = [
   ("https://user:pass@example.com/x", "https://example.com/x"),
   ("http://example.com:8080/", "http://example.com:8080/"),
   ("chrome://settings/help", "ray://settings/help"),
+  ("https://example.com/x#frag", "https://example.com/x#frag"),
+  ("view-source:https://user:pass@example.com/x#f", "view-source:https://example.com/x#f"),
+  ("view-source:chrome://settings/help", "view-source:ray://settings/help"),
+  ("data:text/html,<p>x</p>", "data:text/html,<p>x</p>"),
 ]
 for (input, expected) in displayCases where AddressInput.display(for: input) != expected {
   failures += 1
@@ -63,10 +70,54 @@ let pillCases: [(String, String)] = [
   ("blob:https://evil.example/1234-5678", "blob: evil.example"),
   ("file:///Users/me/Downloads/accounts.google.com.html", "file: accounts.google.com.html"),
   ("", ""),
+  ("view-source:https://www.github.com/a/b#c", "view-source:github.com"),
+  ("view-source:", "view-source:"),
+  ("view-source:about:blank", "view-source:about:blank"),
+  // IDN hosts stay punycode: no spoof checker, so a Cyrillic "а" never passes for a Latin one.
+  ("https://www.xn--pple-43d.com/", "xn--pple-43d.com"),
 ]
 for (input, expected) in pillCases where AddressInput.pillText(for: input) != expected {
   failures += 1
   print("FAIL pillText(\(input)) = \(AddressInput.pillText(for: input)), expected \(expected)")
+}
+// The page address bar: grey lead, host, grey trail. Full address shows the fragment as Chrome does; minimal shows
+// lead and host and the trail only on hover (the view decides that, from the same parts).
+typealias Parts = AddressInput.AddressParts
+let partsCases: [(String, Parts)] = [
+  ("https://github.com/mantrakp04/ardia/releases#release-v0.2.43-nightly.1",
+   Parts(host: "github.com", trail: "/mantrakp04/ardia/releases#release-v0.2.43-nightly.1")),
+  ("https://example.com/x?q=1&r=%20#sec%C3%A9", Parts(host: "example.com", trail: "/x?q=1&r=%20#sec%C3%A9")),
+  ("https://example.com/#top", Parts(host: "example.com", trail: "/#top")),
+  ("https://example.com/?q=1", Parts(host: "example.com", trail: "/?q=1")),
+  ("https://www.example.com/", Parts(host: "example.com")),
+  ("http://localhost:3000/a#b", Parts(host: "localhost:3000", trail: "/a#b")),
+  ("https://user:pass@example.com/x", Parts(host: "example.com", trail: "/x")),
+  ("view-source:https://github.com/mantrakp04/ardia/releases#release-v0.2.43-nightly.1",
+   Parts(lead: "view-source:", host: "github.com", trail: "/mantrakp04/ardia/releases#release-v0.2.43-nightly.1")),
+  ("view-source:https://www.example.com/", Parts(lead: "view-source:", host: "example.com")),
+  ("VIEW-SOURCE:https://example.com/", Parts(lead: "view-source:", host: "example.com")),
+  // `user:pass@` stays hidden inside view-source, and a lookalike host in the userinfo never leads.
+  ("view-source:https://accounts.google.com:pw@evil.example/x", Parts(lead: "view-source:", host: "evil.example", trail: "/x")),
+  ("view-source:http://127.0.0.1:8080/b?c", Parts(lead: "view-source:", host: "127.0.0.1:8080", trail: "/b?c")),
+  ("view-source:chrome://settings/help", Parts(lead: "view-source:", host: "ray://settings/help")),
+  ("view-source:about:blank", Parts(lead: "view-source:", host: "about:blank")),
+  ("view-source:view-source:https://example.com/", Parts(host: "view-source:")),
+  ("blob:https://evil.example/1234-5678", Parts(lead: "blob:", host: "evil.example", trail: "/1234-5678")),
+  ("blob:null/1234-5678", Parts(host: "blob:")),
+  ("filesystem:https://example.com/temporary/a.txt", Parts(lead: "filesystem:", host: "example.com", trail: "/temporary/a.txt")),
+  ("chrome://settings/help", Parts(host: "ray://settings/help")),
+  ("data:text/html,<h1>accounts.google.com</h1>", Parts(host: "data:")),
+  ("about:blank#////accounts.google.com", Parts(host: "about:blank")),
+  // IDN stays punycode, and a long host is all host (the view elides it from the start, never moving any to the trail).
+  ("https://www.xn--pple-43d.com/login", Parts(host: "xn--pple-43d.com", trail: "/login")),
+  ("https://bücher.example/x", Parts(host: "xn--bcher-kva.example", trail: "/x")),
+  ("https://" + String(repeating: "a", count: 60) + ".accounts.google.com." + String(repeating: "b", count: 60) + ".evil.example/p",
+   Parts(host: String(repeating: "a", count: 60) + ".accounts.google.com." + String(repeating: "b", count: 60) + ".evil.example", trail: "/p")),
+  ("", Parts()),
+]
+for (input, expected) in partsCases where AddressInput.addressParts(for: input) != expected {
+  failures += 1
+  print("FAIL addressParts(\(input)) = \(AddressInput.addressParts(for: input)), expected \(expected)")
 }
 let autocompleteCases: [(String, String?, String, Bool)] = [
   ("github.com", nil, "git", true),
@@ -100,6 +151,13 @@ let lookCases: [(String?, String, ConnectionLook)] = [
   ("mixed", "https://example.com/", .partly),
   ("secure", "https://example.com/", .quiet),
   ("none", "chrome://settings", .quiet),
+  // A view-source: or blob: address is judged by the URL inside it.
+  ("insecure", "view-source:http://localhost:3000/", .local),
+  ("insecure", "view-source:http://example.com/", .open),
+  (nil, "view-source:http://example.com/", .open),
+  ("certificateError", "view-source:https://example.com/", .broken),
+  ("secure", "view-source:https://example.com/", .quiet),
+  ("insecure", "blob:http://127.0.0.1:8080/1234", .local),
 ]
 for (level, url, expected) in lookCases where ConnectionLook.of(level: level, url: url) != expected {
   failures += 1
@@ -169,6 +227,6 @@ where (ProfileColor.parse(text) != nil) != valid {
   failures += 1
   print("FAIL parse(\(text)) validity")
 }
-let total = removedCases.count + foregroundCases.count + 7 + paneCases.count + cases.count + displayCases.count + pillCases.count + autocompleteCases.count + lookCases.count
+let total = removedCases.count + foregroundCases.count + 7 + paneCases.count + cases.count + displayCases.count + pillCases.count + partsCases.count + autocompleteCases.count + lookCases.count
 print(failures == 0 ? "all \(total) passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)

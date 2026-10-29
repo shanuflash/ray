@@ -14,6 +14,9 @@ enum AddressInput {
     guard !text.isEmpty else { return nil }
     if text.lowercased().hasPrefix(internalScheme + "://") {
       text = "chrome://" + text.dropFirst(internalScheme.count + 3)
+    } else if text.lowercased().hasPrefix(viewSource + internalScheme + "://") {
+      // The source of one of the engine's own pages, written as the address shows it (`display(for:)`).
+      text = viewSource + "chrome://" + text.dropFirst(viewSource.count + internalScheme.count + 3)
     }
     if let colon = text.firstIndex(of: ":") {
       let scheme = text[..<colon].lowercased()
@@ -98,11 +101,16 @@ enum AddressInput {
     if components?.scheme?.lowercased() == "chrome", let host = components?.host, !host.isEmpty {
       return internalScheme + "://" + host
     }
-    if let host = components?.host, !host.isEmpty {
+    // The ASCII (punycode) host, never the Unicode one: Ray has no IDN spoof checker, and a Cyrillic `аpple.com`
+    // must not read as apple.com.
+    if let host = components?.encodedHost, !host.isEmpty {
       return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
     let scheme = (components?.scheme ?? url.split(separator: ":").first.map(String.init) ?? "").lowercased()
     switch scheme {
+    case "view-source":
+      guard let inner = unwrapped(url)?.inner, URLComponents(string: inner)?.scheme != nil else { return viewSource }
+      return viewSource + pillText(for: inner)
     case "about":
       return "about:" + (components?.path ?? "")
     case "file":
@@ -116,6 +124,7 @@ enum AddressInput {
   }
 
   static func display(for url: String) -> String {
+    if let (wrapper, inner) = unwrapped(url) { return wrapper + display(for: inner) }
     guard var components = URLComponents(string: url), components.host != nil else { return url }
     components.user = nil
     components.password = nil
@@ -123,6 +132,67 @@ enum AddressInput {
     if components.scheme?.lowercased() == "chrome" { return internalScheme + text.dropFirst("chrome".count) }
     return text
   }
+
+  // MARK: Address display
+
+  static let viewSource = "view-source:"
+
+  /// Schemes whose address is another URL: Chrome shows the scheme, then the inner URL formatted as any other, with
+  /// its host as the emphasized part (`AutocompleteInput::ParseForEmphasizeComponents`, `url_formatter`'s
+  /// view-source case).
+  private static let wrapperSchemes = [viewSource, "blob:", "filesystem:"]
+
+  /// A `view-source:`, `blob:` or `filesystem:` address split into its wrapper (lowercased) and the URL inside; nil
+  /// for any other address. One level only, as in Chrome: an inner URL that is itself wrapped isn't taken apart.
+  static func unwrapped(_ url: String) -> (wrapper: String, inner: String)? {
+    let lower = url.lowercased()
+    guard let wrapper = wrapperSchemes.first(where: { lower.hasPrefix($0) }) else { return nil }
+    let inner = String(url.dropFirst(wrapper.count))
+    let innerLower = inner.lowercased()
+    guard !inner.isEmpty, !wrapperSchemes.contains(where: { innerLower.hasPrefix($0) }) else { return nil }
+    return (wrapper, inner)
+  }
+
+  /// The URL whose host an address is about: the inner one of a wrapped address (`unwrapped`), else the address.
+  /// The address is the engine's (the tab's URL), never anything a page said about itself.
+  static func innerURL(of url: String) -> String { unwrapped(url)?.inner ?? url }
+
+  /// The page address bar's text: a grey lead (the wrapper of a `view-source:` or `blob:` address), the host (no
+  /// scheme or www., port kept; medium weight), then the rest: path, query and fragment, percent-encoded as the URL
+  /// has them, grey. `user:pass@` never shows. A built-in page is all host, as ray://.
+  struct AddressParts: Equatable {
+    var lead = ""
+    var host = ""
+    var trail = ""
+    var text: String { lead + host + trail }
+  }
+
+  static func addressParts(for url: String) -> AddressParts {
+    guard !url.isEmpty else { return AddressParts() }
+    if let (wrapper, inner) = unwrapped(url) {
+      var parts = addressParts(for: inner)
+      // An inner part with no scheme (`blob:null/…`) is no URL to take apart.
+      guard URLComponents(string: inner)?.scheme != nil, !parts.host.isEmpty else {
+        return AddressParts(host: pillText(for: url))
+      }
+      parts.lead = wrapper + parts.lead
+      return parts
+    }
+    let shown = display(for: url)
+    guard let components = URLComponents(string: shown), let host = components.encodedHost, !host.isEmpty else {
+      return AddressParts(host: pillText(for: url))
+    }
+    if components.scheme == internalScheme { return AddressParts(host: shown) }
+    let bareHost = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    let port = components.port.map { ":\($0)" } ?? ""
+    var trail = components.percentEncodedPath == "/" ? "" : components.percentEncodedPath
+    if let query = components.percentEncodedQuery { trail += "?" + query }
+    if let fragment = components.percentEncodedFragment { trail += "#" + fragment }
+    if !trail.isEmpty, !trail.hasPrefix("/") { trail = "/" + trail }
+    return AddressParts(host: bareHost + port, trail: trail)
+  }
+
+  // MARK: Typed addresses
 
   private static func hostPart(of text: String) -> String? {
     let end = text.firstIndex(where: { "/?#".contains($0) }) ?? text.endIndex
@@ -162,8 +232,10 @@ enum ConnectionLook: Equatable {
   case quiet, local, open, partly, broken
 
   /// `level` is the engine's security level for the tab (`secure`, `mixed`, `insecure`, `certificateError`, …).
+  /// `url` is the tab's address; a `view-source:` or `blob:` one is judged by the URL inside, the page the engine's
+  /// level is for.
   static func of(level: String?, url: String) -> ConnectionLook {
-    let components = URLComponents(string: url)
+    let components = URLComponents(string: AddressInput.innerURL(of: url))
     let level = level ?? (components?.scheme == "http" ? "insecure" : "none")
     switch level {
     case "insecure", "certificateError":

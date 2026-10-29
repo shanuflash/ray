@@ -225,28 +225,41 @@ private final class ToolbarAddressView: NSView {
     render()
   }
 
-  private var parts = (host: "", trail: "")
+  private var parts = AddressInput.AddressParts()
+  /// Whether the host is too long for the field: it then loses its start, never its end (the part that names the
+  /// site), and the path doesn't show.
+  private var elidesHost = false
 
-  /// View › Show Full Address (on unless turned off): the path and query after the host, in grey. Off, they show
-  /// only while hovered, as in Dia.
+  /// View › Show Full Address (on unless turned off): the path, query and fragment after the host, in grey. Off,
+  /// they show only while hovered, as in Dia (and Chrome's hide-path-in-steady-state experiment).
   var showsFullAddress = true {
     didSet { if oldValue != showsFullAddress { render() } }
   }
 
-  /// The host in medium weight, as Ardia and Dia show it, then the rest of the address in grey. The host always
-  /// comes first and a long address loses its end, never the host.
+  private static let font = NSFont.systemFont(ofSize: 13)
+  private static let hostFont = NSFont.systemFont(ofSize: 13, weight: .medium)
+
+  /// The host in medium weight, as Ardia and Dia show it, then the rest of the address in grey; the wrapper of a
+  /// `view-source:` or `blob:` address goes before the host, grey too, as Chrome de-emphasizes it. A long address
+  /// loses its end, never the host; a host too long for the field loses its start.
   private func render() {
-    let font = NSFont.systemFont(ofSize: 13)
-    let shown = NSMutableAttributedString(string: parts.host, attributes: [
-      .font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.labelColor,
-    ])
-    if hovered || showsFullAddress, !parts.trail.isEmpty {
-      shown.append(NSAttributedString(string: parts.trail, attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]))
+    let grey: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: NSColor.secondaryLabelColor]
+    let shown = NSMutableAttributedString(string: parts.lead, attributes: grey)
+    shown.append(NSAttributedString(string: parts.host, attributes: [.font: Self.hostFont, .foregroundColor: NSColor.labelColor]))
+    if hovered || showsFullAddress, !parts.trail.isEmpty, !elidesHost {
+      shown.append(NSAttributedString(string: parts.trail, attributes: grey))
     }
     let style = NSMutableParagraphStyle()
-    style.lineBreakMode = .byTruncatingTail
+    style.lineBreakMode = elidesHost ? .byTruncatingHead : .byTruncatingTail
     shown.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: shown.length))
     label.attributedStringValue = shown
+  }
+
+  /// Whether the wrapper and host alone are wider than `width`.
+  private func hostOverflows(_ width: CGFloat) -> Bool {
+    let head = NSMutableAttributedString(string: parts.lead, attributes: [.font: Self.font])
+    head.append(NSAttributedString(string: parts.host, attributes: [.font: Self.hostFont]))
+    return ceil(head.size().width) > width
   }
 
   override func mouseDown(with event: NSEvent) { onClick?() }
@@ -255,7 +268,8 @@ private final class ToolbarAddressView: NSView {
     layoutSubtreeIfNeeded()
     return [
       "look": "\(look)", "icon": !securityIcon.isHidden, "textOffset": label.frame.midY - bounds.midY,
-      "shown": label.attributedStringValue.string,
+      "shown": label.attributedStringValue.string, "lead": parts.lead, "host": parts.host, "trail": parts.trail,
+      "elided": elidesHost ? "head" : "tail",
       "loading": wash.loading, "progress": wash.progress, "wash": wash.active, "washFinishing": wash.finishing,
       "washFraction": wash.fraction, "washColor": wash.lineColor,
       "progressSteps": wash.steps, "sweeps": wash.sweeps,
@@ -292,8 +306,8 @@ private final class ToolbarAddressView: NSView {
   }
 
   func show(url: String, security: String?) {
-    parts = Self.parts(for: url)
-    text = parts.host + parts.trail
+    parts = AddressInput.addressParts(for: url)
+    text = parts.text
     render()
     let look = ConnectionLook.of(level: security, url: url)
     securityIcon.image = look.symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: look.label) }
@@ -301,22 +315,6 @@ private final class ToolbarAddressView: NSView {
     securityIcon.isHidden = text.isEmpty || look.symbol == nil
     self.look = look
     needsLayout = true
-  }
-
-  /// Host (without www.) and the path and query, as Dia shows it; built-in pages as ray://. The path stays
-  /// percent-encoded, so lookalike characters can't pass for something else.
-  static func parts(for url: String) -> (host: String, trail: String) {
-    guard !url.isEmpty else { return ("", "") }
-    let shown = AddressInput.display(for: url)
-    guard let components = URLComponents(string: shown), let host = components.host, !host.isEmpty else {
-      return (AddressInput.pillText(for: url), "")
-    }
-    if components.scheme == AddressInput.internalScheme { return (shown, "") }
-    let bareHost = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-    let port = components.port.map { ":\($0)" } ?? ""
-    let path = components.percentEncodedPath == "/" ? "" : components.percentEncodedPath
-    let query = components.percentEncodedQuery.map { "?\($0)" } ?? ""
-    return (bareHost + port, path.isEmpty && !query.isEmpty ? "/" + query : path + query)
   }
 
   override func layout() {
@@ -329,6 +327,11 @@ private final class ToolbarAddressView: NSView {
     // One line tall, so the text sits on the middle (a label draws from its frame's top).
     let line = ceil(label.intrinsicContentSize.height)
     label.frame = NSRect(x: x, y: (mid - line / 2).rounded(), width: max(0, bounds.width - x - 8), height: line)
+    let elides = label.frame.width > 0 && hostOverflows(label.frame.width)
+    if elides != elidesHost {
+      elidesHost = elides
+      render()
+    }
   }
 }
 

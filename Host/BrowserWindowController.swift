@@ -678,7 +678,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
                    enabled: state?["enabled"] as? Bool ?? true)
     }
     let level = tab.securityInfo["level"] as? String ?? "none"
-    let isInternal = URLComponents(string: tab.url)?.scheme.map { ["chrome", AddressInput.internalScheme].contains($0) } ?? false
+    let isInternal = URLComponents(string: AddressInput.innerURL(of: tab.url))?.scheme.map { ["chrome", AddressInput.internalScheme].contains($0) } ?? false
     let panel = SiteControlsView(
       origin: tab.committedOrigin, url: tab.url, profile: profile, security: level, isInternal: isInternal, extensions: items,
       zoom: tab.zoomFactor, defaultZoom: RaySettings.shared.values.defaultZoom,
