@@ -260,10 +260,10 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
   @objc func togglePin(_ sender: Any?) { current?.togglePin() }
   @objc func backToPinned(_ sender: Any?) { current?.backToPinned() }
   @objc func clearToday(_ sender: Any?) { current?.clearToday() }
-  @objc func reload(_ sender: Any?) { current?.activeTab?.reload() }
-  @objc func reloadIgnoringCache(_ sender: Any?) { current?.activeTab?.reloadIgnoringCache() }
-  @objc func goBack(_ sender: Any?) { current?.activeTab?.goBack() }
-  @objc func goForward(_ sender: Any?) { current?.activeTab?.goForward() }
+  @objc func reload(_ sender: Any?) { current?.activeTab?.userReload() }
+  @objc func reloadIgnoringCache(_ sender: Any?) { current?.activeTab?.userReloadIgnoringCache() }
+  @objc func goBack(_ sender: Any?) { current?.activeTab?.userGoBack() }
+  @objc func goForward(_ sender: Any?) { current?.activeTab?.userGoForward() }
   @objc func toggleDevTools(_ sender: Any?) { current?.toggleDevTools() }
   @objc func printPage(_ sender: Any?) { current?.runChromeCommand(.print) }
   @objc func printWithSystemDialog(_ sender: Any?) { current?.runChromeCommand(.systemPrint) }

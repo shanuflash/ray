@@ -329,6 +329,28 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     return (try? png.write(to: URL(fileURLWithPath: path))) != nil
   }
 
+  /// For tests: a burst of the page toolbar's address field, `count` PNGs `interval` seconds apart into `folder`
+  /// (`field-00.png`, …), in the dark appearance (Dia's recordings are dark), to compare the loading sweep's motion
+  /// frame by frame. Hidden test windows can't be screen recorded; this draws the layers' presentation instead.
+  func snapshotAddressBurst(to folder: String, count: Int, interval: TimeInterval) -> Bool {
+    guard toolbarShown, count > 0 else { return false }
+    try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+    let old = toolbar.appearance
+    toolbar.appearance = NSAppearance(named: .darkAqua)
+    var taken = 0
+    Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] timer in
+      guard let self else { return timer.invalidate() }
+      _ = self.toolbar.snapshotAddress(to: (folder as NSString).appendingPathComponent(String(format: "field-%02d.png", taken)))
+      taken += 1
+      if taken >= count {
+        timer.invalidate()
+        self.toolbar.appearance = old
+        TestEnvironment.log("field burst done (\(taken))")
+      }
+    }
+    return true
+  }
+
   /// For tests: draws the open downloads list into a PNG, to look at its design.
   func snapshotDownloads(to path: String) -> Bool {
     guard let panel = sidebar.downloadsPanel else { return false }
@@ -730,7 +752,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       alert.beginSheetModal(for: window) { [weak self, weak tab] response in
         guard response == .alertSecondButtonReturn, let self else { return }
         EngineCalls.call("ac_site_data_clear", profile: self.profile, args: ["origin": origin]) { [weak self] _ in
-          tab?.reload()
+          tab?.userReload()
           self?.showToast("Cleared Site Data")
         }
       }
@@ -964,7 +986,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       return
     case .backToPinned:
       if let target = entry.pinnedURL, let tab = entry.tab, entry.isLive {
-        tab.loadURL(target, userInitiated: true)
+        tab.userLoad(target)
       }
       return
     case .pin:
@@ -1183,10 +1205,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     updateToolbarLoading()
   }
 
-  /// The active tab's load in the address field and the reload button; other tabs' loads aren't drawn.
+  /// The active tab's load in the reload button, and its navigation's sweep (`LoadSweeps`) in the address field;
+  /// other tabs' loads aren't drawn.
   private func updateToolbarLoading() {
     let tab = activeTab
-    toolbar.showLoading(tab?.loading ?? false, progress: tab?.progress ?? 0, tab: tab.map { Int($0.tabId) } ?? -1)
+    toolbar.showLoading(tab?.loading ?? false, sweep: tab.map { LoadSweeps.shared.sweep(for: $0) } ?? .init(),
+                        progress: tab?.progress ?? 0, tab: tab.map { Int($0.tabId) } ?? -1)
   }
 
   /// Settings › Minimal URL in the address bar, the other way round.
@@ -1207,9 +1231,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func toolbarToggleSidebar(_ toolbar: PageToolbarView) { toggleSidebar() }
-  func toolbarBack(_ toolbar: PageToolbarView) { activeTab?.goBack() }
-  func toolbarForward(_ toolbar: PageToolbarView) { activeTab?.goForward() }
-  func toolbarReload(_ toolbar: PageToolbarView) { activeTab?.reload() }
+  func toolbarBack(_ toolbar: PageToolbarView) { activeTab?.userGoBack() }
+  func toolbarForward(_ toolbar: PageToolbarView) { activeTab?.userGoForward() }
+  func toolbarReload(_ toolbar: PageToolbarView) { activeTab?.userReload() }
   func toolbarStop(_ toolbar: PageToolbarView) { activeTab?.stop() }
   func toolbarEditAddress(_ toolbar: PageToolbarView) { focusAddress() }
   func toolbarCopyLink(_ toolbar: PageToolbarView) { copyURL() }
@@ -1438,7 +1462,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if mode == .newTab || activeTab == nil {
       openToday(url, after: nil, foreground: true)
     } else if let tab = activeTab {
-      tab.loadURL(url, userInitiated: true)
+      tab.userLoad(url)
       focusPage(tab)
     }
   }
@@ -1492,9 +1516,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func sidebarNewTab(_ sidebar: SidebarView) { beginNewTab() }
   func sidebarOpenAddress(_ sidebar: SidebarView) { focusAddress() }
   func sidebarToggle(_ sidebar: SidebarView) { toggleSidebar() }
-  func sidebarBack(_ sidebar: SidebarView) { activeTab?.goBack() }
-  func sidebarForward(_ sidebar: SidebarView) { activeTab?.goForward() }
-  func sidebarReload(_ sidebar: SidebarView) { activeTab?.reload() }
+  func sidebarBack(_ sidebar: SidebarView) { activeTab?.userGoBack() }
+  func sidebarForward(_ sidebar: SidebarView) { activeTab?.userGoForward() }
+  func sidebarReload(_ sidebar: SidebarView) { activeTab?.userReload() }
 
   func sidebarIcon(for entry: SidebarEntry) -> NSImage? {
     if entry.isLive, let icon = entry.tab?.favicon { return icon }
@@ -1614,6 +1638,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func tabDidChangeSecurity(_ tab: RayCoreTab) { tabChanged(tab, event: "security") }
 
   func tabDidCommitDocument(_ tab: RayCoreTab) {
+    // A document the page navigated to by itself gets its sweep from here.
+    LoadSweeps.shared.documentCommitted(tab)
+    if tab === activeTab { updateToolbarLoading() }
     // On the next turn of the run loop, by which time the engine has set its own zoom for the new page.
     DispatchQueue.main.async { [weak self, weak tab] in
       guard let self, let tab else { return }
@@ -1629,6 +1656,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func tabDidChangeLoading(_ tab: RayCoreTab) {
+    LoadSweeps.shared.loadingChanged(tab)
     pages.updateProgress(for: tab)
     if tab === activeTab { updateToolbarLoading() }
     if !tab.loading { TestEnvironment.log("tab \(tab.tabId) loaded \(tab.url)") }
@@ -1636,6 +1664,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func tabDidChangeProgress(_ tab: RayCoreTab) {
+    LoadSweeps.shared.progressChanged(tab)
     pages.updateProgress(for: tab)
     if tab === activeTab {
       updateToolbarLoading()

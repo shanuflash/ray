@@ -339,6 +339,11 @@ enum TestCommands {
       if AppController.shared.current?.snapshotToolbar(to: argument) != true { result = "no toolbar" }
     case "barsnap":
       if AppController.shared.current?.snapshotCommandBar(to: argument) != true { result = "no command bar" }
+    case "fieldburst":
+      // fieldburst <count> <ms> <folder>: the address field, every <ms>, while a page loads.
+      let parts = argument.split(separator: " ", maxSplits: 2).map(String.init)
+      if parts.count != 3 || AppController.shared.current?.snapshotAddressBurst(
+        to: parts[2], count: Int(parts[0]) ?? 0, interval: (Double(parts[1]) ?? 0) / 1000) != true { result = "no toolbar" }
     case "toolbarreload":
       // The toolbar's reload button, which is a stop button while the page loads.
       AppController.shared.current?.pressToolbarReload()

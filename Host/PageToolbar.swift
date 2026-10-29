@@ -79,10 +79,11 @@ final class PageToolbarView: NSView {
     needsLayout = true
   }
 
-  /// The active tab's load, drawn in the address field as a wash that fills in from the left. `tab` identifies the
-  /// tab: another one shows its own state at once, with no animation from the old tab's width.
-  func showLoading(_ loading: Bool, progress: Double, tab: Int) {
-    address.showLoading(loading, progress: progress, tab: tab)
+  /// The active tab's load: the reload button is a stop button while it loads, and its navigation's sweep
+  /// (`LoadSweeps`) is drawn in the address field. `tab` identifies the tab: another one shows its own state at
+  /// once, with no animation from the old tab's width.
+  func showLoading(_ loading: Bool, sweep: LoadSweeps.Sweep, progress: Double, tab: Int) {
+    address.showLoading(loading, sweep: sweep, progress: progress, tab: tab)
     guard loading != isStopping else { return }
     isStopping = loading
     reloadButton.image = NSImage(
@@ -109,6 +110,32 @@ final class PageToolbarView: NSView {
 
   /// For tests: the reload/stop button's own action (the button hides while the sidebar is docked).
   func pressReload() { reload() }
+
+  /// For tests: the address field as it is on screen this moment (mid-animation too: it draws the layers'
+  /// presentation), at 2x, into a PNG.
+  func snapshotAddress(to path: String) -> Bool {
+    guard let layer = address.layer else { return false }
+    let shown = layer.presentation() ?? layer
+    let size = address.bounds.size, scale: CGFloat = 2
+    guard size.width > 0, size.height > 0,
+          let context = CGContext(data: nil, width: Int(size.width * scale), height: Int(size.height * scale),
+                                  bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+    // The window's own colour behind the field, as on screen.
+    var background = NSColor.windowBackgroundColor.cgColor
+    effectiveAppearance.performAsCurrentDrawingAppearance { background = SidebarColors.background.cgColor }
+    context.setFillColor(background)
+    context.fill(CGRect(x: 0, y: 0, width: size.width * scale, height: size.height * scale))
+    context.scaleBy(x: scale, y: scale)
+    // The field is flipped: draw it top down.
+    context.translateBy(x: 0, y: size.height)
+    context.scaleBy(x: 1, y: -1)
+    shown.render(in: context)
+    guard let image = context.makeImage() else { return false }
+    let rep = NSBitmapImageRep(cgImage: image)
+    guard let png = rep.representation(using: .png, properties: [:]) else { return false }
+    return (try? png.write(to: URL(fileURLWithPath: path))) != nil
+  }
 
   @objc private func toggleSidebar() { delegate?.toolbarToggleSidebar(self) }
   @objc private func back() { delegate?.toolbarBack(self) }
@@ -231,19 +258,25 @@ private final class ToolbarAddressView: NSView {
       "shown": label.attributedStringValue.string,
       "loading": wash.loading, "progress": wash.progress, "wash": wash.active, "washFinishing": wash.finishing,
       "washFraction": wash.fraction, "washColor": wash.lineColor,
-      "progressSteps": wash.steps,
+      "progressSteps": wash.steps, "sweeps": wash.sweeps,
     ]
   }
 
   /// Settings › Show loading progress in the address bar. Turning it off mid-load ends the wash like a finished load.
   var showsLoadingWash = true {
-    didSet { if oldValue != showsLoadingWash { showLoading(lastLoad.loading, progress: lastLoad.progress, tab: lastLoad.tab) } }
+    didSet {
+      if oldValue != showsLoadingWash {
+        showLoading(lastLoad.loading, sweep: lastLoad.sweep, progress: lastLoad.progress, tab: lastLoad.tab)
+      }
+    }
   }
-  private var lastLoad = (loading: false, progress: 0.0, tab: -1)
+  private var lastLoad = (loading: false, sweep: LoadSweeps.Sweep(), progress: 0.0, tab: -1)
 
-  func showLoading(_ loading: Bool, progress: Double, tab: Int) {
-    lastLoad = (loading, progress, tab)
-    wash.update(loading: loading && showsLoadingWash, progress: progress, tab: tab)
+  func showLoading(_ loading: Bool, sweep: LoadSweeps.Sweep, progress: Double, tab: Int) {
+    lastLoad = (loading, sweep, progress, tab)
+    var shown = sweep
+    shown.running = sweep.running && showsLoadingWash
+    wash.update(loading: loading, sweep: shown, progress: progress, tab: tab)
   }
 
   func refreshAccent() { wash.applyTint(for: effectiveAppearance) }
@@ -251,6 +284,11 @@ private final class ToolbarAddressView: NSView {
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
     wash.applyTint(for: effectiveAppearance)
+  }
+
+  override func viewDidChangeBackingProperties() {
+    super.viewDidChangeBackingProperties()
+    needsLayout = true
   }
 
   func show(url: String, security: String?) {
@@ -283,7 +321,7 @@ private final class ToolbarAddressView: NSView {
 
   override func layout() {
     super.layout()
-    wash.layout(in: bounds, appearance: effectiveAppearance)
+    wash.layout(in: bounds, scale: window?.backingScaleFactor ?? 2, appearance: effectiveAppearance)
     let mid = bounds.height / 2
     // Ardia's lock: 7 pt in, 18 wide, the text 3 pt after it.
     securityIcon.frame = NSRect(x: 7, y: (mid - 9).rounded(), width: 18, height: 18)
@@ -360,43 +398,50 @@ struct LoadingTint {
   }
 }
 
-/// The page-load look inside the address field, from Core Animation layers only. A lavender wash the field's full
-/// height with a thin line along its bottom edge, both on one `sweep` layer whose leading edge is feathered; the
-/// sweep slides in from the left in eased steps as the load's progress rises (never backwards), runs to the full
-/// width when the page finishes, then fades. Switching tabs snaps to the new tab's state.
+/// The page-load look inside the address field, as Dia draws it (measured from a recording of Dia, dark, at 120 fps):
+/// a 1 pt line along the field's bottom edge with a crisp leading end, and a glow over it that is strongest just
+/// above the line and fades toward the top. Both are brightest at the leading end and fade out about one field
+/// width behind it, so at full width the left end has nearly gone; a faint halo runs a little ahead of the end.
+/// One sweep per navigation (`LoadSweeps`): it fades in at the left as it starts, moves right in eased steps as the
+/// load's progress rises (never backwards), runs out to the full width at the end, holds a moment and fades while
+/// drifting on. Switching tabs snaps to the new tab's state.
+///
+/// One Core Animation layer, `sweep`, whose contents are that look drawn once per size, scale and colour; a load
+/// only moves it (`position.x`) and fades it (`opacity`).
 private final class LoadingWash {
   /// Clips to the field's rounded rect.
   let host = CALayer()
   private let sweep = CALayer()
-  private let fill = CAGradientLayer()
-  /// Fades the wash toward the field's top.
-  private let fillFade = CAGradientLayer()
-  private let line = CAGradientLayer()
-  /// Feathers the sweep's leading edge (wash and line alike).
-  private let feather = CAGradientLayer()
 
-  static let feather: CGFloat = 120
-  static let lineHeight: CGFloat = 1
-  /// Ardia's minimum is 8%; a little more so the first step shows.
-  static let minimum = 0.1
-  static let stepDuration: CFTimeInterval = 0.4
-  static let finishDuration: CFTimeInterval = 0.3
-  static let fadeDuration: CFTimeInterval = 0.35
+  /// The halo ahead of the leading end.
+  static let halo: CGFloat = 48
+  static let fadeInDuration: CFTimeInterval = 0.12
+  static let stepDuration: CFTimeInterval = 0.3
+  /// The run out to the full width, then the drift on while it fades (Dia: full width, ~0.1 s, then a 0.15 s fade).
+  static let runOutDuration: CFTimeInterval = 0.3
+  static let fadeDelay: CFTimeInterval = 0.38
+  static let fadeDuration: CFTimeInterval = 0.15
+  static let drift = 0.12
 
+  /// The tab is loading (the state log's `loading`; the sweep can end before the tab stops).
   private(set) var loading = false
-  /// The last progress the engine reported while loading, for the state log.
+  /// The tab's progress as the engine reports it, for the state log.
   private(set) var progress = 0.0
-  /// The wash is showing: from a load's start until the page has finished.
+  /// A sweep is showing: from its start until it ends.
   private(set) var active = false
-  /// The run to full width and the fade are still going (they don't tick while the window is off screen).
+  /// The run out and the fade are still going (they don't tick while the window is off screen).
   private(set) var finishing = false
-  /// Where the leading edge is heading, 0...1 of the field plus its feather.
+  /// Where the leading end is heading, 0...1 of the field's width.
   private(set) var fraction = 0.0
-  /// Distinct progress steps drawn for the last load.
+  /// Distinct progress steps drawn for the last sweep.
   private(set) var steps = 0
+  /// Sweeps the shown tab has started.
+  private(set) var sweeps = 0
   private var tab: Int?
   private var size = CGSize.zero
+  private var scale: CGFloat = 2
   private var generation = 0
+  private var lineColours: [CGColor] = []
 
   init() {
     host.masksToBounds = true
@@ -404,25 +449,11 @@ private final class LoadingWash {
     host.cornerCurve = .continuous
     sweep.anchorPoint = .zero
     sweep.opacity = 0
-    for ramp in [fill, line] {
-      ramp.startPoint = CGPoint(x: 0, y: 0.5)
-      ramp.endPoint = CGPoint(x: 1, y: 0.5)
-      sweep.addSublayer(ramp)
-    }
-    // The field is a flipped view, so its sublayers run top down (its layer's isGeometryFlipped doesn't say so).
-    fillFade.startPoint = CGPoint(x: 0.5, y: 0)
-    fillFade.endPoint = CGPoint(x: 0.5, y: 1)
-    fill.mask = fillFade
-    feather.startPoint = CGPoint(x: 0, y: 0.5)
-    feather.endPoint = CGPoint(x: 1, y: 0.5)
-    feather.colors = [CGColor.black, CGColor.black, CGColor.clear]
-    sweep.mask = feather
+    sweep.contentsGravity = .resize
     host.addSublayer(sweep)
   }
 
-  /// The sweep is as wide as the field plus the feather, so at 1 the solid part just covers the field.
-  private var travel: CGFloat { size.width + Self.feather }
-  private func origin(_ fraction: Double) -> CGFloat { (CGFloat(fraction) - 1) * travel }
+  private func origin(_ fraction: Double) -> CGFloat { ((CGFloat(fraction) - 1) * size.width).rounded() }
   private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
   private func quietly(_ body: () -> Void) {
@@ -432,36 +463,22 @@ private final class LoadingWash {
     CATransaction.commit()
   }
 
-  func layout(in bounds: NSRect, appearance: NSAppearance) {
-    guard size != bounds.size else { return }
+  func layout(in bounds: NSRect, scale newScale: CGFloat, appearance: NSAppearance) {
+    guard size != bounds.size || scale != newScale else { return }
     size = bounds.size
-    applyTint(for: appearance)
+    scale = newScale
     quietly {
       host.frame = bounds
-      sweep.bounds = CGRect(x: 0, y: 0, width: travel, height: bounds.height)
-      fill.frame = sweep.bounds
-      fillFade.frame = fill.bounds
-      placeRamps()
-      let lineHeight = Self.lineHeight
-      line.frame = CGRect(x: 0, y: bounds.height - lineHeight, width: travel, height: lineHeight)
-      feather.frame = sweep.bounds
-      feather.locations = [0, NSNumber(value: Double(1 - Self.feather / travel)), 1]
+      sweep.bounds = CGRect(x: 0, y: 0, width: bounds.width + Self.halo, height: bounds.height)
+      sweep.contentsScale = scale
       sweep.position = CGPoint(x: origin(active || finishing ? fraction : 0), y: 0)
     }
-  }
-
-  /// The colour ramps run across the solid part, ending at the leading edge where the feather starts.
-  private func placeRamps() {
-    let solid = Double(1 - Self.feather / travel)
-    for ramp in [fill, line] {
-      let count = ramp.colors?.count ?? 0
-      ramp.locations = count > 1 ? (0..<count).map { NSNumber(value: solid * Double($0) / Double(count - 1)) } : nil
-    }
+    applyTint(for: appearance)
   }
 
   /// For tests: the leading end of the line, as `#RRGGBB`, so a theme change can be seen in what's drawn.
   var lineColor: String {
-    guard let cg = line.colors?.last, let color = NSColor(cgColor: cg as! CGColor) else { return "" }
+    guard let cg = lineColours.last, let color = NSColor(cgColor: cg) else { return "" }
     return ProfileColor.hex(of: color.withAlphaComponent(1))
   }
 
@@ -471,33 +488,29 @@ private final class LoadingWash {
     appearance.performAsCurrentDrawingAppearance {
       colours = (tint.wash.map(\.cgColor), tint.line.map(\.cgColor))
     }
-    quietly {
-      fill.colors = colours.wash
-      line.colors = colours.line
-      fillFade.colors = [CGColor(gray: 0, alpha: CGFloat(tint.topFade)), CGColor.black]
-    }
-    if size.width > 0 { quietly { placeRamps() } }
+    lineColours = colours.line
+    guard size.width > 0, size.height > 0 else { return }
+    let image = Self.draw(width: size.width, height: size.height, scale: scale, wash: colours.wash, line: colours.line)
+    quietly { sweep.contents = image }
   }
 
-  func update(loading now: Bool, progress reported: Double, tab id: Int) {
-    let target = min(1, max(Self.minimum, reported))
-    if now { progress = reported }
+  func update(loading now: Bool, sweep shown: LoadSweeps.Sweep, progress reported: Double, tab id: Int) {
+    loading = now
+    progress = reported
+    sweeps = shown.count
+    let target = min(1, max(LoadSweeps.minimum, shown.progress))
     if id != tab {
       tab = id
-      snap(loading: now, to: target)
-    } else if now {
-      if !loading {
+      snap(running: shown.running, to: target)
+    } else if shown.running {
+      if !active {
         begin(at: target)
-      } else if target > fraction + 0.01 {
+      } else if target > fraction + 0.005 {
         advance(to: target)
-      } else if target < fraction - 0.2 {
-        // A new navigation while loading: start again from the left, never run backwards.
-        begin(at: target)
       }
-    } else if loading {
+    } else if active {
       finish()
     }
-    loading = now
   }
 
   private func begin(at target: Double) {
@@ -511,7 +524,15 @@ private final class LoadingWash {
       sweep.opacity = 1
       sweep.position = CGPoint(x: origin(reduceMotion ? target : 0), y: 0)
     }
-    if !reduceMotion { slide(to: target) }
+    guard !reduceMotion else { return }
+    let fadeIn = CABasicAnimation(keyPath: "opacity")
+    fadeIn.fromValue = 0
+    fadeIn.toValue = 1
+    fadeIn.duration = Self.fadeInDuration
+    fadeIn.timingFunction = CAMediaTimingFunction(name: .easeOut)
+    sweep.add(fadeIn, forKey: "fadeIn")
+    // From the left edge: the presentation still shows wherever the last sweep was until this transaction commits.
+    slide(to: target, from: origin(0))
   }
 
   private func advance(to target: Double) {
@@ -521,27 +542,23 @@ private final class LoadingWash {
   }
 
   /// One eased step, from wherever the sweep is drawn right now.
-  private func slide(to target: Double) {
+  private func slide(to target: Double, from start: CGFloat? = nil) {
+    let to = origin(target)
     guard !reduceMotion else {
-      quietly { sweep.position = CGPoint(x: origin(target), y: 0) }
+      quietly { sweep.position = CGPoint(x: to, y: 0) }
       return
     }
-    let from = sweep.presentation()?.position.x ?? sweep.position.x
-    let to = origin(target)
+    let from = start ?? sweep.presentation()?.position.x ?? sweep.position.x
     quietly { sweep.position = CGPoint(x: to, y: 0) }
-    sweep.add(Self.step(from: from, to: to, duration: Self.stepDuration), forKey: "step")
-  }
-
-  private static func step(from: CGFloat, to: CGFloat, duration: CFTimeInterval) -> CABasicAnimation {
     let step = CABasicAnimation(keyPath: "position.x")
     step.fromValue = from
     step.toValue = to
-    step.duration = duration
-    step.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.7, 0.2, 1)
-    return step
+    step.duration = Self.stepDuration
+    step.timingFunction = CAMediaTimingFunction(controlPoints: 0.25, 0.6, 0.3, 1)
+    sweep.add(step, forKey: "step")
   }
 
-  /// Run to the full width, then fade (Reduce Motion: just the fade).
+  /// Run out to the full width, hold a moment, then fade while drifting on (Reduce Motion: just the fade).
   private func finish() {
     generation += 1
     let mine = generation
@@ -550,7 +567,7 @@ private final class LoadingWash {
     finishing = true
     let from = sweep.presentation()?.position.x ?? sweep.position.x
     let fromOpacity = sweep.presentation()?.opacity ?? sweep.opacity
-    let run = reduceMotion ? 0 : Self.finishDuration
+    let total = Self.fadeDelay + Self.fadeDuration
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     CATransaction.setCompletionBlock { [weak self] in
@@ -561,14 +578,24 @@ private final class LoadingWash {
         self.sweep.position = CGPoint(x: self.origin(0), y: 0)
       }
     }
-    sweep.position = CGPoint(x: origin(1), y: 0)
+    sweep.removeAnimation(forKey: "step")
     sweep.opacity = 0
-    if !reduceMotion { sweep.add(Self.step(from: from, to: origin(1), duration: run), forKey: "step") }
+    if reduceMotion {
+      sweep.position = CGPoint(x: origin(1), y: 0)
+    } else {
+      sweep.position = CGPoint(x: origin(1 + Self.drift), y: 0)
+      let run = CAKeyframeAnimation(keyPath: "position.x")
+      run.values = [from, origin(1), origin(1 + Self.drift)]
+      run.keyTimes = [0, NSNumber(value: Self.runOutDuration / total), 1]
+      run.timingFunctions = [CAMediaTimingFunction(controlPoints: 0.25, 0.6, 0.3, 1), CAMediaTimingFunction(name: .linear)]
+      run.duration = total
+      sweep.add(run, forKey: "step")
+    }
     let fade = CABasicAnimation(keyPath: "opacity")
     fade.fromValue = fromOpacity
     fade.toValue = 0
     fade.duration = Self.fadeDuration
-    fade.beginTime = sweep.convertTime(CACurrentMediaTime(), from: nil) + run * 0.8
+    fade.beginTime = sweep.convertTime(CACurrentMediaTime(), from: nil) + (reduceMotion ? 0 : Self.fadeDelay)
     fade.fillMode = .backwards
     fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
     sweep.add(fade, forKey: "fade")
@@ -576,16 +603,105 @@ private final class LoadingWash {
   }
 
   /// Another tab: its state at once.
-  private func snap(loading now: Bool, to target: Double) {
+  private func snap(running now: Bool, to target: Double) {
     generation += 1
     active = now
     finishing = false
     fraction = now ? target : 0
-    if now { steps = 1 }
+    steps = now ? 1 : 0
     quietly {
       sweep.removeAllAnimations()
       sweep.opacity = now ? 1 : 0
-      sweep.position = CGPoint(x: origin(now ? target : 0), y: 0)
+      sweep.position = CGPoint(x: origin(fraction), y: 0)
     }
+  }
+
+  // MARK: The look
+
+  /// Brightness along the sweep by distance behind the leading end, in field widths (Dia's line, measured).
+  private static let trail: [(distance: CGFloat, level: CGFloat)] = [
+    (0, 1), (0.2, 0.91), (0.4, 0.73), (0.6, 0.53), (0.8, 0.33), (1, 0.06),
+  ]
+
+  private static func trailLevel(_ distance: CGFloat) -> CGFloat {
+    guard distance > 0 else { return 1 }
+    for (a, b) in zip(trail, trail.dropFirst()) where distance <= b.distance {
+      return a.level + (b.level - a.level) * (distance - a.distance) / (b.distance - a.distance)
+    }
+    return trail.last!.level
+  }
+
+  /// The glow by height above the bottom edge, in points: a tight part hugging the line and a broad one that
+  /// reaches the top (Dia: about half as strong 3.5 pt up, a fifth at mid-height, a tenth at the top).
+  private static func glowLevel(_ height: CGFloat) -> CGFloat {
+    (0.6 * exp(-height / 1.8) + 0.4 * exp(-height / 16)) / 0.723
+  }
+
+  /// RGBA (sRGB) of a ramp of colours at 0...1 along it.
+  private static func ramp(_ colours: [[CGFloat]], at t: CGFloat) -> [CGFloat] {
+    guard colours.count > 1 else { return colours.first ?? [0, 0, 0, 0] }
+    let at = min(1, max(0, t)) * CGFloat(colours.count - 1)
+    let i = min(colours.count - 2, Int(at))
+    let f = at - CGFloat(i)
+    return (0..<4).map { colours[i][$0] + (colours[i + 1][$0] - colours[i][$0]) * f }
+  }
+
+  private static func components(_ colours: [CGColor]) -> [[CGFloat]] {
+    let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+    return colours.map { colour in
+      let c = colour.converted(to: srgb, intent: .defaultIntent, options: nil)?.components ?? [0, 0, 0, 0]
+      return c.count >= 4 ? Array(c.prefix(4)) : [c[0], c[0], c[0], c.last ?? 1]
+    }
+  }
+
+  /// The sweep's picture: the field's width plus the halo, the leading end at `width`. `wash` and `line` are
+  /// `LoadingTint`'s ramps, trailing end to leading end. Only their colours are read; every point's strength is
+  /// its ramp's leading end times `trail`, so the falloff is Dia's measured one.
+  static func draw(width: CGFloat, height: CGFloat, scale: CGFloat, wash: [CGColor], line: [CGColor]) -> CGImage? {
+    let pw = Int(((width + halo) * scale).rounded(.up)), ph = Int((height * scale).rounded(.up))
+    guard pw > 0, ph > 0,
+          let context = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8, bytesPerRow: pw * 4,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+          let data = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+    // Hues from the ramps; strength from their leading ends, falling off behind it as Dia's does (`trail`).
+    let washRamp = components(wash), lineRamp = components(line)
+    let washPeak = washRamp.last?[3] ?? 0, linePeak = lineRamp.last?[3] ?? 0
+    // Per row, from the top: the glow, and how much of the 1 pt line the row covers (its lower half full, its
+    // upper half a little under half, as Dia's two device pixels are).
+    let rows: [(glow: CGFloat, line: CGFloat)] = (0..<ph).map { j in
+      let top = (CGFloat(ph - j)) / scale, bottom = (CGFloat(ph - j - 1)) / scale
+      func overlap(_ a: CGFloat, _ b: CGFloat) -> CGFloat { max(0, min(top, b) - max(bottom, a)) }
+      let line = (overlap(0, 0.5) + 0.45 * overlap(0.5, 1)) * scale
+      return (glowLevel((top + bottom) / 2), line)
+    }
+    for i in 0..<pw {
+      let x = (CGFloat(i) + 0.5) / scale
+      let along: CGFloat, glowAlong: CGFloat, lineAlong: CGFloat
+      if x <= width {
+        along = x / width
+        glowAlong = trailLevel(1 - along)
+        // A crisp end, a point and a half of antialiasing.
+        lineAlong = glowAlong * min(1, (width - x) / 1.5 + 0.25)
+      } else {
+        along = 1
+        let u = (x - width) / halo
+        glowAlong = 0.45 * (1 - u) * (1 - u)
+        lineAlong = 0
+      }
+      let w = ramp(washRamp, at: along), l = ramp(lineRamp, at: along)
+      for j in 0..<ph {
+        let glowAlpha = min(1, washPeak * glowAlong * rows[j].glow)
+        let lineAlpha = min(1, linePeak * lineAlong * rows[j].line)
+        let alpha = lineAlpha + glowAlpha * (1 - lineAlpha)
+        let p = (j * pw + i) * 4
+        for c in 0..<3 {
+          let v = l[c] * lineAlpha + w[c] * glowAlpha * (1 - lineAlpha)
+          data[p + c] = UInt8(max(0, min(255, (v * 255).rounded())))
+        }
+        data[p + 3] = UInt8(max(0, min(255, (alpha * 255).rounded())))
+      }
+    }
+    return context.makeImage()
   }
 }

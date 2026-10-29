@@ -42,6 +42,16 @@ const pages = {
   "/a": `<title>Page A</title><a id=blank href="/b" target="_blank">blank</a> <a id=plain href="/b">plain</a>
          <button id=open onclick="window.open('/c')">open</button>`,
   "/b": `<title>Page B</title><p>b</p>`,
+  // A page that loads a slow frame while it loads, then adds another and moves its own address after it has loaded
+  // (as web apps do): one navigation, however many times the tab counts as loading.
+  "/late-frames": `<title>Late frames</title><p>late frames</p><a id=next href="/slow?linked">next</a>
+    <iframe src="/slow?inner"></iframe>
+    <script>addEventListener("load", () => setTimeout(() => {
+      history.pushState({}, "", "?pushed");
+      const frame = document.createElement("iframe");
+      frame.src = "/slow?late";
+      document.body.append(frame);
+    }, 300));</script>`,
   "/c": `<title>Page C</title><button id=close onclick="window.close()">close</button>`,
   "/h": `<title>Hist Page</title><p>history</p>`,
   "/find": `<title>Find</title><p>banana one</p><p>apple</p><p>banana two</p><p>banana three</p>`,
@@ -1617,6 +1627,58 @@ const checks = {
     await command("menu focusAddress");
     await command(`type ${origin}/a`);
     await command("enter");
+    await until("/a again", () => tabFor("/a"));
+  },
+  async "load-sweep-once"() {
+    // One main-frame navigation, one sweep. Chrome counts the tab as loading while any frame loads and puts its
+    // progress back to 0.1 when one starts: a frame during the load mustn't restart the sweep, and frames or
+    // same-page navigations after it mustn't start another. A navigation the page starts itself gets its own.
+    const field = () => state().toolbar.field;
+    await command("state");
+    const before = field().sweeps;
+    const from = states.length;
+    const seen = () => states.slice(from).filter((s) => s.toolbar?.field);
+    // Loading periods so far: [{ start, end }] as indexes into seen().
+    const periods = () => {
+      const list = [];
+      seen().forEach((s, i) => {
+        const open = list.at(-1) && list.at(-1).end === undefined;
+        if (s.toolbar.field.loading && !open) list.push({ start: i });
+        if (!s.toolbar.field.loading && open) list.at(-1).end = i;
+      });
+      return list;
+    };
+    if (process.env.WASH_SHOTS) await command(`fieldburst 75 33 ${join(process.env.WASH_SHOTS, "late-frames")}`);
+    await goTo(`${origin}/late-frames`);
+    await until("page loaded", () => periods()[0]?.end !== undefined, 8000, 25);
+    const first = periods()[0];
+    const during = seen().slice(first.start, first.end);
+    assert(during[0].toolbar.field.wash === true, "no sweep from the start of a load the user started");
+    const fractions = during.map((s) => s.toolbar.field.washFraction);
+    assert(fractions.every((f, i) => i === 0 || f >= fractions[i - 1]), `the sweep went backwards: ${fractions.join(" ")}`);
+    // The frame it adds afterwards: the tab loads again, the field stays quiet.
+    await until("late frame loading", () => periods().length >= 2, 5000, 25);
+    await until("late frame loaded", () => periods().at(-1).end !== undefined, 8000, 25);
+    await command("state");
+    const after = seen().slice(first.end);
+    assert(!after.some((s) => s.toolbar.field.wash), "a frame loading after the page drew a sweep");
+    assert(field().sweeps - before === 1, `one navigation drew ${field().sweeps - before} sweeps`);
+    // A link the page follows by itself (not through Ray): its own sweep, from when the new page commits.
+    const page = await session("late-frames");
+    const fromLink = states.length;
+    await evaluate(page.sessionId, `document.getElementById("next").click()`);
+    await until("followed link loaded", async () => { await command("state"); return tabFor("/slow?linked") && field().loading === false; }, 8000);
+    assert(states.slice(fromLink).some((s) => s.toolbar?.field?.wash), "no sweep for a link the page followed");
+    assert(field().sweeps - before === 2, `a followed link drew ${field().sweeps - before - 1} sweeps`);
+    if (process.env.WASH_SHOTS) {
+      // A plain slow load too, for the frame strip.
+      await command(`fieldburst 75 33 ${join(process.env.WASH_SHOTS, "slow")}`);
+      await goTo(`${origin}/slow?shots`);
+      await until("shots loaded", async () => { await command("state"); return tabFor("/slow?shots") && field().loading === false; }, 8000);
+      await sleep(1500);
+    }
+    // Leave the tab on /a for the checks after this one.
+    await goTo(`${origin}/a`);
     await until("/a again", () => tabFor("/a"));
   },
   async "site-controls"() {
