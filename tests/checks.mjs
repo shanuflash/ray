@@ -2688,12 +2688,12 @@ const checks = {
     const shots = process.env.SNAP_DIR;
     if (shots) mkdirSync(shots, { recursive: true });
     const running = [];
-    const start = () => {
+    const start = (dataDir = dir) => {
       const it = { log: "", states: [] };
       let partial = "";
       it.proc = spawn(join(app, "Contents/MacOS/Ray"), [], {
         env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_ONBOARDING: "1",
-          RAY_IMPORT_SOURCE_DIR: support, RAY_DATA_DIR: dir, RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_START_URL: `${origin}/a`,
+          RAY_IMPORT_SOURCE_DIR: support, RAY_DATA_DIR: dataDir, RAY_DOWNLOADS_DIR: join(dataDir, "Downloads"), RAY_START_URL: `${origin}/a`,
           RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.onboarding` },
         stdio: ["pipe", "ignore", "pipe"],
       });
@@ -2905,6 +2905,22 @@ const checks = {
       await gone(second);
       await stop(second);
       rmSync(dir, { recursive: true, force: true });
+      // A profile from before the welcome existed (Ray 0.2.0 and earlier: Settings.json without `onboarded`) gets it
+      // once; one that finished it doesn't.
+      for (const [settings, shows] of [[{ theme: "#A486F0" }, true], [{ theme: "#A486F0", onboarded: true }, false]]) {
+        const old = mkdtempSync(join(tmpdir(), "ray-onboarding-old-"));
+        writeFileSync(join(old, "Settings.json"), JSON.stringify(settings));
+        const it = start(old);
+        if (shows) {
+          await reach(it, "welcome for an older profile", (o) => o.step === "welcome" && o.mode === "firstRun", 25000);
+        } else {
+          await until("window up", async () => (await probe(it))?.sidebar, 25000, 150);
+          await sleep(800);
+          assert((await probe(it))?.onboarding === null, "a profile that finished the welcome saw it again");
+        }
+        await stop(it);
+        rmSync(old, { recursive: true, force: true });
+      }
     } finally {
       for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
     }

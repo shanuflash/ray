@@ -27,9 +27,9 @@ struct RaySettingsValues: Codable, Equatable {
   var zoomAdopted = false
   /// The Settings window's frame, as `NSStringFromRect`.
   var windowFrame: String?
-  /// The first run's welcome is done. A file from before it existed reads as done (that Ray was already set up); a
-  /// new data dir starts without it (see `init(directory:)`).
-  var onboarded = true
+  /// The first run's welcome is done. Only "Start browsing" sets it, so a new data dir and every profile from before
+  /// the welcome existed (Ray 0.2.0 and earlier: no key in Settings.json, or no Settings.json at all) see it once.
+  var onboarded = false
 
   init() {}
 
@@ -95,12 +95,6 @@ final class RaySettings {
     url = directory.map { URL(fileURLWithPath: $0).appendingPathComponent("Settings.json") }
     let loaded = url.flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(RaySettingsValues.self, from: $0) }
     values = loaded ?? RaySettingsValues()
-    // A data dir with neither file is new: its first window shows the welcome. One with a Sidebar.json (Ray 0.1, or
-    // a Settings.json lost) was already in use, so an update never greets an existing user.
-    if loaded == nil, let url,
-       !FileManager.default.fileExists(atPath: url.deletingLastPathComponent().appendingPathComponent("Sidebar.json").path) {
-      values.onboarded = false
-    }
     zoomed = Set(values.zoomedHosts)
     ProfileColor.apply(hex: values.theme)
   }

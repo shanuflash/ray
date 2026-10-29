@@ -64,7 +64,7 @@ Recorded for the owner to decide. Don't act on them until they do.
 | Distribution | Friends through GitHub Releases + Sparkle, ad-hoc signed (0.1.0 on 2026-10-28); Developer ID and a notarized DMG before launch |
 | Engine | Ardia's engine, renamed and built from source (Phase B, since 0.2.0). Phase A (Ardia's prebuilt) is over |
 | Import | Ardia's import core (`Importer/`, Apache-2.0) for reading; Ray writes through the engine's `ac_*` calls; never another browser's settings |
-| Onboarding | First run only (new data dir), as an overlay in the browser window in Ray's own style; Arc first and recommended |
+| Onboarding | Once per profile (new ones, and every profile from 0.2.0 and earlier on its next launch), as an overlay in the browser window in Ray's own style; Arc first and recommended |
 | UI | AppKit + Core Animation; SwiftUI only for Settings |
 | Peek | **No** |
 | DRM sites → WebKit | **No.** Chromium only; Netflix-type sites won't play (no Widevine) |

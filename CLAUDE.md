@@ -68,7 +68,8 @@ publicly or create accounts.
   "Imported from <Browser>" folder with `ac_bookmarks_apply`). Never another browser's settings. Test builds read
   only `RAY_IMPORT_SOURCE_DIR` (fixtures) and `RAY_IMPORT_SECRET`, never the Keychain (checks `import-browser`).
 - `Onboarding`: the first-run overlay (welcome, where you're coming from, what to bring, moving in, your colour,
-  three keys), shown when the data dir is new (`onboarded` in Settings.json; files without it count as onboarded),
+  three keys), shown until "Start browsing" sets `onboarded` in Settings.json: on a new data dir and, once, on every
+  profile from Ray 0.2.0 and earlier (no key),
   File › Import from Browser… (import steps only) and Ray › Show Welcome Again (⌥, also ⌥⌘,). Test builds show it
   only with `RAY_ONBOARDING=1` (check `onboarding`). `ProfileColor.visible(on:)` keeps accent marks at 3:1 against
   their background (a black profile colour on a dark card).
