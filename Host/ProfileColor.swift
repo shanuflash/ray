@@ -90,6 +90,62 @@ enum ProfileColor {
     }
   }
 
+  /// The accent for a mark (a line, dot, tick, tint or text) drawn on `background`: the colour itself when it has at
+  /// least `minimum` WCAG contrast there, else the same hue and saturation moved toward white (on a dark background)
+  /// or black (on a light one), just far enough. A black accent marks in near-white on a dark card and stays black
+  /// on a light one. Fills with text on them keep the exact colour and use `foreground(on:)`.
+  static func visible(on background: NSColor, minimum: CGFloat = 3) -> NSColor {
+    NSColor(name: nil) { appearance in
+      let name = appearance.bestMatch(from: [.darkAqua, .aqua]) ?? .aqua
+      let rgb = legible(resolved(accent, appearance: name), on: resolved(background, appearance: name), minimum: minimum)
+      return NSColor(srgbRed: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1)
+    }
+  }
+
+  /// WCAG contrast of two colours as they look under an appearance (for the state log and checks).
+  static func contrast(_ a: NSColor, _ b: NSColor, appearance: NSAppearance.Name) -> CGFloat {
+    let x = resolved(a, appearance: appearance), y = resolved(b, appearance: appearance)
+    return contrast(luminance(x.r, x.g, x.b), luminance(y.r, y.g, y.b))
+  }
+
+  private static func legible(_ fg: (r: CGFloat, g: CGFloat, b: CGFloat), on bg: (r: CGFloat, g: CGFloat, b: CGFloat),
+                              minimum: CGFloat) -> (r: CGFloat, g: CGFloat, b: CGFloat) {
+    let back = luminance(bg.r, bg.g, bg.b)
+    func ratio(_ c: (r: CGFloat, g: CGFloat, b: CGFloat)) -> CGFloat { contrast(luminance(c.r, c.g, c.b), back) }
+    guard ratio(fg) < minimum else { return fg }
+    // Hue, saturation and lightness (HSL), so lightness alone moves.
+    let high = max(fg.r, fg.g, fg.b), low = min(fg.r, fg.g, fg.b), lightness = (high + low) / 2
+    let chroma = high - low
+    let saturation = chroma == 0 ? 0 : chroma / (1 - abs(2 * lightness - 1))
+    var hue: CGFloat = 0
+    if chroma > 0 {
+      if high == fg.r { hue = ((fg.g - fg.b) / chroma).truncatingRemainder(dividingBy: 6) }
+      else if high == fg.g { hue = (fg.b - fg.r) / chroma + 2 }
+      else { hue = (fg.r - fg.g) / chroma + 4 }
+      if hue < 0 { hue += 6 }
+    }
+    func rgb(_ l: CGFloat) -> (r: CGFloat, g: CGFloat, b: CGFloat) {
+      let c = (1 - abs(2 * l - 1)) * saturation, x = c * (1 - abs(hue.truncatingRemainder(dividingBy: 2) - 1)), m = l - c / 2
+      let (r, g, b): (CGFloat, CGFloat, CGFloat) = switch Int(hue) {
+      case 0: (c, x, 0)
+      case 1: (x, c, 0)
+      case 2: (0, c, x)
+      case 3: (0, x, c)
+      case 4: (x, 0, c)
+      default: (c, 0, x)
+      }
+      return (min(1, max(0, r + m)), min(1, max(0, g + m)), min(1, max(0, b + m)))
+    }
+    // Toward whichever end the background is farther from; the least change that reaches the contrast.
+    let lighter = contrast(1, back) >= contrast(0, back)
+    var near = lightness, far: CGFloat = lighter ? 1 : 0
+    for _ in 0..<20 {
+      let mid = (near + far) / 2
+      if ratio(rgb(mid)) >= minimum { far = mid } else { near = mid }
+    }
+    return rgb(far)
+  }
+
   /// `"white"` or `"black"`: what `foreground(on:)` gives for a colour under an appearance, for the state log.
   static func foregroundName(on color: NSColor, appearance: NSAppearance.Name = .aqua) -> String {
     let rgb = resolved(color, appearance: appearance)
