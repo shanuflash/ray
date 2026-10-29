@@ -10,6 +10,10 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 ## Top priority (owner)
 
 None open.
+1. **Tab groups for extensions** (owner, 2026-10-29): the Claude browser extension (and others) put the tabs they
+   drive into a Chrome tab group (`chrome.tabGroups`); Arc has no tab groups, so Claude's browser use fails there.
+   Check whether Ray's engine (Chrome's tab strip underneath, Ardia's layer) supports groups end to end, make the
+   API work, and show a group in Ray's sidebar (its colour and name over its tabs). Test with the Claude extension.
 
 ## Arc features Ray doesn't have
 
