@@ -73,6 +73,33 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 
 **Already working through Chrome's defaults:** right-click menus, spell check, `chrome://` pages.
 
+## Known limitations and follow-ups
+
+Smaller gaps found while building the items above. Each says where the fix goes.
+
+1. **Command bar can't weigh typed pages.** `ac_history_query` only exports visit times, not typed counts or visit
+   types, so the bar's frecency counts visits only (Chrome weighs a typed visit 1.5×). Fix: export `typed_count` and
+   the visit transition from the engine (`engine-ray` fixup on `ac_history.cc`). Found 2026-10-29.
+2. **No IDN spoof checker.** Addresses show internationalised hosts as punycode (`xn--bcher-kva.example`), so real
+   non-English domains look raw. Fix: port Ardia's `idn.ts` checks (or Chrome's IDN spoof checker) and show Unicode
+   when safe. The command bar's "Switch to Tab" detail still decodes to Unicode (`AddressInput.host(of:)`).
+3. **View Source drops the fragment.** The engine reports a `view-source:` tab's URL without its `#fragment`, though
+   Ray asks for it. Engine-side.
+4. **Imported extensions aren't installed.** `ac_extensions_install` takes a folder or .crx, not a Web Store id.
+   Fix: an engine call that installs by Web Store id (Chrome's webstore installer).
+5. **History can be imported twice.** Re-running an import adds history visits again (sidebar items, passwords and
+   cookies are de-duplicated). Fix: skip URLs already in history, or import only visits newer than the newest one.
+6. **Print preview and Escape.** Unconfirmed whether Escape closes it when the owner's window is key (the hidden
+   test window can't tell).
+7. **Command bar: "Switch to Tab" text clipped by about a letter next to the arrow button** (seen in a snapshot,
+   2026-10-29).
+8. **Test hygiene.** `settings-shortcuts` leaves a Save Page As sheet open (it presses ⌘S with that setting off);
+   `close-last-window` now cancels it, but the check itself should close it. `folder-rename` fails when the hidden
+   test window lands on the visible desktop (also on older commits).
+9. **Accent contrast elsewhere.** `ProfileColor.visible(on:)` keeps a black or white profile colour visible in the
+   onboarding only; the sidebar selection and hover, loading glow, downloads ring, Settings' switches, command bar
+   selection and site controls' "on" states would benefit too (owner to decide).
+
 ## Done
 
 | What | When |

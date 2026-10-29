@@ -5,7 +5,9 @@ Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of tru
 
 **Before any work, read PLAN.md's "Goal and roadmap" and "Open decisions (owner)" and keep them in mind:** the most
 Arc-feeling browser on real, de-Googled Chromium for Mac, launching into Arc's shutdown on 2026-12-22.
-`docs/MISSING.md` is the gap list against Arc and Chrome: when a feature lands, move it to its "Done" table. Weigh every
+`docs/MISSING.md` is the gap list against Arc and Chrome, plus "Known limitations and follow-ups" (smaller gaps found
+while building). When a feature lands, move it to its "Done" table; when you find a limitation, add it there. When the
+owner asks what's pending or missing, answer from this file. Weigh every
 choice against Arc's feel, real Chromium with working extensions, and painless switching from Arc. Never post
 publicly or create accounts.
 
