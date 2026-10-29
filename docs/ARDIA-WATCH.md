@@ -16,8 +16,9 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
 
 1. **Plan the next engine rebuild around a Chromium bump.** Ray is about 28 patch builds behind Chrome stable on
    156 (.47 against .75), and 157 is out; Chrome's stable security fixes land in those builds. Ardia hasn't bumped
-   either. If Ardia doesn't bump within a few days, bump 156 to its latest patch ourselves (PLAN.md section 6:
-   "every 4 weeks") and take Ardia's engine changes below (engine-2f172eb50b89) in the same rebuild.
+   either. Ray's Chromium is pinned to Helium's (`engine/patches/build/helium-pins.ini`), and Helium 0.20.2.1
+   (helium-macos, 2026-10-28) is on 156.0.8078.73: bump the pins to it ourselves (PLAN.md section 6: "every 4
+   weeks") and take Ardia's engine changes below (engine-2f172eb50b89) in the same rebuild.
 2. **Take engine-2f172eb50b89** through `sync-engine.sh` (no conflict with `engine-ray/`'s fixups, see below), then
    implement the one new delegate method, `engine:extensionInstallFailed:tab:` (renamed to `RayCoreEngine`), or a
    failed .crx drop says nothing. Brings: install by dropping a .crx, bookmarks export (`ac_bookmarks_export_html`),
