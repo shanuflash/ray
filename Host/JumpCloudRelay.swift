@@ -393,8 +393,13 @@ final class JumpCloudRelay {
   static let extensionID = "jdoahkhfkeipblhbhppmcbdgapeoaopa"
   static let storeURL = "https://chromewebstore.google.com/detail/\(extensionID)"
   static let windowSize = NSSize(width: 440, height: 620)
-  /// After a relay, the same tab landing on the login page again this soon gets a note, not another relay.
-  static let loopWindow: TimeInterval = 30
+  /// A tab that relayed `maxRelays` times within `loopWindow` gets a note on its next login page, not another relay:
+  /// a retry relays again, a page that keeps coming back stops.
+  static let loopWindow: TimeInterval = 60
+  static let maxRelays = 2
+  /// How long a JumpCloud login page has to send the tab on by itself before Ray relays: an already signed-in user is
+  /// sent on to the console by the page's own script, without a new document. Test builds can change it.
+  static let settleDelay: TimeInterval = TestEnvironment["RAY_JUMPCLOUD_RELAY_SETTLE"].flatMap(Double.init) ?? 1.5
 
   /// Ray's own Chrome profile, next to Settings.json (never the user's Chrome profile).
   let directory = ((dataDirectory as NSString).deletingLastPathComponent as NSString).appendingPathComponent("JumpCloud Relay")
@@ -409,7 +414,8 @@ final class JumpCloudRelay {
 
   private var chrome: RelayChrome?
   private var relay: Relay?
-  private var recent: [Int32: Recent] = [:]
+  /// When each tab's relays started, for the loop guard.
+  private var relays: [Int32: [TimeInterval]] = [:]
   private var setupOpen = false
   private var terminating: NSObjectProtocol?
 
@@ -449,12 +455,6 @@ final class JumpCloudRelay {
     }
   }
 
-  private struct Recent {
-    let time: TimeInterval
-    /// The relay reloaded the tab: that reload's own landing on the login page is expected.
-    var reloadPending: Bool
-  }
-
   private init() {
     terminating = NotificationCenter.default.addObserver(
       forName: NSApplication.willTerminateNotification, object: nil, queue: .main
@@ -483,19 +483,27 @@ final class JumpCloudRelay {
   /// A normal tab's main frame committed a new document (BrowserWindowController.tabDidCommitDocument).
   func documentCommitted(_ tab: RayCoreTab, in controller: BrowserWindowController) {
     guard RaySettings.shared[.jumpCloudRelay], !controller.isPrivate, tab.profile?.offTheRecord != true,
-          let match = JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) else { return }
-    let now = ProcessInfo.processInfo.systemUptime
-    if var last = recent[tab.tabId], now - last.time < Self.loopWindow {
-      if last.reloadPending {
-        last.reloadPending = false
-        recent[tab.tabId] = last
-        return
-      }
-      return finish("loopGuard", note: "Still not signed in to JumpCloud. Try again in a moment", in: controller)
+          JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) != nil else { return }
+    // Give the page a moment: signed in already, JumpCloud's script moves the tab on to the console by itself.
+    let address = tab.url
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleDelay) { [weak self, weak tab, weak controller] in
+      guard let self, let tab, let controller, !tab.closed, tab.url == address,
+            let match = JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) else { return }
+      self.trigger(match, tab: tab, controller: controller)
     }
+  }
+
+  /// The tab stayed on the login page: relay, unless one is running or this tab keeps coming back.
+  private func trigger(_ match: JumpCloudLogin.Match, tab: RayCoreTab, controller: BrowserWindowController) {
     if let relay {
       if relay.tab === tab { return }
       return finish("busy", note: "JumpCloud sign-in is already open in Chrome", in: controller)
+    }
+    let now = ProcessInfo.processInfo.systemUptime
+    let times = (relays[tab.tabId] ?? []).filter { now - $0 < Self.loopWindow }
+    relays[tab.tabId] = times
+    if times.count >= Self.maxRelays {
+      return finish("loopGuard", note: "Still not signed in to JumpCloud. Try again in a moment", in: controller)
     }
     start(match, tab: tab, controller: controller)
   }
@@ -506,6 +514,7 @@ final class JumpCloudRelay {
         [weak self] in self?.setUp()
       }
     }
+    relays[tab.tabId, default: []].append(ProcessInfo.processInfo.systemUptime)
     let relay = Relay(match: match, tab: tab, controller: controller)
     self.relay = relay
     let deadline = DispatchWorkItem { [weak self, weak relay] in
@@ -801,14 +810,9 @@ final class JumpCloudRelay {
 
   private func done(_ relay: Relay) {
     self.relay = nil
-    var reloaded = false
     if let tab = relay.tab, !tab.closed, tab.committedOrigin == relay.match.origin,
        JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) != nil {
       tab.userReload()
-      reloaded = true
-    }
-    if let tab = relay.tab {
-      recent[tab.tabId] = Recent(time: ProcessInfo.processInfo.systemUptime, reloadPending: reloaded)
     }
     finish("signedIn", note: "Signed in with JumpCloud Go", in: relay.controller)
   }

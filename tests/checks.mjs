@@ -3345,8 +3345,12 @@ const checks = {
         return res.end("<title>Seed</title><p>seed</p>");
       }
       if (url.pathname === "/login") {
+        // As JumpCloud's console does: signed in (the relay's session), the page's script moves on to the console
+        // without a new document; `stay` keeps it on the login page (a session JumpCloud doesn't take).
+        const signedIn = /jcsession=relay-session/.test(req.headers.cookie ?? "") && !url.searchParams.has("stay");
         res.writeHead(200, { "content-type": "text/html" });
-        return res.end("<title>JumpCloud</title><p>login</p>");
+        return res.end("<title>JumpCloud</title><p>login</p>" +
+          (signedIn ? `<script>history.replaceState(null, "", "/userconsole/")</script>` : ""));
       }
       res.writeHead(404);
       res.end("not found");
@@ -3360,7 +3364,7 @@ const checks = {
         RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.jumpcloud`, RAY_REMOTE_DEBUGGING_PORT: String(devPort),
         RAY_HOST_RULES: `MAP console.jumpcloud.com 127.0.0.1:${jc.address().port}`,
         RAY_JUMPCLOUD_RELAY_CHROME: wrapper, RAY_JUMPCLOUD_RELAY_DEADLINE: "6",
-        RAY_JUMPCLOUD_RELAY_HEADLESS_DEADLINE: "1.5", RAY_JUMPCLOUD_RELAY_CHROME_VERSION: "141.0.7390.123" },
+        RAY_JUMPCLOUD_RELAY_HEADLESS_DEADLINE: "1.5", RAY_JUMPCLOUD_RELAY_SETTLE: "0.5", RAY_JUMPCLOUD_RELAY_CHROME_VERSION: "141.0.7390.123" },
       stdio: ["pipe", "ignore", "pipe"],
     });
     const exit = new Promise((r) => it.on("exit", (code, signal) => r(code ?? signal)));
@@ -3403,6 +3407,8 @@ const checks = {
       socket.onmessage = (m) => { const msg = JSON.parse(m.data); replies.get(msg.id)?.(msg); replies.delete(msg.id); };
       const cdp = (method, params = {}) => new Promise((r) => { const id = seq++; replies.set(id, r); socket.send(JSON.stringify({ id, method, params })); });
       const rayCookies = async () => (await cdp("Storage.getCookies")).result.cookies;
+      // Signed out of JumpCloud in Ray again, so the next login page relays rather than moving on by itself.
+      const signOut = () => cdp("Storage.clearCookies");
       const jumpcloudIn = (cookies) => cookies.filter((c) => /(^|\.)jumpcloud\.com$/.test(c.domain.replace(/^\./, "")));
 
       // A stale session in Ray, which the relay must replace (the engine's import keeps cookies Ray already has).
@@ -3477,11 +3483,18 @@ const checks = {
       state = await relay();
       assert(state.state === "idle" && state.chromeRunning === false, `after: ${JSON.stringify(state)}`);
 
-      // The same tab on the login page again soon after: a note, not another Chrome.
-      await sleep(1500);
+      // Signed in already: the login page moves on by itself, so nothing relays.
       await goTo("/login?n=2");
-      await until("loop guard", async () => (await relay()).lastResult === "loopGuard");
-      assert(latest().jumpCloudRelay.launches === 1 && latest().toast.includes("Still not signed in"), `loop: ${latest().toast}`);
+      await sleep(3000);
+      state = await relay();
+      assert(state.launches === 1 && state.lastResult === "signedIn", `relayed while signed in: ${JSON.stringify(state)}`);
+
+      // A login page JumpCloud keeps showing: a second try relays (and reloads, landing on it again), the third is a
+      // note, not another Chrome.
+      await goTo("/login?n=loop&stay=1");
+      await until("second relay", async () => (await relay()).launches === 2, 15000);
+      await until("loop guard", async () => (await relay()).lastResult === "loopGuard", 20000);
+      assert(latest().jumpCloudRelay.launches === 2 && latest().toast.includes("Still not signed in"), `loop: ${latest().toast}`);
 
       // Never from a private window.
       await ok("menu newPrivateWindow");
@@ -3491,7 +3504,7 @@ const checks = {
       await until("private login page", () => requests.some((r) => r.path === "/login?n=private"), 10000);
       await sleep(1000);
       state = await relay();
-      assert(state.launches === 1 && state.lastResult === "loopGuard", `a private window relayed: ${JSON.stringify(state)}`);
+      assert(state.launches === 2 && state.lastResult === "loopGuard", `a private window relayed: ${JSON.stringify(state)}`);
       await ok("closewindow private");
       await until("back to the normal window", async () => (await now()).private === false, 8000);
 
@@ -3500,6 +3513,7 @@ const checks = {
       mode("headlessNever");
       await ok("jumpcloud fullscreen on");
       let before = lines("launches.jsonl").length;
+      await signOut();
       await goTo("/login?n=fb", true);
       await until("fallback note", async () => (await now()).toast.includes("Finish signing in to JumpCloud in Chrome"), 8000, 50);
       state = latest().jumpCloudRelay;
@@ -3524,6 +3538,7 @@ const checks = {
       // Not in full screen: the fallback window comes forward by itself, as before.
       await ok("jumpcloud fullscreen off");
       before = lines("launches.jsonl").length;
+      await signOut();
       await goTo("/login?n=fb2", true);
       await until("fallback in front", async () => (await relay()).fallbacks === 2 && latest().jumpCloudRelay.activations === 2, 8000, 50);
       await until("signed in again", async () => (await relay()).lastResult === "signedIn", 10000);
@@ -3532,6 +3547,7 @@ const checks = {
       // The user never finishes: headless, then the window, then the deadline closes Chrome and says so.
       mode("never");
       before = lines("launches.jsonl").length;
+      await signOut();
       await goTo("/login?n=3", true);
       await until("timed out", async () => (await relay()).lastResult === "timedOut", 12000);
       assert(latest().toast.includes("didn't finish") && latest().jumpCloudRelay.launches === before + 2, `deadline: ${latest().toast}`);
@@ -3541,6 +3557,7 @@ const checks = {
       // first, then once more with a window.
       mode("silent");
       before = lines("launches.jsonl").length;
+      await signOut();
       await goTo("/login?n=4", true);
       await until("no answer", async () => (await relay()).lastResult === "noAnswer", 12000);
       assert(latest().toast.includes("didn't answer") && latest().jumpCloudRelay.launches === before + 2,
