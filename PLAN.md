@@ -419,6 +419,14 @@ after two rounds of mockups (A–F rejected: tile grids, chip bars, card hubs an
 - A pane's one call to action (Make default) is a tinted strip at the top, not a dialog.
 - Also: a search result scrolls to its row and runs one `LoadSweep` glow across it; every setting is reachable
   from the ⌘T command bar.
+- **Borrowed from Ardia's content** (`third_party/ardia/apps/browser/src/components/settings`): row text lives
+  apart from the UI (`rows/*.ts`: section → rows with title, description, keywords), which is what our catalog
+  does; content column at most 600 pt wide with 24 pt sides; rows at least 40 pt, 13 pt title over a 12 pt grey
+  description; group headers 13 pt semibold, 22 pt above and 8 pt below, with room on the right for one control
+  (Ardia puts a profile picker there for per-profile settings: downloads, site permissions, passwords, which suits
+  our profile and Space scope later); picture choices get a 2.5 pt accent ring and a check before their caption;
+  a search hit flashes its row 120 ms in, 900 ms hold, 700 ms out. Descriptions say what happens, not what the
+  switch is, and name where else the setting lives ("Also in View › …").
 
 **Panes**, in sidebar order: General · Tabs and sidebar · Appearance · Search; Your data: Privacy · Passwords ·
 Autofill · Extensions; More: Shortcuts · About Ray (the old Advanced/About). Profiles and Spaces arrive with Spaces. Live Folders and Calendar get panes only when
