@@ -182,6 +182,23 @@ enum TestCommands {
     return "ok"
   }
 
+  // MARK: JumpCloud relay
+
+  /// `jumpcloud setup`: Settings' Set Up… (Ray's Chrome stand-in on the Web Store page). `jumpcloud verify <app>`:
+  /// whether that app passes the signature check Ray makes before it starts Google Chrome (`valid` / `invalid`).
+  private static func jumpCloud(_ argument: String) -> String {
+    let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
+    switch words.first {
+    case "setup":
+      JumpCloudRelay.shared.setUp()
+      return "ok"
+    case "verify":
+      guard words.count == 2 else { return "usage: jumpcloud verify <app>" }
+      return RelayChromeApp.isGoogleChrome(URL(fileURLWithPath: words[1])) ? "valid" : "invalid"
+    default: return "usage: jumpcloud setup|verify <app>"
+    }
+  }
+
   // MARK: Mouse
 
   /// `press x y`, `move x y`, `release x y`: one mouse drag in steps, so checks can look at it mid-way.
@@ -555,6 +572,8 @@ enum TestCommands {
       result = answer
     case "searchpane":
       result = SearchPaneContent.testCommand(argument)
+    case "jumpcloud":
+      result = jumpCloud(argument)
     case "dialogs":
       // Chrome's tab-modal dialogs: their own windows, beside the browser window. Frames in screen points.
       let browser = window

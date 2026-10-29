@@ -56,6 +56,7 @@ final class PasswordsPaneContent: SettingsPaneContent {
           SettingsSearchEntry(title: "Import passwords", detail: "From a CSV file", keywords: ["csv", "import", "passwords file"]),
           SettingsSearchEntry(title: "Export passwords", detail: "To a CSV file", keywords: ["csv", "export", "backup", "download"]),
         ]),
+      JumpCloudSetupRow.section(),
     ]
   }
 

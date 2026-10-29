@@ -174,7 +174,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     download once it has a path, drop one cancelled before it had one. Found 2026-10-29.
 14. **Reserved keys short of Helium's set.** `Shortcuts.isReserved` lacks Developer Tools (⌥⌘I), F12 and Search Tabs
     (⇧⌘A), so a page that cancels keydown can keep them (Ardia `dd242aac`). Found 2026-10-29.
-15. **JumpCloud Go can't sign in from Ray.** Its extension (`jdoahkhfkeipblhbhppmcbdgapeoaopa`, same 3.3.5 in Arc
+15. **JumpCloud Go can't sign in from Ray itself (relayed through Chrome since 2026-10-29).** Its extension (`jdoahkhfkeipblhbhppmcbdgapeoaopa`, same 3.3.5 in Arc
     and Ray) asks JumpCloud's native host for the sign-in token (`runtime.sendNativeMessage`, host
     `com.jumpcloud.jumpcloudgo`). Ray finds the host: its manifest is in `/Library/Google/Chrome/NativeMessagingHosts`,
     which Helium's `scan-chrome-native-messaging-hosts` reads. But the host (`/opt/jc_user_ro/JumpCloudGo-Chrome`,
@@ -185,10 +185,20 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     "Ray Code Signing" with no team, so it can never match; Chrome Dev/Beta/Canary (`com.google.Chrome.dev`…) fail
     the same way (the owner's Chrome is Chrome Dev 158). Stable Chrome passes. Not Local Network Access: the login
     page's `http://localhost:1028` path is Android-only; on a Mac it talks only to the extension
-    (`externally_connectable`). Nothing in Ray can fix it honestly (passing as another browser would defeat the company's device
-    check). Fix: Developer ID signing (roadmap step 4), settle the bundle id, then ask JumpCloud to add Ray's
-    identifier and team to the host's list. Until then sign in to JumpCloud in Ray with password + MFA, if the org
-    allows it. Found 2026-10-29.
+    (`externally_connectable`). Ray can't pass the check honestly (passing as another browser would defeat the
+    company's device check). **Workaround in Ray:** Settings › Passwords › "Sign in with JumpCloud Go through Chrome"
+    (`jumpCloudRelay`, off by default, `Host/JumpCloudRelay.swift`): on JumpCloud's /login page, Ray starts real
+    Google Chrome (signature checked: `com.google.Chrome`, team EQHXZ8M8AV) on its own profile
+    (`<data>/JumpCloud Relay`, 0700) over `--remote-debugging-pipe`, shows the console's own login page in a small
+    window for Touch ID, and on reaching /userconsole copies only jumpcloud.com cookies into Ray and reloads the tab.
+    Set Up… installs the extension into that profile once. Not yet tried against the real JumpCloud (needs the
+    owner's account): the trigger paths (`/login` on console(.eu)/sso(.eu).jumpcloud.com), the success URL
+    (`/userconsole…`) and whether a reload of the app's /login page finishes the SAML flow are read from JumpCloud's
+    login UI bundle, not seen. Follow-ups: the relay clears all of jumpcloud.com's site data in Ray before importing
+    (the engine's `ac_cookies_import` keeps cookies Ray already has, and `ac_site_data_clear` is the only delete);
+    a second Google Chrome shows in the Dock while it runs; a Chrome policy that turns off remote debugging
+    (`RemoteDebuggingAllowed`) makes it say Chrome didn't answer. Real fix: Developer ID signing (roadmap step 4),
+    settle the bundle id, then ask JumpCloud to add Ray's identifier and team to the host's list. Found 2026-10-29.
 16. **Tab rename details.** Arc's row tip says "Double-click to rename" once (Cra copies it); Ray shows no hint. A
     favorite's name is typed in a lifted row under its tile (Ardia and Crest use a sheet): worth a look by hand. A
     double click on an unloaded tab loads it and keeps the field focused in the hidden test window; not yet tried in
@@ -247,3 +257,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Settings › Privacy (every site's permissions, zoom levels, apps sites may open, clear data) and › Extensions (switches, site access, private windows, options, reload, remove, load unpacked); Site controls in a private window no longer write to the normal profile | 2026-10-29, `0eaf904` |
 | Settings › Passwords (locked behind Touch ID, search, show, copy, edit, add, delete, CSV import and export) and › Autofill (addresses, cards) | 2026-10-29, `d34b5c4` |
 | Settings › Search: default engine, suggestions switch, site searches with a keyword and Tab in the command bar | 2026-10-29, `7d54ba9` |
+| JumpCloud Go sign-in relayed through Google Chrome (Settings › Passwords; known limitation #15) | 2026-10-29, `feat: jumpcloud go through chrome` |

@@ -1825,6 +1825,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     // A document the page navigated to by itself gets its sweep from here.
     LoadSweeps.shared.documentCommitted(tab)
     if tab === activeTab { updateToolbarLoading() }
+    // JumpCloud's login page, with Settings › Passwords' JumpCloud Go relay on: never from a private window.
+    if !isPrivate { JumpCloudRelay.shared.documentCommitted(tab, in: self) }
     // On the next turn of the run loop, by which time the engine has set its own zoom for the new page.
     DispatchQueue.main.async { [weak self, weak tab] in
       guard let self, let tab else { return }
@@ -2188,6 +2190,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["updater"] = Updater.shared.debug
     state["general"] = GeneralSystem.shared.debug
     state["onboarding"] = onboarding?.debug ?? NSNull()
+    state["jumpCloudRelay"] = JumpCloudRelay.shared.debug
     state["chromeCommand"] = lastChromeCommand.map { ["name": $0.name, "ran": $0.ran] as [String: Any] } ?? NSNull()
     state["safeStorage"] = ["mode": safeStorage.mode.rawValue, "note": safeStorage.note, "moved": safeStorage.moved]
     state["menuKeys"] = [

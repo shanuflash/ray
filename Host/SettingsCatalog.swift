@@ -17,7 +17,7 @@ extension AnySettingKey {
     theme, appearanceMode, minimalURL, loadingProgress, defaultZoom, scrollBars, newTabNextToActive, recentTabCycling,
     copyLinkShortcut, sidebarShortcut,
     warnBeforeQuitting, warnBeforeClosingWindow, onQuit,  // General (SettingsGeneral.swift)
-    offerToSavePasswords, autofillAddresses, autofillCards,  // Passwords, Autofill (SettingsPasswords.swift, SettingsAutofill.swift)
+    offerToSavePasswords, jumpCloudRelay, autofillAddresses, autofillCards,  // Passwords (and JumpCloudRelay.swift), Autofill
     searchEngine, searchSuggestions, siteSearches,  // Search (SettingsSearchPane.swift)
     pageAddressBar,
     appIcon,
@@ -224,6 +224,18 @@ extension AnySettingKey {
       detail: "Outside text fields, as in Arc; press it again for the tab closed before. In a text field ⌘Z still undoes typing.",
       keywords: ["undo", "reopen", "closed tab", "restore tab", "cmd z", "arc"], control: .toggle))
 
+  // Passwords
+
+  /// JumpCloud Go through Google Chrome (Host/JumpCloudRelay.swift): JumpCloud's helper gives its token only to
+  /// browsers it knows, so Ray's own Chrome does the Touch ID step and Ray takes the jumpcloud.com cookies.
+  static let jumpCloudRelay = SettingKey<Bool>(
+    "jumpCloudRelay", default: false,
+    ui: SettingUI(
+      pane: .passwords, group: .signIn, title: "Sign in with JumpCloud Go through Chrome",
+      detail: "On JumpCloud's sign-in page, a small Google Chrome window opens for Touch ID, then you're signed in here.",
+      keywords: ["jumpcloud", "jumpcloud go", "sso", "single sign-on", "touch id", "passwordless", "work", "chrome"],
+      control: .toggle))
+
   /// The setting with this id (or an old id from `aliases`).
   static func named(_ id: String) -> AnySettingKey? {
     let current = aliases[id] ?? id
@@ -322,6 +334,7 @@ struct SettingGroup: Equatable {
   static let sidebar = SettingGroup(id: "sidebar", title: "Sidebar and address bar")
   static let media = SettingGroup(id: "media", title: "Media")
   static let keys = SettingGroup(id: "keys", title: "Ray's keys")
+  static let signIn = SettingGroup(id: "signIn", title: "Signing in")
 }
 
 /// One option of a choice: what the menu shows, and the value's text (what `setting <id> <value>` takes).

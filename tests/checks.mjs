@@ -1910,7 +1910,7 @@ const checks = {
       await it.ok("settings open passwords");
       s = await it.until("passwords pane", (s) => s.settingsWindow.pane === "passwords");
       assert(pane(s).locked, "Passwords isn't locked at first");
-      assert(s.settingsWindow.rows.passwords.join() === "offerToSaveLogins,passwords.saved,passwords.more",
+      assert(s.settingsWindow.rows.passwords.join() === "offerToSaveLogins,passwords.saved,jumpCloudRelay,jumpCloudRelay.setup,passwords.more",
         `rows ${s.settingsWindow.rows.passwords}`);
       if (process.env.SNAP_DIR) await it.ok(`settings snap ${join(process.env.SNAP_DIR, "settings-passwords-locked.png")}`);
       await it.ok("passwords unlock");
@@ -3119,6 +3119,7 @@ const checks = {
     await command("settings open search");
     await until("Ray.app's panes", async () => { await command("state"); return win().open && win().looksLikeRayApp; });
     assert(win().panes.join() === "general,tabs,appearance,search,privacy,passwords,autofill,extensions,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
+    assert(["jumpCloudRelay", "jumpCloudRelay.setup"].every(id => win().rows.passwords.includes(id)), `Ray.app passwords rows ${win().rows.passwords}`);
     // Every pane has content of its own now, so none is hidden; Search opens as itself.
     assert(win().pane === "search", `Search opened as ${win().pane}`);
     assert(!win().rows.appearance.includes("appIcon") && win().rows.appearance.includes("appearanceMode") && win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
@@ -3313,6 +3314,216 @@ const checks = {
     await command("key s cmd");
     await until("⌘S toggles back", async () => { await command("state"); return state().sidebar.hidden === hidden; });
     await resetSettings();
+  },
+  async "jumpcloud-relay"() {
+    // Settings › Passwords › Sign in with JumpCloud Go through Chrome (Host/JumpCloudRelay.swift), on an instance of
+    // its own: console.jumpcloud.com maps to a local fixture (so the real host list is what triggers), and "Chrome" is
+    // tests/jumpcloud-chrome-standin.mjs on the DevTools pipe. Off: nothing starts. On: Chrome starts with its own
+    // profile (0700) and a pipe, never a port; only jumpcloud.com cookies land in Ray, replacing a stale session;
+    // the tab reloads; a private window never relays; the loop guard, the deadline, a silent Chrome and Set Up….
+    const dir = mkdtempSync(join(tmpdir(), "ray-jumpcloud-"));
+    const data = join(dir, "data");
+    const standin = join(dir, "standin");
+    mkdirSync(standin);
+    const mode = (name) => writeFileSync(join(standin, "mode"), name);
+    mode("success");
+    const wrapper = join(dir, "chrome");
+    writeFileSync(wrapper, `#!/bin/sh\nRAY_STANDIN_DIR=${JSON.stringify(standin)} exec ${JSON.stringify(process.execPath)} ` +
+      `${JSON.stringify(join(root, "tests/jumpcloud-chrome-standin.mjs"))} "$@"\n`, { mode: 0o755 });
+    const lines = (file) => existsSync(join(standin, file))
+      ? readFileSync(join(standin, file), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
+    const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    const requests = [];
+    const jc = createSecureServer({ key: readFileSync(join(dataDir, "fixture.key")), cert: readFileSync(join(dataDir, "fixture.crt")) }, (req, res) => {
+      const url = new URL(req.url, "https://console.jumpcloud.com");
+      requests.push({ path: url.pathname + url.search, cookie: req.headers.cookie ?? "" });
+      if (url.pathname === "/seed") {
+        res.writeHead(200, { "content-type": "text/html", "set-cookie": ["jcsession=stale; Path=/; Secure; HttpOnly; Max-Age=3600",
+          "rayonly=1; Domain=jumpcloud.com; Path=/; Secure; Max-Age=3600"] });
+        return res.end("<title>Seed</title><p>seed</p>");
+      }
+      if (url.pathname === "/login") {
+        res.writeHead(200, { "content-type": "text/html" });
+        return res.end("<title>JumpCloud</title><p>login</p>");
+      }
+      res.writeHead(404);
+      res.end("not found");
+    });
+    await new Promise((r) => jc.listen(0, "127.0.0.1", r));
+    const devPort = 9850 + Math.floor(Math.random() * 140);
+    let log = "";
+    const it = spawn(join(app, "Contents/MacOS/Ray"), [], {
+      env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_DATA_DIR: data,
+        RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_START_URL: `${origin}/a`, RAY_IGNORE_CERT_ERRORS: "1",
+        RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.jumpcloud`, RAY_REMOTE_DEBUGGING_PORT: String(devPort),
+        RAY_HOST_RULES: `MAP console.jumpcloud.com 127.0.0.1:${jc.address().port}`,
+        RAY_JUMPCLOUD_RELAY_CHROME: wrapper, RAY_JUMPCLOUD_RELAY_DEADLINE: "4" },
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    const exit = new Promise((r) => it.on("exit", (code, signal) => r(code ?? signal)));
+    it.stdin.on("error", () => {});
+    it.stderr.setEncoding("utf8");
+    it.stderr.on("data", (chunk) => { log += chunk; });
+    const run = async (line) => {
+      const marker = `[ray-test] ${line} -> `;
+      const from = log.length;
+      it.stdin.write(line + "\n");
+      return until(`command ${line}`, () => {
+        const at = log.indexOf(marker, from);
+        return at >= 0 ? log.slice(at + marker.length).split("\n")[0] : null;
+      }, 25000, 100);
+    };
+    const ok = async (line) => assert((await run(line)) === "ok", `${line} didn't run`);
+    const latest = () => {
+      const done = log.slice(0, log.lastIndexOf("\n"));
+      const at = done.lastIndexOf("[ray-state] ");
+      return at < 0 ? null : JSON.parse(done.slice(at + "[ray-state] ".length).split("\n")[0]);
+    };
+    const now = async () => { await ok("state"); await sleep(50); return latest(); };
+    const relay = async () => (await now()).jumpCloudRelay;
+    const goTo = async (path, newTab = false) => {
+      await ok(newTab ? "menu newTab" : "menu focusAddress");
+      await ok(`type https://console.jumpcloud.com${path}`);
+      await ok("enter");
+      await until(`request ${path}`, () => requests.some((r) => r.path === path), 10000);
+    };
+    let socket;
+    try {
+      await until("the relay instance", async () => (await now())?.tabs?.length > 0, 20000);
+      const version = await until("its DevTools", async () => {
+        try { return await (await fetch(`http://127.0.0.1:${devPort}/json/version`)).json(); } catch { return null; }
+      }, 20000);
+      socket = new WebSocket(version.webSocketDebuggerUrl);
+      await new Promise((r, j) => ((socket.onopen = r), (socket.onerror = j)));
+      let seq = 1;
+      const replies = new Map();
+      socket.onmessage = (m) => { const msg = JSON.parse(m.data); replies.get(msg.id)?.(msg); replies.delete(msg.id); };
+      const cdp = (method, params = {}) => new Promise((r) => { const id = seq++; replies.set(id, r); socket.send(JSON.stringify({ id, method, params })); });
+      const rayCookies = async () => (await cdp("Storage.getCookies")).result.cookies;
+      const jumpcloudIn = (cookies) => cookies.filter((c) => /(^|\.)jumpcloud\.com$/.test(c.domain.replace(/^\./, "")));
+
+      // A stale session in Ray, which the relay must replace (the engine's import keeps cookies Ray already has).
+      await goTo("/seed");
+      await until("stale cookie", async () => (await rayCookies()).some((c) => c.name === "jcsession" && c.value === "stale"));
+      assert((await relay()).launches === 0 && (await relay()).lastResult === "none", "the relay started on its own");
+
+      // Off (the default): the login page loads in Ray and nothing starts.
+      await goTo("/login?n=off");
+      await sleep(1000);
+      assert((await relay()).launches === 0 && lines("launches.jsonl").length === 0, "Chrome started with the setting off");
+
+      // On, without JumpCloud Go in Ray's Chrome profile: a note pointing to Set Up, no Chrome.
+      await ok("setting jumpCloudRelay on");
+      await goTo("/login?n=nosetup");
+      await until("not set up", async () => (await relay()).lastResult === "notSetUp");
+      assert(latest().toast.includes("Set up JumpCloud Go") && latest().jumpCloudRelay.launches === 0, `not set up: ${latest().toast}`);
+      const profile = join(data, "JumpCloud Relay");
+      mkdirSync(join(profile, "Default/Extensions/jdoahkhfkeipblhbhppmcbdgapeoaopa/3.3.5_0"), { recursive: true });
+
+      // Signed in: Chrome on the console's own login page (not the app's flow) in a 440×620 window, then only
+      // jumpcloud.com cookies come over, the stale session goes, and the tab reloads with the new one.
+      await goTo("/login?n=1");
+      await until("signed in", async () => (await relay()).lastResult === "signedIn", 10000);
+      let state = await relay();
+      assert(state.launches === 1 && state.cookiesImported === 2 && state.directoryMode === "700" && state.directory === profile,
+        `relay ${JSON.stringify(state)}`);
+      const [launch] = lines("launches.jsonl");
+      assert(JSON.stringify(launch.argv) === JSON.stringify([`--user-data-dir=${profile}`, "--remote-debugging-pipe",
+        "--no-first-run", "--no-default-browser-check", "--no-startup-window"]), `Chrome's arguments: ${JSON.stringify(launch.argv)}`);
+      const calls = () => lines("cdp.jsonl").filter((c) => c.pid === launch.pid);
+      const created = calls().find((c) => c.method === "Target.createTarget");
+      assert(created.params.url === "https://console.jumpcloud.com/login" && created.params.newWindow === true &&
+        created.params.width === 440 && created.params.height === 620, `createTarget ${JSON.stringify(created.params)}`);
+      const placed = calls().find((c) => c.method === "Browser.setWindowBounds");
+      assert(placed?.params.bounds.width === 440 && placed.params.bounds.height === 620, `window bounds ${JSON.stringify(placed)}`);
+      assert(calls().some((c) => c.method === "Storage.getCookies") && calls().some((c) => c.method === "Browser.close"),
+        `calls ${calls().map((c) => c.method)}`);
+      await until("relay Chrome gone (and reaped)", () => !alive(launch.pid), 8000);
+      assert(!lines("cdp.jsonl").some((c) => c.pid === launch.pid && c.signal), "the relay Chrome had to be killed after Browser.close");
+      const reloads = await until("tab reloaded", () => {
+        const seen = requests.filter((r) => r.path === "/login?n=1");
+        return seen.length >= 2 && seen;
+      }, 8000);
+      const sent = reloads.at(-1).cookie;
+      assert(sent.includes("jcsession=relay-session-1") && sent.includes("jcuser=relay-user-1") && !sent.includes("stale") &&
+        !sent.includes("rayonly"), "the reload didn't carry Chrome's JumpCloud session alone");
+      const cookies = await rayCookies();
+      const ours = jumpcloudIn(cookies);
+      assert(ours.map((c) => c.name).sort().join() === "jcsession,jcuser", `JumpCloud cookies in Ray: ${ours.map((c) => c.name)}`);
+      const session = ours.find((c) => c.name === "jcsession");
+      assert(session.value === "relay-session-1" && session.session === true && session.httpOnly && session.domain === "console.jumpcloud.com",
+        "the session cookie didn't come over as Chrome had it");
+      assert(!cookies.some((c) => ["other", "lookalike", "suffix"].includes(c.name)), "a cookie from another site came over");
+      state = await relay();
+      assert(state.state === "idle" && state.chromeRunning === false, `after: ${JSON.stringify(state)}`);
+
+      // The same tab on the login page again soon after: a note, not another Chrome.
+      await sleep(1500);
+      await goTo("/login?n=2");
+      await until("loop guard", async () => (await relay()).lastResult === "loopGuard");
+      assert(latest().jumpCloudRelay.launches === 1 && latest().toast.includes("Still not signed in"), `loop: ${latest().toast}`);
+
+      // Never from a private window.
+      await ok("menu newPrivateWindow");
+      await until("private window", async () => (await now()).private === true && latest().commandBar);
+      await ok("type https://console.jumpcloud.com/login?n=private");
+      await ok("enter");
+      await until("private login page", () => requests.some((r) => r.path === "/login?n=private"), 10000);
+      await sleep(1000);
+      state = await relay();
+      assert(state.launches === 1 && state.lastResult === "loopGuard", `a private window relayed: ${JSON.stringify(state)}`);
+      await ok("closewindow private");
+      await until("back to the normal window", async () => (await now()).private === false, 8000);
+
+      // The user never finishes: the deadline closes Chrome and says so.
+      mode("never");
+      await goTo("/login?n=3", true);
+      await until("timed out", async () => (await relay()).lastResult === "timedOut", 12000);
+      assert(latest().toast.includes("didn't finish") && latest().jumpCloudRelay.launches === 2, `deadline: ${latest().toast}`);
+      const never = lines("launches.jsonl")[1];
+      await until("timed-out Chrome gone", () => !alive(never.pid), 10000);
+
+      // A Chrome that never answers its pipe (policy RemoteDebuggingAllowed off): given up on, and killed.
+      mode("silent");
+      await goTo("/login?n=4", true);
+      await until("no answer", async () => (await relay()).lastResult === "noAnswer", 12000);
+      assert(latest().toast.includes("didn't answer") && latest().jumpCloudRelay.launches === 3, `silent: ${latest().toast}`);
+      const silent = lines("launches.jsonl")[2];
+      await until("silent Chrome gone", () => !alive(silent.pid), 10000);
+
+      // Set Up…: the Web Store page at Chrome's own size; Chrome quits when its window closes.
+      mode("setup");
+      await ok("settings open passwords");
+      await until("passwords pane", async () => (await now()).settingsWindow.pane === "passwords");
+      const rows = latest().settingsWindow.rows.passwords;
+      assert(rows.includes("jumpCloudRelay") && rows.includes("jumpCloudRelay.setup"), `passwords rows ${rows}`);
+      assert(latest().jumpCloudRelay.status.includes("installed"), `status ${latest().jumpCloudRelay.status}`);
+      await ok("settings close");
+      await ok("jumpcloud setup");
+      await until("setup", async () => (await relay()).lastResult === "setup" && latest().jumpCloudRelay.launches === 4);
+      const setup = lines("launches.jsonl")[3];
+      const setupCalls = lines("cdp.jsonl").filter((c) => c.pid === setup.pid);
+      const store = setupCalls.find((c) => c.method === "Target.createTarget");
+      assert(store.params.url === "https://chromewebstore.google.com/detail/jdoahkhfkeipblhbhppmcbdgapeoaopa" &&
+        store.params.width === undefined && !setupCalls.some((c) => c.method === "Browser.setWindowBounds"), `setup ${JSON.stringify(store.params)}`);
+      await until("setup Chrome quit after its window closed", async () => !alive(setup.pid) && !(await relay()).chromeRunning, 10000);
+
+      // The signature check: Ray's own test app isn't Google Chrome; the real one (when installed) is.
+      assert((await run(`jumpcloud verify ${app}`)) === "invalid", "Ray's test app passed as Google Chrome");
+      if (existsSync("/Applications/Google Chrome.app"))
+        assert((await run("jumpcloud verify /Applications/Google Chrome.app")) === "valid", "Google Chrome failed its own check");
+
+      await ok("setting jumpCloudRelay off");
+      it.stdin.write("menu quit\n");
+      assert((await Promise.race([exit, sleep(15000).then(() => "timeout")])) !== "timeout", "the instance didn't quit within 15 s");
+      for (const started of lines("launches.jsonl")) assert(!alive(started.pid), "a stand-in Chrome outlived Ray");
+    } finally {
+      socket?.close();
+      jc.close();
+      if (it.exitCode === null && it.signalCode === null) it.kill("SIGKILL");
+      for (const started of lines("launches.jsonl")) if (alive(started.pid)) process.kill(started.pid, "SIGKILL");
+      rmSync(dir, { recursive: true, force: true });
+    }
   },
   async "settings-appearance-mode"() {
     // Light, Dark or Automatic: NSApp's appearance, which the window (and every view of Ray's) takes, and which pages

@@ -27,7 +27,7 @@ const settings = ["settings-window", "settings-catalog", "settings-minimal-url",
   "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling",
   "settings-shortcuts", "settings-routes", "settings-trimmed", "settings-persist", "settings-panes", "settings-search",
   "settings-bar", "settings-colours", ...settingFeatures,
-  "search-engine", "search-suggestions-off", "site-search"];
+  "search-engine", "search-suggestions-off", "site-search", "jumpcloud-relay"];
 // Settings › General (SettingsGeneral.swift, CloseWarnings.swift): its pane, the two warnings and Start fresh.
 settings.push("settings-general", "warn-before-quitting", "warn-before-closing-window");
 settings.push("settings-privacy", "settings-extensions");
@@ -110,7 +110,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "private-window", "close-last-window", "warn-before-closing-window"],
   "Host/BrowserWindowController.swift#RayCoreTabDelegate": [...pages, ...permissions, "page-toolbar", "page-loading",
     "load-sweep-once", "site-controls", "find-in-page", "settings-zoom", "settings-routes", "settings-trimmed",
-    "address-fragment"],
+    "address-fragment", "jumpcloud-relay"],
   "Host/BrowserWindowController.swift#Settings": [...settings, "page-toolbar", "page-loading"],
   "Host/BrowserWindowController.swift#Page commands": ["page-commands"],
   "Host/BrowserWindowController.swift#Page zoom": ["settings-zoom", "settings-private-zoom", "settings-window", "site-controls",
@@ -161,13 +161,19 @@ export const areas = {
   "Host/SettingsExtensions.swift": ["settings-extensions", "settings-panes", "settings-search", "extensions"],
   "Host/SettingsDataRows.swift": ["settings-privacy", "settings-extensions"],
   // Settings › Passwords and › Autofill (on the engine's ac_passwords_* and ac_autofill_*), and their shared pieces.
-  "Host/SettingsPasswords.swift": ["settings-passwords", "settings-panes", "settings-search"],
+  "Host/SettingsPasswords.swift": ["settings-passwords", "settings-panes", "settings-search", "jumpcloud-relay"],
   "Host/SettingsAutofill.swift": ["settings-autofill", "settings-panes", "settings-search"],
   "Host/SettingsDataViews.swift": ["settings-passwords", "settings-autofill"],
   // Settings › Search: its rows and controls, and the engines and site searches the command bar searches with.
   "Host/SettingsSearchPane.swift": ["search-engine", "search-suggestions-off", "site-search", "settings-catalog", "settings-panes",
     "settings-window", "settings-search", "settings-bar", "settings-persist"],
   "Host/SearchEngines.swift": [...commandBar, "settings-catalog", "private-window"],
+  // JumpCloud Go through Chrome: the login pages, Chrome's pipe, the cookies (tests/ has its Chrome stand-in), and
+  // Passwords' setup row.
+  "Host/JumpCloudRelay.swift": ["jumpcloud-relay"],
+  "Host/SettingsJumpCloud.swift": ["settings-panes", "settings-search", "jumpcloud-relay"],
+  "tests/jumpcloud-chrome-standin.mjs": ["jumpcloud-relay"],
+  "Host/TestCommands.swift#JumpCloud relay": ["jumpcloud-relay"],
   "Host/SettingsControls.swift": [...settings, "onboarding"],
   "Host/MiniRayWindow.swift": ["settings-panes", "settings-window"],
   "Host/SettingsSearch.swift": [...settings, ...commandBar],
@@ -215,7 +221,7 @@ export const areas = {
   "tests/SafeStorageTests.swift": [],
   // The importer's own tests (swift test) cover its readers; import-browser runs it end to end in the app, and
   // onboarding drives its screens on the importer's fixtures.
-  "Importer/": ["import-browser", "onboarding"],
+  "Importer/": ["import-browser", "onboarding", "jumpcloud-relay"],
   "Importer/Tests/": [],
   "Host/ImportSession.swift": ["import-browser", "onboarding"],
   "Host/ImportWriter.swift": ["import-browser", "onboarding"],

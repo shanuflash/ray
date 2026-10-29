@@ -112,7 +112,8 @@ publicly or create accounts.
   (example: `SettingsAbout.swift`). `AddressInput.nativeSettingsPane(for:)` recognises the Appearance address (and
   Profiles) plus General, Tabs, Shortcuts, About and Search: typed or chosen ones open the window and never load;
   Chrome's page navigating itself there goes back. Privacy (Chrome's Site settings), Extensions, Passwords and
-  Autofill are Ray's panes too (below).
+  Autofill are Ray's panes too (below). Passwords also holds the JumpCloud Go relay's
+  row (`SettingsJumpCloud.swift`).
   Settings that act elsewhere: minimal URL and loading progress (`PageToolbar`, `PageContainerView.showsProgress`),
   new tab position (`insertToday`), ⌃Tab in recent order (`cycleTabWithControl`, settled by a `flagsChanged` monitor
   when Control is released), ⇧⌘C and ⌘S (`MainMenu.applyShortcutSettings` removes their key equivalents so the page
@@ -206,6 +207,26 @@ publicly or create accounts.
   last one active. A launch by a link waits for AppKit's launch to finish (its event comes after the engine starts)
   and opens the links in place of the start page. Test command `appopen link|files|direct`; checks
   `open-from-other-apps` and `open-from-other-apps-launch` (a cold start through `open -g -n`, its own data dir).
+- `JumpCloudRelay`: JumpCloud Go through Google Chrome (docs/MISSING.md #15: JumpCloud's native helper serves only
+  browsers on its signature list). Setting `jumpCloudRelay` (Settings › Passwords, group "Signing in", off) read at
+  trigger time; `tabDidCommitDocument` of a normal tab whose engine `committedOrigin` is https
+  console(.eu)/sso(.eu).jumpcloud.com (no port) and path `/login` (`JumpCloudLogin.match`) starts Ray's own Chrome:
+  `RelayChromeApp` finds `com.google.Chrome` and checks its signature (`identifier "com.google.Chrome" and anchor
+  apple generic and certificate leaf[subject.OU] = "EQHXZ8M8AV"`, resources not hashed) before every launch;
+  `RelayChrome` posix_spawns it with only fds 0–4 (`--user-data-dir=<data>/JumpCloud Relay` made 0700,
+  `--remote-debugging-pipe`, `--no-first-run`, `--no-default-browser-check`, `--no-startup-window`; never a port),
+  CDP as NUL-separated JSON on fds 3/4, reaped on exit, Browser.close then SIGTERM/SIGKILL. `Target.createTarget`
+  opens the console's own `/login` (never the app's SAML/OIDC URL) 440×620 over Ray's window; a `/userconsole` URL
+  (`Target.targetInfoChanged`) is signed in: `Storage.getCookies`, only jumpcloud.com and subdomains
+  (`isJumpCloudDomain`, dot boundary), `ac_site_data_clear` on jumpcloud.com (the import keeps cookies Ray has) then
+  `ac_cookies_import` through `callWithSecret`, and the tab reloads if still on that login page. Deadlines: 15 s for
+  Chrome's first answer (a policy may forbid the pipe), 120 s to sign in; one relay at a time; the same tab back on
+  the login page within 30 s (after the reload's own landing) gets a Toast, not another relay. Set Up… (Passwords'
+  own row, `SettingsJumpCloud.swift`) opens that Chrome on JumpCloud Go's Web Store page; Chrome quits when its last
+  window closes. Never the Keychain, never the user's Chrome profile; logs only the result name. Test builds use only
+  `RAY_JUMPCLOUD_RELAY_CHROME` (a stand-in, unchecked; never real Chrome) and `RAY_JUMPCLOUD_RELAY_DEADLINE`; test
+  command `jumpcloud setup|verify <app>`; state log `jumpCloudRelay`; check `jumpcloud-relay` (own instance,
+  `MAP console.jumpcloud.com` to a fixture, `tests/jumpcloud-chrome-standin.mjs` as Chrome).
 - Import: `Importer/` is Ardia's import core (Apache-2.0, `swift test --package-path Importer`, fixtures only, never a
   real profile), compiled into the app. `ImportSession` (the contract the screens use: `ImportItem`, `ImportSource`,
   `sources()`/`preview`/`run`) and `ImportWriter` (reading off the main thread, one Keychain prompt for the source's
@@ -425,6 +446,8 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   open lock for plain http, red only for a certificate error on a real site. The user hated Dia's red lock on dev.
 - Scripted edits: assert the old text matches exactly once before replacing; an empty-string replace once corrupted
   `checks.mjs`.
+- A Node test helper on an inherited pipe fd (the Chrome stand-in's fds 3/4) must use `net.Socket({ fd })`: an `fs`
+  stream on a pipe blocks a worker thread in read() and the process can then never exit, not even on SIGTERM.
 
 ## Security checklist (every change)
 Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand them anything back.

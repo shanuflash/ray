@@ -28,6 +28,9 @@ Early and personal. Expect rough edges.
 - Updates itself (Ray › Check for Updates…).
 - Can be your default browser (System Settings › Desktop & Dock › Default web browser): links from other apps, and
   HTML or PDF files you open with Ray, open as tabs, also when they launch Ray.
+- JumpCloud Go (passwordless work sign-in), through Google Chrome: with Settings › Passwords › Sign in with JumpCloud
+  Go through Chrome on, JumpCloud's login page opens a small Chrome window for Touch ID, then you're signed in in Ray.
+  JumpCloud's helper only answers browsers on its own list, so Ray borrows Chrome for that one step.
 
 Not yet: Spaces, drag and drop between windows, Split View, Little Arc, installing imported extensions. The full
 list is in [docs/MISSING.md](docs/MISSING.md).
@@ -60,6 +63,10 @@ with real accounts:
   Builds share one self-signed identity, so macOS asks only once to let Ray use the item.
 - **Importing** reads another browser's saved logins only when you choose passwords, cookies or cards, after macOS
   asks for your password for that browser's own key; nothing is sent anywhere.
+- **JumpCloud Go through Chrome** (off by default): Ray starts Google Chrome only after checking it's signed by
+  Google, with its own profile (`JumpCloud Relay` next to Ray's data, readable only by you, never your Chrome
+  profile), drives it over a private pipe (no network port), and copies only jumpcloud.com cookies into Ray. Never
+  from a private window.
 - **No Safe Browsing**: Helium compiles it out.
 - **Self-signed** ("Ray Code Signing"), no hardened runtime, not notarized.
 
