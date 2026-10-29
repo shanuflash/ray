@@ -137,6 +137,10 @@ publicly or create accounts.
 - `third_party/ardia/`: read-only reference clone of Ardia at `ardia_tag` (gitignored). Read it for behaviour; don't
   build from it.
 - `third_party/crest/`: read-only reference clone of Crest (gitignored), another native-Mac Chromium browser.
+- Upstream watch: `docs/ARDIA-WATCH.md` (Ardia's releases reviewed, newest first, "Last reviewed" line, a "Ray
+  should" list) and `docs/CHROMIUM-WATCH.md` (Chrome stable and Helium releases vs `engine.lock`'s Chromium, security
+  fixes first). Two daily scheduled tasks in the owner's Claude app (`ardia-watch-daily` 10:00,
+  `chromium-watch-daily` 10:15) append to them and commit only that file; they never touch engine files or builds.
 - `third_party/cra/`: read-only reference clone of Cra (gitignored; github.com/VictorKildahl/cra, MIT), an Arc
   replacement on CEF with SwiftUI UI. Its importers (`Sources/Cra/Services/Import`) and models are plain Swift and
   may be copied: keep its copyright line in the file header and in `NOTICE`. Its SwiftUI views are references only
