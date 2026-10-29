@@ -86,11 +86,9 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
     `ac_extensions_configure` `userScripts`, `ac_bookmarks_export_html`); Ray needs the sync and the UI.
 
 **Default browser**
-17. **Make Ray the default browser** from Ray: a "Default browser" row with a Make Default button in Settings, a step
-    in the onboarding (after the import, "Open links from other apps in Ray?"), and a gentle note when Ray isn't the
-    default (Chrome's infobar, Arc's prompt). Uses `NSWorkspace.setDefaultApplication(at:toOpenURLsWithScheme:)`,
-    which shows macOS's own confirmation. Ray already declares http/https and HTML and opens their links, so it
-    can be picked in System Settings meanwhile.
+17. **Ask to be the default browser** outside Settings: a step in the onboarding (after the import, "Open links from
+    other apps in Ray?") and a gentle note when Ray isn't the default (Chrome's infobar, Arc's prompt). Settings ›
+    General's Make Default strip is done (`NSWorkspace.setDefaultApplication`, macOS's own confirmation).
 
 **Already working through Chrome's defaults:** right-click menus, spell check, `chrome://` pages.
 
@@ -100,44 +98,31 @@ Gone through Ardia 0.2.42's Settings window pane by pane (2026-10-29); what it o
 items above. The revamp that gives these a home is PLAN.md section 13.
 
 **Big**
-1. **Choosing a search engine**: Ray searches a fixed Google. Missing the engine list with Make Default, custom site
-   searches (type a keyword, press Tab in the command bar) and a search suggestions switch. The engine has
-   `ac_search_engines`; `/search` is trimmed from Chrome's settings today.
-2. **Live Folders** (Arc had them): folders that refresh on their own, GitHub/Bitbucket pull requests,
+1. **Live Folders** (Arc had them): folders that refresh on their own, GitHub/Bitbucket pull requests,
    Notion/Confluence/Google Drive documents.
-3. **Live Calendar** (Arc's calendar preview): hover a pinned calendar tab to see the day, a badge counting down to
+2. **Live Calendar** (Arc's calendar preview): hover a pinned calendar tab to see the day, a badge counting down to
    the next meeting, an alert with a Join button.
-4. **Shortcut editor**: change any menu shortcut, search actions, Reset All.
-5. **Theme as a gradient** (Arc's Space themes): several colours, intensity, grain, direction. Ray has one accent
+3. **Shortcut editor**: change any menu shortcut, search actions, Reset All.
+4. **Theme as a gradient** (Arc's Space themes): several colours, intensity, grain, direction. Ray has one accent
    colour. Belongs with Spaces.
-6. **Native data screens**: every site's permissions, zoom levels and "apps allowed to open links" in one list with
-   Clear Site Data (Ray has only the per-site panel); passwords behind Touch ID with CSV import/export; addresses and
-   cards; an Extensions screen (toggles, details, site access, add from a store link, load unpacked). The engine
-   has `ac_site_settings`, `ac_passwords`, `ac_reauth`, `ac_autofill_edit`, `ac_extensions`, `ac_browsing_data`.
 
 **Smaller**
-7. Where new tabs go (top, bottom, next to current) and where the New Tab button sits (Ray has one switch).
-8. Open at login.
-9. Warn before quitting with ⌘Q, and before closing a window with several tabs.
-10. On quit: keep tabs and windows, or start fresh.
-11. Light, Dark or Automatic for Ray's own chrome (Ray follows macOS only).
-12. Alternate app icons: a few need designing first.
-13. Hide the address bar above the page (View › Show Address Bar on Page) while scrolling down: it tucks into a
-    thin strip with the site's name; scrolling up or clicking the strip brings it back.
-14. Show or hide the sidebar button, and Arc's "Clear" button between pinned tabs and Today (Ray has no such
-    button yet; Clear Today's Tabs is only in the File menu and the command bar).
-15. ⌘Z reopens a closed tab outside text fields, as in Arc.
-16. Fade the icons of unloaded tabs.
-17. Haptic bump when reordering tabs.
-18. Thin scroll bars.
-19. Updates as Settings rows: check automatically, install automatically, Stable or Nightly, version, Check Now
-    (Ray has the menu item only).
-20. Downloads folder and "ask where to save" in Ray's Settings (only on Chrome's page today).
-21. Battery saver.
-22. Memory Saver rows: on/off, Moderate / Balanced / Maximum, "Always keep these sites active" (Ardia's Settings ›
+5. Where new tabs go (top, bottom, next to current) and where the New Tab button sits (Ray has one switch).
+6. Light, Dark or Automatic for Ray's own chrome (Ray follows macOS only).
+7. Alternate app icons: a few need designing first.
+8. Hide the address bar above the page (View › Show Address Bar on Page) while scrolling down: it tucks into a
+   thin strip with the site's name; scrolling up or clicking the strip brings it back.
+9. Show or hide the sidebar button, and Arc's "Clear" button between pinned tabs and Today (Ray has no such
+   button yet; Clear Today's Tabs is only in the File menu and the command bar).
+10. ⌘Z reopens a closed tab outside text fields, as in Arc.
+11. Fade the icons of unloaded tabs.
+12. Haptic bump when reordering tabs.
+13. Thin scroll bars.
+14. Battery saver.
+15. Memory Saver rows: on/off, Moderate / Balanced / Maximum, "Always keep these sites active" (Ardia's Settings ›
     Advanced › Performance, through the engine's `ac_memory_saver` from engine-2f172eb50b89). Today only on
     chrome://settings/performance, and off by default (see Known limitations).
-23. Compact toolbar: the address bar above the page at 28 pt instead of 41, so a 16:9 video in web full screen
+16. Compact toolbar: the address bar above the page at 28 pt instead of 41, so a 16:9 video in web full screen
     fills a maximized window (Ardia 0.2.43-nightly.1).
 
 **Left out on purpose:** WebKit engine and website rules (decided no), setup codes, the `ardia` command-line tool,
@@ -220,6 +205,24 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     (Developer ID, roadmap step 4; or the owner's Apple Development certificate for their own builds), then one last
     prompt. Found 2026-10-29.
 
+19. **Search pane gaps.** Only a built-in engine can be the default (Chrome and Ardia allow a custom one); no
+    suggestions inside a scoped site search; letter marks instead of engine icons (no icon fetching); pages that
+    search through Chrome itself ("Search Google for …" in the right-click menu) still use Google, because Ray keeps
+    its own engine list rather than Chrome's TemplateURLService (`ac_search_engines_list` can't set a default).
+20. **Privacy pane gaps.** It lists only permissions that already differ from the default (Site controls sets the
+    rest); origins with wildcard patterns don't show (the engine leaves them out); an extension's "On specific
+    sites" can't add sites (`ac_extensions_configure` has no host list); Chrome's Site settings pages aren't trimmed
+    from `resources.pak`, only routed to the pane.
+21. **Passwords pane gaps.** "Never saved" can't gain entries from Settings (no engine call to add an exception); the
+    real Touch ID prompt, save and open panels and 1Password's "Add browser" with the signed Ray aren't tried by
+    hand; "Offer to save passwords" and "Save and fill addresses/cards" stay unbuilt until Ray has the prompts
+    (Chrome features #2, #3).
+22. **Two sets of Settings data rows.** `SettingsDataRows` (Privacy, Extensions) and `SettingsDataViews` (Passwords,
+    Autofill) were built in parallel and overlap (item rows, confirm sheets; the latter's are `SettingsRecordRow` and
+    `SettingsRecordConfirm`). Fold into one.
+23. **A page's "Leave site?" doesn't cancel a window close cleanly.** `windowDidCancelClose` isn't implemented, so
+    the window keeps its closing flag after the page cancels.
+
 ## Done
 
 | What | When |
@@ -240,3 +243,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Settings: one typed catalog for every setting (storage, observers, test command, check generated from it) | 2026-10-29, `414495a` |
 | New Settings window (direction G): text sidebar with lavender wash, search with row flash, `ray://settings/<pane>`, "Settings: …" in the command bar, live pictures | 2026-10-29, `d88e0e3` |
 | Extension popups draw on macOS 27 (a borderless window, not an NSPopover, which showed them plain white) | 2026-10-29, `fdc09cd` |
+| Settings › General: Make Default strip, open at login, warn before ⌘Q and before closing a private window with tabs, start fresh, downloads folder, update switches, import | 2026-10-29, `25f0e1e` |
+| Settings › Privacy (every site's permissions, zoom levels, apps sites may open, clear data) and › Extensions (switches, site access, private windows, options, reload, remove, load unpacked); Site controls in a private window no longer write to the normal profile | 2026-10-29, `0eaf904` |
+| Settings › Passwords (locked behind Touch ID, search, show, copy, edit, add, delete, CSV import and export) and › Autofill (addresses, cards) | 2026-10-29, `d34b5c4` |
+| Settings › Search: default engine, suggestions switch, site searches with a keyword and Tab in the command bar | 2026-10-29, `7d54ba9` |

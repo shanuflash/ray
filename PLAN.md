@@ -433,32 +433,30 @@ after two rounds of mockups (A–F rejected: tile grids, chip bars, card hubs an
 Autofill · Extensions; More: Shortcuts · About Ray (the old Advanced/About). Profiles and Spaces arrive with Spaces. Live Folders and Calendar get panes only when
 those features exist. "All Chrome Settings…" stays as a link.
 
-**What goes in each pane, with defaults.** ✓ = in Ray's Settings window today; (menu) or (Chrome page) = Ray has
-it elsewhere; the rest is new (numbers are `docs/MISSING.md`, "From Ardia's settings"). Defaults follow Arc where
-Arc has one.
-- **General:** default browser, asked once in the onboarding (Chrome #16; Ray already declares itself a browser and
-  opens links from other apps, the Make Default button is what's left); open Ray at login, off (8);
-  warn before ⌘Q, off, and before closing a window with several tabs, on (9); on quit, keep tabs and windows (10);
-  downloads folder ~/Downloads and ask where to save, off (20, Chrome page); updates: check automatically on,
-  install automatically on, channel Stable, version and Check Now (19, menu); import from another browser (menu).
-- **Tabs & Sidebar:** where new tabs go, top (7; ✓ as a "next to the active tab" switch, off); New Tab button at
-  the top (7); ⌃Tab in recent order, on ✓; show sidebar button, on, and Clear button, on, once Ray has one (14);
-  hide the address bar while scrolling, off (13); fade icons of unloaded tabs, off (16); haptic bump on reorder,
-  on (17); media controls and auto picture-in-picture, on, once built (Arc #8, #9).
-- **Appearance:** theme colour, Lavender ✓ (a gradient with Spaces, 5); Light, Dark or Automatic, Automatic (11);
+**What goes in each pane, with defaults.** ✓ = built in Ray's Settings window; (menu) = also in a menu; the rest is
+still to build (numbers are `docs/MISSING.md`, "From Ardia's settings"). Defaults follow Arc where Arc has one.
+- **General** ✓ (`25f0e1e`): Make Default strip; open Ray at login, off; warn before ⌘Q, off, and before closing a
+  private window with 2+ tabs, on (a normal window keeps its tabs); on quit, keep tabs and windows or start fresh;
+  downloads folder and ask where to save, off; updates: check and install automatically, on, version and Check Now;
+  import from another browser. Still to do: the default-browser step in the onboarding (Chrome #17).
+- **Tabs and sidebar:** where new tabs go, top (5; ✓ as a "next to the active tab" switch, off); New Tab button at
+  the top (5); ⌃Tab in recent order, on ✓; show sidebar button, on, and Clear button, on, once Ray has one (9);
+  hide the address bar while scrolling, off (8); fade icons of unloaded tabs, off (11); haptic bump on reorder,
+  on (12); media controls and auto picture-in-picture, on, once built (Arc #8, #9).
+- **Appearance:** theme colour, Lavender ✓ (a gradient with Spaces, 4); Light, Dark or Automatic, Automatic (6);
   address bar on the page, on (menu); minimal URL, off ✓; loading progress, on ✓; default page zoom 100% ✓;
-  scroll bars follow macOS (18); app icon, Default, more to design (12).
-- **Search:** default engine Google, suggestions on, no custom site searches (1).
-- **Privacy & Security:** every site's permissions (Chrome's defaults, ask), zoom levels, apps allowed to open
-  links, clear site data (6, Chrome page); clear browsing data (menu); content blocker if decided (Arc #7).
-- **Passwords:** offer to save and fill, on; saved passwords behind Touch ID; CSV import and export (6, Chrome
-  page).
-- **Autofill:** save and fill addresses, on, and cards, on; their lists (6, Chrome page).
-- **Extensions:** installed list with switches, details and site access, Web Store, add from a link, load
-  unpacked (6, Chrome page); extension shortcuts (Chrome #13).
+  scroll bars follow macOS (13); app icon, Default, more to design (7).
+- **Search** ✓ (`7d54ba9`): default engine Google, suggestions on, site searches with keywords.
+- **Privacy** ✓ (`0eaf904`): every site's permissions, zoom levels, apps sites may open, clear site data, clear
+  browsing data; content blocker if decided (Arc #7).
+- **Passwords** ✓ (`d34b5c4`): saved passwords behind Touch ID, CSV import and export; offer to save and fill, on,
+  once Ray has the prompts (Chrome #2).
+- **Autofill** ✓ (`d34b5c4`): addresses and cards; save and fill switches once Ray has the prompts (Chrome #3).
+- **Extensions** ✓ (`0eaf904`): installed list with switches, site access, private windows, options, reload,
+  remove, Web Store, load unpacked; add from a link and extension shortcuts later (Chrome #13, #14).
 - **Shortcuts:** ⇧⌘C copies the link, on ✓; ⌘S toggles the sidebar, on ✓; ⌘Z reopens a closed tab outside text
-  fields, off (15); edit any shortcut, none changed (4).
-- **Advanced/About:** version, source code, licenses; All Chrome Settings….
+  fields, off (10); edit any shortcut, none changed (3).
+- **About Ray** ✓ (`d88e0e3`): version and Chromium version; All Chrome Settings… sits in the sidebar.
 
 **Toolkit:** AppKit + Core Animation (owner 2026-10-29): smoother and lighter than SwiftUI, reuses `RaySwitch`, the
 profile colour and the sidebar's look, and the live pictures animate on layers like the rest of Ray.
@@ -469,9 +467,9 @@ profile colour and the sidebar's look, and the live pictures animate on layers l
 2. Mockups: done, direction G picked (see "Look").
 3. **Done 2026-10-29, `d88e0e3`.** The new window: navigation, search, `ray://settings/<pane>` routing, rows generated from the catalog.
 4. Every Ray-owned setting above as a catalog entry, built or not; the built ones wired.
-5. Search pane: engine choice, custom site searches, suggestions; `AddressInput`'s search URL and the `/search`
+5. **Done 2026-10-29, `7d54ba9`.** Search pane: engine choice, custom site searches, suggestions; `AddressInput`'s search URL and the `/search`
    trim in `tools/trim-settings-pak.py` change with it.
-6. Data panes over the engine's `ac_*` calls: Privacy (site permissions, zoom levels, clear data), Passwords
+6. **Done 2026-10-29, `0eaf904`, `d34b5c4`.** Data panes over the engine's `ac_*` calls: Privacy (site permissions, zoom levels, clear data), Passwords
    (`ac_reauth` for Touch ID), Autofill, Extensions. Each Chrome settings page is trimmed as its native pane lands
    (`trim-settings-pak.py`, `AddressInput.nativeSettingsPane`).
 7. Shortcut editor.
