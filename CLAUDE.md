@@ -4,7 +4,8 @@ A macOS (14+, Apple Silicon) Chromium browser with Arc's sidebar, pinned tabs an
 Core Animation UI on Ardia's engine. `PLAN.md` is the plan and the source of truth for decisions.
 
 **Before any work, read PLAN.md's "Goal and roadmap" and "Open decisions (owner)" and keep them in mind:** the most
-Arc-feeling browser on real, de-Googled Chromium for Mac, launching into Arc's shutdown on 2026-12-22. Weigh every
+Arc-feeling browser on real, de-Googled Chromium for Mac, launching into Arc's shutdown on 2026-12-22.
+`docs/MISSING.md` is the gap list against Arc and Chrome: when a feature lands, move it to its "Done" table. Weigh every
 choice against Arc's feel, real Chromium with working extensions, and painless switching from Arc. Never post
 publicly or create accounts.
 
@@ -55,8 +56,30 @@ publicly or create accounts.
   links; `SidebarState.normalizePinned()` rebuilds a valid tree after every change and on load.
 - `Extensions` (puzzle button in the sidebar address field, action popups in an NSPopover, install prompt),
   `Downloads` (button in the sidebar footer, ⌥⌘L; the list slides up as a panel inside the sidebar), `FindBar` (⌘F),
-  `PermissionPrompt` (site permissions, only over their own tab), `ArcImport` (File › Import from Arc…, reads Arc's
-  StorableSidebar.json only when asked), `Toast` (Arc's top-right note, "Copied Current URL").
+  `PermissionPrompt` (site permissions, only over their own tab), `ArcImport` (the old Import from Arc…, sidebar
+  only; its action still exists without a menu item), `Toast` (Arc's top-right note, "Copied Current URL"; a
+  `figure` style is the zoom level note, "110%", shown after ⌘+ ⌘− ⌘0 but never when Ray applies the default zoom).
+- Import: `Importer/` is Ardia's import core (Apache-2.0, `swift test --package-path Importer`, fixtures only, never a
+  real profile), compiled into the app. `ImportSession` (the contract the screens use: `ImportItem`, `ImportSource`,
+  `sources()`/`preview`/`run`) and `ImportWriter` (reading off the main thread, one Keychain prompt for the source's
+  "<Name> Safe Storage" only when passwords/cookies/autofill are chosen, writing the sidebar through
+  `addImported`, history through `ac_history_import` in 1,000-row batches, passwords/cookies/autofill through
+  `EngineCalls.callWithSecret`, which wipes the bytes as soon as the engine has parsed them, bookmarks into one
+  "Imported from <Browser>" folder with `ac_bookmarks_apply`). Never another browser's settings. Test builds read
+  only `RAY_IMPORT_SOURCE_DIR` (fixtures) and `RAY_IMPORT_SECRET`, never the Keychain (checks `import-browser`).
+- `Onboarding`: the first-run overlay (welcome, where you're coming from, what to bring, moving in, your colour,
+  three keys), shown when the data dir is new (`onboarded` in Settings.json; files without it count as onboarded),
+  File › Import from Browser… (import steps only) and Ray › Show Welcome Again (⌥, also ⌥⌘,). Test builds show it
+  only with `RAY_ONBOARDING=1` (check `onboarding`). `ProfileColor.visible(on:)` keeps accent marks at 3:1 against
+  their background (a black profile colour on a dark card).
+- Page commands (`BrowserWindowController` `// MARK: Page commands`): Print, Save Page As and Task Manager run
+  Chrome's own commands (`executeChromeCommand`, ids from chrome_command_ids.h); View Source opens a `view-source:`
+  tab; History and Clear Browsing Data open (or switch to) Chrome's pages. Check `page-commands`.
+- `LoadSweep` + `LoadingWash` (PageToolbar): the address field's loading glow, Dia's measured shape, one sweep per
+  main-frame navigation the user started or the page committed (Chrome's frame-level loading/progress would
+  restart it); check `load-sweep-once`.
+- Tab-modal dialogs (print preview…) are centred on the page with rounded corners: `engine-ray/fixups/0004`
+  (raycore's `DialogPositionInHostView`, and `chromium-web-dialog-rounded-corners.patch`).
 - `Spring`: a CADisplayLink spring. `dockSpring` (⌘S) and `peekSpring` drive `layout()` every frame.
 - `Branding/Ray.icon` (Icon Composer; `actool` builds Assets.car + Ray.icns) and `tools/rebrand-pak.py` (renames
   "Ardia" to "Ray" and swaps Ardia's logos in the engine's .pak files at build time) and
@@ -111,8 +134,9 @@ publicly or create accounts.
   worktree (`git worktree add --detach .claude/worktrees/<name> HEAD`, `git diff | git -C <wt> apply`), commit in
   the main checkout, and relaunch only when they're ready.
 - `scripts/run-hidden.sh <throwaway data dir> [port] [url]` launches hidden and prints DevTools' page list.
-- `scripts/test.sh [check …]`: address-parsing unit tests, then `tests/checks.mjs` (hidden instance, own data dir,
-  local fixture pages). Add a check for every behaviour you add or fix.
+- `scripts/test.sh [check …]`: unit tests (address parsing, the keychain move, the importer's XCTest suite against
+  `Importer/fixtures`), then `tests/checks.mjs` (hidden instance, own data dir, local fixture pages). Add a check for
+  every behaviour you add or fix.
 - Engine delegate methods are `@optional`: a Swift name that's slightly off compiles with only a "nearly matches"
   warning and is never called. Treat those warnings as errors.
 

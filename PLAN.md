@@ -25,9 +25,14 @@ window. Every decision serves three things:
 **Roadmap, in order:**
 1. **Phase B engine** (section 6): our own build, the rename map, a "Ray Safe Storage" keychain item, and migrating
    mock-keychain data (decrypt with the known mock key, re-encrypt under the real one). Keep our own patches few,
-   small and in separate files from Ardia's, so following Ardia's Chromium bumps stays cheap.
+   small and in separate files from Ardia's, so following Ardia's Chromium bumps stays cheap. **Done 2026-10-28,
+   shipped in 0.2.0.**
 2. **Spaces.**
-3. **Full Arc import:** Spaces, pinned tabs, folders, cookies.
+3. **Full Arc import:** Spaces, pinned tabs, folders, cookies. **Mostly done 2026-10-29:** `Importer/` (Ardia's
+   import core) and the first-run onboarding bring pinned tabs and folders, favorites, open tabs, history,
+   bookmarks, passwords, cookies and autofill from Arc and eight other browsers. Left: Arc's Spaces as Spaces (they
+   land as pinned folders until Spaces exist), installing imported extensions (the engine installs only from a
+   file), Arc's archive and link routes (Cra's importer reads both).
 4. **Distribution:** Developer ID signing, a notarized DMG, Sparkle updates, a Homebrew cask.
 5. **Launch prep:** a README that opens with a short motion video/GIF, a one-line pitch and the install command; a
    side-by-side video with Arc; CONTRIBUTING and good-first-issue labels; regular tagged releases with readable
@@ -37,6 +42,8 @@ window. Every decision serves three things:
 7. **After launch:** quick issue triage, and periodic performance comparisons against Zen, Crest and Chrome.
 
 Claude never posts anything publicly or creates accounts; the owner does.
+
+`docs/MISSING.md` lists what Ray still lacks against Arc and Chrome, and what's been done; the owner picks the order.
 
 ## Open decisions (owner)
 
@@ -52,8 +59,10 @@ Recorded for the owner to decide. Don't act on them until they do.
 |---|---|
 | Platform | macOS 14 Sonoma or later, Apple Silicon only |
 | Spaces | Arc-style: many Spaces per Profile |
-| Distribution | Personal use on Ardia's prebuilt engine first; Phase B only when shipping publicly or an engine change is needed |
-| Engine | Ardia's engine. **Phase A:** Ardia's prebuilt, unchanged. **Phase B:** our own renamed build from source |
+| Distribution | Friends through GitHub Releases + Sparkle, ad-hoc signed (0.1.0 on 2026-10-28); Developer ID and a notarized DMG before launch |
+| Engine | Ardia's engine, renamed and built from source (Phase B, since 0.2.0). Phase A (Ardia's prebuilt) is over |
+| Import | Ardia's import core (`Importer/`, Apache-2.0) for reading; Ray writes through the engine's `ac_*` calls; never another browser's settings |
+| Onboarding | First run only (new data dir), as an overlay in the browser window in Ray's own style; Arc first and recommended |
 | UI | AppKit + Core Animation; SwiftUI only for Settings |
 | Peek | **No** |
 | DRM sites → WebKit | **No.** Chromium only; Netflix-type sites won't play (no Widevine) |
@@ -92,7 +101,7 @@ What we take from Ardia:
 | `packages/ardiacore/ios/page_script.js` | **Replace** with our own (section 5). |
 | `packages/ardiacore/scripts/fetch-engine.sh`, `prebuilt-engines.tsv` | **Keep** (Phase A engine download + SHA-256 check). |
 | Spike host `spikes/ardiacore-host/main.mm` at commit `00951870` | **Reference for M1**: Ardia's first plain-AppKit host app, before React Native. Older API; update calls. |
-| `packages/import/ios` | **Keep** for M4 (Arc/Chrome/Safari import). |
+| `packages/import/ios` | **Kept**: its `Core/` is Ray's `Importer/` (2026-10-29); Ray writes through its own `ImportWriter`. |
 | `packages/sync/ios` | Later (iCloud Drive E2E sync). |
 | `packages/core` (TS omnibox parsing, suggestions) | **Port to Swift** what the command bar needs. |
 | `apps/browser/src` (React Native UI) | **Drop.** Read as a behaviour spec only. |
@@ -268,11 +277,9 @@ Iframes only reach the first check; `main`'s body compiles only in top frames.
 ### M4: Ship (weeks 13–16)
 - Phase B engine build (section 6) or, if staying on the prebuilt for personal use, skip it.
 - Developer ID signing, notarization, DMG, Sparkle auto-updates.
-- Arc import (`packages/import`): Arc stops working on 2026-12-22. Favorites, pinned tabs and folders are done
-  (File › Import from Arc…, 2026-10-28).
-- **Arc cookie import waits for Phase B (decided 2026-10-28):** it needs Arc's "Arc Safe Storage" keychain key, and
-  the sessions it brings in must be stored under Ray's own "Ray Safe Storage" item, not the prebuilt engine's mock
-  keychain, where they'd sit on disk effectively unencrypted.
+- Arc import: Arc stops working on 2026-12-22. Done 2026-10-29 for everything but Spaces and extensions (see the
+  roadmap): first-run onboarding and File › Import from Browser…, cookies and passwords included now that Phase B
+  stores them under "Ray Safe Storage".
 - **Exit:** a notarized DMG that installs, updates itself and imports an Arc profile.
 
 ### M5: Ongoing
@@ -326,14 +333,12 @@ Targets, measured with `xbench.mjs` against Chrome, Helium and our previous rele
 2. **One compositor per tab** (inherited): 1–2 refreshes on first show; prewarm hides it on clicks, keyboard switches
    pay ~8 ms. A real fix needs Phase B.
 3. **Upstream pace:** Ardia has one maintainer. If it stalls, Phase B becomes urgent.
-4. **Prebuilt limits:** Ardia branding inside, no passkeys/saved cards, no engine fixes of our own. The engine's
-   keychain item is "Ardia Safe Storage", which is the real Ardia's; Ray runs with `--use-mock-keychain` until
-   Phase B, so its saved passwords and cookies are encrypted with a fixed, public key. Don't keep real passwords
-   in Ray before Phase B.
-   Friends' builds run on mock keychain (user's decision, 2026-10-28); when Ray has its own engine and keychain
-   item, an update migrates their data by decrypting with the known mock key and re-encrypting under the real one.
+4. **Signing:** Ray is ad-hoc signed, so every update changes its code signature and macOS asks once to let it use
+   "Ray Safe Storage". A stable identity (Developer ID, or one self-signed certificate until then) ends that.
+   (The prebuilt engine's limits and the mock keychain ended with Phase B in 0.2.0; 0.1 data is migrated.)
 5. **No Widevine:** streaming sites with DRM won't play.
-6. **Build hardware** for Phase B.
+6. **Build hardware** for Phase B: fine on this Mac (M3 Pro, 36 GB). A first build takes about 3 h and 44 GB;
+   keep jobs at 6 or so (`JOBS=6`) on battery or the final link swaps past the 70 GB disk floor.
 
 ---
 

@@ -10,12 +10,23 @@ Early and personal. Expect rough edges.
 - Arc-style sidebar: pinned tiles, pinned tabs (closing one unloads it and resets it to its pinned URL, `/` when you've
   wandered off), today tabs with Clear and 12-hour archiving, New Tab.
 - ⌘S hides the sidebar; hovering the left edge slides it back in as a floating panel, sprung to Arc's recorded motion.
-- Command bar (⌘T, ⌘L): open tabs, history, search suggestions, URLs.
+- Command bar (⌘T, ⌘L): open tabs, history, search suggestions, URLs, and Ray's own commands by name ("task manager",
+  "clear cache", "zoom in"…) with their shortcuts.
+- Moving in: a first-run welcome that imports from Arc (recommended), Dia, Chrome, Brave, Edge, Helium, Firefox, Zen
+  or Safari: pinned tabs and folders, favorites, open tabs, history, bookmarks, passwords, cookies (you stay signed
+  in), addresses and cards. Never another browser's settings. Later: File › Import from Browser….
+- Dia's address bar above the page, with its loading glow; site controls; find (⌘F); downloads; permission prompts;
+  extension buttons and popups from the Chrome Web Store.
+- Chrome's basics: Print (⌘P), Show Full History (⌘Y), zoom (⌘+ ⌘− ⌘0, with Arc's zoom level note), View Source
+  (⌥⌘U), Save Page As, Task Manager, Clear Browsing Data (⇧⌘⌫).
+- Settings window (⌘,) with your profile colour, which every accent in Ray follows.
 - Sessions restored at launch; only the active tab loads.
 - Full screen edge to edge when the sidebar is hidden.
 - DevTools (⌥⌘I), popups and `target=_blank` as tabs.
+- Updates itself (Ray › Check for Updates…).
 
-Not yet: Spaces, drag and drop, permission prompts (requests are refused), downloads UI, find bar, extension buttons.
+Not yet: Spaces, drag and drop between windows, Split View, Little Arc, installing imported extensions. The full
+list is in [docs/MISSING.md](docs/MISSING.md).
 
 ## Engine
 
@@ -39,9 +50,12 @@ open build/Ray.app
 Pages run in Chromium's sandbox with site isolation. Ray's own code never parses web content. Read before using it
 with real accounts:
 
-- **Engine updates** come from Ardia's releases; Ray is only as patched as the pinned engine.
-- **Saved passwords and cookies** use Chromium's stand-in keychain (`--use-mock-keychain`) while on Ardia's prebuilt
-  engine, so they're encrypted with a public key. Don't sign in to anything important yet.
+- **Engine updates**: Ray builds its own engine from `engine/` (Chromium 156); it's only as patched as that build.
+- **Saved passwords and cookies** are encrypted with "Ray Safe Storage" in your login keychain. Ray 0.1 used
+  Chromium's stand-in keychain (a public key); the first launch of a newer Ray moves that data to the real key.
+  macOS asks once after each update to let Ray use the item, until Ray has a stable signing identity.
+- **Importing** reads another browser's saved logins only when you choose passwords, cookies or cards, after macOS
+  asks for your password for that browser's own key; nothing is sent anywhere.
 - **No Safe Browsing**: Helium compiles it out.
 - **Ad-hoc signed**, no hardened runtime, not notarized.
 

@@ -146,6 +146,7 @@ export const areas = {
   "CLAUDE.md": [],
   "PLAN.md": [],
   "README.md": [],
+  "docs/": [],
   "NOTICE": [],
   "LICENSE": [],
   "LICENSE.Apache-2.0": [],
