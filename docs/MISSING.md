@@ -65,6 +65,12 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 14. Installing imported extensions: the engine's `ac_extensions_install` takes a folder or a .crx, not a Web Store id.
 15. Web notifications: from the engine's alerts helper, not checked (?).
 
+**Default browser**
+16. **Make Ray the default browser** from Ray: a "Default browser" row with a Make Default button in Settings, a step
+    in the onboarding (after the import, "Open links from other apps in Ray?"), and a gentle note when Ray isn't the
+    default (Chrome's infobar, Arc's prompt). Uses `NSWorkspace.setDefaultApplication(at:toOpenURLsWithScheme:)`,
+    which shows macOS's own confirmation. Needs Ray to declare http/https and HTML first (in progress 2026-10-29).
+
 **Already working through Chrome's defaults:** right-click menus, spell check, `chrome://` pages.
 
 ## Done

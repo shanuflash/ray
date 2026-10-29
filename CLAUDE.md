@@ -281,8 +281,9 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
 - Never steal focus with test instances: test only through `scripts/run-hidden.sh` / `tests/checks.mjs`
   (`RAY_BACKGROUND=1`, own data dir).
 - After a build the user should look at, run `scripts/relaunch.sh` once checks pass: it quits their running Ray with
-  a normal macOS quit and opens the new build in front on their default data dir. The user asked for this; they
-  can't easily run commands themselves.
+  a normal macOS quit, installs build/Ray.app as /Applications/Ray.app (their one copy, the one in the Dock) and
+  opens it in front on their default data dir. The user asked for both; they can't easily run commands themselves.
+  Never run build/Ray.app directly for them: two copies on one profile make the Dock icon hand off and quit.
 - Every test instance gets its own throwaway `RAY_DATA_DIR`; never the default data dir, never a real browser profile.
 - Quit the instances you start (`kill -TERM <pid>`), and only those.
 - Every wait has a deadline.
