@@ -1421,6 +1421,7 @@ const checks = {
     assert(typeof plist.SUPublicEDKey === "string" && plist.SUPublicEDKey.length > 0, "Info.plist lacks SUPublicEDKey");
     assert(plist.SUPublicEDKey === readFileSync(join(root, "Branding/sparkle-public-key.txt"), "utf8").trim(), "SUPublicEDKey isn't Branding/sparkle-public-key.txt");
     assert(plist.SUEnableAutomaticChecks === true && plist.SUScheduledCheckInterval === 86400, "automatic daily checks aren't on");
+    assert(plist.SUAutomaticallyUpdate === true, "Settings › General's install-automatically default isn't on");
     const version = Object.fromEntries(readFileSync(join(root, "VERSION"), "utf8").trim().split("\n").map((l) => l.split("=")));
     assert(plist.CFBundleShortVersionString === version.version, `CFBundleShortVersionString ${plist.CFBundleShortVersionString} != VERSION ${version.version}`);
     assert(/^\d+$/.test(plist.CFBundleVersion) && plist.CFBundleVersion === version.build, `CFBundleVersion ${plist.CFBundleVersion} != VERSION build ${version.build}`);
@@ -2652,7 +2653,7 @@ const checks = {
     const rows = win().rows;
     assert(["theme", "appearanceMode", "minimalURL", "loadingProgress", "defaultZoom", "scrollBars"].every((id) => rows.appearance.includes(id)), `appearance rows ${rows.appearance}`);
     assert(rows.tabs.join() === "newTabNextToActive,recentTabCycling" && rows.shortcuts.join() === "copyLinkShortcut,sidebarShortcut", `rows ${JSON.stringify(rows)}`);
-    assert(rows.about.includes("about.version") && rows.general.length === 0, `rows ${JSON.stringify(rows)}`);
+    assert(rows.about.includes("about.version") && rows.general.includes("onQuit"), `rows ${JSON.stringify(rows)}`);
     assert((await commandResult("settings open nonsense")) === "no such pane", "a pane that isn't there opened");
     // The new controls: segmented (scroll bars, a rare row under "More") and picture choices (light or dark).
     assert(win().more.appearance.page === false, `More is open: ${JSON.stringify(win().more)}`);
@@ -2699,10 +2700,10 @@ const checks = {
     await until("privacy tab closed", async () => { await command("state"); return state().tabs.length === tabs; });
     // As Ray.app shows it: unbuilt rows and panes with nothing to show are gone, from the sidebar and from routing.
     await command("settings asapp on");
-    await command("settings open general");
+    await command("settings open search");
     await until("Ray.app's panes", async () => { await command("state"); return win().open && win().looksLikeRayApp; });
-    assert(win().panes.join() === "tabs,appearance,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
-    assert(win().pane === "tabs", `General (empty) opened as ${win().pane}`);
+    assert(win().panes.join() === "general,tabs,appearance,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
+    assert(win().pane === "general", `Search (empty) opened as ${win().pane}`);
     assert(!win().rows.appearance.includes("appearanceMode") && !win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
     if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-as-app.png")}`);
     await command("settings asapp off");
@@ -3772,6 +3773,265 @@ const checks = {
       return saved.pinned.some((e) => e.id === p && e.customTitle === "Work stuff") && saved.today.some((e) => e.id === t && e.customTitle === "Reading")
         && saved.favorites.some((e) => e.id === f && e.customTitle === undefined);
     }, 4000);
+  },
+  async "settings-general"() {
+    // Settings › General: the default-browser strip, open at login, quitting and closing, downloads, updates, import.
+    // Test builds answer from fakes (GeneralSystem): nothing here changes the Mac's default browser or login items.
+    const win = () => state().settingsWindow;
+    const gen = () => state().general;
+    const pane = () => gen().pane;
+    const seen = (what, fn, ms) => until(what, async () => { await command("state"); return fn(); }, ms);
+    for (const [name, value] of [["warnBeforeQuitting", "default"], ["warnBeforeClosingWindow", "default"], ["onQuit", "default"]])
+      await setSetting(name, value);
+    await command("general default no");
+    await command("general accept yes");
+    await command("settings open general");
+    await seen("general pane", () => win().open && win().pane === "general" && pane());
+    assert(win().rows.general.join() === "general.openAtLogin,warnBeforeQuitting,warnBeforeClosingWindow,onQuit,general.downloads,general.updates,general.import",
+      `general rows ${win().rows.general}`);
+    assert(state().settings.warnBeforeQuitting === false && state().settings.warnBeforeClosingWindow === true && state().settings.onQuit === "keep",
+      `defaults ${JSON.stringify(state().settings)}`);
+    assert(win().controls.onQuitOptions.join() === "Keep tabs and windows,Start fresh" && win().controls.onQuit === "Keep tabs and windows",
+      `when Ray quits ${JSON.stringify(win().controls)}`);
+
+    // Make Default asks macOS for http and https (a fake here); declined, the strip stays; accepted, it goes, and
+    // comes back when the default changes elsewhere (System Settings), seen as Ray comes forward.
+    assert(pane().stripShown === true && gen().isDefault === false, `strip ${JSON.stringify(gen())}`);
+    await command("general accept no");
+    await command("general cta");
+    await seen("asked macOS", () => gen().defaultRequests.length === 2 && !gen().asking);
+    assert(gen().defaultRequests.join() === "http,https" && gen().isDefault === false && pane().stripShown === true, `declined ${JSON.stringify(gen())}`);
+    await command("general accept yes");
+    await command("general cta");
+    await seen("strip gone", () => gen().isDefault && pane().stripShown === false);
+    assert((await commandResult("general cta")) === "no strip", "the strip's button still answers while it's hidden");
+    await command("general default no");
+    await seen("strip back", () => pane().stripShown === true);
+
+    // Open at login: the switch shows SMAppService's status (a fake here), including "waiting for approval".
+    assert(gen().loginStatus === "off" && pane().login === false, `login ${JSON.stringify(gen())}`);
+    await command("general login");
+    await seen("login on", () => gen().loginStatus === "enabled" && pane().login === true);
+    await command("general login");
+    await seen("login off", () => gen().loginStatus === "off" && pane().login === false);
+    await command("general approval yes");
+    await command("general login");
+    await seen("login waits for approval", () => gen().loginStatus === "approval" && pane().login === true && pane().loginDetail.includes("Login Items"));
+    await command("general approval no");
+    await command("general login");
+    await seen("login off again", () => gen().loginStatus === "off");
+    assert(gen().loginCalls.join() === "register,unregister,register,unregister", `login calls ${gen().loginCalls}`);
+    await command("general loginstatus enabled");
+    await seen("turned on in System Settings", () => pane().login === true);
+    await command("general loginstatus off");
+    await seen("turned off in System Settings", () => pane().login === false);
+
+    // Downloads: the engine's folder and "ask where to save", as Chrome's page has them.
+    await seen("downloads loaded", () => gen().downloads.loaded && pane().folderEnabled);
+    const original = gen().downloads.folder;
+    const folder = mkdtempSync(join(tmpdir(), "ray-general-downloads-"));
+    try {
+      await command(`general folder ${folder}`);
+      await seen("folder changed", () => gen().downloads.folder === folder && pane().folder === folder);
+      assert((await commandResult("general folder relative/path")).startsWith("usage"), "a relative folder was taken");
+      await command("general ask");
+      await seen("ask on", () => gen().downloads.ask === true && pane().ask === true);
+      await command("general ask");
+      await seen("ask off", () => gen().downloads.ask === false && pane().ask === false);
+    } finally {
+      await command(`general folder ${original}`);
+      await seen("folder back", () => gen().downloads.folder === original);
+      rmSync(folder, { recursive: true, force: true });
+    }
+    if (original.startsWith(homedir() + "/")) assert(pane().folder.startsWith("~/"), `home folder shown as ${pane().folder}`);
+
+    // Updates: both switches on (Info.plist's defaults); installing needs checking; Check Now asks Sparkle (a fake
+    // here: test builds never run the updater). A build without an updater shows the version alone.
+    const version = JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", join(app, "Contents/Info.plist")], { encoding: "utf8" })).CFBundleShortVersionString;
+    assert(gen().updates?.kind === "fake" && pane().updateRows.length === 3 && pane().updateRows[2].startsWith(`Ray ${version}`), `update rows ${JSON.stringify(pane().updateRows)}`);
+    assert(pane().autoCheck && pane().autoInstall && pane().autoInstallEnabled && pane().checkNowShown, `updates ${JSON.stringify(pane())}`);
+    await command("general autoinstall");
+    await seen("install off", () => gen().updates.autoInstall === false && pane().autoInstall === false);
+    await command("general autoinstall");
+    await command("general autocheck");
+    await seen("checks off", () => gen().updates.autoCheck === false && pane().autoInstall === false && !pane().autoInstallEnabled);
+    assert((await commandResult("general autoinstall")) === "disabled", "install switched while checks are off");
+    await command("general autocheck");
+    await seen("checks on", () => pane().autoCheck && pane().autoInstall && pane().autoInstallEnabled);
+    assert(pane().versionDetail === "Not checked yet.", `version detail ${pane().versionDetail}`);
+    await command("general checknow");
+    await seen("checked", () => gen().updates.checks === 1 && pane().versionDetail.startsWith("Last checked"));
+    await command("general updater none");
+    await seen("no updater", () => pane().updateRows.length === 1 && !pane().checkNowShown && pane().versionDetail === "Updates aren't set up for this build.");
+    if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-general-no-updater.png")}`);
+    await command("general updater fake");
+    await seen("updater back", () => pane().updateRows.length === 3);
+
+    // Search finds the pane's own rows; Ray.app lists General with all of them (every row here is built).
+    await command("settings search login");
+    await seen("login found", () => win().search.results[0]?.id === "general.openAtLogin");
+    await command("settings search download folder");
+    await seen("downloads found", () => win().search.results[0]?.id === "general.downloads");
+    await command("settings search");
+    await command("settings asapp on");
+    await command("settings open general");
+    await seen("Ray.app's general", () => win().looksLikeRayApp && win().pane === "general");
+    assert(win().panes.includes("general") && win().rows.general.length === 7, `Ray.app general ${JSON.stringify(win().rows.general)}`);
+    await command("settings asapp off");
+    await command("settings open general");
+    await seen("general again", () => !win().looksLikeRayApp && win().pane === "general");
+    if (process.env.SNAP_DIR) {
+      await command(`settings snap ${join(process.env.SNAP_DIR, "settings-general.png")}`);
+      // The rest of the pane: scrolled to Updates by a search, once its flash is over.
+      await command("settings search check for updates now");
+      await seen("updates found", () => win().search.results[0]?.id === "general.updates");
+      await command("settings choose 0");
+      await seen("flash over", () => win().lastFlash === "general.updates" && win().flashing === null, 5000);
+      await command("settings search");
+      await command(`settings snap ${join(process.env.SNAP_DIR, "settings-general-lower.png")}`);
+    }
+
+    // Import from another browser… is File › Import from Browser…: the welcome's import steps over the window.
+    await command("general import");
+    await seen("import steps", () => state().onboarding?.mode === "importOnly");
+    await command("onboarding escape");
+    await seen("import closed", () => state().onboarding === null, 5000);
+    await command("general default no");
+    await closeSettingsWindow();
+  },
+  async "warn-before-closing-window"() {
+    // On by default: a private window with two or more tabs asks before closing (its tabs go with it); Cancel keeps
+    // it, "Don't ask again" closes it and turns the setting off. The normal window keeps its tabs, so it never asks
+    // (close-last-window).
+    const gen = () => state().general;
+    const windows = async () => Number(await commandResult("windows"));
+    await setSetting("warnBeforeClosingWindow", "default");
+    const before = await windows();
+    await command("menu newPrivateWindow");
+    await until("private window", async () => { await command("state"); return state().private === true && state().commandBar; });
+    await command(`type ${origin}/b?warn1`);
+    await command("enter");
+    await until("first private tab", async () => { await command("state"); return state().private && state().tabs.some((t) => t.url.includes("warn1")); });
+    await command("menu newTab");
+    await until("command bar", async () => { await command("state"); return state().private && state().commandBar; });
+    await command(`type ${origin}/c?warn2`);
+    await command("enter");
+    await until("second private tab", async () => { await command("state"); return state().private && state().tabs.some((t) => t.url.includes("warn2")); });
+    await command("closewindow private");
+    await until("warning", async () => { await command("state"); return gen().warning.showing === "close"; });
+    assert(gen().warning.last.title === "Close 2 tabs?", `warning ${JSON.stringify(gen().warning)}`);
+    await sleep(400);
+    assert((await windows()) === before + 1, "the window closed before the warning was answered");
+    await command("warning cancel");
+    await until("cancelled", async () => { await command("state"); return gen().warning.showing === null && gen().warning.last.answer === "cancelled"; });
+    await sleep(400);
+    assert((await windows()) === before + 1, "Cancel closed the window");
+    await command("closewindow private");
+    await until("warning again", async () => { await command("state"); return gen().warning.showing === "close"; });
+    await command("warning suppress");
+    await until("private window closed", async () => (await windows()) === before, 8000);
+    await command("state");
+    assert(state().settings.warnBeforeClosingWindow === false && gen().warning.last.answer === "suppressed", `after Don't ask again ${JSON.stringify(gen().warning)}`);
+    await setSetting("warnBeforeClosingWindow", "default");
+  },
+  async "warn-before-quitting"() {
+    // In instances of their own (they quit). Off by default. On: ⌘Q shows "Quit Ray?" over the window and Ray keeps
+    // running until it's answered; Cancel keeps it; ⌘Q again quits; "Don't ask again" quits and turns it off. Also
+    // When Ray quits › Start fresh: the next launch has no Today tabs (⇧⌘T brings them back), pinned tabs stay.
+    const dir = mkdtempSync(join(tmpdir(), "ray-quit-"));
+    writeFileSync(join(dir, "Settings.json"), JSON.stringify({ warnBeforeQuitting: true }));
+    const running = [];
+    const start = () => {
+      const it = { log: "", states: [] };
+      let partial = "";
+      it.proc = spawn(join(app, "Contents/MacOS/Ray"), [], {
+        env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_DATA_DIR: dir,
+          RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_START_URL: `${origin}/a?start`,
+          RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.quit` },
+        stdio: ["pipe", "ignore", "pipe"],
+      });
+      it.proc.stdin.on("error", () => {});
+      it.proc.stderr.setEncoding("utf8");
+      it.proc.stderr.on("data", (chunk) => {
+        it.log += chunk;
+        const lines = (partial + chunk).split("\n");
+        partial = lines.pop();
+        for (const line of lines) {
+          const at = line.indexOf(stateMarker);
+          if (at >= 0) it.states.push(JSON.parse(line.slice(at + stateMarker.length)));
+        }
+      });
+      it.exit = new Promise((r) => it.proc.on("exit", (code, signal) => r(code ?? signal)));
+      running.push(it);
+      return it;
+    };
+    const run = async (it, line) => {
+      const marker = `[ray-test] ${line} -> `;
+      const from = it.log.length;
+      it.proc.stdin.write(line + "\n");
+      return until(`command ${line}`, () => {
+        const at = it.log.indexOf(marker, from);
+        return at >= 0 ? it.log.slice(at + marker.length).split("\n")[0] : null;
+      }, 20000, 100);
+    };
+    const probe = async (it) => { await run(it, "state"); return it.states.at(-1); };
+    const reach = (it, what, fn, ms = 10000) => until(what, async () => { const s = await probe(it); return s && fn(s) ? s : null; }, ms, 150);
+    const exited = async (it, what) => assert((await Promise.race([it.exit, sleep(15000).then(() => "timeout")])) !== "timeout", what);
+    try {
+      // First launch: the start page, two links from other apps (Today tabs) and one of them pinned.
+      const first = start();
+      await reach(first, "first window", (s) => s.sidebar && s.tabs.some((t) => t.url.includes("?start")), 25000);
+      await run(first, `appopen link ${origin}/b?fresh1`);
+      await run(first, `appopen link ${origin}/c?fresh2`);
+      let s = await reach(first, "links open", (s) => ["fresh1", "fresh2"].every((p) => s.sidebar.today.some((e) => e.url.includes(p) && e.live)));
+      const pin = s.sidebar.today.find((e) => e.url.includes("fresh2"));
+      assert((await run(first, `rowaction pin ${pin.id}`)) === "ok", "pin");
+      await reach(first, "pinned", (s) => s.sidebar.pinned.some((e) => e.id === pin.id));
+      assert((await run(first, "setting onQuit fresh")) === "ok", "onQuit fresh");
+      // ⌘Q: the warning, and Ray still running; Cancel keeps it running.
+      await run(first, "menu quit");
+      s = await reach(first, "quit warning", (s) => s.general.warning.showing === "quit");
+      assert(s.general.warning.last.title === "Quit Ray?" && s.general.warning.last.message.includes("Today's tabs close"), `warning ${JSON.stringify(s.general.warning)}`);
+      await sleep(500);
+      assert(first.proc.exitCode === null, "Ray quit before the warning was answered");
+      assert((await run(first, "warning cancel")) === "ok", "cancel");
+      await reach(first, "cancelled", (s) => s.general.warning.showing === null && s.general.warning.last.answer === "cancelled");
+      await sleep(500);
+      assert(first.proc.exitCode === null, "Cancel quit Ray");
+      // Don't ask again: quits, and the setting is off for next time.
+      await run(first, "menu quit");
+      await reach(first, "quit warning again", (s) => s.general.warning.showing === "quit");
+      first.proc.stdin.write("warning suppress\n");
+      await exited(first, "Quit with Don't ask again didn't quit within 15 s");
+      const saved = JSON.parse(readFileSync(join(dir, "Settings.json"), "utf8"));
+      assert(saved.warnBeforeQuitting === false && saved.onQuit === "fresh", `Settings.json ${JSON.stringify(saved)}`);
+
+      // Second launch, Start fresh: Today holds only the start page; the pinned tab stays; ⇧⌘T brings the old one back.
+      writeFileSync(join(dir, "Settings.json"), JSON.stringify({ ...saved, warnBeforeQuitting: true }));
+      const second = start();
+      s = await reach(second, "fresh window", (s) => s.sidebar && s.tabs.some((t) => t.url.includes("?start")), 25000);
+      assert(s.sidebar.today.length === 1 && s.sidebar.today[0].url.includes("?start"), `fresh today ${JSON.stringify(s.sidebar.today.map((e) => e.url))}`);
+      assert(s.sidebar.pinned.some((e) => e.id === pin.id && !e.live), `pinned after a fresh start ${JSON.stringify(s.sidebar.pinned)}`);
+      assert(s.recentlyClosed.items.some((i) => i.title === "Page B" || i.tooltip.includes("fresh1")), `recently closed ${JSON.stringify(s.recentlyClosed)}`);
+      assert((await run(second, "menu reopenClosedTab")) === "ok", "reopen");
+      await reach(second, "old tab back", (s) => s.sidebar.today.some((e) => e.url.includes("fresh1")));
+      // ⌘Q twice: the second one quits.
+      await run(second, "menu quit");
+      await reach(second, "quit warning", (s) => s.general.warning.showing === "quit");
+      second.proc.stdin.write("menu quit\n");
+      await exited(second, "⌘Q again didn't quit within 15 s");
+
+      // Third launch, keeping tabs (the default): what was open comes back.
+      writeFileSync(join(dir, "Settings.json"), JSON.stringify({ onQuit: "keep" }));
+      const third = start();
+      s = await reach(third, "kept window", (s) => s.sidebar?.today.some((e) => e.url.includes("fresh1")), 25000);
+      assert(s.general.warning.showing === null, "a warning showed at launch");
+      third.proc.stdin.write("menu quit\n");
+      await exited(third, "a quit with the warning off didn't quit within 15 s");
+    } finally {
+      for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
+      rmSync(dir, { recursive: true, force: true });
+    }
   },
   async "settings-persist"() {
     // Non-default values for every setting; the next launch (the restore check) must find them as they were.

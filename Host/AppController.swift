@@ -4,7 +4,9 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
   static let shared = AppController()
 
   private(set) var windows: [BrowserWindowController] = []
-  private var quitting = false
+  private(set) var quitting = false
+  /// The launch's first normal window has opened: Settings › General › When Ray quits applies to that one only.
+  private var sessionStarted = false
 
   /// The window used last: the key window, else the one most recently shown or focused (Ray in the background has
   /// no key window, and menu commands still belong to the window you were in).
@@ -54,8 +56,13 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     }
     guard let engine = RayCoreEngine.shared else { return nil }
     let controller = makeWindow(profile: engine.defaultProfile)
+    // When Ray quits › Start fresh: the launch begins without last time's Today tabs (closing and reopening the
+    // window later isn't a quit, so ⌘N keeps them).
+    let fresh = !sessionStarted && RaySettings.shared[.onQuit] == "fresh"
+    sessionStarted = true
+    if fresh { controller.startFresh() }
     controller.present(background: launchedInBackground)
-    if !forLinks { controller.restore(startURL: startURL) }
+    if !forLinks { controller.restore(startURL: startURL, fresh: fresh) }
     controller.searches.warm()
     return controller
   }
@@ -89,6 +96,7 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
 
   func engineQuitCancelled() {
     quitting = false
+    CloseWarnings.quitCancelled()
     windows.forEach { $0.resumeAfterCancelledQuit() }
   }
 
@@ -175,6 +183,8 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
 
   @objc func quit(_ sender: Any?) {
     guard !quitting else { return }
+    // Settings › General › Warn before quitting with ⌘Q: the warning comes back here once you choose Quit.
+    guard CloseWarnings.allowsQuit(then: { [weak self] in self?.quit(sender) }) else { return }
     quitting = true
     windows.forEach { $0.prepareForQuit() }
     RaySettings.shared.flush()

@@ -105,7 +105,7 @@ enum SettingsPanes {
   // The registry: one line per pane, a blank line between them, so panes added in parallel merge cleanly.
   private static func make(_ pane: SettingPane) -> SettingsPaneContent? {
     switch pane {
-    case .general: return nil
+    case .general: return GeneralPaneContent()
 
     case .tabs: return TabsPaneContent()
 

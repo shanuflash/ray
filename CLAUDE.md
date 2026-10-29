@@ -79,7 +79,7 @@ publicly or create accounts.
   groups (13 pt semibold headers with room for one trailing control, 44 pt rows split by hairlines, no boxes, rare
   rows under "More") in a column of at most 600 pt with 24 pt sides, scrolling with an overlay scroller.
   `SettingsControls`: `RaySwitch`, `RaySegmentedControl`, `PictureChoiceControl` (2.5 pt ring and a check, in the
-  profile's colour), `SwatchRow`, `SettingsCallToAction` (not wired to anything yet), `AccentButton`, `LinkButton`.
+  profile's colour), `SwatchRow`, `SettingsCallToAction` (General's Make Default; a hidden one takes no room), `AccentButton`, `LinkButton`.
   `MiniRayWindow`: a tiny layer-drawn Ray window (sidebar rows, one active or new, the page with or without its
   address bar, light or dark) for live pictures (`SettingsLivePicture`, beside the minimal URL and new-tab rows) and
   picture choices. **Pane content:** `SettingsPanes.swift` defines `SettingsPaneContent` (sections placed top, after
@@ -95,6 +95,19 @@ publicly or create accounts.
   new tab position (`insertToday`), ⌃Tab in recent order (`cycleTabWithControl`, settled by a `flagsChanged` monitor
   when Control is released), ⇧⌘C and ⌘S (`MainMenu.applyShortcutSettings` removes their key equivalents so the page
   gets the keys), and page zoom.
+- `SettingsGeneral` (Settings › General): the "Make Ray your default browser" strip (`NSWorkspace.setDefaultApplication`
+  for http then https, macOS's own confirmation; hidden while Ray is the default), Open Ray at login
+  (`SMAppService.mainApp`, its real status, "approval" included), the catalog's quitting group (`warnBeforeQuitting`
+  off, `warnBeforeClosingWindow` on, `onQuit` keep/fresh), Downloads (`ac_downloads_settings`/`_set_settings`: folder
+  with Change…, ask where to save), Updates (Sparkle's `SPUUpdater` switches and Check Now via `Updater.updater`;
+  without an updater only the version; `SUAutomaticallyUpdate` in Info.plist makes install-automatically default on)
+  and Import… (File › Import from Browser…). `GeneralSystem` re-reads on activation; in test builds the default
+  browser, login item and updater are fakes (`general …` test commands; checks never touch the real ones).
+  `CloseWarnings`: ⌘Q's "Quit Ray?" sheet (⌘Q again quits; menu Quit only, never Dock/logout/update quits) and the
+  close sheet for a window that would lose 2+ tabs (only private windows: the normal one keeps its tabs for ⌘N), each
+  with "Don't ask again"; test command `warning confirm|suppress|cancel`. Start fresh: the launch's first normal
+  window drops last time's Today tabs into Recently Closed (`startFresh`, `restore(fresh:)`). Checks
+  `settings-general`, `warn-before-quitting` (own instances; also Start fresh), `warn-before-closing-window`.
 - Page zoom: the engine keeps zoom per host and `tab.zoomFactor = x` writes that host's level, so Ray applies the
   default zoom itself: on a committed navigation (next run-loop turn, after the engine's own zoom) to a host the user
   hasn't zoomed, and on every tab when the default changes. `tabDidChangeZoom` on a settled host that isn't the

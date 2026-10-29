@@ -350,6 +350,7 @@ final class SettingsPaneView: NSView {
     for block in blocks {
       switch block {
       case .callToAction(let view):
+        guard !view.isHidden else { continue }  // Done already (Ray is the default browser): no room kept.
         y += 16
         let height = sizedHeight(view, width: inner)
         if apply { view.frame = NSRect(x: x, y: y, width: inner, height: height) }
@@ -601,6 +602,15 @@ final class SettingsRowView: NSView, SettingsSizing {
   override var isFlipped: Bool { true }
 
   var title: String { titleLabel.stringValue }
+  /// The grey line under the title. A pane's own row may say something new (a folder, a status); then call
+  /// `settingsPaneChanged()` so the pane makes room.
+  var detail: String {
+    get { detailLabel.stringValue }
+    set {
+      detailLabel.stringValue = newValue
+      needsLayout = true
+    }
+  }
 
   private var controlSize: NSSize { control.map { $0.fittingSize } ?? .zero }
   private var pictureSize: NSSize { picture.map { $0.fittingSize } ?? .zero }

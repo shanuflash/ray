@@ -140,6 +140,7 @@ final class RaySwitch: NSControl {
 
   /// A click or the space bar.
   func press() {
+    guard isEnabled else { return }
     isOn.toggle()
     onChange?(isOn)
   }
@@ -483,7 +484,9 @@ final class AccentButton: NSControl {
   override func layout() {
     super.layout()
     let height = ceil(label.intrinsicContentSize.height)
-    label.frame = NSRect(x: 12, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 24, height: height)
+    // Centred across the whole button, so the label never truncates by a point or two.
+    label.alignment = .center
+    label.frame = NSRect(x: 0, y: ((bounds.height - height) / 2).rounded(), width: bounds.width, height: height)
   }
 
   override func mouseDown(with event: NSEvent) { onClick?() }

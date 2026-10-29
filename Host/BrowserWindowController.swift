@@ -835,8 +835,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     layout()
   }
 
-  func restore(startURL: String?) {
-    if let entry = activeEntry ?? state.today.first ?? state.pinned.first(where: { !$0.isFolder }) {
+  /// `fresh`: Settings › When Ray quits › Start fresh, so a new tab (or the start page) rather than a pinned one.
+  func restore(startURL: String?, fresh: Bool = false) {
+    if !fresh, let entry = activeEntry ?? state.today.first ?? state.pinned.first(where: { !$0.isFolder }) {
       select(entry)
     } else if let startURL {
       openToday(startURL, after: nil, foreground: true)
@@ -1250,6 +1251,19 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       entryID: entry.id, kind: entry.kind, index: index, parentID: entry.parentID, pinnedURL: entry.pinnedURL,
       url: url, title: entry.title, customTitle: entry.customTitle, favicon: favicon ?? favicons.image(for: url),
       restoreKey: key))
+  }
+
+  /// Settings › General › When Ray quits › Start fresh, as the launch's first window opens: last time's Today tabs
+  /// close as if closed by hand (⇧⌘T and History › Recently Closed bring them back, on their last page), pinned tabs
+  /// and favorites stay, and nothing is active. Ardia's "Start fresh" keeps them in Recently Closed too.
+  func startFresh() {
+    let closing = state.today
+    guard !closing.isEmpty || state.activeEntryID != nil else { return }
+    // The last Today tab first, so ⇧⌘T brings back the top one first, each to its old place.
+    for entry in closing.reversed() { rememberClosed(entry, key: nil, favicon: nil) }
+    for entry in closing { state.remove(entry) }
+    state.activeEntryID = nil
+    store.saveNow(state)
   }
 
   /// ⇧⌘T, or a History › Recently Closed item: the newest closed tab (or that one) back where it was, with its
@@ -1750,6 +1764,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func windowShouldClose(_ window: RayCoreWindow) -> Bool {
+    // Settings › General › Warn before closing a window with several tabs: its sheet closes the window again.
+    guard CloseWarnings.allowsClose(self) else { return false }
     prepareForQuit()
     DispatchQueue.main.async { [weak self] in self?.onClose?() }
     return true
@@ -2137,6 +2153,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["settings"] = RaySettings.shared.debug
     state["settingsWindow"] = SettingsWindowController.shared.debug
     state["updater"] = Updater.shared.debug
+    state["general"] = GeneralSystem.shared.debug
     state["onboarding"] = onboarding?.debug ?? NSNull()
     state["chromeCommand"] = lastChromeCommand.map { ["name": $0.name, "ran": $0.ran] as [String: Any] } ?? NSNull()
     state["safeStorage"] = ["mode": safeStorage.mode.rawValue, "note": safeStorage.note, "moved": safeStorage.moved]

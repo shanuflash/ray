@@ -37,6 +37,9 @@ final class Updater: NSObject {
     return Data(base64Encoded: key.trimmingCharacters(in: .whitespacesAndNewlines))?.count == 32
   }
 
+  /// Sparkle's updater while it runs: Settings › General's update switches read and set it.
+  var updater: SPUUpdater? { controller?.updater }
+
   var canCheck: Bool { controller?.updater.canCheckForUpdates ?? false }
 
   func checkForUpdates(_ sender: Any?) { controller?.checkForUpdates(sender) }

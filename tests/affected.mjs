@@ -23,6 +23,8 @@ const settings = ["settings-window", "settings-catalog", "settings-minimal-url",
   "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling",
   "settings-shortcuts", "settings-routes", "settings-trimmed", "settings-persist", "settings-panes", "settings-search",
   "settings-bar", "settings-colours"];
+// Settings › General (SettingsGeneral.swift, CloseWarnings.swift): its pane, the two warnings and Start fresh.
+settings.push("settings-general", "warn-before-quitting", "warn-before-closing-window");
 // What a setting's value or its change notice reaches: the settings checks, the welcome (theme, keys), and the
 // features they drive (address bar, loading, site controls' zoom reset, ⇧⌘C, ⌘S, menu keys in the command bar).
 const settingReaders = [...settings, "onboarding", "page-toolbar", "page-loading", "load-sweep-once", "address-fragment",
@@ -87,7 +89,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Site controls": ["site-controls", "extensions", "copy-url", "find-in-page"],
   "Host/BrowserWindowController.swift#Entries": "all",
-  "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename"],
+  "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename", "warn-before-quitting"],
   // A tab's own name: Rename…, the double click, the test command's `rename` (folders too).
   "Host/BrowserWindowController.swift#Tab names": ["tab-rename", "folder-rename"],
   "Host/BrowserWindowController.swift#Page toolbar": ["page-toolbar", "address-fragment", "page-loading", "load-sweep-once", "site-controls",
@@ -96,7 +98,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Pages": pageSurface,
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",
-  "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "private-window", "close-last-window"],
+  "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "private-window", "close-last-window", "warn-before-closing-window"],
   "Host/BrowserWindowController.swift#RayCoreTabDelegate": [...pages, ...permissions, "page-toolbar", "page-loading",
     "load-sweep-once", "site-controls", "find-in-page", "settings-zoom", "settings-routes", "settings-trimmed",
     "address-fragment"],
@@ -139,6 +141,8 @@ export const areas = {
   "Host/SettingsAppearance.swift": ["settings-panes", "settings-window"],
   "Host/SettingsTabs.swift": ["settings-panes", "settings-window"],
   "Host/SettingsAbout.swift": ["settings-panes", "settings-search"],
+  "Host/SettingsGeneral.swift": ["settings-general", "settings-panes", "settings-search", "warn-before-quitting", "updater-config"],
+  "Host/CloseWarnings.swift": ["warn-before-quitting", "warn-before-closing-window", "close-last-window", "private-window"],
   "Host/SettingsControls.swift": [...settings, "onboarding"],
   "Host/MiniRayWindow.swift": ["settings-panes", "settings-window"],
   "Host/SettingsSearch.swift": [...settings, ...commandBar],
@@ -166,7 +170,7 @@ export const areas = {
   "Host/SiteControls.swift": ["site-controls", "extensions"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/Toast.swift": ["copy-url", "page-commands"],
-  "Host/Updater.swift": ["updater-config"],
+  "Host/Updater.swift": ["updater-config", "settings-general"],
   // ⇧⌘T and History › Recently Closed.
   "Host/ClosedTabs.swift": ["reopen-closed-tab", "tab-rename"],
   "Host/SafeStorage.swift": ["safe-storage-migration"],
@@ -174,7 +178,8 @@ export const areas = {
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
   "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
-    "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename"],
+    "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
+    "warn-before-quitting", "warn-before-closing-window"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

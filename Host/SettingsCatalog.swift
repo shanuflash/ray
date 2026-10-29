@@ -16,6 +16,7 @@ extension AnySettingKey {
   static let all: [AnySettingKey] = [
     theme, appearanceMode, minimalURL, loadingProgress, defaultZoom, scrollBars, newTabNextToActive, recentTabCycling,
     copyLinkShortcut, sidebarShortcut,
+    warnBeforeQuitting, warnBeforeClosingWindow, onQuit,  // General (SettingsGeneral.swift)
   ]
 
   /// Old ids that now load into a renamed setting: `"oldId": "newId"`. The old key stays in Settings.json as it was.

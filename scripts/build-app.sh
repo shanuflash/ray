@@ -102,6 +102,8 @@ build() {
   <key>SUPublicEDKey</key><string>$sparkle_key</string>
   <key>SUEnableAutomaticChecks</key><true/>
   <key>SUScheduledCheckInterval</key><integer>86400</integer>
+  <!-- Settings › General › Install updates automatically starts on: Sparkle downloads quietly, installs on quit. -->
+  <key>SUAutomaticallyUpdate</key><true/>
   <!-- A web browser to macOS (System Settings › Desktop & Dock › Default web browser lists apps that take http,
        https and HTML): links come to AppController's application(_:open:) (Host/LinksFromApps.swift). No file:
        scheme, unlike Chrome: a file: link from another app is refused, files only come in as documents. The document
