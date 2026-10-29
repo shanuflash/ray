@@ -61,7 +61,8 @@ export const areas = {
   "Host/BrowserWindowController.swift#Extensions and downloads": ["extensions", "extension-prompt", "downloads",
     "download-insecure-blocked", "site-controls"],
   "Host/BrowserWindowController.swift#Test snapshots": ["folder-rename", "tile-hover"],
-  "Host/BrowserWindowController.swift#Arc import": ["arc-import"],
+  "Host/BrowserWindowController.swift#Arc import": ["arc-import", "import-browser"],
+  "Host/BrowserWindowController.swift#Browser import": ["import-browser", "arc-import"],
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
   "Host/BrowserWindowController.swift#Toast": ["copy-url", "page-commands"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
@@ -108,14 +109,16 @@ export const areas = {
   "Host/SafeStorage.swift": ["safe-storage-migration"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
-  "Host/TestCommands.swift": ["folder-rename", "tile-hover"],
+  "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],
   "tests/SafeStorageTests.swift": [],
-  // The importer's own tests (swift test) cover it; app checks come with the onboarding that uses it.
-  "Importer/": [],
-  "Host/ImportSession.swift": [],
+  // The importer's own tests (swift test) cover its readers; import-browser runs it end to end in the app.
+  "Importer/": ["import-browser"],
+  "Importer/Tests/": [],
+  "Host/ImportSession.swift": ["import-browser"],
+  "Host/ImportWriter.swift": ["import-browser"],
   "tests/affected.mjs": [],
   "tests/changed.mjs": [],
   "scripts/test.sh": [],

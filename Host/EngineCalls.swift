@@ -17,9 +17,54 @@ enum EngineCalls {
     _ name: String, profile: RayCoreProfile, args: [String: Any] = [:],
     completion: @escaping ([String: Any]?) -> Void
   ) {
-    guard let symbol = dlsym(defaultHandle, name),
-          let data = try? JSONSerialization.data(withJSONObject: args),
-          let json = String(data: data, encoding: .utf8) else {
+    guard let data = try? JSONSerialization.data(withJSONObject: args) else {
+      completion(nil)
+      return
+    }
+    call(name, profile: profile, json: data, completion: completion)
+  }
+
+  /// `call` with the arguments already serialised (by `JSONSerialization`, off the main thread for big batches such
+  /// as imported history). Main thread only, like every engine call.
+  static func call(
+    _ name: String, profile: RayCoreProfile, json: Data, completion: @escaping ([String: Any]?) -> Void
+  ) {
+    var terminated = json
+    terminated.append(0)
+    terminated.withUnsafeBytes { bytes in
+      invoke(name, profile: profile, args: bytes.baseAddress!.assumingMemoryBound(to: CChar.self), completion: completion)
+    }
+  }
+
+  /// For arguments that carry secrets (cookie values, passwords, card numbers), written straight into `SecretBytes`
+  /// (`CookieWire`, `AutofillWire`): the bytes go to the engine as they are, NUL-terminated, never through a Swift
+  /// String, and are wiped as soon as the call returns. The engine parses them inside the call (`SensitiveArgs`, which
+  /// cleanses its own copy), so nothing reads them afterwards. Main thread only.
+  static func callWithSecret(
+    _ name: String, profile: RayCoreProfile, json: SecretBytes, completion: @escaping ([String: Any]?) -> Void
+  ) {
+    let terminated = json.count > 0 && json.withUnsafeBytes({ $0[$0.count - 1] }) == 0
+    let bytes = terminated ? json : {
+      let copy = SecretBytes(count: json.count + 1)
+      json.withUnsafeBytes { src in
+        copy.withUnsafeMutableBytes { dst in
+          if let base = src.baseAddress, src.count > 0 { dst.baseAddress!.copyMemory(from: base, byteCount: src.count) }
+        }
+      }
+      return copy
+    }()
+    bytes.withUnsafeBytes { raw in
+      invoke(name, profile: profile, args: raw.baseAddress!.assumingMemoryBound(to: CChar.self), completion: completion)
+    }
+    bytes.wipe()
+    json.wipe()
+  }
+
+  private static func invoke(
+    _ name: String, profile: RayCoreProfile, args: UnsafePointer<CChar>,
+    completion: @escaping ([String: Any]?) -> Void
+  ) {
+    guard let symbol = dlsym(defaultHandle, name) else {
       completion(nil)
       return
     }
@@ -37,7 +82,7 @@ enum EngineCalls {
         DispatchQueue.main.async { pending.completion(result) }
       }
     }
-    function(profile.path, json, reply, context)
+    function(profile.path, args, reply, context)
   }
 }
 

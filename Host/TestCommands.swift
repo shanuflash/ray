@@ -168,6 +168,76 @@ enum TestCommands {
     return "ok"
   }
 
+  private static var importSession: ImportSession?
+
+  private static func respond(_ line: String, _ result: String) {
+    FileHandle.standardError.write("[ray-test] \(line) -> \(result)\n".data(using: .utf8)!)
+  }
+
+  private static func json(_ value: Any) -> String {
+    (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])).flatMap { String(data: $0, encoding: .utf8) }
+      ?? "null"
+  }
+
+  /// `import <browserId> <profileId> <item,item,…>`: ImportSession.run into the current window (the state log's
+  /// `import` shows its events and summary). The profile id may have spaces ("Profile 1").
+  private static func runImport(_ argument: String) -> String {
+    let words = argument.split(separator: " ").map(String.init)
+    let usage = "usage: import <browserId> <profileId> <\(ImportItem.allCases.map(\.rawValue).joined(separator: ","))>"
+    guard words.count >= 3, let controller = AppController.shared.current else { return usage }
+    let names = words[words.count - 1].split(separator: ",").map(String.init)
+    let items = Set(names.compactMap(ImportItem.init(rawValue:)))
+    guard items.count == names.count else { return usage }
+    let profileId = words[1..<(words.count - 1)].joined(separator: " ")
+    guard let source = ImportSession.sources().first(where: { $0.id == words[0] }) else { return "no source" }
+    guard let profile = source.profiles.first(where: { $0.id == profileId }) else { return "no profile" }
+    let session = importSession ?? ImportSession()
+    importSession = session
+    session.run(source, profile: profile, items: items, into: controller, event: { _ in }, completion: { _ in })
+    return "ok"
+  }
+
+  /// `importcheck sources | preview <browserId> <profileId> | passwords | history <url> | bookmarks`: what the
+  /// import sees and what landed in the engine, answered on this command's own result line (no passwords in it).
+  private static func importCheck(_ line: String, _ argument: String) -> String? {
+    let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
+    guard let profile = AppController.shared.current?.profile else { return "no window" }
+    switch words.first {
+    case "sources":
+      return json(ImportSession.sources().map { source -> [String: Any] in
+        ["id": source.id, "name": source.name, "recommended": source.recommended, "note": source.note ?? NSNull(),
+         "icon": source.icon != nil, "profiles": source.profiles.map(\.id),
+         "items": ImportItem.allCases.filter(source.items.contains).map(\.rawValue)]
+      })
+    case "preview":
+      let parts = words.count == 2 ? words[1].split(separator: " ", maxSplits: 1).map(String.init) : []
+      guard parts.count == 2, let source = ImportSession.sources().first(where: { $0.id == parts[0] }),
+            let chosen = source.profiles.first(where: { $0.id == parts[1] }) else { return "usage: importcheck preview <browserId> <profileId>" }
+      ImportSession().preview(source, profile: chosen) { preview in
+        respond(line, json(["summary": preview.summary,
+                            "counts": Dictionary(uniqueKeysWithValues: preview.counts.map { ($0.key.rawValue, $0.value) })]))
+      }
+      return nil
+    case "passwords":
+      EngineCalls.call("ac_passwords_list", profile: profile) { reply in
+        respond(line, json(reply?["passwords"] ?? reply?["error"] ?? NSNull()))
+      }
+      return nil
+    case "history":
+      guard words.count == 2 else { return "usage: importcheck history <url>" }
+      EngineCalls.call("ac_history_query", profile: profile, args: ["maxUrls": 100_000, "maxVisits": 1]) { reply in
+        let urls = (reply?["entries"] as? [[String: Any]] ?? []).compactMap { $0["u"] as? String }
+        respond(line, json(["count": urls.count, "has": urls.contains(words[1])]))
+      }
+      return nil
+    case "bookmarks":
+      EngineCalls.call("ac_bookmarks_tree", profile: profile) { reply in respond(line, json(reply ?? NSNull())) }
+      return nil
+    default:
+      return "usage: importcheck sources|preview|passwords|history|bookmarks"
+    }
+  }
+
   private static func run(_ line: String) {
     let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
     guard let command = parts.first else { return }
@@ -212,6 +282,12 @@ enum TestCommands {
       AppController.shared.current?.extensions.closePopup()
     case "arcimport":
       if AppController.shared.current?.answerArcImport(argument == "accept") != true { result = "no prompt" }
+    case "import":
+      result = runImport(argument)
+    case "importcheck":
+      // Answered later, on the engine's reply.
+      guard let answer = importCheck(line, argument) else { return }
+      result = answer
     case "closewindow":
       AppController.shared.current?.window.performClose(nil)
     case "reopen":

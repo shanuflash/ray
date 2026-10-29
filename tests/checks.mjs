@@ -1212,6 +1212,163 @@ const checks = {
       for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
     }
   },
+  async "import-browser"() {
+    // ImportSession end to end on its own hidden instances: the importer's fixtures (Importer/fixtures/home) stand in
+    // for ~/Library and the fixture secret for the Keychain (RAY_IMPORT_SECRET), so no real profile and no Keychain
+    // is touched. Arc's sidebar comes into the sidebar; Chrome's history, bookmarks, passwords and cookies into the
+    // engine.
+    const support = join(root, "Importer/fixtures/home/Library/Application Support");
+    const secret = JSON.parse(readFileSync(join(root, "Importer/fixtures/secrets.json"), "utf8")).chromiumSafeStorageSecret;
+    const running = [];
+    const start = (env) => {
+      const dir = mkdtempSync(join(tmpdir(), "ray-import-"));
+      const it = { dir, log: "", states: [], port: 9850 + Math.floor(Math.random() * 140) };
+      let partial = "";
+      it.proc = spawn(join(app, "Contents/MacOS/Ray"), [], {
+        env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_DATA_DIR: dir,
+          RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.import`,
+          RAY_IMPORT_SOURCE_DIR: support, RAY_REMOTE_DEBUGGING_PORT: String(it.port), RAY_START_URL: `${origin}/b`, ...env },
+        stdio: ["pipe", "ignore", "pipe"],
+      });
+      it.proc.stdin.on("error", () => {});
+      it.proc.stderr.setEncoding("utf8");
+      it.proc.stderr.on("data", (chunk) => {
+        it.log += chunk;
+        const lines = (partial + chunk).split("\n");
+        partial = lines.pop();
+        for (const line of lines) {
+          const at = line.indexOf(stateMarker);
+          if (at >= 0) it.states.push(JSON.parse(line.slice(at + stateMarker.length)));
+        }
+      });
+      it.exit = new Promise((r) => it.proc.on("exit", (code, signal) => r(code ?? signal)));
+      running.push(it);
+      return it;
+    };
+    const tail = (it) => it.log.split("\n").filter((l) => l.trim()).slice(-6).join(" | ").slice(-1500);
+    const cmd = async (it, line, ms = 15000) => {
+      const marker = `[ray-test] ${line} -> `;
+      const from = it.log.length;
+      it.proc.stdin.write(line + "\n");
+      try {
+        return await until(`command ${line}`, () => {
+          const at = it.log.indexOf(marker, from);
+          return at >= 0 ? it.log.slice(at + marker.length).split("\n")[0] : null;
+        }, ms);
+      } catch (error) { throw new Error(`${error.message}; its log: ${tail(it)}`); }
+    };
+    const runImport = async (it, args) => {
+      const from = it.states.length;
+      const result = await cmd(it, `import ${args}`);
+      assert(result === "ok", `import ${args}: ${result}`);
+      const done = await until(`import ${args} done`, () => it.states.slice(from).find((s) => s.event === "import" && s.import?.done), 60000);
+      return done;
+    };
+    const stop = async (it) => {
+      it.proc.stdin.write("menu quit\n");
+      const code = await Promise.race([it.exit, sleep(15000).then(() => "timeout")]);
+      assert(code !== "timeout", "an import instance didn't quit within 15 s");
+      rmSync(it.dir, { recursive: true, force: true });
+    };
+    try {
+      const it = start({ RAY_IMPORT_SECRET: secret });
+      await until("window", async () => (await cmd(it, "state", 20000)) === "ok" && it.states.length > 0, 25000);
+
+      // Sources: Arc first and recommended, then by name; Safari (from the fixture home) as one profile.
+      const sources = JSON.parse(await cmd(it, "importcheck sources"));
+      assert(sources[0]?.id === "arc" && sources[0].recommended, `Arc isn't first: ${sources.map((s) => s.id)}`);
+      assert(sources.filter((s) => s.recommended).length === 1, "more than one source recommended");
+      const chrome = sources.find((s) => s.id === "chrome");
+      assert(chrome?.profiles.join() === "Default,Profile 1", `Chrome's profiles: ${JSON.stringify(chrome)}`);
+      assert(["history", "passwords", "cookies", "bookmarks"].every((i) => chrome.items.includes(i)), `Chrome's items: ${chrome.items}`);
+      assert(!chrome.items.includes("favorites"), "Chrome offers favorites");
+      const safari = sources.find((s) => s.id === "safari");
+      if (safari) assert(safari.profiles.join() === "Default" && safari.note === null, `Safari: ${JSON.stringify(safari)}`);
+
+      // Preview: counts without the key, and the one-line summary.
+      const arcPreview = JSON.parse(await cmd(it, "importcheck preview arc Default"));
+      assert(arcPreview.counts.pinnedTabs === 6 && arcPreview.counts.favorites === 3 && arcPreview.counts.openTabs === 2,
+        `Arc's preview counts: ${JSON.stringify(arcPreview)}`);
+      assert(arcPreview.summary === "2 spaces, 6 pinned tabs, 2 profiles", `Arc's summary: ${arcPreview.summary}`);
+      const chromePreview = JSON.parse(await cmd(it, "importcheck preview chrome Default"));
+      assert(chromePreview.counts.history > 2000 && chromePreview.counts.bookmarks > 0 && chromePreview.counts.passwords > 0
+        && chromePreview.counts.cookies > 0, `Chrome's preview counts: ${JSON.stringify(chromePreview)}`);
+
+      // Arc: favorites, each space's pinned tabs in a folder named after it (two spaces), Today's tabs.
+      const arc = await runImport(it, "arc Default pinnedTabs,favorites,openTabs");
+      assert(JSON.stringify(arc.import.failed) === "{}", `Arc import failed: ${JSON.stringify(arc.import.failed)}`);
+      assert(arc.import.imported.pinnedTabs === 6 && arc.import.imported.favorites === 3 && arc.import.imported.openTabs === 2,
+        `Arc imported: ${JSON.stringify(arc.import.imported)}`);
+      const sidebar = arc.sidebar;
+      assert(sidebar.favorites.map((e) => e.pinnedURL).join() === "https://mail.example.com/,https://music.example/,https://maps.example/",
+        `favorites: ${sidebar.favorites.map((e) => e.pinnedURL)}`);
+      const folder = (title) => sidebar.pinned.find((e) => e.kind === "folder" && e.title === title);
+      const personal = folder("Personal");
+      assert(personal && folder("Space 1"), `space folders: ${sidebar.pinned.filter((e) => e.kind === "folder").map((e) => e.title)}`);
+      assert(folder("Reading")?.parent === personal.id && folder("Later")?.parent === folder("Reading").id, "Arc's nested folders didn't come over");
+      const cal = sidebar.pinned.find((e) => e.pinnedURL === "https://calendar.example/");
+      assert(cal?.title === "Cal" && cal.parent === personal.id && cal.live === false, `Arc's renamed pinned tab: ${JSON.stringify(cal)}`);
+      assert(sidebar.today.some((e) => e.pinnedURL === null && e.url === "https://today2.example/" && e.title === "Renamed today"),
+        `Today: ${JSON.stringify(sidebar.today.map((e) => [e.url, e.title]))}`);
+
+      // Chrome: everything; the key comes from the fixture secret.
+      const all = "pinnedTabs,openTabs,history,bookmarks,passwords,cookies,autofill,extensions";
+      const result = await runImport(it, `chrome Default ${all}`);
+      const { imported, failed, events } = result.import;
+      assert(JSON.stringify(failed) === "{}", `Chrome import failed: ${JSON.stringify(failed)}`);
+      assert(imported.history > 2000 && imported.bookmarks > 0 && imported.passwords >= 2 && imported.cookies >= 3,
+        `Chrome imported: ${JSON.stringify(imported)}`);
+      assert(imported.extensions === 0, "extensions were installed");
+      for (const item of all.split(",")) {
+        const started = events.findIndex((e) => e.started === item);
+        const ended = events.findIndex((e) => e.finished === item || e.failed === item);
+        assert(started >= 0 && ended > started, `${item}: events ${JSON.stringify(events)}`);
+      }
+      // Chrome's pinned Mail is Arc's favorite already: never twice.
+      const everywhere = ["favorites", "pinned", "today"].flatMap((k) => result.sidebar[k]);
+      assert(everywhere.filter((e) => e.url === "https://mail.example.com/").length === 1, "a tab came in twice");
+      assert(result.sidebar.today.some((e) => e.url === "https://docs.example.com/"), "Chrome's open tabs aren't in Today");
+      assert(!everywhere.some((e) => !/^https?:/.test(e.url) && e.kind !== "folder"), "a non-web address reached the sidebar");
+
+      // In the engine: history, passwords (never shown), bookmarks (no bookmarklets), cookies.
+      const history = JSON.parse(await cmd(it, "importcheck history https://newest.example/"));
+      assert(history.has && history.count > 2000, `history: ${JSON.stringify(history)}`);
+      const passwords = JSON.parse(await cmd(it, "importcheck passwords"));
+      assert(passwords.some((p) => p.origin === "https://accounts.example.com" && p.username === "alex@example.com"),
+        `passwords: ${JSON.stringify(passwords)}`);
+      assert(!passwords.some((p) => p.origin.startsWith("android")), "an app login came in as a website's");
+      const tree = await cmd(it, "importcheck bookmarks");
+      const bar = JSON.parse(tree).bar;
+      const importedFolder = bar.c.find((n) => n.t === "Imported from Google Chrome");
+      assert(importedFolder?.c.some((n) => n.u === "https://ardia.example/"), `bookmarks bar: ${tree.slice(0, 400)}`);
+      assert(!tree.includes("javascript:"), "a bookmarklet was imported");
+      const version = await (await fetch(`http://127.0.0.1:${it.port}/json/version`)).json();
+      const socket = new WebSocket(version.webSocketDebuggerUrl);
+      await new Promise((r, j) => ((socket.onopen = r), (socket.onerror = j)));
+      const cookies = await new Promise((resolve, reject) => {
+        socket.onmessage = (m) => { const msg = JSON.parse(m.data); if (msg.id === 1) msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result.cookies); };
+        socket.send(JSON.stringify({ id: 1, method: "Storage.getCookies" }));
+      });
+      socket.close();
+      const sid = cookies.find((c) => c.name === "sid" && c.domain === ".example.com");
+      assert(sid?.value === "s3ss10n" && sid.secure, `the fixture cookie: ${JSON.stringify(sid)}`);
+      // No secret reaches the log.
+      for (const value of ["s3ss10n", "correct horse", secret])
+        assert(!it.log.includes(value), "a secret is in the log");
+      await stop(it);
+
+      // Without the key (the Keychain prompt denied): passwords and cookies fail, the rest comes in.
+      const denied = start({});
+      await until("window", async () => (await cmd(denied, "state", 20000)) === "ok" && denied.states.length > 0, 25000);
+      const partial = await runImport(denied, "chrome Default history,passwords,cookies");
+      assert(partial.import.imported.history > 2000,`history without the key: ${JSON.stringify(partial.import)}`);
+      assert(partial.import.failed.passwords && partial.import.failed.cookies && !partial.import.failed.history,
+        `failures without the key: ${JSON.stringify(partial.import.failed)}`);
+      await stop(denied);
+    } finally {
+      for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
+    }
+  },
   async "test-app-needs-data-dir"() {
     // A test instance with no (or an empty) RAY_DATA_DIR must refuse to start rather than open the user's profile.
     // CFFIXED_USER_HOME points the home folder at a scratch dir, so even a regression here can't reach real data.

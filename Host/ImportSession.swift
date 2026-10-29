@@ -91,12 +91,20 @@ struct ImportSummary {
 /// Support) and use RAY_IMPORT_SECRET as every browser's Safe Storage secret, so tests never touch a real profile or
 /// the Keychain.
 final class ImportSession {
+  /// Holds the browsers' derived keys during a run (dropped when it ends). Nil in a test build without
+  /// RAY_IMPORT_SOURCE_DIR.
+  private lazy var importer: Importer? = ImportPlaces.discovery().map { Importer(discovery: $0) }
+  private var running = false
+
   /// Browsers found on this Mac, Arc first, then by name.
-  static func sources() -> [ImportSource] { [] }
+  static func sources() -> [ImportSource] { ImportSources.list() }
 
   /// Counts for the "what to bring" step, read off the main thread without any Keychain prompt; completion on main.
   func preview(_ source: ImportSource, profile: ImportProfile, completion: @escaping (ImportPreview) -> Void) {
-    completion(ImportPreview())
+    DispatchQueue.global(qos: .userInitiated).async {
+      let preview = ImportCounter.preview(source, profile: profile)
+      DispatchQueue.main.async { completion(preview) }
+    }
   }
 
   /// Reads the chosen items (one Keychain prompt when any needs the key) and writes them into Ray: the sidebar of
@@ -105,6 +113,22 @@ final class ImportSession {
     _ source: ImportSource, profile: ImportProfile, items: Set<ImportItem>, into controller: BrowserWindowController,
     event: @escaping (ImportEvent) -> Void, completion: @escaping (ImportSummary) -> Void
   ) {
-    completion(ImportSummary())
+    guard !running, let importer else {
+      let reason = running ? "Another import is running" : "\(source.name) wasn't found"
+      var summary = ImportSummary()
+      for item in ImportItem.allCases where items.contains(item) {
+        event(.started(item))
+        event(.failed(item, reason: reason))
+        summary.failed[item] = reason
+      }
+      return completion(summary)
+    }
+    running = true
+    let run = ImportRun(
+      source: source, profileId: profile.id, items: items, importer: importer, controller: controller, event: event)
+    run.start { [weak self] summary in
+      self?.running = false
+      completion(summary)
+    }
   }
 }

@@ -377,38 +377,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   private func apply(_ arc: ArcImport) {
-    var known = Set(state.allEntries.filter { !$0.isFolder }.map { $0.pinnedURL ?? $0.url })
-    for case .tab(let url, let title) in arc.favorites where known.insert(url).inserted {
-      state.favorites.append(SidebarEntry(kind: .favorite, url: url, title: title))
-    }
-    var added: [SidebarEntry] = []
-    func add(_ nodes: [ArcImport.Node], in parent: UUID?) {
-      for node in nodes {
-        switch node {
-        case .tab(let url, let title):
-          guard known.insert(url).inserted else { continue }
-          let entry = SidebarEntry(kind: .pinned, url: url, title: title)
-          entry.parentID = parent
-          added.append(entry)
-        case .folder(let title, let children):
-          let folder = SidebarEntry.folder(title, in: parent)
-          folder.isOpen = false
-          added.append(folder)
-          let before = added.count
-          add(children, in: folder.id)
-          // Nothing new inside (all already in Ray): leave the folder out.
-          if added.count == before { added.removeLast() }
-        }
-      }
-    }
-    if arc.spaces.count == 1 {
-      add(arc.spaces[0].pinned, in: nil)
-    } else {
-      add(arc.spaces.map { ArcImport.Node.folder(title: $0.name, children: $0.pinned) }, in: nil)
-    }
-    state.pinned += added
-    state.normalizePinned()
-    changed("arcImport")
+    let pinned = arc.spaces.count == 1
+      ? arc.spaces[0].pinned : arc.spaces.map { ArcImport.Node.folder(title: $0.name, children: $0.pinned) }
+    addImported(favorites: arc.favorites, pinned: pinned, today: [], event: "arcImport")
   }
 
   /// For tests: the import question on screen, and answering it.
@@ -420,6 +391,85 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard let arcPrompt else { return false }
     arcPrompt.alert.buttons[accept ? 0 : 1].performClick(nil)
     return true
+  }
+
+  // MARK: Browser import
+
+  /// The last import into this window (ImportSession), for the test state log: its events so far, then the summary.
+  private var importLog: [String: Any]?
+
+  /// Adds imported sidebar items (File › Import from Arc…, ImportSession): favorites, pinned tabs and folders, and
+  /// Today's tabs, all closed until clicked. Nothing already in the sidebar comes in twice, and a folder with nothing
+  /// new inside is left out. Returns how many tabs of each kind came in (folders not counted).
+  @discardableResult
+  func addImported(
+    favorites: [ArcImport.Node], pinned: [ArcImport.Node], today: [ArcImport.Node], event: String = "import"
+  ) -> (favorites: Int, pinned: Int, today: Int) {
+    var known = Set(state.allEntries.filter { !$0.isFolder }.map { $0.pinnedURL ?? $0.url })
+    var counts = (favorites: 0, pinned: 0, today: 0)
+    func tabs(_ nodes: [ArcImport.Node]) -> [(url: String, title: String)] {
+      nodes.flatMap { node -> [(url: String, title: String)] in
+        switch node {
+        case .tab(let url, let title): [(url, title)]
+        case .folder(_, let children): tabs(children)
+        }
+      }
+    }
+    for tab in tabs(favorites) where known.insert(tab.url).inserted {
+      state.favorites.append(SidebarEntry(kind: .favorite, url: tab.url, title: tab.title))
+      counts.favorites += 1
+    }
+    var added: [SidebarEntry] = []
+    func add(_ nodes: [ArcImport.Node], in parent: UUID?) {
+      for node in nodes {
+        switch node {
+        case .tab(let url, let title):
+          guard known.insert(url).inserted else { continue }
+          let entry = SidebarEntry(kind: .pinned, url: url, title: title)
+          entry.parentID = parent
+          added.append(entry)
+          counts.pinned += 1
+        case .folder(let title, let children):
+          let folder = SidebarEntry.folder(title, in: parent)
+          folder.isOpen = false
+          added.append(folder)
+          let before = added.count
+          add(children, in: folder.id)
+          // Nothing new inside (all already in Ray): leave the folder out.
+          if added.count == before { added.removeLast() }
+        }
+      }
+    }
+    add(pinned, in: nil)
+    state.pinned += added
+    state.normalizePinned()
+    for tab in tabs(today) where known.insert(tab.url).inserted {
+      state.today.append(SidebarEntry(kind: .today, url: tab.url, title: tab.title))
+      counts.today += 1
+    }
+    changed(event)
+    return counts
+  }
+
+  /// ImportSession reports each event and the final summary here, for the state log only.
+  func noteImport(event: ImportEvent? = nil, summary: ImportSummary? = nil) {
+    var log = importLog ?? [:]
+    if event != nil, log["done"] as? Bool == true { log = [:] }
+    var events = log["events"] as? [[String: Any]] ?? []
+    switch event {
+    case .started(let item): events.append(["started": item.rawValue])
+    case .finished(let item, let count): events.append(["finished": item.rawValue, "count": count])
+    case .failed(let item, let reason): events.append(["failed": item.rawValue, "reason": reason])
+    case nil: break
+    }
+    log["events"] = events
+    log["done"] = summary != nil
+    if let summary {
+      log["imported"] = Dictionary(uniqueKeysWithValues: summary.imported.map { ($0.key.rawValue, $0.value) })
+      log["failed"] = Dictionary(uniqueKeysWithValues: summary.failed.map { ($0.key.rawValue, $0.value) })
+    }
+    importLog = log
+    logState("import")
   }
 
   // MARK: Permission prompts
@@ -1735,6 +1785,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       ] as [String: Any] : NSNull(),
       "private": isPrivate,
       "arcImport": arcImportShown ?? NSNull(),
+      "import": importLog ?? NSNull(),
       "permission": permissions.shown ?? NSNull(),
       "find": findBar.map { bar -> [String: Any] in
         let frame = bar.convert(bar.bounds, to: nil)
