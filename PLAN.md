@@ -54,7 +54,7 @@ Recorded for the owner to decide. Don't act on them until they do.
 | Name | "Ray" is hard to search: it collides with ray-project/ray, Raycast and Spatie Ray. Keep it, or rename before launch? |
 | Peek | Reconsidering (2026-10-29): Arc's link preview may be needed for Arc's feel. Bring back Ardia's engine hook, or build it on plain tabs? Until decided, "No" below stands. |
 | Content blocker | Reconsidering (2026-10-29): a built-in blocker may be needed so switching from Arc needs no extension. Ardia's own uBlock Origin with its navigation hold (still in the engine, idle), or uBlock Origin Lite preinstalled? Until decided, "None built in" below stands. |
-| Settings toolkit | The settings revamp (section 13) is planned in AppKit to reuse Ray's sidebar look and `RaySwitch`; "UI" below still allows SwiftUI for Settings. AppKit, or SwiftUI? |
+| Settings toolkit | The settings revamp (section 13): AppKit, like the rest of Ray, or SwiftUI, which "UI" below allows for Settings? Decide with the mockups. |
 
 ## Decisions so far
 
@@ -376,68 +376,80 @@ Lessons for code we haven't written yet:
 
 ## 13. Settings revamp (planned 2026-10-29)
 
-Ray's Settings window has one pane (Appearance) and sends the rest to Chrome's page. Planned: a full Settings
-window modelled on Ardia 0.2.42's, with Ray's own twist. Gaps it gives a home to: `docs/MISSING.md`, "From Ardia's
-settings".
+Ray's Settings window has one pane (Appearance) and sends the rest to Chrome's page; the owner finds it poor. Gaps
+the revamp gives a home to: `docs/MISSING.md`, "From Ardia's settings".
 
-**Shape (Ardia's):** a source list on the left with search and back/forward; on the right, a scrolling column of
-grouped inset cards, with picture choices where a setting is visual.
+**Settings first (owner, 2026-10-29).** Build Settings before the features: every setting gets its stored value,
+default and row now, and each feature reads its setting when it lands. Proposed: a row whose feature isn't built
+yet stays hidden in Ray.app and shows in RayTests.app, so checks cover it and users never see a switch that does
+nothing. On top sits one configuration system that makes adding or changing a setting effortless.
 
-**Ray's twist:**
-1. **The source list is Ray's sidebar.** The selected pane wears Ray's selected-tab look in the profile colour,
-   not a flat system-blue pill. Switches, rings and focus all use `ProfileColor`.
-2. **Live previews.** Picture choices (theme, address bar position, new tab position) are tiny Ray windows drawn
-   with Ray's real geometry and tinted with the profile colour, updating as you change them; not grey blocks.
-3. **Search shows you where.** A search result scrolls to its row and runs one `LoadSweep` glow across it.
-4. **Settings in the command bar.** "archive" in ⌘T offers "Settings: Archive tabs after…" and opens that row
-   (`BarActions` already does menu commands).
-5. **"Feel like Arc"** at the top of Tabs sets every Arc default in one click; rows matching an Arc setting carry a
-   small "Arc" tag.
-6. **No "Show advanced settings" switch.** Fewer rows; each group hides its rare rows behind a "More…" line.
+**The configuration system.** Today a setting touches six places (`RaySetting` case, stored var, decoder line,
+diff line, `apply` case, window row). Instead:
+- **One catalog** (`Host/SettingsCatalog.swift`): each setting is one typed entry, `SettingKey<Value>`: stable id
+  (also its JSON key), default, validation (clamp or reject), scope (app now; profile or Space later), whether its
+  feature is built, and its UI: pane, group, title, detail, search keywords, control (switch, choice with options,
+  colour, or a custom view) and whether it sits under "More…".
+- **Typed access:** `RaySettings.shared[key]` reads, `set(key, value)` writes. Storage stays `Settings.json` in
+  the data dir, saved 0.2 s after a change and on quit, but as a dictionary that keeps keys it doesn't know (a
+  downgrade or a newer build loses nothing). Today's keys keep their names; renames go through an alias table.
+  Private windows read, never write.
+- **Observing:** `observe(key) { value in … }` per setting, on the main thread, coalesced; replaces scanning the
+  `didChange` key set.
+- **Generated from the catalog:** the window's rows, settings search, command bar entries ("Settings: …"), the
+  `setting <id> <value>` test command (parsed by the key's type), the state log's `settings` dump, and one generic
+  check that every key round-trips, rejects bad values and falls back to its default. Adding a setting = one
+  catalog entry plus the feature code that reads it.
+
+**Look: not Ardia's.** Ardia's window is a System Settings clone (source list, blue selection pill, grouped inset
+cards); Ray's must not look like it, and today's Ray window gets replaced. Mockups first, owner picks a direction
+before any window code. Ideas that carry into any direction: the profile colour as the only accent; picture choices
+as tiny live Ray windows tinted with your colour; a search result scrolls to its row and runs one `LoadSweep`
+glow across it; settings reachable from the ⌘T command bar; no "Show advanced settings" switch (rare rows sit
+under a "More…" line in their group).
 
 **Panes:** General · Tabs & Sidebar · Appearance · Search · Privacy & Security · Passwords · Autofill · Extensions ·
-Shortcuts · Advanced/About. Profiles and Spaces arrive with Spaces (Crest lists each Space in its settings
-sidebar). Live Folders and Calendar get panes only when those features exist. "All Chrome Settings…" stays as a
-link at the bottom of the list.
+Shortcuts · Advanced/About. Profiles and Spaces arrive with Spaces. Live Folders and Calendar get panes only when
+those features exist. "All Chrome Settings…" stays as a link.
 
-**What goes in each pane.** ✓ = in Ray's Settings window today; (menu) or (Chrome page) = Ray has it elsewhere;
-the rest is new (numbers are `docs/MISSING.md`, "From Ardia's settings").
-- **General:** default browser, Make Default (Chrome #16, in progress); open Ray at login (9); warn before ⌘Q and
-  before closing a window with several tabs (10); on quit, keep tabs and windows or start fresh (11); downloads
-  folder and ask where to save (22, Chrome page); updates: check and install automatically, channel, version and
-  Check Now (21, menu); import from another browser (menu).
-- **Tabs & Sidebar:** "Feel like Arc"; where new tabs go, top, bottom or next to current (8; ✓ as a "next to the
-  active tab" switch); where the New Tab button sits (8); archive Today tabs after 12 h, 24 h, 7 days or 30 days
-  (7); ⌃Tab in recent order ✓; share tabs across windows (17); show sidebar button and Clear button (15); hide
-  toolbar while scrolling (14); fade icons of unloaded tabs (18); haptic bump on reorder (19); media controls and
-  auto picture-in-picture once built (Arc #8, #9).
-- **Appearance:** theme colour ✓, a gradient with Spaces (5); Light, Dark or Automatic (12); address bar on the
-  page or in the sidebar (menu); minimal URL ✓; loading progress ✓; default page zoom ✓; thin scroll bars (20);
-  app icon (13).
-- **Search:** default engine, custom site searches, suggestions (1).
-- **Privacy & Security:** every site's permissions, zoom levels, apps allowed to open links, clear site data (6,
-  Chrome page); clear browsing data (menu); content blocker if decided (Arc #7).
-- **Passwords:** offer to save and fill, saved passwords behind Touch ID, CSV import and export (6, Chrome page).
-- **Autofill:** save and fill addresses and cards, their lists (6, Chrome page).
+**What goes in each pane, with defaults.** ✓ = in Ray's Settings window today; (menu) or (Chrome page) = Ray has
+it elsewhere; the rest is new (numbers are `docs/MISSING.md`, "From Ardia's settings"). Defaults follow Arc where
+Arc has one.
+- **General:** default browser, asked once in the onboarding (Chrome #16, in progress); open Ray at login, off (8);
+  warn before ⌘Q, off, and before closing a window with several tabs, on (9); on quit, keep tabs and windows (10);
+  downloads folder ~/Downloads and ask where to save, off (20, Chrome page); updates: check automatically on,
+  install automatically on, channel Stable, version and Check Now (19, menu); import from another browser (menu).
+- **Tabs & Sidebar:** where new tabs go, top (7; ✓ as a "next to the active tab" switch, off); New Tab button at
+  the top (7); ⌃Tab in recent order, on ✓; show sidebar button, on, and Clear button, on, once Ray has one (14);
+  hide the address bar while scrolling, off (13); fade icons of unloaded tabs, off (16); haptic bump on reorder,
+  on (17); media controls and auto picture-in-picture, on, once built (Arc #8, #9).
+- **Appearance:** theme colour, Lavender ✓ (a gradient with Spaces, 5); Light, Dark or Automatic, Automatic (11);
+  address bar on the page, on (menu); minimal URL, off ✓; loading progress, on ✓; default page zoom 100% ✓;
+  scroll bars follow macOS (18); app icon, Default, more to design (12).
+- **Search:** default engine Google, suggestions on, no custom site searches (1).
+- **Privacy & Security:** every site's permissions (Chrome's defaults, ask), zoom levels, apps allowed to open
+  links, clear site data (6, Chrome page); clear browsing data (menu); content blocker if decided (Arc #7).
+- **Passwords:** offer to save and fill, on; saved passwords behind Touch ID; CSV import and export (6, Chrome
+  page).
+- **Autofill:** save and fill addresses, on, and cards, on; their lists (6, Chrome page).
 - **Extensions:** installed list with switches, details and site access, Web Store, add from a link, load
   unpacked (6, Chrome page); extension shortcuts (Chrome #13).
-- **Shortcuts:** ⇧⌘C copies the link ✓; ⌘S toggles the sidebar ✓; ⌘Z reopens a closed tab outside text fields
-  (16); edit any shortcut (4).
+- **Shortcuts:** ⇧⌘C copies the link, on ✓; ⌘S toggles the sidebar, on ✓; ⌘Z reopens a closed tab outside text
+  fields, off (15); edit any shortcut, none changed (4).
 - **Advanced/About:** version, source code, licenses; All Chrome Settings….
 
-**Toolkit:** AppKit, though "Decisions so far" allows SwiftUI for Settings: it reuses `RaySwitch` and the
-sidebar's look directly. Owner to confirm.
+**Toolkit:** open decision (AppKit or SwiftUI), see "Open decisions".
 
 **Order:**
-1. Shell: source list, search, back/forward, `ray://settings/<pane>` routing; today's eight settings move into
-   General, Tabs and Appearance; the `settings` test command learns `open <pane>`.
-2. Cheap Ray-owned settings: archive timing, new tab and New Tab button position, open at login, warn before quit
-   or closing a window, quit behaviour, Light/Dark/Automatic, update rows, address bar position, ⌘Z reopen, and
-   the default browser row once that lands.
-3. Search pane: engine choice, custom site searches, suggestions; `AddressInput`'s search URL and the `/search`
+1. Configuration system: the catalog, typed storage, observers, generated test command, state log and check;
+   today's eight settings move onto it with no visible change.
+2. Mockups of two or three directions; the owner picks one.
+3. The new window: navigation, search, `ray://settings/<pane>` routing, rows generated from the catalog.
+4. Every Ray-owned setting above as a catalog entry, built or not; the built ones wired.
+5. Search pane: engine choice, custom site searches, suggestions; `AddressInput`'s search URL and the `/search`
    trim in `tools/trim-settings-pak.py` change with it.
-4. Data panes over the engine's `ac_*` calls: Privacy (site permissions, zoom levels, clear data), Passwords
+6. Data panes over the engine's `ac_*` calls: Privacy (site permissions, zoom levels, clear data), Passwords
    (`ac_reauth` for Touch ID), Autofill, Extensions. Each Chrome settings page is trimmed as its native pane lands
    (`trim-settings-pak.py`, `AddressInput.nativeSettingsPane`).
-5. Shortcut editor.
-6. Profiles and Spaces panes, with Spaces.
+7. Shortcut editor.
+8. Profiles and Spaces panes, with Spaces.

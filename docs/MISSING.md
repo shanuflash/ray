@@ -95,27 +95,28 @@ items above. The revamp that gives these a home is PLAN.md section 13.
    has `ac_site_settings`, `ac_passwords`, `ac_reauth`, `ac_autofill_edit`, `ac_extensions`, `ac_browsing_data`.
 
 **Smaller**
-7. When Today tabs archive: 12 h, 24 h, 7 days or 30 days, as in Arc (Ray has one fixed lifetime).
-8. Where new tabs go (top, bottom, next to current) and where the New Tab button sits (Ray has one switch).
-9. Open at login.
-10. Warn before quitting with ⌘Q, and before closing a window with several tabs.
-11. On quit: keep tabs and windows, or start fresh.
-12. Light, Dark or Automatic for Ray's own chrome (Ray follows macOS only).
-13. Alternate app icons.
-14. Hide the toolbar while scrolling.
-15. Show or hide the sidebar button and the Clear button.
-16. ⌘Z reopens a closed tab outside text fields, as in Arc.
-17. Share tabs across windows, as in Arc.
-18. Fade the icons of unloaded tabs.
-19. Haptic bump when reordering tabs.
-20. Thin scroll bars.
-21. Updates as Settings rows: check automatically, install automatically, Stable or Nightly, version, Check Now
+7. Where new tabs go (top, bottom, next to current) and where the New Tab button sits (Ray has one switch).
+8. Open at login.
+9. Warn before quitting with ⌘Q, and before closing a window with several tabs.
+10. On quit: keep tabs and windows, or start fresh.
+11. Light, Dark or Automatic for Ray's own chrome (Ray follows macOS only).
+12. Alternate app icons: a few need designing first.
+13. Hide the address bar above the page (View › Show Address Bar on Page) while scrolling down: it tucks into a
+    thin strip with the site's name; scrolling up or clicking the strip brings it back.
+14. Show or hide the sidebar button, and Arc's "Clear" button between pinned tabs and Today (Ray has no such
+    button yet; Clear Today's Tabs is only in the File menu and the command bar).
+15. ⌘Z reopens a closed tab outside text fields, as in Arc.
+16. Fade the icons of unloaded tabs.
+17. Haptic bump when reordering tabs.
+18. Thin scroll bars.
+19. Updates as Settings rows: check automatically, install automatically, Stable or Nightly, version, Check Now
     (Ray has the menu item only).
-22. Downloads folder and "ask where to save" in Ray's Settings (only on Chrome's page today).
-23. Battery saver.
+20. Downloads folder and "ask where to save" in Ray's Settings (only on Chrome's page today).
+21. Battery saver.
 
 **Left out on purpose:** WebKit engine and website rules (decided no), setup codes, the `ardia` command-line tool,
-tab groups and meeting groups (Arc has none), video upscaling, crash reports and usage stats.
+tab groups and meeting groups (Arc has none), video upscaling, crash reports and usage stats; a choice of when
+Today tabs archive (Ray keeps Arc's 12 h, owner 2026-10-29); sharing tabs across windows (for now).
 
 ## Known limitations and follow-ups
 
