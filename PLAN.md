@@ -439,13 +439,13 @@ still to build (numbers are `docs/MISSING.md`, "From Ardia's settings"). Default
   private window with 2+ tabs, on (a normal window keeps its tabs); on quit, keep tabs and windows or start fresh;
   downloads folder and ask where to save, off; updates: check and install automatically, on, version and Check Now;
   import from another browser. Still to do: the default-browser step in the onboarding (Chrome #17).
-- **Tabs and sidebar:** where new tabs go, top (5; ✓ as a "next to the active tab" switch, off); New Tab button at
-  the top (5); ⌃Tab in recent order, on ✓; show sidebar button, on, and Clear button, on, once Ray has one (9);
-  hide the address bar while scrolling, off (8); fade icons of unloaded tabs, off (11); haptic bump on reorder,
-  on (12); media controls and auto picture-in-picture, on, once built (Arc #8, #9).
-- **Appearance:** theme colour, Lavender ✓ (a gradient with Spaces, 4); Light, Dark or Automatic, Automatic (6);
-  address bar on the page, on (menu); minimal URL, off ✓; loading progress, on ✓; default page zoom 100% ✓;
-  scroll bars follow macOS (13); app icon, Default, more to design (7).
+- **Tabs and sidebar** ✓ (`d2c6ed0`): new tabs at the top or below current, ✓; ⌃Tab in recent order, on ✓; show the
+  sidebar button, on ✓; fade icons of unloaded tabs, off ✓; haptic on reorder, on ✓. Unbuilt rows (test builds
+  only): Clear button (9), hide the address bar while scrolling (8), media controls and auto picture-in-picture
+  (Arc #8, #9). New tabs at the bottom and the New Tab button's place (5).
+- **Appearance** ✓ (`d2c6ed0`): theme colour, Lavender ✓ (a gradient with Spaces, 4); Light, Dark or Automatic,
+  Automatic ✓; address bar on the page, on ✓ (the View menu flips the same setting); minimal URL, off ✓; loading
+  progress, on ✓; default page zoom 100% ✓; scroll bars Automatic ✓; app icon, unbuilt until designed (7).
 - **Search** ✓ (`7d54ba9`): default engine Google, suggestions on, site searches with keywords.
 - **Privacy** ✓ (`0eaf904`): every site's permissions, zoom levels, apps sites may open, clear site data, clear
   browsing data; content blocker if decided (Arc #7).
@@ -454,8 +454,8 @@ still to build (numbers are `docs/MISSING.md`, "From Ardia's settings"). Default
 - **Autofill** ✓ (`d34b5c4`): addresses and cards; save and fill switches once Ray has the prompts (Chrome #3).
 - **Extensions** ✓ (`0eaf904`): installed list with switches, site access, private windows, options, reload,
   remove, Web Store, load unpacked; add from a link and extension shortcuts later (Chrome #13, #14).
-- **Shortcuts:** ⇧⌘C copies the link, on ✓; ⌘S toggles the sidebar, on ✓; ⌘Z reopens a closed tab outside text
-  fields, off (10); edit any shortcut, none changed (3).
+- **Shortcuts:** ⇧⌘C copies the link, on ✓; ⌘S toggles the sidebar, on ✓; ⌘Z reopens a closed tab outside text,
+  off ✓ (`d2c6ed0`); edit any shortcut (3, in progress).
 - **About Ray** ✓ (`d88e0e3`): version and Chromium version; All Chrome Settings… sits in the sidebar.
 
 **Toolkit:** AppKit + Core Animation (owner 2026-10-29): smoother and lighter than SwiftUI, reuses `RaySwitch`, the
@@ -466,7 +466,7 @@ profile colour and the sidebar's look, and the live pictures animate on layers l
    today's eight settings move onto it with no visible change.
 2. Mockups: done, direction G picked (see "Look").
 3. **Done 2026-10-29, `d88e0e3`.** The new window: navigation, search, `ray://settings/<pane>` routing, rows generated from the catalog.
-4. Every Ray-owned setting above as a catalog entry, built or not; the built ones wired.
+4. **Done 2026-10-29, `25f0e1e`, `d2c6ed0`.** Every Ray-owned setting above as a catalog entry, built or not; the built ones wired.
 5. **Done 2026-10-29, `7d54ba9`.** Search pane: engine choice, custom site searches, suggestions; `AddressInput`'s search URL and the `/search`
    trim in `tools/trim-settings-pak.py` change with it.
 6. **Done 2026-10-29, `0eaf904`, `d34b5c4`.** Data panes over the engine's `ac_*` calls: Privacy (site permissions, zoom levels, clear data), Passwords

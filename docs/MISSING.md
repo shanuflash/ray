@@ -107,17 +107,12 @@ items above. The revamp that gives these a home is PLAN.md section 13.
    colour. Belongs with Spaces.
 
 **Smaller**
-5. Where new tabs go (top, bottom, next to current) and where the New Tab button sits (Ray has one switch).
-6. Light, Dark or Automatic for Ray's own chrome (Ray follows macOS only).
+5. New tabs at the bottom of Today (Ray offers the top or below the current tab) and where the New Tab button sits.
 7. Alternate app icons: a few need designing first.
 8. Hide the address bar above the page (View › Show Address Bar on Page) while scrolling down: it tucks into a
    thin strip with the site's name; scrolling up or clicking the strip brings it back.
-9. Show or hide the sidebar button, and Arc's "Clear" button between pinned tabs and Today (Ray has no such
-   button yet; Clear Today's Tabs is only in the File menu and the command bar).
-10. ⌘Z reopens a closed tab outside text fields, as in Arc.
-11. Fade the icons of unloaded tabs.
-12. Haptic bump when reordering tabs.
-13. Thin scroll bars.
+9. Arc's "Clear" button between pinned tabs and Today (Ray has no such button yet; Clear Today's Tabs is only in
+   the File menu and the command bar). Its Settings row exists, unbuilt.
 14. Battery saver.
 15. Memory Saver rows: on/off, Moderate / Balanced / Maximum, "Always keep these sites active" (Ardia's Settings ›
     Advanced › Performance, through the engine's `ac_memory_saver` from engine-2f172eb50b89). Today only on
@@ -233,6 +228,14 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 23. **A page's "Leave site?" doesn't cancel a window close cleanly.** `windowDidCancelClose` isn't implemented, so
     the window keeps its closing flag after the page cancels.
 
+24. **Unloaded tabs no longer fade by default.** Ray used to dim every Today tab whose page wasn't loaded; that is
+    now Settings › Tabs and sidebar › Fade icons of unloaded tabs, off by default (Arc's look, Ardia's default).
+25. **Test instances can die on a closed pipe.** Test-only logging uses `FileHandle.standardError.write(_:)`, which
+    raises when the test runner has already closed its end; a hidden instance then crashes (seen 2026-10-29 in
+    `logState`). Fix: the non-throwing `write(contentsOf:)` in the six places that log.
+26. **Settings › Tabs/Appearance/Shortcuts not felt by hand.** The reorder haptic, forced light/dark across the app,
+    and "Always" scroll bars in Ray's own sidebar and Settings were checked by state and snapshots only.
+
 ## Done
 
 | What | When |
@@ -258,3 +261,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Settings › Passwords (locked behind Touch ID, search, show, copy, edit, add, delete, CSV import and export) and › Autofill (addresses, cards) | 2026-10-29, `d34b5c4` |
 | Settings › Search: default engine, suggestions switch, site searches with a keyword and Tab in the command bar | 2026-10-29, `7d54ba9` |
 | JumpCloud Go sign-in relayed through Google Chrome (Settings › Passwords; known limitation #15) | 2026-10-29, `0b6fb3f` |
+| Settings: Light, Dark or Automatic (pages follow); scroll bars Automatic / When scrolling / Always (pages follow live); one address-bar-on-page setting for every window; show or hide the sidebar button; fade unloaded tabs; reorder haptic; ⌘Z reopens a closed tab outside text | 2026-10-29, `d2c6ed0` |

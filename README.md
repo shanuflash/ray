@@ -21,7 +21,9 @@ Early and personal. Expect rough edges.
 - Chrome's basics: Print (⌘P), Show Full History (⌘Y), zoom (⌘+ ⌘− ⌘0, with Arc's zoom level note), View Source
   (⌥⌘U), Save Page As, Task Manager, Clear Browsing Data (⇧⌘⌫).
 - Settings window (⌘,): a searchable sidebar of panes, live pictures of what a setting does, and every setting
-  reachable from the command bar ("Settings: …"). Your profile colour drives every accent in Ray.
+  reachable from the command bar ("Settings: …"). Your profile colour drives every accent in Ray. Panes for
+  General, Tabs and sidebar, Appearance (light or dark, scroll bars), Search (engine, site searches), Privacy,
+  Passwords (behind Touch ID), Autofill, Extensions and Shortcuts.
 - Sessions restored at launch; only the active tab loads.
 - Full screen edge to edge when the sidebar is hidden.
 - DevTools (⌥⌘I), popups and `target=_blank` as tabs.
