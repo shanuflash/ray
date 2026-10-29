@@ -1515,7 +1515,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let rows = Suggestions.build(
       query: query, tabs: tabs, active: activeTab, history: history.entries,
       searches: wantsSearches ? searches.current(for: trimmed) : [], actions: BarActions.available,
-      favicon: favicons.image(for:))
+      frecency: history.frecency(of:), favicon: favicons.image(for:))
     bar.show(rows)
     let pages = rows.compactMap { row -> String? in
       if case .history(let url) = row.kind { return url }
@@ -2059,7 +2059,13 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         [
           "mode": commandBarMode.rawValue, "query": bar.field.stringValue, "selected": bar.selectedIndex,
           "rowsFullyVisible": bar.rowsFullyVisible,
-          "rows": bar.suggestions.map { ["kind": $0.kindName, "title": $0.title, "detail": $0.detail] },
+          "firstVisibleRow": bar.shownRows.first, "visibleRows": bar.shownRows.count,
+          "rows": bar.suggestions.map { row -> [String: Any] in
+            var logged: [String: Any] = ["kind": row.kindName, "title": row.title, "detail": row.detail]
+            if row.suggested { logged["suggested"] = true }
+            if case .tab(let tab) = row.kind { logged["tab"] = Int(tab.tabId) }
+            return logged
+          },
         ] as [String: Any]
       } ?? NSNull(),
       "tabs": tabs.map { tab in

@@ -86,3 +86,4 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 | One signing identity ("Ray Code Signing"): no keychain prompt on every build | 2026-10-29, `ec95fc8` |
 | Reopen closed tab (⇧⌘T) back in its sidebar place, History › Recently Closed, and in the command bar | 2026-10-29, `609d4b2`, `8850dd4` |
 | Address shows `#fragment` and `view-source:` URLs; IDN hosts as punycode (no spoof checker yet) | 2026-10-29, `2512bed` |
+| Command bar ranks your pages first like Arc, 5 rows, scroll to 10, never the active tab | 2026-10-29, `feat: command bar ranks pages like arc` |

@@ -11,7 +11,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   private static let rowHeight: CGFloat = 50
   private static let listPadding: CGFloat = 7
   private static let maxWidth: CGFloat = 765
-  private static let restingRows: CGFloat = 5
+  /// Rows shown at once (Arc's five); more scroll.
+  private static let shownRowLimit = Suggestions.visibleRows
   static let contentInset: CGFloat = 52
   static let iconCenter: CGFloat = 31
   static let rowInset: CGFloat = 9
@@ -22,7 +23,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   private let panel = FlippedView()
   private let searchIcon = NSImageView()
   private let separator = NSView()
-  private let scrollView = NSScrollView()
+  private let scrollView = QuietScrollView()
   private let tableView = NSTableView()
   private(set) var suggestions: [Suggestion] = []
 
@@ -30,13 +31,27 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   /// For test snapshots: where the panel sits in the bar.
   var panelFrame: NSRect { panel.frame }
 
+  /// For tests: the rows the list shows whole (`first` is where it's scrolled to).
+  var shownRows: (first: Int, count: Int) {
+    layoutSubtreeIfNeeded()
+    let visible = scrollView.contentView.documentVisibleRect.insetBy(dx: 0, dy: -0.5)
+    let whole = suggestions.indices.filter { visible.contains(tableView.rect(ofRow: $0)) }
+    return (whole.first ?? 0, whole.count)
+  }
+
+  /// For tests: the list shows as many rows as it can (up to five) and none of them cut off, with the selected one among
+  /// them.
   var rowsFullyVisible: Bool {
     layoutSubtreeIfNeeded()
-    let visible = scrollView.contentView.documentVisibleRect
-    let fits = (0..<suggestions.count).allSatisfy { visible.contains(tableView.rect(ofRow: $0)) }
-    if !fits, let last = suggestions.indices.last {
+    let visible = scrollView.contentView.documentVisibleRect.insetBy(dx: 0, dy: -0.5)
+    let touched = suggestions.indices.filter { visible.intersects(tableView.rect(ofRow: $0).insetBy(dx: 0, dy: 1)) }
+    let whole = touched.filter { visible.contains(tableView.rect(ofRow: $0)) }
+    let selected = tableView.selectedRow
+    let fits = whole.count == touched.count && whole.count == min(suggestions.count, Self.shownRowLimit)
+      && (selected < 0 || whole.contains(selected))
+    if !fits {
       TestEnvironment.log(
-        "command bar rows cut off: visible \(NSStringFromRect(visible)), last row \(NSStringFromRect(tableView.rect(ofRow: last)))")
+        "command bar rows cut off: visible \(NSStringFromRect(visible)), whole \(whole), touched \(touched), selected \(selected)")
     }
     return fits
   }
@@ -92,7 +107,11 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     tableView.action = #selector(rowClicked)
     scrollView.documentView = tableView
     scrollView.drawsBackground = false
-    scrollView.hasVerticalScroller = false
+    scrollView.contentView.drawsBackground = false
+    scrollView.hasVerticalScroller = true
+    scrollView.hasHorizontalScroller = false
+    scrollView.autohidesScrollers = true
+    scrollView.horizontalScrollElasticity = .none
     scrollView.automaticallyAdjustsContentInsets = false
     scrollView.contentInsets = NSEdgeInsets()
     panel.addSubview(scrollView)
@@ -101,7 +120,14 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     updateColors()
   }
 
+  /// Where the pointer was at the last hover: the list scrolling under a still pointer sends `mouseMoved` too, and
+  /// that must not move the selection away from the keyboard's.
+  private var lastPointer: NSPoint?
+
   override func mouseMoved(with event: NSEvent) {
+    let pointer = NSEvent.mouseLocation
+    defer { lastPointer = pointer }
+    guard pointer != lastPointer else { return }
     let row = tableView.row(at: tableView.convert(event.locationInWindow, from: nil))
     if row >= 0, row != tableView.selectedRow { tableView.selectRowIndexes([row], byExtendingSelection: false) }
   }
@@ -134,6 +160,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   }
 
   func present(query: String) {
+    lastPointer = NSEvent.mouseLocation
     field.stringValue = query
     window?.makeFirstResponder(field)
     field.currentEditor()?.selectAll(nil)
@@ -161,6 +188,9 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     if !suggestions.isEmpty {
       let row = keepsSelection ? suggestions.firstIndex { $0.key == previous } ?? 0 : 0
       tableView.selectRowIndexes([row], byExtendingSelection: false)
+      // The list's height follows the rows first, so scrolling to the selection lands on whole rows.
+      layoutSubtreeIfNeeded()
+      if row == 0 { tableView.scroll(.zero) } else { tableView.scrollRowToVisible(row) }
     }
     needsLayout = true
   }
@@ -168,9 +198,10 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   override func layout() {
     super.layout()
     let width = min(Self.maxWidth, bounds.width - 80)
-    let listHeight = suggestions.isEmpty ? 0 : CGFloat(suggestions.count) * Self.rowHeight + Self.listPadding * 2
+    let shown = min(suggestions.count, Self.shownRowLimit)
+    let listHeight = suggestions.isEmpty ? 0 : CGFloat(shown) * Self.rowHeight + Self.listPadding * 2
     let height = Self.fieldHeight + listHeight
-    let restingHeight = Self.fieldHeight + Self.restingRows * Self.rowHeight + Self.listPadding * 2
+    let restingHeight = Self.fieldHeight + CGFloat(Self.shownRowLimit) * Self.rowHeight + Self.listPadding * 2
     let top = max(20, (bounds.height - restingHeight) / 2)
     panel.frame = NSRect(x: (bounds.width - width) / 2, y: top, width: width, height: height)
     searchIcon.frame = NSRect(x: Self.iconCenter - 9, y: (Self.fieldHeight - 18) / 2, width: 18, height: 18)
@@ -180,6 +211,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     separator.isHidden = suggestions.isEmpty
     scrollView.frame = NSRect(
       x: 0, y: Self.fieldHeight + Self.listPadding, width: width, height: max(0, listHeight - Self.listPadding * 2))
+    // Rows that all fit don't bounce under a trackpad; more than fit scroll as a list does.
+    scrollView.verticalScrollElasticity = suggestions.count > Self.shownRowLimit ? .automatic : .none
   }
 
   func moveSelection(by step: Int) {
@@ -246,6 +279,22 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
 
 final class FlippedView: NSView {
   override var isFlipped: Bool { true }
+}
+
+/// The list's scroll view: its scroller shows only while it scrolls (overlay style, whatever System Settings says), as
+/// in the onboarding's list.
+private final class QuietScrollView: NSScrollView {
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    super.scrollerStyle = .overlay
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var scrollerStyle: NSScroller.Style {
+    get { .overlay }
+    set { super.scrollerStyle = .overlay }
+  }
 }
 
 private final class SuggestionRowBackground: NSTableRowView {

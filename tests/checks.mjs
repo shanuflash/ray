@@ -445,19 +445,26 @@ const checks = {
     const bar = await until("bar rows", () => state().commandBar?.rows.length && state().commandBar);
     assert(bar.mode === "newTab", `mode ${bar.mode}`);
     const tabRows = bar.rows.filter((r) => r.kind === "tab");
-    assert(tabRows.length === Math.min(8, state().tabs.length - 1), `expected the other tabs, got ${tabRows.length}`);
+    assert(tabRows.length === Math.min(10, state().tabs.length - 1), `expected the other tabs, got ${tabRows.length}`);
+    assert(!tabRows.some((r) => r.tab === state().active), `the current tab is offered: ${JSON.stringify(bar.rows)}`);
     assert(bar.rows.slice(0, tabRows.length).every((r) => r.kind === "tab"), `open tabs should come first: ${JSON.stringify(bar.rows)}`);
     assert(bar.rows.slice(tabRows.length).every((r) => r.kind === "history"), `then frequent history: ${JSON.stringify(bar.rows)}`);
     await command("escape");
   },
   async "bar-switch-to-tab"() {
+    // From another tab: the current one is never offered.
+    if (activeTabState()?.title === "Page B") {
+      await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+      await until("on /a", async () => { await command("state"); return activeTabState()?.title === "Page A"; });
+    }
     const before = state().tabs.length;
     await command("menu newTab");
     await command("type Page B");
     const bar = await until("tab row", () => state().commandBar?.rows.some((r) => r.kind === "tab") && state().commandBar);
-    assert(bar.rows[0].kind === "search", `first row ${bar.rows[0].kind}`);
-    const tabRow = bar.rows.findIndex((r) => r.kind === "tab");
-    for (let i = 0; i < tabRow; i++) await command("down");
+    // An open tab you've been to whose title starts with what you typed leads (Arc), so Enter switches to it.
+    assert(bar.rows[0].kind === "tab" && bar.rows[0].title === "Page B" && bar.selected === 0,
+      `first row ${JSON.stringify(bar.rows[0])}, selected ${bar.selected}`);
+    assert(bar.rows[1].kind === "search" && bar.rows[1].title === "Page B", `second row ${JSON.stringify(bar.rows[1])}`);
     await command("enter");
     await until("bar closed", () => state().commandBar === null);
     assert(state().tabs.length === before, "switching opened a tab");
@@ -612,14 +619,20 @@ const checks = {
     await setSetting("copyLinkShortcut", "on");
     // An exact host match stays first: with chrome://history open, "history" autocompletes to its tab, and the
     // History command (an exact synonym) waits below it. With no host to complete, an exact name leads.
+    // (Back on the page first: the current tab itself is never offered.)
     await command("menu showHistory");
-    await until("history tab", async () => { await command("state"); return activeTabState()?.url.startsWith("chrome://history"); });
+    const historyTab = await until("history tab", async () => {
+      await command("state");
+      return activeTabState()?.url.startsWith("chrome://history") && activeTabState();
+    });
+    await command(`row ${entryOfTab(page).id}`);
+    await until("back on the page", async () => { await command("state"); return state().active === page; });
     bar = await barFor("history");
-    assert(bar.rows[0].kind === "tab", `"history" first row: ${JSON.stringify(bar.rows[0])}`);
+    assert(bar.rows[0].kind === "tab" && bar.rows[0].tab === historyTab.id, `"history" first row: ${JSON.stringify(bar.rows[0])}`);
     assert(actionRow(bar, "Show Full History") > 0, `"history" didn't offer History: ${JSON.stringify(bar.rows)}`);
     await command("escape");
-    await command("menu closeTab");
-    await until("back on the page", async () => { await command("state"); return state().active === page; });
+    await command(`rowaction close ${entryOfTab(historyTab.id).id}`);
+    await until("history tab closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === historyTab.id); });
     bar = await barFor("task manager");
     assert(bar.rows[0].kind === "action" && bar.rows[0].title === "Task Manager", `task manager: ${JSON.stringify(bar.rows[0])}`);
     await command("escape");
@@ -653,6 +666,138 @@ const checks = {
     await command(`rowaction close ${entryOfTab(page).id}`);
     await until("page closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === page); });
     await resetSettings();
+  },
+  async "bar-ranking"() {
+    // Arc's order: a page you go to that matches leads (Enter opens it), then what you typed, then the other pages;
+    // the search engine's suggestions (the fixture's, for "zz…") only fill what's left of the five rows shown at once.
+    // The list holds ten at most and scrolls. The current tab is never offered.
+    const job = "/rank/zzconfig/job/app-v1-staging/job/common-pool/job/configupdate";
+    Object.assign(pages, {
+      "/rank/deploy": `<meta charset=utf-8><title>Zzconfig Update — CommonPool deployments</title><p>deploy</p>`,
+      "/rank/zzlog": `<title>Zzconfig deploy log</title><p>log</p>`,
+      [job]: `<title>Zzconfig job</title><p>job</p>`,
+    });
+    for (let i = 1; i <= 7; i++) pages[`/rank/p${i}`] = `<title>Zzconfig page ${i}</title><p>${i}</p>`;
+    // History: /rank/deploy four times, the rest once (ten pages that match "zzconfig").
+    await send("Target.createTarget", { url: `${origin}/b?rank-start` });
+    const seeder = (await until("seeding tab", async () => { await command("state"); return tabFor("/b?rank-start"); })).id;
+    const { sessionId } = await session("/b?rank-start");
+    for (const path of ["/rank/deploy", "/rank/p1", "/rank/deploy", "/rank/p2", "/rank/deploy", "/rank/p3", "/rank/deploy",
+      "/rank/p4", "/rank/p5", "/rank/p6", "/rank/p7", "/rank/zzlog", job, "/b?rank-away"]) {
+      await send("Page.navigate", { url: origin + path }, sessionId);
+      await until(`on ${path}`, async () => {
+        await command("state");
+        const tab = state().tabs.find((t) => t.id === seeder);
+        return tab?.url === origin + path && (path.startsWith("/b") || tab.title.startsWith("Zzconfig"));
+      });
+    }
+    const barFor = async (text) => {
+      await command("menu newTab");
+      await until("bar open", async () => { await command("state"); return state().commandBar; });
+      await command(`type ${text}`);
+      await sleep(300);
+      await command("state");
+      return state().commandBar?.query === text ? state().commandBar : null;
+    };
+    const deploy = "Zzconfig Update — CommonPool deployments";
+    // History is read when the bar opens, so reopen it until the visits are in.
+    let last = null;
+    let bar = await until("ranked rows", async () => {
+      const shown = (last = await barFor("zzconfig"));
+      if (shown?.rows.length === 10 && shown.rows[0].title === deploy) return shown;
+      await command("escape");
+      return null;
+    }, 15000).catch((error) => { throw new Error(`${error.message}: ${JSON.stringify(last?.rows)}`); });
+    assert(bar.rows[0].kind === "history" && bar.selected === 0, `first row ${JSON.stringify(bar.rows[0])}, selected ${bar.selected}`);
+    assert(bar.rows[1].kind === "search" && bar.rows[1].title === "zzconfig" && bar.rows[1].detail === "Search Google",
+      `second row ${JSON.stringify(bar.rows[1])}`);
+    assert(bar.rows.slice(2).every((r) => r.kind === "history"), `then pages: ${JSON.stringify(bar.rows)}`);
+    // Short addresses: host, then the path's end, the middle elided; no scheme.
+    const host = origin.replace("http://", "");
+    assert(bar.rows[0].detail === `${host}/rank/deploy`, `deploy's address ${bar.rows[0].detail}`);
+    const jobRow = bar.rows.find((r) => r.title === "Zzconfig job");
+    assert(jobRow && jobRow.detail.startsWith(`${host}…`) && jobRow.detail.endsWith("job/configupdate") && jobRow.detail.length <= 32,
+      `job's address ${jobRow?.detail}`);
+    // Pages fill the five rows, so no suggestion shows (the fixture answers by now).
+    await sleep(400);
+    await command("state");
+    bar = state().commandBar;
+    assert(!bar.rows.some((r) => r.suggested), `suggestions with the rows full: ${JSON.stringify(bar.rows)}`);
+    assert(bar.rows.length === 10 && bar.visibleRows === 5 && bar.firstVisibleRow === 0 && bar.rowsFullyVisible,
+      `rows ${bar.rows.length}, shown ${bar.firstVisibleRow}+${bar.visibleRows}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-ranking.png")}`);
+    // ↓ past the fifth row scrolls the list a row at a time; ↑ back to the top scrolls back.
+    for (let i = 0; i < 5; i++) await command("down");
+    await command("state");
+    bar = state().commandBar;
+    assert(bar.selected === 5 && bar.firstVisibleRow === 1 && bar.visibleRows === 5 && bar.rowsFullyVisible,
+      `after 5 downs: selected ${bar.selected}, shown ${bar.firstVisibleRow}+${bar.visibleRows}`);
+    for (let i = 0; i < 6; i++) await command("down");
+    await command("state");
+    bar = state().commandBar;
+    assert(bar.selected === 9 && bar.firstVisibleRow === 5 && bar.rowsFullyVisible,
+      `at the end: selected ${bar.selected}, shown ${bar.firstVisibleRow}+${bar.visibleRows}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-scrolled.png")}`);
+    for (let i = 0; i < 9; i++) await command("up");
+    await command("state");
+    bar = state().commandBar;
+    assert(bar.selected === 0 && bar.firstVisibleRow === 0, `back up: selected ${bar.selected}, first ${bar.firstVisibleRow}`);
+    await command("escape");
+    // Under three characters nothing leads: what you typed is first.
+    bar = await until("zz rows", () => barFor("zz"));
+    assert(bar.rows[0].kind === "search" && bar.rows[0].title === "zz", `"zz" first row ${JSON.stringify(bar.rows[0])}`);
+    await command("escape");
+    // Enter on the leading page opens it.
+    const before = state().tabs.length;
+    bar = await until("zzconfig rows", () => barFor("zzconfig"));
+    assert(bar.rows[0].title === deploy, `first row ${JSON.stringify(bar.rows[0])}`);
+    await command("enter");
+    const opened = await until("deploy tab", async () => {
+      await command("state");
+      return state().tabs.length === before + 1 && state().tabs.find((t) => t.id === state().active && t.url === `${origin}/rank/deploy`);
+    });
+    // The current tab is never offered, nor its page as history: not for its title, not for its address, not in ⌘L.
+    await until("deploy titled", async () => { await command("state"); return activeTabState()?.title === deploy; });
+    for (const text of ["zzconfig", `${origin}/rank/deploy`, "127.0.0.1"]) {
+      bar = await until(`rows for ${text}`, () => barFor(text));
+      assert(!bar.rows.some((r) => r.tab === opened.id || r.title === deploy), `"${text}" offered the current tab: ${JSON.stringify(bar.rows)}`);
+      await command("escape");
+    }
+    await command("menu focusAddress");
+    await command(`type ${origin}/rank/deploy`);
+    await sleep(300);
+    await command("state");
+    assert(state().commandBar.mode === "currentTab" && !state().commandBar.rows.some((r) => r.tab === opened.id),
+      `⌘L offered the current tab: ${JSON.stringify(state().commandBar)}`);
+    await command("escape");
+    // Another tab on the same page is offered, and leads (open, and often visited).
+    await send("Page.navigate", { url: `${origin}/rank/deploy` }, sessionId);
+    await until("seeder on deploy", async () => {
+      await command("state");
+      return state().tabs.find((t) => t.id === seeder)?.title === deploy;
+    });
+    bar = await until("zzconfig rows", () => barFor("zzconfig"));
+    assert(bar.rows[0].kind === "tab" && bar.rows[0].tab === seeder, `the other tab: ${JSON.stringify(bar.rows)}`);
+    assert(!bar.rows.some((r) => r.tab === opened.id), `the current tab: ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+    // Few pages match: the pages, then two suggestions at most, within the five rows.
+    bar = await until("suggestions", async () => {
+      const shown = await barFor("zzconfig deploy");
+      if (shown?.rows.some((r) => r.suggested)) return shown;
+      await command("escape");
+      return null;
+    });
+    const kinds = bar.rows.map((r) => (r.suggested ? "suggested" : r.kind));
+    assert(JSON.stringify(kinds) === JSON.stringify(["tab", "search", "history", "suggested", "suggested"]),
+      `"zzconfig deploy": ${JSON.stringify(bar.rows)}`);
+    assert(bar.rows[2].title === "Zzconfig deploy log", `third row ${JSON.stringify(bar.rows[2])}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-suggestions.png")}`);
+    await command("escape");
+    for (const id of [opened.id, seeder]) await command(`rowaction close ${entryOfTab(id).id}`);
+    await until("rank tabs closed", async () => {
+      await command("state");
+      return !state().tabs.some((t) => t.id === opened.id || t.id === seeder);
+    });
   },
   async "devtools-docked"() {
     await command("menu toggleDevTools");

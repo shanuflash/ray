@@ -17,6 +17,13 @@ publicly or create accounts.
   current tab). Rows: autocompleted host match, typed URL or search, open tabs ("Switch to Tab"), history, and
   `BarActions`: menu commands read from the main menu (Ray's own items, validated as the menu does), matched by word
   starts of their title or synonyms, with the live key equivalent; an exact name leads unless a host autocompletes.
+  Ranking is Arc's: when nothing else leads, a page you go to leads over the typed search (Enter opens it): only for a
+  search, from 3 characters, every word at a word start of its title or address, frecency ≥ 1.5 (Chromium's
+  HistoryQuick: last 10 visits, each worth its recency; an open tab adds 1), never a search results page. Then the
+  typed row, actions, the other pages by match + frecency, and search suggestions last, only to fill the 5 shown rows
+  (2 at most). The bar shows 5 rows and scrolls to 10 (overlay scroller). This window's active tab is never offered
+  (nor its page as history); another tab on the same address is. Page rows: title, then `Suggestions.shortAddress`
+  (host, "…", the path's last ~16 characters; a long host loses its start instead). Check `bar-ranking`.
 - `PageToolbar`: Dia's address bar above the page (View › Show Address Bar on Page). Geometry is Ardia's
   (`third_party/ardia/apps/browser/src/components/ui/theme.ts` `layout`, `components/toolbar/Toolbar.tsx`): 41 pt,
   buttons centred at 21/56/92/127, address from 145; the host in medium weight, then path and query in grey
