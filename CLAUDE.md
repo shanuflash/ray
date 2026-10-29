@@ -94,6 +94,10 @@ publicly or create accounts.
 - `third_party/ardia/`: read-only reference clone of Ardia at `ardia_tag` (gitignored). Read it for behaviour; don't
   build from it.
 - `third_party/crest/`: read-only reference clone of Crest (gitignored), another native-Mac Chromium browser.
+- `third_party/cra/`: read-only reference clone of Cra (gitignored; github.com/VictorKildahl/cra, MIT), an Arc
+  replacement on CEF with SwiftUI UI. Its importers (`Sources/Cra/Services/Import`) and models are plain Swift and
+  may be copied: keep its copyright line in the file header and in `NOTICE`. Its SwiftUI views are references only
+  for Ray's hot paths (sidebar, tab rows, window chrome stay AppKit + Core Animation); skip its content blocker.
 
 ## Build and run
 - `scripts/build-app.sh` → `build/Ray.app` (the user's app) and `build/RayTests.app` (same code compiled with
@@ -223,8 +227,9 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
   (same design lineage) instead of measuring pixels.
 - Commit messages: caveman style, one short line like `feat: arc like sidebar` or `fix: sidebar opening too quickly`
   (conventional prefix, lowercase, no body unless the why is non-obvious). No Co-Authored-By or other attribution.
-- Before any design or behaviour decision, check all three references and say what each does: Chromium's source
-  (Chrome's behaviour), Ardia (`third_party/ardia`, same engine) and Crest (`third_party/crest`). None is
+- Before any design or behaviour decision, check all four references and say what each does: Chromium's source
+  (Chrome's behaviour), Ardia (`third_party/ardia`, same engine), Crest (`third_party/crest`) and Cra
+  (`third_party/cra`, closest to Ray's goal). None is
   automatically right; weigh them, and where they disagree pick on evidence. Don't narrate the checking.
 - Never steal focus with test instances: test only through `scripts/run-hidden.sh` / `tests/checks.mjs`
   (`RAY_BACKGROUND=1`, own data dir).
