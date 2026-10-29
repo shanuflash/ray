@@ -186,6 +186,19 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     download once it has a path, drop one cancelled before it had one. Found 2026-10-29.
 14. **Reserved keys short of Helium's set.** `Shortcuts.isReserved` lacks Developer Tools (⌥⌘I), F12 and Search Tabs
     (⇧⌘A), so a page that cancels keydown can keep them (Ardia `dd242aac`). Found 2026-10-29.
+15. **JumpCloud Go can't sign in from Ray.** Its extension (`jdoahkhfkeipblhbhppmcbdgapeoaopa`, same 3.3.5 in Arc
+    and Ray) asks JumpCloud's native host for the sign-in token (`runtime.sendNativeMessage`, host
+    `com.jumpcloud.jumpcloudgo`). Ray finds the host: its manifest is in `/Library/Google/Chrome/NativeMessagingHosts`,
+    which Helium's `scan-chrome-native-messaging-hosts` reads. But the host (`/opt/jc_user_ro/JumpCloudGo-Chrome`,
+    agent 2.200.0) checks who launched it: `proc_pidpath` of its parent (Chrome's browser process), then
+    `/usr/bin/codesign` on that app against a fixed list of identifier + Developer ID team: Chrome
+    (`com.google.Chrome`, EQHXZ8M8AV), Arc, Island, Brave, Firefox, Edge, Amazon WorkSpaces. Anything else gets
+    "Cannot validate parent process" for the token (its `info` call still answers). Ray is `dev.shanus.ray`, signed
+    "Ray Code Signing" with no team, so it can never match; Chrome Dev/Beta/Canary (`com.google.Chrome.dev`…) fail
+    the same way. Nothing in Ray can fix it honestly (passing as another browser would defeat the company's device
+    check). Fix: Developer ID signing (roadmap step 4), settle the bundle id, then ask JumpCloud to add Ray's
+    identifier and team to the host's list. Until then sign in to JumpCloud in Ray with password + MFA, if the org
+    allows it. Found 2026-10-29.
 
 ## Done
 
