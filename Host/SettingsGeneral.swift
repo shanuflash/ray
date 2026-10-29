@@ -23,7 +23,7 @@ extension AnySettingKey {
     "warnBeforeQuitting", default: false,
     ui: SettingUI(
       pane: .general, group: .quitting, title: "Warn before quitting with ⌘Q",
-      detail: "Asks before Ray quits, so a stray ⌘Q closes nothing. Pressing ⌘Q again quits.",
+      detail: "", about: "Asks before Ray quits, so a stray ⌘Q closes nothing. Pressing ⌘Q again quits.",
       keywords: ["quit", "confirm", "cmd q", "command q", "accidentally"], control: .toggle))
 
   /// Closing a window that would lose two or more tabs asks first (`CloseWarnings.allowsClose`). On, as in Ardia.
@@ -31,7 +31,8 @@ extension AnySettingKey {
     "warnBeforeClosingWindow", default: true,
     ui: SettingUI(
       pane: .general, group: .quitting, title: "Warn before closing a window with several tabs",
-      detail: "Asks before a private window with two or more tabs closes, since its tabs go with it. "
+      detail: "Private windows only.",
+      about: "Asks before a private window with two or more tabs closes, since its tabs go with it. "
         + "Your normal window keeps its tabs: ⌘N brings them back.",
       keywords: ["close window", "confirm", "private window", "tabs", "accidentally"], control: .toggle))
 
@@ -40,7 +41,8 @@ extension AnySettingKey {
     "onQuit", default: "keep",
     ui: SettingUI(
       pane: .general, group: .quitting, title: "When Ray quits",
-      detail: "Start fresh closes Today's tabs for the next launch; ⇧⌘T and History › Recently Closed bring them back. "
+      detail: "Pinned tabs always stay.",
+      about: "Start fresh closes Today's tabs for the next launch; ⇧⌘T and History › Recently Closed bring them back. "
         + "Pinned tabs and favorites always stay.",
       keywords: ["restore", "session", "reopen", "start fresh", "keep tabs", "preserve", "launch", "startup"],
       control: .choice([
@@ -88,7 +90,7 @@ final class GeneralPaneContent: SettingsPaneContent {
   /// "Make Ray your default browser", hidden while it is.
   func callToAction() -> NSView? {
     let strip = SettingsCallToAction(
-      symbol: "globe", text: "Make Ray your default browser, so links from other apps open here.",
+      symbol: "globe", text: "Make Ray your default browser.",
       button: "Make Default") { [weak self] in self?.makeDefault() }
     strip.isHidden = system.isDefaultBrowser
     self.strip = strip
@@ -124,8 +126,8 @@ final class GeneralPaneContent: SettingsPaneContent {
 
   private var defaultDetail: String {
     system.isDefaultBrowser
-      ? "Ray is your default browser: links from other apps open here."
-      : "Ray isn't your default browser yet: links from other apps open somewhere else."
+      ? "Ray is your default browser."
+      : "Ray isn't your default browser."
   }
 
   private func downloadsSection() -> SettingsSection {
@@ -137,7 +139,7 @@ final class GeneralPaneContent: SettingsPaneContent {
     let folder = SettingsRowView(title: "Downloads folder", detail: "", control: folderButton)
     folderRow = folder
     let ask = SettingsRowView(
-      title: "Ask where to save each file", detail: "Off: files go straight to the downloads folder.", control: askSwitch)
+      title: "Ask where to save each file", detail: "", control: askSwitch)
     return SettingsSection(
       id: "general.downloads", title: "Downloads", place: .after(SettingGroup.quitting.id),
       view: SettingsRowList(rows: [folder, ask]),
@@ -183,10 +185,10 @@ final class GeneralPaneContent: SettingsPaneContent {
     var rows: [NSView] = []
     if hasUpdater {
       rows = [
-        SettingsRowView(title: "Check for updates automatically", detail: "Once a day.", control: checkSwitch),
+        SettingsRowView(title: "Check for updates automatically", detail: "", control: checkSwitch),
         SettingsRowView(
           title: "Install updates automatically",
-          detail: "Downloads them in the background and installs them when Ray quits.", control: installSwitch),
+          detail: "When Ray quits.", control: installSwitch),
       ]
     }
     rows.append(version)
@@ -199,7 +201,7 @@ final class GeneralPaneContent: SettingsPaneContent {
     importButton.action = #selector(importFromBrowser)
     let row = SettingsRowView(
       title: "Import from another browser",
-      detail: "Tabs, bookmarks, history, passwords and more, from Arc, Chrome, Safari, Firefox and others.",
+      detail: "Arc, Chrome, Safari, Firefox and more.",
       control: importButton)
     return SettingsSection(
       id: "general.import", title: "Import", place: .after(SettingGroup.quitting.id), view: SettingsRowList(rows: [row]),
@@ -221,7 +223,7 @@ final class GeneralPaneContent: SettingsPaneContent {
     let login = system.loginStatus
     loginSwitch.isOn = login == .enabled || login == .requiresApproval
     changed = set(loginRow, login == .requiresApproval
-      ? "Allow Ray in System Settings › General › Login Items to finish." : "Ray opens when you log in to your Mac.") || changed
+      ? "Allow Ray in System Settings › General › Login Items." : "") || changed
     let downloads = system.downloads
     if let folder = downloads.folder {
       let managed = downloads.managed ? ", set by your organization" : ""

@@ -13,7 +13,7 @@ final class AboutPaneContent: SettingsPaneContent {
     var rows = [SettingsRowView(title: "Version", detail: "", control: SettingsValueLabel("\(version) (\(build))"))]
     if !engine.isEmpty {
       rows.append(SettingsRowView(
-        title: "Engine", detail: "Chromium, without Google's services.", control: SettingsValueLabel(engine)))
+        title: "Engine", detail: "Chromium without Google.", control: SettingsValueLabel(engine)))
     }
     return [
       SettingsSection(

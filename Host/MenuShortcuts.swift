@@ -297,7 +297,8 @@ extension AnySettingKey {
     "shortcuts", default: ShortcutOverrides(), validate: ShortcutOverrides.validate,
     ui: SettingUI(
       pane: .shortcuts, group: .menuShortcuts, title: "Change a command's shortcut",
-      detail: "Click a shortcut, then press the keys you want: ⌘ or ⌃ with a key, or a function key. Escape cancels; "
+      detail: "Click a shortcut, then press the new keys.",
+      about: "Click a shortcut, then press the keys you want: ⌘ or ⌃ with a key, or a function key. Escape cancels; "
         + "Delete removes it.",
       keywords: ["keyboard shortcuts", "keys", "hotkeys", "key bindings", "rebind", "remap", "customize", "shortcut editor"],
       control: .custom("shortcuts")),

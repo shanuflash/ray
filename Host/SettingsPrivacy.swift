@@ -190,7 +190,7 @@ final class PrivacyPaneContent: SettingsPaneContent {
     } else {
       rows.append(SettingsItemRow(
         key: "empty", icon: nil, title: sites == nil ? " " : "No sites yet",
-        detail: sites == nil ? " " : "Sites appear here after you allow or block something for them.", showsIcon: false))
+        detail: sites == nil ? " " : "Sites you allow or block show here.", showsIcon: false))
     }
     let more = MoreLine()
     more.expanded = defaultsShown
@@ -258,7 +258,7 @@ final class PrivacyPaneContent: SettingsPaneContent {
     menu.onChoose = { page in SettingsPages.open("chrome://settings/content/\(page)") }
     return SettingsItemRow(
       key: "defaults", icon: nil, title: "Defaults for every site",
-      detail: "What sites may do until you choose for them: Chrome's settings, in a tab.", controls: [menu],
+      detail: "Opens Chrome's settings.", controls: [menu],
       showsIcon: false)
   }
 
@@ -279,7 +279,7 @@ final class PrivacyPaneContent: SettingsPaneContent {
   private func confirmClear(_ origin: String, in window: NSWindow?) {
     SettingsConfirm.ask(
       "Clear cookies and site data for \(origin)?",
-      detail: "Everything this site keeps on your Mac is deleted, its subdomains' too, and you're signed out of it.",
+      detail: "Deletes all it keeps, subdomains too, and signs you out.",
       action: "Clear", in: window) { [weak self] in self?.clear(origin) }
   }
 
@@ -307,7 +307,7 @@ final class PrivacyPaneContent: SettingsPaneContent {
     guard let zooms, !zooms.isEmpty else {
       zoomList.setRows([SettingsItemRow(
         key: "empty", icon: nil, title: zooms == nil ? " " : "No zoomed sites",
-        detail: zooms == nil ? " " : "Zoom a site with ⌘+ or ⌘− and it keeps its own size; it appears here to reset.",
+        detail: zooms == nil ? " " : "Sites you zoom with ⌘+ or ⌘− show here.",
         showsIcon: false)])
       return
     }
@@ -340,7 +340,7 @@ final class PrivacyPaneContent: SettingsPaneContent {
     guard let apps, !apps.isEmpty else {
       appsList.setRows([SettingsItemRow(
         key: "empty", icon: nil, title: apps == nil ? " " : "No apps yet",
-        detail: apps == nil ? " " : "Sites appear here after you let them always open an app, such as a meeting link opening its app.",
+        detail: apps == nil ? " " : "Sites you let open apps show here.",
         showsIcon: false)])
       return
     }
@@ -370,7 +370,7 @@ final class PrivacyPaneContent: SettingsPaneContent {
     clearDataButton = button
     dataList.setRows([SettingsItemRow(
       key: "clear", icon: nil, title: "Clear browsing data",
-      detail: "History, cookies and cached files, for a time you choose. Also ⇧⌘⌫.", controls: [button], showsIcon: false)])
+      detail: "", controls: [button], showsIcon: false)])
   }
 
   // MARK: Helpers

@@ -4363,8 +4363,8 @@ const checks = {
     await until("privacy pane", async () => { await command("state"); return win().open && win().pane === "privacy"; });
     let p = await until("lists loaded", async () => { const p = await pane(); return p.loaded && p; });
     assert(!p.sites.some((s) => s.origin === raytestOrigin), `a private window's permission is in the pane: ${JSON.stringify(p.sites)}`);
-    assert(p.empty.apps === "No apps yet Sites appear here after you let them always open an app, such as a meeting link opening its app.", `apps: ${JSON.stringify(p.empty)}`);
-    if (p.sites.length === 0) assert(p.empty.sites === "No sites yet Sites appear here after you allow or block something for them.", `empty sites: ${JSON.stringify(p.empty)}`);
+    assert(p.empty.apps === "No apps yet Sites you let open apps show here.", `apps: ${JSON.stringify(p.empty)}`);
+    if (p.sites.length === 0) assert(p.empty.sites === "No sites yet Sites you allow or block show here.", `empty sites: ${JSON.stringify(p.empty)}`);
     const ask = async (url, answer) => {
       await goTo(url, true);
       await until(`${url} open`, async () => { await command("state"); return activeTabState()?.url === url; });

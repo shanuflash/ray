@@ -13,7 +13,7 @@ extension AnySettingKey {
     "searchEngine", default: "google", validate: { SearchEngines.engine(id: $0) != nil ? $0 : nil },
     ui: SettingUI(
       pane: .search, group: .searchEngine, title: "Default search engine",
-      detail: "What the command bar searches when what you type isn't an address.",
+      detail: "", about: "What the command bar searches when what you type isn't an address.",
       keywords: ["default search", "engine", "google", "duckduckgo", "bing", "brave", "ecosia", "kagi", "startpage",
                  "perplexity"],
       control: .custom("searchEngine")),
@@ -24,7 +24,8 @@ extension AnySettingKey {
     "searchSuggestions", default: true,
     ui: SettingUI(
       pane: .search, group: .searchSuggestions, title: "Show search suggestions",
-      detail: "As you type in the command bar, your search engine suggests searches. Off: nothing you type goes to it "
+      detail: "Off: nothing you type is sent until Return.",
+      about: "As you type in the command bar, your search engine suggests searches. Off: nothing you type goes to it "
         + "until you press Return.",
       keywords: ["suggestions", "autocomplete", "predictions", "privacy"], control: .toggle))
 
@@ -33,7 +34,7 @@ extension AnySettingKey {
     "siteSearches", default: SiteSearchList([]), validate: SiteSearchList.validate,
     ui: SettingUI(
       pane: .search, group: .siteSearches, title: "Search a site from the command bar",
-      detail: "Type a site's keyword, then Tab or a space: what you type next searches that site.",
+      detail: "Type a keyword, then Tab.", about: "Type a site's keyword, then Tab or a space: what you type next searches that site.",
       keywords: ["site search", "keyword", "custom search", "search engines", "tab to search"],
       control: .custom("siteSearches")),
     log: { $0.items.map(\.json) },
@@ -359,8 +360,7 @@ final class SiteSearchListView: NSView, SettingsWideControl {
     if sites.isEmpty {
       let row = SettingsRowView(
         title: "No site searches yet",
-        detail: "Add one with the address of the site's results, %s where the search goes: "
-          + "https://en.wikipedia.org/w/index.php?search=%s")
+        detail: "Use %s where the search goes.")
       empty = row
       addSubview(row)
     }

@@ -46,7 +46,7 @@ enum SettingsSearch {
       for key in pane.shownSettings {
         out.append(SettingsTarget(
           kind: .setting, pane: pane, anchor: key.id, title: key.ui.title,
-          caption: [pane.title, key.ui.group.title].compactMap { $0 }.joined(separator: " › "), detail: key.ui.detail,
+          caption: [pane.title, key.ui.group.title].compactMap { $0 }.joined(separator: " › "), detail: key.ui.detail + " " + key.ui.about,
           keywords: key.ui.keywords, group: key.ui.group.title ?? ""))
       }
     }

@@ -21,7 +21,7 @@ extension AnySettingKey {
     "autofillAddresses", default: true, built: false,
     ui: SettingUI(
       pane: .autofill, group: .autofillSaving, title: "Save and fill addresses",
-      detail: "Ray offers to save the addresses you type into forms, and fills them in next time.",
+      detail: "", about: "Ray offers to save the addresses you type into forms, and fills them in next time.",
       keywords: ["addresses", "autofill", "forms", "shipping", "phone", "email"], control: .toggle))
 
   /// Chrome's "Save and fill payment methods". Not built, as above.
@@ -29,7 +29,7 @@ extension AnySettingKey {
     "autofillCards", default: true, built: false,
     ui: SettingUI(
       pane: .autofill, group: .autofillSaving, title: "Save and fill cards",
-      detail: "Ray offers to save the cards you pay with, and fills them in next time. It asks for Touch ID first.",
+      detail: "", about: "Ray offers to save the cards you pay with, and fills them in next time. It asks for Touch ID first.",
       keywords: ["credit card", "debit card", "payment methods", "autofill", "checkout"], control: .toggle))
 }
 
@@ -195,7 +195,7 @@ final class AutofillAddressesView: NSView, SettingsSizing {
     var items: [SettingsStack.Item] = [.init(view: header)]
     if adding, let formCard { items.append(.init(view: formCard, gap: 4)) }
     if list.isEmpty, !adding {
-      items.append(.init(view: SettingsNote("No saved addresses. Add one, or bring them from Chrome with File › Import from Browser….")))
+      items.append(.init(view: SettingsNote("No saved addresses.")))
     }
     for (index, address) in list.enumerated() {
       let id = address["id"] ?? ""
@@ -495,7 +495,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
     var items: [SettingsStack.Item] = [.init(view: header)]
     if adding, let formCard { items.append(.init(view: formCard, gap: 4)) }
     if list.isEmpty, !adding {
-      items.append(.init(view: SettingsNote("No saved cards. Add one, or bring them from Chrome with File › Import from Browser….")))
+      items.append(.init(view: SettingsNote("No saved cards.")))
     }
     for (index, card) in list.enumerated() {
       let expiry = Self.expiry(card)

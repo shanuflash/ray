@@ -126,7 +126,7 @@ final class ExtensionsPaneContent: SettingsPaneContent {
     guard let items, !items.isEmpty else {
       installedList.setRows([SettingsItemRow(
         key: "empty", icon: nil, title: items == nil ? " " : "No extensions yet",
-        detail: items == nil ? " " : "Extensions you add from the Chrome Web Store appear here and behind the puzzle button.",
+        detail: items == nil ? " " : "Add some from the Chrome Web Store.",
         showsIcon: false)])
       return
     }
@@ -170,7 +170,7 @@ final class ExtensionsPaneContent: SettingsPaneContent {
     }
     privateSwitches[id] = privately
     details.append(SettingsDetailRow(
-      title: "Allow in private windows", detail: "Private windows can't stop it from seeing what you do in them.",
+      title: "Allow in private windows", detail: "It can see what you do there.",
       control: privately))
     if !item.permissions.isEmpty {
       details.append(SettingsDetailRow(
@@ -257,7 +257,7 @@ final class ExtensionsPaneContent: SettingsPaneContent {
     let name = Self.plain(item.name)
     SettingsConfirm.ask(
       "Remove “\(name)”?",
-      detail: "It's removed from Ray with its settings and the data it keeps. ID \(item.id)",
+      detail: "Its settings and data go too. ID \(item.id)",
       action: "Remove", in: window) { [weak self] in self?.remove(item.id) }
   }
 
@@ -277,7 +277,7 @@ final class ExtensionsPaneContent: SettingsPaneContent {
     storeButton = store
     var rows: [NSView] = [SettingsItemRow(
       key: "store", icon: nil, title: "Chrome Web Store",
-      detail: "Its Add to Chrome button installs extensions in Ray.", controls: [store], showsIcon: false)]
+      detail: "Add to Chrome installs in Ray.", controls: [store], showsIcon: false)]
     let more = MoreLine()
     more.expanded = moreShown
     more.onClick = { [weak self] in
@@ -301,7 +301,7 @@ final class ExtensionsPaneContent: SettingsPaneContent {
         let add = SettingsButton("Add")
         add.isEnabled = false
         rows.append(SettingsItemRow(
-          key: "link", icon: nil, title: "Add from a link", detail: "A Chrome Web Store link or an extension's ID.",
+          key: "link", icon: nil, title: "Add from a link", detail: "A store link or an extension ID.",
           controls: [FixedSize(field, NSSize(width: 210, height: 22)), add], showsIcon: false))
         linkRowShown = true
       }

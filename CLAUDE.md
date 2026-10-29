@@ -97,7 +97,7 @@ publicly or create accounts.
   Settings…" (chrome://settings) at the bottom. Searching (`SettingsSearch`, after Ardia's `searchMatch.ts`: titles,
   details, keywords, groups and pane names) replaces the pane list; ↑ ↓ ⏎ and Escape work, and choosing a result
   opens its pane, scrolls to its row and flashes it (`SettingsFlash`: 120 ms in, 900 ms held, 700 ms out, on a
-  layer). `SettingsPaneView` is one pane: title (22 pt), a grey subtitle, an optional call-to-action strip, then
+  layer). `SettingsPaneView` is one pane: title (22 pt; the pane's subtitle is search-only), an optional call-to-action strip, then
   groups (13 pt semibold headers with room for one trailing control, 44 pt rows split by hairlines, no boxes, rare
   rows under "More") in a column of at most 600 pt with 24 pt sides, scrolling with an overlay scroller.
   `SettingsControls`: `RaySwitch`, `RaySegmentedControl`, `PictureChoiceControl` (2.5 pt ring and a check, in the
@@ -506,6 +506,9 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
   the main menu.
 
 ## Rules
+- **Settings copy is Arc's, not Ardia's** (owner 2026-10-29): a row is its title; a grey line only to warn or clear up
+  something unclear, a few words, never menu cross-references or "as in Arc". Longer wording goes in `about:`
+  (search only), never on screen. Pane subtitles are search-only.
 - **Docs stay current, in the same commit as the change** (the owner's rule for this repo): a new Host file, MARK
   section, engine fixup, setting, test hook or check gets its line in CLAUDE.md's Layout (and Testing/Gotchas when
   it teaches something); a feature that lands moves to `docs/MISSING.md`'s "Done" table with date and commit; a

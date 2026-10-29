@@ -46,7 +46,7 @@ extension AnySettingKey {
     },
     ui: SettingUI(
       pane: .appearance, group: .theme, title: "Theme colour",
-      detail: "Ray's highlights: loading, selection, drop targets and switches.",
+      detail: "", about: "Ray's highlights: loading, selection, drop targets and switches.",
       keywords: ["colour", "color", "accent", "highlight", "theme"], control: .colour),
     log: { hex in
       let accent = ProfileColor.accent
@@ -63,7 +63,7 @@ extension AnySettingKey {
     "appearanceMode", default: "auto",
     ui: SettingUI(
       pane: .appearance, group: .theme, title: "Light or dark",
-      detail: "Ray's sidebar, toolbar, panels and Settings. Pages that have a dark look use it too. Automatic follows macOS.",
+      detail: "", about: "Ray's sidebar, toolbar, panels and Settings. Pages that have a dark look use it too. Automatic follows macOS.",
       keywords: ["dark mode", "light mode", "appearance", "night"],
       control: .picture(
         [SettingChoice(title: "Automatic", value: "auto"), SettingChoice(title: "Light", value: "light"),
@@ -76,7 +76,7 @@ extension AnySettingKey {
     "minimalURL", default: false,
     ui: SettingUI(
       pane: .appearance, group: .address, title: "Show only the site in the address bar",
-      detail: "The rest of the address appears when you hover it. Also in View › Show Full Address.",
+      detail: "", about: "The rest of the address appears when you hover it. Also in View › Show Full Address.",
       keywords: ["minimal url", "url", "address", "host", "full address", "path"], control: .toggle))
 
   /// A wash in the page address bar and a thin line on the page while it loads.
@@ -84,7 +84,7 @@ extension AnySettingKey {
     "loadingProgress", default: true,
     ui: SettingUI(
       pane: .appearance, group: .address, title: "Show loading progress",
-      detail: "A wash fills the address bar, and a thin line runs along the page, while a page loads.",
+      detail: "", about: "A wash fills the address bar, and a thin line runs along the page, while a page loads.",
       keywords: ["loading", "progress", "bar", "wash"], control: .toggle))
 
   /// Zoom for sites the user hasn't zoomed themselves; 1 is 100%. One of Chrome's levels.
@@ -92,7 +92,7 @@ extension AnySettingKey {
     "defaultZoom", default: 1, validate: RaySettings.nearestZoom,
     ui: SettingUI(
       pane: .appearance, group: .page, title: "Page zoom",
-      detail: "For sites you haven't zoomed yourself. Zooming a site with ⌘+ or ⌘− keeps its own level.",
+      detail: "For sites you haven't zoomed.", about: "For sites you haven't zoomed yourself. Zooming a site with ⌘+ or ⌘− keeps its own level.",
       keywords: ["zoom", "size", "scale", "default zoom"],
       control: .choice(RaySettings.zoomLevels.map { SettingChoice(title: "\(Int(($0 * 100).rounded()))%", value: $0.settingText) })))
 
@@ -101,7 +101,7 @@ extension AnySettingKey {
     "scrollBars", default: "system",
     ui: SettingUI(
       pane: .appearance, group: .page, title: "Show scroll bars",
-      detail: "In pages and Ray's own lists. Automatic follows System Settings › Appearance.",
+      detail: "", about: "In pages and Ray's own lists. Automatic follows System Settings › Appearance.",
       keywords: ["scroll bars", "scrollbar", "scrolling"],
       control: .segmented([
         SettingChoice(title: "Automatic", value: "system"), SettingChoice(title: "When scrolling", value: "scrolling"),
@@ -115,7 +115,7 @@ extension AnySettingKey {
     "pageAddressBar", default: true,
     ui: SettingUI(
       pane: .appearance, group: .address, title: "Show the address bar above the page",
-      detail: "Off, the address sits at the top of the sidebar, as in Arc. Also in View › Show Address Bar on Page.",
+      detail: "", about: "Off, the address sits at the top of the sidebar, as in Arc. Also in View › Show Address Bar on Page.",
       keywords: ["toolbar", "url bar", "address bar", "arc", "dia", "top bar"], control: .toggle))
 
   /// Ray's icon in the Dock. Not built yet (the other icons need designing): its row shows only in test builds.
@@ -123,7 +123,7 @@ extension AnySettingKey {
     "appIcon", default: "default", built: false,
     ui: SettingUI(
       pane: .appearance, group: .theme, title: "App icon",
-      detail: "Shown in the Dock and the app switcher.",
+      detail: "", about: "Shown in the Dock and the app switcher.",
       keywords: ["dock icon", "logo", "icon"],
       control: .choice([SettingChoice(title: "Default", value: "default")]), rare: true))
 
@@ -134,7 +134,7 @@ extension AnySettingKey {
     "newTabNextToActive", default: false,
     ui: SettingUI(
       pane: .tabs, group: .newTabs, title: "New tabs open",
-      detail: "Where ⌘T and New Tab put it. From a pinned tab, at the top.",
+      detail: "", about: "Where ⌘T and New Tab put it. From a pinned tab, at the top.",
       keywords: ["new tab", "position", "order", "where", "next to", "below", "top"],
       control: .segmented([SettingChoice(title: "At the top", value: "off"), SettingChoice(title: "Below current", value: "on")])))
 
@@ -142,7 +142,7 @@ extension AnySettingKey {
     "recentTabCycling", default: true,
     ui: SettingUI(
       pane: .tabs, group: .switching, title: "Switch tabs in recently used order with ⌃Tab",
-      detail: "Hold Control and press Tab again to go further back. Off: in the order of the sidebar.",
+      detail: "", about: "Hold Control and press Tab again to go further back. Off: in the order of the sidebar.",
       keywords: ["control tab", "ctrl tab", "switch tabs", "recent", "cycle"], control: .toggle))
 
   /// The sidebar button in the sidebar's top row and the page's address bar.
@@ -150,7 +150,7 @@ extension AnySettingKey {
     "showSidebarButton", default: true,
     ui: SettingUI(
       pane: .tabs, group: .sidebar, title: "Show the sidebar button",
-      detail: "⌘S and View › Toggle Sidebar still hide and show the sidebar.",
+      detail: "", about: "⌘S and View › Toggle Sidebar still hide and show the sidebar.",
       keywords: ["sidebar", "toggle", "button", "hide sidebar"], control: .toggle))
 
   /// Arc's ↓ Clear between pinned tabs and Today. Not built yet: its row shows only in test builds.
@@ -158,7 +158,7 @@ extension AnySettingKey {
     "showClearButton", default: true, built: false,
     ui: SettingUI(
       pane: .tabs, group: .sidebar, title: "Show the Clear button",
-      detail: "Between your pinned tabs and Today. File › Clear Today's Tabs still clears them.",
+      detail: "", about: "Between your pinned tabs and Today. File › Clear Today's Tabs still clears them.",
       keywords: ["clear", "close all tabs", "today", "arc", "divider"], control: .toggle))
 
   /// The address bar above the page tucks away while you scroll down. Not built yet: its row shows only in test builds.
@@ -166,7 +166,7 @@ extension AnySettingKey {
     "hideAddressBarWhileScrolling", default: false, built: false,
     ui: SettingUI(
       pane: .tabs, group: .sidebar, title: "Hide the address bar while scrolling",
-      detail: "Scrolling down tucks it into a thin strip with the site's name; scrolling up or a click brings it back.",
+      detail: "", about: "Scrolling down tucks it into a thin strip with the site's name; scrolling up or a click brings it back.",
       keywords: ["auto hide", "toolbar", "compact", "scroll"], control: .toggle))
 
   /// A tab whose page isn't loaded shows its icon faded.
@@ -174,7 +174,7 @@ extension AnySettingKey {
     "fadeUnloadedTabs", default: false,
     ui: SettingUI(
       pane: .tabs, group: .sidebar, title: "Fade icons of unloaded tabs",
-      detail: "A tab whose page isn't loaded, like a pinned tab you haven't opened or one restored after a relaunch. Clicking it loads the page.",
+      detail: "", about: "A tab whose page isn't loaded, like a pinned tab you haven't opened or one restored after a relaunch. Clicking it loads the page.",
       keywords: ["unloaded", "asleep", "sleeping", "dim", "grey", "gray", "inactive", "pinned"], control: .toggle))
 
   /// A trackpad tick each time a dragged tab finds a new place.
@@ -182,7 +182,7 @@ extension AnySettingKey {
     "tabReorderHaptics", default: true,
     ui: SettingUI(
       pane: .tabs, group: .sidebar, title: "Haptic feedback when reordering tabs",
-      detail: "The trackpad ticks each time a tab you're dragging moves to a new place.",
+      detail: "", about: "The trackpad ticks each time a tab you're dragging moves to a new place.",
       keywords: ["haptic", "trackpad", "vibration", "drag", "reorder", "force touch"], control: .toggle))
 
   /// A player at the bottom of the sidebar for a tab playing out of sight. Not built yet: its row shows only in test builds.
@@ -190,7 +190,7 @@ extension AnySettingKey {
     "sidebarMediaControls", default: true, built: false,
     ui: SettingUI(
       pane: .tabs, group: .media, title: "Show media controls in the sidebar",
-      detail: "When a tab you're not looking at plays sound, a player appears at the bottom of the sidebar.",
+      detail: "", about: "When a tab you're not looking at plays sound, a player appears at the bottom of the sidebar.",
       keywords: ["music", "player", "audio", "now playing", "media"], control: .toggle))
 
   /// A video pops out when you leave its tab. Not built yet: its row shows only in test builds.
@@ -198,7 +198,7 @@ extension AnySettingKey {
     "autoPictureInPicture", default: true, built: false,
     ui: SettingUI(
       pane: .tabs, group: .media, title: "Automatic Picture in Picture",
-      detail: "A video or call you're watching pops out when you switch tabs, and returns when you come back.",
+      detail: "", about: "A video or call you're watching pops out when you switch tabs, and returns when you come back.",
       keywords: ["pip", "video", "floating", "mini player", "picture in picture"], control: .toggle))
 
   // Shortcuts
@@ -207,14 +207,14 @@ extension AnySettingKey {
     "copyLinkShortcut", default: true,
     ui: SettingUI(
       pane: .shortcuts, group: .keys, title: "Copy the page's link with ⇧⌘C",
-      detail: "As Edit › Copy URL does. Off: the key goes to the page.",
+      detail: "", about: "As Edit › Copy URL does. Off: the key goes to the page.",
       keywords: ["copy link", "copy url", "shortcut", "keyboard"], control: .toggle))
 
   static let sidebarShortcut = SettingKey<Bool>(
     "sidebarShortcut", default: true,
     ui: SettingUI(
       pane: .shortcuts, group: .keys, title: "Show and hide the sidebar with ⌘S",
-      detail: "Off: the key goes to the page (Save Page As).",
+      detail: "", about: "Off: the key goes to the page (Save Page As).",
       keywords: ["sidebar", "save page", "shortcut", "keyboard", "toggle"], control: .toggle))
 
   /// Edit › Undo reopens the last closed tab outside text (`UndoCloseTab`), as in Arc.
@@ -222,7 +222,7 @@ extension AnySettingKey {
     "undoReopensClosedTab", default: false,
     ui: SettingUI(
       pane: .shortcuts, group: .keys, title: "Reopen closed tabs with ⌘Z",
-      detail: "Outside text fields, as in Arc; press it again for the tab closed before. In a text field ⌘Z still undoes typing.",
+      detail: "Outside text fields.", about: "Outside text fields, as in Arc; press it again for the tab closed before. In a text field ⌘Z still undoes typing.",
       keywords: ["undo", "reopen", "closed tab", "restore tab", "cmd z", "arc"], control: .toggle))
 
   // Passwords
@@ -233,7 +233,7 @@ extension AnySettingKey {
     "jumpCloudRelay", default: false,
     ui: SettingUI(
       pane: .passwords, group: .signIn, title: "Sign in with JumpCloud Go through Chrome",
-      detail: "On JumpCloud's sign-in page, a small Google Chrome window opens for Touch ID, then you're signed in here.",
+      detail: "Opens a small Chrome window for Touch ID.", about: "On JumpCloud's sign-in page, a small Google Chrome window opens for Touch ID, then you're signed in here.",
       keywords: ["jumpcloud", "jumpcloud go", "sso", "single sign-on", "touch id", "passwordless", "work", "chrome"],
       control: .toggle))
 
@@ -386,18 +386,22 @@ struct SettingUI {
   let group: SettingGroup
   let title: String
   let detail: String
+  /// Words search matches but the row doesn't show (the longer explanation). Rows show a title and at most a short
+  /// line; anything longer goes here.
+  let about: String
   /// Other words settings search matches besides the title and detail.
   let keywords: [String]
   let control: SettingControl
   /// Rarely changed: sits under its group's "More" line.
   let rare: Bool
 
-  init(pane: SettingPane, group: SettingGroup, title: String, detail: String, keywords: [String] = [],
+  init(pane: SettingPane, group: SettingGroup, title: String, detail: String, about: String = "", keywords: [String] = [],
        control: SettingControl, rare: Bool = false) {
     self.pane = pane
     self.group = group
     self.title = title
     self.detail = detail
+    self.about = about
     self.keywords = keywords
     self.control = control
     self.rare = rare

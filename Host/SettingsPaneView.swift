@@ -42,7 +42,7 @@ final class SettingsPaneView: NSView {
   init(pane: SettingPane) {
     self.pane = pane
     titleLabel = settingsLabel(pane.title, size: 22, weight: .medium)
-    subtitleLabel = NSTextField(wrappingLabelWithString: pane.subtitle)
+    subtitleLabel = NSTextField(wrappingLabelWithString: "")  // The pane's title says it; its subtitle is for search.
     super.init(frame: .zero)
     subtitleLabel.font = .systemFont(ofSize: 13)
     subtitleLabel.textColor = .secondaryLabelColor
@@ -349,7 +349,7 @@ final class SettingsPaneView: NSView {
     y += titleHeight + 3
     let subtitleHeight = textHeight(subtitleLabel, width: inner)
     if apply { subtitleLabel.frame = NSRect(x: x, y: y, width: inner, height: subtitleHeight) }
-    y += subtitleHeight + 6
+    y += subtitleHeight > 0 ? subtitleHeight + 6 : 4
     for block in blocks {
       switch block {
       case .callToAction(let view):

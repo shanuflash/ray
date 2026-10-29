@@ -24,7 +24,7 @@ extension AnySettingKey {
     "offerToSaveLogins", default: true, built: false,
     ui: SettingUI(
       pane: .passwords, group: .passwordsSaving, title: "Offer to save passwords",
-      detail: "Ray asks to save a password when you sign in to a site, and fills it in next time.",
+      detail: "", about: "Ray asks to save a password when you sign in to a site, and fills it in next time.",
       keywords: ["save passwords", "fill passwords", "autofill", "sign in", "password manager"], control: .toggle))
 }
 
@@ -196,7 +196,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
       let list = shown
       if list.isEmpty {
         items.append(.init(view: SettingsNote(query.isEmpty
-          ? "No saved passwords yet. Add one here, or bring them from another browser with File › Import from Browser…."
+          ? "No saved passwords yet."
           : "No saved passwords match.")))
       }
       for (index, login) in list.enumerated() {
@@ -668,7 +668,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
 private final class PasswordsLockedView: NSView, SettingsSizing {
   private let icon = NSImageView()
   private let title = settingsLabel("Passwords are locked", size: 15, weight: .medium)
-  private let detail = NSTextField(wrappingLabelWithString: "Unlock with Touch ID or your login password to see and change them.")
+  private let detail = NSTextField(wrappingLabelWithString: "Touch ID or your login password.")
   private let button = AccentButton(title: "Unlock")
 
   init(unlock: @escaping () -> Void) {
@@ -752,11 +752,11 @@ final class PasswordsMoreView: NSView, SettingsSizing {
     if more.expanded {
       let importRow = SettingsRowView(
         title: "Import passwords",
-        detail: importStatus ?? "From a CSV file exported by Chrome, Safari, Firefox, 1Password, Bitwarden and others.",
+        detail: importStatus ?? "From a CSV file.",
         control: SettingsPushButton("Import…") { [weak self] in self?.chooseImport() })
       let exportRow = SettingsRowView(
         title: "Export passwords",
-        detail: exportStatus ?? "To a CSV file. Anyone who can open the file can read your passwords.",
+        detail: exportStatus ?? "To a CSV file, readable by anyone.",
         control: SettingsPushButton("Export…") { [weak self] in _ = self?.pressExport(testPath: nil) })
       items += [.init(view: importRow, line: true), .init(view: exportRow, line: true)]
     }
