@@ -102,8 +102,7 @@ items above. The revamp that gives these a home is PLAN.md section 13.
    Notion/Confluence/Google Drive documents.
 2. **Live Calendar** (Arc's calendar preview): hover a pinned calendar tab to see the day, a badge counting down to
    the next meeting, an alert with a Join button.
-3. **Shortcut editor**: change any menu shortcut, search actions, Reset All.
-4. **Theme as a gradient** (Arc's Space themes): several colours, intensity, grain, direction. Ray has one accent
+3. **Theme as a gradient** (Arc's Space themes): several colours, intensity, grain, direction. Ray has one accent
    colour. Belongs with Spaces.
 
 **Smaller**
@@ -236,6 +235,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 26. **Settings › Tabs/Appearance/Shortcuts not felt by hand.** The reorder haptic, forced light/dark across the app,
     and "Always" scroll bars in Ray's own sidebar and Settings were checked by state and snapshots only.
 
+27. **Shortcut editor gaps.** The "Copy the page's link with ⇧⌘C" switch keeps its title after Copy URL is rebound (it
+    only sets the default now); no "Changed" or "Conflicts" filter (Ardia has them); the Settings search doesn't find
+    single commands; moving Close Tab off ⌘W also stops ⌘W closing the Settings window, without a warning; recording
+    by real keyboard and non-US layouts aren't tried by hand.
+
 ## Done
 
 | What | When |
@@ -262,3 +266,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Settings › Search: default engine, suggestions switch, site searches with a keyword and Tab in the command bar | 2026-10-29, `7d54ba9` |
 | JumpCloud Go sign-in relayed through Google Chrome (Settings › Passwords; known limitation #15) | 2026-10-29, `0b6fb3f` |
 | Settings: Light, Dark or Automatic (pages follow); scroll bars Automatic / When scrolling / Always (pages follow live); one address-bar-on-page setting for every window; show or hide the sidebar button; fade unloaded tabs; reorder haptic; ⌘Z reopens a closed tab outside text | 2026-10-29, `d2c6ed0` |
+| Settings › Shortcuts: an editor for every menu command (record, conflicts with Replace, none, reset; macOS's keys refused; Quit and Settings locked); the command bar and reserved keys follow | 2026-10-29, `7f3b29d` |

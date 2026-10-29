@@ -443,7 +443,7 @@ still to build (numbers are `docs/MISSING.md`, "From Ardia's settings"). Default
   sidebar button, on ✓; fade icons of unloaded tabs, off ✓; haptic on reorder, on ✓. Unbuilt rows (test builds
   only): Clear button (9), hide the address bar while scrolling (8), media controls and auto picture-in-picture
   (Arc #8, #9). New tabs at the bottom and the New Tab button's place (5).
-- **Appearance** ✓ (`d2c6ed0`): theme colour, Lavender ✓ (a gradient with Spaces, 4); Light, Dark or Automatic,
+- **Appearance** ✓ (`d2c6ed0`): theme colour, Lavender ✓ (a gradient with Spaces, 3); Light, Dark or Automatic,
   Automatic ✓; address bar on the page, on ✓ (the View menu flips the same setting); minimal URL, off ✓; loading
   progress, on ✓; default page zoom 100% ✓; scroll bars Automatic ✓; app icon, unbuilt until designed (7).
 - **Search** ✓ (`7d54ba9`): default engine Google, suggestions on, site searches with keywords.
@@ -455,7 +455,7 @@ still to build (numbers are `docs/MISSING.md`, "From Ardia's settings"). Default
 - **Extensions** ✓ (`0eaf904`): installed list with switches, site access, private windows, options, reload,
   remove, Web Store, load unpacked; add from a link and extension shortcuts later (Chrome #13, #14).
 - **Shortcuts:** ⇧⌘C copies the link, on ✓; ⌘S toggles the sidebar, on ✓; ⌘Z reopens a closed tab outside text,
-  off ✓ (`d2c6ed0`); edit any shortcut (3, in progress).
+  off ✓ (`d2c6ed0`); edit any shortcut ✓ (`7f3b29d`).
 - **About Ray** ✓ (`d88e0e3`): version and Chromium version; All Chrome Settings… sits in the sidebar.
 
 **Toolkit:** AppKit + Core Animation (owner 2026-10-29): smoother and lighter than SwiftUI, reuses `RaySwitch`, the
@@ -472,5 +472,5 @@ profile colour and the sidebar's look, and the live pictures animate on layers l
 6. **Done 2026-10-29, `0eaf904`, `d34b5c4`.** Data panes over the engine's `ac_*` calls: Privacy (site permissions, zoom levels, clear data), Passwords
    (`ac_reauth` for Touch ID), Autofill, Extensions. Each Chrome settings page is trimmed as its native pane lands
    (`trim-settings-pak.py`, `AddressInput.nativeSettingsPane`).
-7. Shortcut editor.
+7. **Done 2026-10-29, `7f3b29d`.** Shortcut editor.
 8. Profiles and Spaces panes, with Spaces.
