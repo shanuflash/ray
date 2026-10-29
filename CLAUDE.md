@@ -238,7 +238,10 @@ publicly or create accounts.
   then a held Toast "Finish signing in to JumpCloud in Chrome" whose button (`showChrome`) brings it forward. A
   `/userconsole` URL (`Target.targetInfoChanged`) is signed in: `Storage.getCookies`, only jumpcloud.com and
   subdomains (`isJumpCloudDomain`, dot boundary), `ac_site_data_clear` on jumpcloud.com (the import keeps cookies Ray
-  has) then `ac_cookies_import` through `callWithSecret`, and the tab reloads if still on that login page. Ray comes
+  has) then `ac_cookies_import` through `callWithSecret`, and the tab reloads if still on that login page, or, signing in for an app (`context=sso|oauth` with `redirectTo`),
+  goes on as the login page would after its own sign-in (`JumpCloudLogin.continuation`: `ssoRedirectUrl`
+  https://sso(.eu).jumpcloud.com/ or `oauthRedirectUrl` …/userconsole/oauth2/, then `redirectTo`; that host only),
+  since the page never forwards a session it didn't make. Ray comes
   back to the front only after a relay that brought Chrome forward. Deadlines: 15 s for each Chrome's first answer (a
   policy may forbid the pipe), 120 s to sign in overall; one relay at a time. With the setting off, a JumpCloud login page gets a note once per launch ("JumpCloud Go works in Ray: turn it on in
   Settings", its button opens Passwords at the switch; test command `jumpcloud opensetting`). While it runs, a Toast says "Signing in with JumpCloud Go…" (its result replaces it). A login page relays unless the tab has

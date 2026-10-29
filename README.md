@@ -32,7 +32,7 @@ Early and personal. Expect rough edges.
   HTML or PDF files you open with Ray, open as tabs, also when they launch Ray.
 - JumpCloud Go (passwordless work sign-in), through Google Chrome: with Settings › Passwords › Sign in with JumpCloud
   Go through Chrome on, JumpCloud's login page signs in through a hidden Chrome (no window, and Ray stays in full
-  screen), then you're signed in in Ray. If that doesn't finish in a few seconds, a small Chrome window opens instead
+  screen), then you're signed in in Ray (and, when an app sent you there, on to that app). If that doesn't finish in a few seconds, a small Chrome window opens instead
   (in full screen, Ray offers a button for it rather than switching Spaces). JumpCloud's helper only answers browsers
   on its own list, so Ray borrows Chrome for that one step.
 

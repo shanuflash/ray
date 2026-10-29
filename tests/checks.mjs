@@ -3320,7 +3320,8 @@ const checks = {
     // its own: console.jumpcloud.com maps to a local fixture (so the real host list is what triggers), and "Chrome" is
     // tests/jumpcloud-chrome-standin.mjs on the DevTools pipe. Off: nothing starts. On: Chrome starts headless with
     // its own profile (0700), a pipe (never a port) and ordinary Chrome's user agent, never brought forward; only
-    // jumpcloud.com cookies land in Ray, replacing a stale session; the tab reloads; a private window never relays;
+    // jumpcloud.com cookies land in Ray, replacing a stale session; the tab reloads; a private window never relays; an
+    // app's sign-in goes on to the app;
     // the loop guard; headless that doesn't finish falls back to a window (a note in full screen, in front otherwise);
     // the deadline, a silent Chrome and Set Up….
     const dir = mkdtempSync(join(tmpdir(), "ray-jumpcloud-"));
@@ -3338,7 +3339,7 @@ const checks = {
     const requests = [];
     const jc = createSecureServer({ key: readFileSync(join(dataDir, "fixture.key")), cert: readFileSync(join(dataDir, "fixture.crt")) }, (req, res) => {
       const url = new URL(req.url, "https://console.jumpcloud.com");
-      requests.push({ path: url.pathname + url.search, cookie: req.headers.cookie ?? "" });
+      requests.push({ host: req.headers.host?.split(":")[0], path: url.pathname + url.search, cookie: req.headers.cookie ?? "" });
       if (url.pathname === "/seed") {
         res.writeHead(200, { "content-type": "text/html", "set-cookie": ["jcsession=stale; Path=/; Secure; HttpOnly; Max-Age=3600",
           "rayonly=1; Domain=jumpcloud.com; Path=/; Secure; Max-Age=3600"] });
@@ -3365,7 +3366,7 @@ const checks = {
       env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_DATA_DIR: data,
         RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_START_URL: `${origin}/a`, RAY_IGNORE_CERT_ERRORS: "1",
         RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.jumpcloud`, RAY_REMOTE_DEBUGGING_PORT: String(devPort),
-        RAY_HOST_RULES: `MAP console.jumpcloud.com 127.0.0.1:${jc.address().port}`,
+        RAY_HOST_RULES: `MAP console.jumpcloud.com 127.0.0.1:${jc.address().port},MAP sso.jumpcloud.com 127.0.0.1:${jc.address().port}`,
         RAY_JUMPCLOUD_RELAY_CHROME: wrapper, RAY_JUMPCLOUD_RELAY_DEADLINE: "6",
         RAY_JUMPCLOUD_RELAY_HEADLESS_DEADLINE: "1.5", RAY_JUMPCLOUD_RELAY_SETTLE: "0.5", RAY_JUMPCLOUD_RELAY_CHROME_VERSION: "141.0.7390.123" },
       stdio: ["pipe", "ignore", "pipe"],
@@ -3521,6 +3522,23 @@ const checks = {
       assert(state.launches === 2 && state.lastResult === "loopGuard", `a private window relayed: ${JSON.stringify(state)}`);
       await ok("closewindow private");
       await until("back to the normal window", async () => (await now()).private === false, 8000);
+
+      // Signing in for an app (context=sso or oauth): the login page never forwards a session it didn't make, so once
+      // signed in the tab goes on as the page would: ssoRedirectUrl (or oauthRedirectUrl) + redirectTo, never off
+      // JumpCloud's own host.
+      for (const [path, host, landed] of [
+        ["/login?context=sso&redirectTo=saml2%2Fjenkins%3FsamlToken%3Dt1", "sso.jumpcloud.com", "/saml2/jenkins?samlToken=t1"],
+        ["/login?context=oauth&redirectTo=https%3A%2F%2Fconsole.jumpcloud.com%2Fuserconsole%2Foauth2%2Fauth%3Fx%3D1", "console.jumpcloud.com", "/userconsole/oauth2/auth?x=1"],
+        ["/login?context=sso&redirectTo=https%3A%2F%2Fevil.test%2Fx", "sso.jumpcloud.com", "/https://evil.test/x"],
+      ]) {
+        const continued = (await relay()).continuations;
+        await signOut();
+        await goTo(path, true);
+        await until(`went on to ${landed}`, () => requests.some((r) => r.host === host && r.path === landed), 12000);
+        state = await relay();
+        assert(state.lastResult === "signedIn" && state.continuations === continued + 1, `continuation ${JSON.stringify(state)}`);
+      }
+      assert(!requests.some((r) => r.host === "evil.test"), "a redirectTo left JumpCloud");
 
       // Headless never gets there, Ray in full screen: headless Chrome closes, a visible one opens the 440×620 window,
       // and Ray says so with a button instead of leaving its Space; the button brings Chrome forward.

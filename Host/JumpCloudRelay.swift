@@ -8,7 +8,8 @@ import Security
 // Chrome can. With the setting on, a normal Ray tab that lands on JumpCloud's user login page starts Ray's own Chrome
 // instance (its own profile next to Ray's data, never the user's Chrome profile), loads JumpCloud's login page there
 // headless (no window, no Dock icon, never activated, so a full-screen Ray stays on its Space), waits for the user
-// console, then copies only jumpcloud.com cookies into Ray and reloads the tab. If headless Chrome hasn't signed in
+// console, then copies only jumpcloud.com cookies into Ray and reloads the tab (or, for an app's sign-in, goes on
+// to the app as the login page would). If headless Chrome hasn't signed in
 // within `headlessDeadline`, the relay starts again in a small visible Chrome window (a full-screen Ray only gets a
 // note with a button that brings Chrome forward). Chrome is driven over `--remote-debugging-pipe` (file descriptors 3 and 4, NUL-separated JSON):
 // never a port, so nothing else on the Mac can reach it. Nothing here reads the Keychain.
@@ -60,6 +61,27 @@ enum JumpCloudLogin {
     else { return false }
     let path = parts.path.lowercased()
     return path.hasPrefix("/userconsole") && !path.contains("login") && !(parts.fragment ?? "").lowercased().contains("login")
+  }
+
+  /// Where the login page goes once signed in when it signs in for an app (`context` sso or oauth, with
+  /// `redirectTo`): JumpCloud's `ssoRedirectUrl` or `oauthRedirectUrl` (its ui-settings.json) followed by
+  /// `redirectTo`, as the login UI builds it. The page only goes there after a sign-in it did itself; loaded already
+  /// signed in, it stays on the form, so after a relay Ray goes there instead of reloading. nil for a plain login or
+  /// anything that would leave JumpCloud's own SSO or console host.
+  static func continuation(of url: String, consoleHost: String) -> String? {
+    guard consoleHost.hasPrefix("console."), let items = URLComponents(string: url)?.queryItems,
+          let context = items.first(where: { $0.name == "context" })?.value,
+          let target = items.first(where: { $0.name == "redirectTo" })?.value, !target.isEmpty else { return nil }
+    let host: String, base: String
+    switch context {
+    case "sso": host = "sso." + consoleHost.dropFirst("console.".count); base = "https://\(host)/"
+    case "oauth": host = consoleHost; base = "https://\(host)/userconsole/oauth2/"
+    default: return nil
+    }
+    let next = target.hasPrefix(base) ? target : base + target.drop(while: { $0 == "/" })
+    guard let parts = URLComponents(string: next), parts.scheme == "https", parts.host?.lowercased() == host,
+          parts.port == nil, parts.user == nil, parts.password == nil else { return nil }
+    return next
   }
 
   /// jumpcloud.com or a subdomain, on a dot boundary (a cookie's domain may lead with a dot).
@@ -426,6 +448,8 @@ final class JumpCloudRelay {
   private var noticeShown = false
   /// Times it was shown (the state log; at most once a launch).
   private var notices = 0
+  /// Relays that went on to the app's sign-in (`continuation`) rather than reloading the login page.
+  private var continuations = 0
   private var setupOpen = false
   private var terminating: NSObjectProtocol?
 
@@ -846,7 +870,12 @@ final class JumpCloudRelay {
     self.relay = nil
     if let tab = relay.tab, !tab.closed, tab.committedOrigin == relay.match.origin,
        JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) != nil {
-      tab.userReload()
+      if let next = JumpCloudLogin.continuation(of: tab.url, consoleHost: relay.match.consoleHost) {
+        continuations += 1
+        tab.loadURL(next, userInitiated: true)
+      } else {
+        tab.userReload()
+      }
     }
     finish("signedIn", note: "Signed in with JumpCloud Go", symbol: "checkmark.circle.fill", duration: 4, in: relay.controller)
   }
@@ -942,6 +971,7 @@ final class JumpCloudRelay {
     return [
       "state": state, "launches": launches, "lastResult": lastResult, "cookiesImported": cookiesImported,
       "notices": notices,
+      "continuations": continuations,
       "chromeRunning": chrome.map { !$0.gone } ?? false, "pid": chrome.map { Int($0.pid) } ?? NSNull(),
       "arguments": lastArguments, "directory": directory,
       "directoryMode": permissions.map { String($0.intValue, radix: 8) } ?? NSNull(),
