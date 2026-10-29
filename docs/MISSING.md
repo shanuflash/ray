@@ -214,6 +214,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     Chrome's edge alignment. Escape is taken by the popup window before the page sees it (Ray's render view doesn't
     hand an unused Escape back), so a popup's own Escape handling (closing its menu) closes the whole popup. Fix:
     route the extension view's unhandled keys back to `ExtensionsController`. Found 2026-10-29.
+18. **Keychain prompt on every new build or update.** "Ray Safe Storage" asks for the login password once per build
+    (and per Sparkle update for friends), "Always Allow" included: the item's partition list keys apps without a
+    Team ID by cdhash, and "Ray Code Signing" is self-signed, so it has none. Fix: an Apple-issued certificate
+    (Developer ID, roadmap step 4; or the owner's Apple Development certificate for their own builds), then one last
+    prompt. Found 2026-10-29.
 
 ## Done
 
@@ -225,7 +230,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Import from Arc and other browsers (pinned, favorites, open tabs, history, bookmarks, passwords, cookies, autofill) and first-run onboarding | 2026-10-29, `0154dab` … `58611e6` |
 | Command bar actions (Ray's menu commands by name, with shortcuts) | 2026-10-29, `893280a` |
 | Address bar loading glow: one Dia sweep per navigation | 2026-10-29, `6b2f1e1` |
-| One signing identity ("Ray Code Signing"): no keychain prompt on every build | 2026-10-29, `ec95fc8` |
+| One signing identity ("Ray Code Signing"): permissions kept across builds (the keychain still asks per build, Known limitations 18) | 2026-10-29, `ec95fc8` |
 | Reopen closed tab (⇧⌘T) back in its sidebar place, History › Recently Closed, and in the command bar | 2026-10-29, `609d4b2`, `8850dd4` |
 | Address shows `#fragment` and `view-source:` URLs; IDN hosts as punycode (no spoof checker yet) | 2026-10-29, `2512bed` |
 | Command bar ranks your pages first like Arc, 5 rows, scroll to 10, never the active tab | 2026-10-29, `feat: command bar ranks pages like arc` |

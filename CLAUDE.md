@@ -327,8 +327,11 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   created 2026-10-29) whose private key is in the owner's login keychain, usable by `/usr/bin/codesign` only.
   `build-app.sh` picks it when present (else ad-hoc, `RAY_SIGN_IDENTITY` overrides); `release.sh` refuses a build
   without it; `updater-config` checks it. Its stable designated requirement (`certificate root =
-  H"57dd31c307844623c2a646a24fb7f19c27327a4f"`) is what lets macOS keep "Always Allow" for "Ray Safe Storage" and
-  privacy permissions across builds and updates. Sparkle accepts the change from ad-hoc because the EdDSA key is
+  H"57dd31c307844623c2a646a24fb7f19c27327a4f"`) keeps privacy permissions (TCC) and the keychain item's app
+  list across builds and updates, but not the keychain prompt: the item's partition list names apps by Team ID, and a
+  self-signed certificate has none (an OU doesn't give one), so macOS lists each build by its cdhash and asks once
+  per new build (`security dump-keychain -a` shows `partition_id` entries `cdhash:…`). Only an Apple-issued
+  certificate (Apple Development or Developer ID) gives a `teamid:` partition that stays. Sparkle accepts the change from ad-hoc because the EdDSA key is
   unchanged. Never export the key into the repo; back it up only into a password manager (Keychain Access ›
   "Ray Code Signing" › Export). If it's lost, a new certificate costs friends one more keychain prompt.
 

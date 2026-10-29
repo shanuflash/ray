@@ -336,7 +336,9 @@ Targets, measured with `xbench.mjs` against Chrome, Helium and our previous rele
    pay ~8 ms. A real fix needs Phase B.
 3. **Upstream pace:** Ardia has one maintainer. If it stalls, Phase B becomes urgent.
 4. **Signing:** since 2026-10-29 builds are signed with the self-signed "Ray Code Signing" certificate, so macOS
-   keeps "Always Allow" for "Ray Safe Storage" across builds and updates (one last prompt on the first such build).
+   keeps camera/microphone/location permissions across builds, but macOS still asks for "Ray Safe Storage" once per new
+   build or update: without a Team ID the keychain's partition list holds each build's cdhash. Only an Apple-issued
+   certificate stops that (Developer ID, roadmap step 4).
    Gatekeeper still treats Ray as unidentified until Developer ID and notarization.
    (The prebuilt engine's limits and the mock keychain ended with Phase B in 0.2.0; 0.1 data is migrated.)
 5. **No Widevine:** streaming sites with DRM won't play.
