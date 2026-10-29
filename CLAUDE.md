@@ -323,17 +323,18 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   install without the prompt. Each update changes the ad-hoc signature, so macOS may ask again for camera, microphone
   and location.
 - From the Phase B engine on, cookies and passwords are under "Ray Safe Storage" in the login keychain.
-- **Signing identity:** builds are signed with "Ray Code Signing", a self-signed code-signing certificate (10 years,
-  created 2026-10-29) whose private key is in the owner's login keychain, usable by `/usr/bin/codesign` only.
-  `build-app.sh` picks it when present (else ad-hoc, `RAY_SIGN_IDENTITY` overrides); `release.sh` refuses a build
-  without it; `updater-config` checks it. Its stable designated requirement (`certificate root =
-  H"57dd31c307844623c2a646a24fb7f19c27327a4f"`) keeps privacy permissions (TCC) and the keychain item's app
-  list across builds and updates, but not the keychain prompt: the item's partition list names apps by Team ID, and a
-  self-signed certificate has none (an OU doesn't give one), so macOS lists each build by its cdhash and asks once
-  per new build (`security dump-keychain -a` shows `partition_id` entries `cdhash:…`). Only an Apple-issued
-  certificate (Apple Development or Developer ID) gives a `teamid:` partition that stays. Sparkle accepts the change from ad-hoc because the EdDSA key is
-  unchanged. Never export the key into the repo; back it up only into a password manager (Keychain Access ›
-  "Ray Code Signing" › Export). If it's lost, a new certificate costs friends one more keychain prompt.
+- **Signing identity:** builds are signed with the owner's **Apple Development** certificate ("Apple Development:
+  shanuflash@gmail.com (945WS636RB)", free Personal Team, Team ID `96AWMN4CQ6`, created in Xcode › Settings › Apple
+  Accounts › Manage Certificates on 2026-10-29, expires 2027-10-29: renew it there). Its chain needs Apple's "WWDR CA
+  G3" intermediate in the login keychain (without it codesign signs with no Team ID and fails `errSecInternalComponent`).
+  The Team ID matters: the "Ray Safe Storage" item's partition list names an app by `teamid:`, or, with none, by each
+  build's cdhash, which meant a password prompt on every build and update. The designated requirement (`anchor apple
+  generic and certificate leaf[subject.CN] = "Apple Development: …"`) also survives a renewal, and keeps privacy
+  permissions. `build-app.sh` (`# MARK: Signing`) picks the first valid Apple Development identity, else "Ray Code
+  Signing" (the old self-signed certificate, no Team ID: permissions kept, keychain asks per build), else ad-hoc;
+  `RAY_SIGN_IDENTITY` overrides. `release.sh` refuses an app with no Team ID; `updater-config` checks it. Sparkle
+  accepts identity changes because the EdDSA key is unchanged; each change costs installs one more keychain prompt
+  and permission prompts. Never export a signing key into the repo; back keys up only into a password manager.
 
 ## Testing
 - Per change: `scripts/build-app.sh && scripts/test.sh --changed`. It runs the unit tests, then only the checks the

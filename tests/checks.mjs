@@ -1560,9 +1560,15 @@ const checks = {
     assert(!existsSync(join(framework, "Versions/B/XPCServices")), "Sparkle's XPC services (sandbox only) are embedded");
     execFileSync("codesign", ["--verify", "--deep", "--strict", framework]);
     execFileSync("codesign", ["--verify", "--deep", "--strict", app]);
-    // One signing identity across builds when the owner's "Ray Code Signing" certificate is installed, so macOS keeps
-    // "Always Allow" for "Ray Safe Storage" (and privacy permissions) from build to build.
-    if (execFileSync("security", ["find-identity", "-p", "codesigning"], { encoding: "utf8" }).includes('"Ray Code Signing"')) {
+    // One signing identity across builds. With the owner's Apple Development certificate it has a Team ID, so the
+    // keychain lets every build into "Ray Safe Storage" (its partition list); "Ray Code Signing" keeps permissions only.
+    const identities = execFileSync("security", ["find-identity", "-v", "-p", "codesigning"], { encoding: "utf8" });
+    if (identities.includes('"Apple Development: ')) {
+      const signature = spawnSync("codesign", ["-dvv", "-r", "-", app], { encoding: "utf8" });
+      const text = signature.stdout + signature.stderr;
+      assert(/^TeamIdentifier=[A-Z0-9]{10}$/m.test(text) && /anchor apple generic/.test(text),
+        `the app isn't signed with the Apple Development certificate: ${text.trim().split("\n").filter((l) => /Team|designated/.test(l)).join(" | ")}`);
+    } else if (execFileSync("security", ["find-identity", "-p", "codesigning"], { encoding: "utf8" }).includes('"Ray Code Signing"')) {
       const requirement = spawnSync("codesign", ["-dr", "-", app], { encoding: "utf8" });
       assert(/certificate root = H"57dd31c307844623c2a646a24fb7f19c27327a4f"/.test(requirement.stdout + requirement.stderr),
         `the app isn't signed with Ray Code Signing: ${(requirement.stdout + requirement.stderr).trim().split("\n").at(-1)}`);

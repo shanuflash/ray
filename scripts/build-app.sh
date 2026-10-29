@@ -23,14 +23,22 @@ if [[ "$sparkle_key" == REPLACE_* ]]; then
   echo "warning: Branding/sparkle-public-key.txt is still the placeholder; this build can't update itself" >&2
   echo "         (run Sparkle's generate_keys once, see CLAUDE.md \"Shipping to friends\")" >&2
 fi
-# One stable identity for every build: macOS remembers "Always Allow" for "Ray Safe Storage" (and camera, microphone,
-# location) per designated requirement, which for an ad-hoc signature changes every build. "Ray Code Signing" is a
-# self-signed certificate in the owner's login keychain (CLAUDE.md, Shipping to friends); without it, ad-hoc.
-if [ -z "${RAY_SIGN_IDENTITY:-}" ] && security find-identity -p codesigning 2>/dev/null | grep -q '"Ray Code Signing"'; then
+# MARK: Signing
+# One identity with a Team ID for every build. macOS keeps privacy permissions per designated requirement, but the
+# "Ray Safe Storage" keychain item's partition list names an app by its Team ID, or else by each build's cdhash (a
+# password prompt per build). The owner's Apple Development certificate (free Personal Team, renewed yearly in Xcode)
+# has one; "Ray Code Signing" (self-signed, no Team ID) keeps only permissions; without either, ad-hoc. CLAUDE.md,
+# Shipping to friends. No `grep -q`/`exit` in these pipes: under pipefail an early exit kills `security` (SIGPIPE).
+if [ -z "${RAY_SIGN_IDENTITY:-}" ]; then
+  RAY_SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
+    | awk '/"Apple Development: / && !found { print $2; found = 1 }')
+fi
+if [ -z "${RAY_SIGN_IDENTITY:-}" ] && security find-identity -p codesigning 2>/dev/null | grep '"Ray Code Signing"' >/dev/null; then
   RAY_SIGN_IDENTITY="Ray Code Signing"
 fi
 identity=${RAY_SIGN_IDENTITY:--}
 sign() { codesign --force --timestamp=none --sign "$identity" "$@" 2>/dev/null; }
+# MARK: Build
 
 # Ray's icon at the sizes the engine's logo slots use, rendered once per change of the icon.
 logos="$root/build/logos"

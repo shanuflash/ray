@@ -73,9 +73,10 @@ check=$(mktemp -d)
 trap 'rm -rf "$check"; [ "$finished" = 1 ] || printf "%s\n" "$original_version" > "$root/VERSION"' EXIT
 ditto -x -k "$out/$archive" "$check"
 codesign --verify --deep --strict "$check/Ray.app" || die "the unzipped app's signature is broken"
-# Friends' installs keep their Keychain and privacy permissions only while every release has the same identity.
-codesign -dr - "$check/Ray.app" 2>&1 | grep -q 'certificate root = H"57dd31c307844623c2a646a24fb7f19c27327a4f"' \
-  || die "the app isn't signed with \"Ray Code Signing\" (the self-signed certificate in your login keychain)"
+# Friends' installs keep "Ray Safe Storage" without a prompt per update only with a Team ID (the keychain's partition
+# list), and their privacy permissions only while every release has the same identity.
+codesign -dvv "$check/Ray.app" 2>&1 | grep -E '^TeamIdentifier=[A-Z0-9]{10}$' >/dev/null \
+  || die "the app has no Team ID: build with your Apple Development certificate (Xcode › Settings › Apple Accounts)"
 
 if [ -n "$notes" ]; then
   notes_file="$out/Ray-$version.${notes##*.}"

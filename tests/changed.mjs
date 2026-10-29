@@ -89,7 +89,7 @@ for (const file of files) {
   const text = readFileSync(join(root, file), "utf8").split("\n");
   // A section runs from its mark to the next mark or the next top-level declaration (a class after it isn't in it).
   const topLevel = /^(?:(?:private|fileprivate|public|final|@objc)\s+)*(?:class|struct|enum|extension|protocol|func)\s/;
-  const marks = text.map((l, i) => [topLevel.test(l) ? null : l.match(/\/\/ MARK: (.+)$/)?.[1]?.trim(), i + 1, topLevel.test(l)])
+  const marks = text.map((l, i) => [topLevel.test(l) ? null : l.match(/(?:\/\/|#) MARK: (.+)$/)?.[1]?.trim(), i + 1, topLevel.test(l)])
     .filter(([m, , decl]) => m || decl);
   const seen = new Set();
   for (const line of changed) {

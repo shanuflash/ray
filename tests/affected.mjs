@@ -1,6 +1,6 @@
 // Which checks in checks.mjs a change can affect. `scripts/test.sh --changed` runs only those (boot, quit and
 // restore always run). Keys are a path, a folder ending in "/", or "path#Section" for one `// MARK: Section` of a
-// big file (the lines from that mark to the next). Values are check names, "all", or [] (nothing beyond the unit
+// big file (`# MARK:` in a script; the lines from that mark to the next). Values are check names, "all", or [] (nothing beyond the unit
 // tests, which always run).
 //
 // Anything without an entry runs the whole suite, so a missing entry costs time, never coverage. When you add a
@@ -68,6 +68,8 @@ export const areas = {
   "engine-ray/": "all",
   "engine.lock": "all",
   "scripts/build-app.sh": "all",
+  // Which certificate signs the apps (the checks run on the mock keychain; only updater-config reads the signature).
+  "scripts/build-app.sh#Signing": ["updater-config"],
   "tools/": "all",
   // The pak tools only touch the engine's own pages: the rebranded About page, and the trimmed settings page.
   "tools/rebrand-pak.py": ["about-panel", "settings-trimmed"],
