@@ -33,14 +33,25 @@ enum AddressInput {
     return searchTemplate.replacingOccurrences(of: "%s", with: query)
   }
 
-  /// Chrome settings pages Ray's own Settings window stands in for, and the pane each opens: Appearance and behavior
-  /// (`/appearance`, its `/fonts` page), and Profiles (`/people` and the pages under it), whose colour is in
-  /// Appearance. The engine's page has neither any more (tools/trim-settings-pak.py), so a typed or in-page address
-  /// to one of them goes to the window, never to a page that would only show something else.
+  /// Chrome settings pages Ray's own Settings window stands in for, and the pane each opens (`SettingPane`'s raw
+  /// values): Appearance and behavior (`/appearance`, its `/fonts` page), and Profiles (`/people` and the pages under
+  /// it), whose colour is in Appearance. The engine's page has neither any more (tools/trim-settings-pak.py), so a
+  /// typed or in-page address to one of them goes to the window, never to a page that would only show something else.
+  /// Then `ray://settings/<pane>` for each pane with content of Ray's own and no Chrome page by that name. Search,
+  /// Privacy, Passwords, Autofill and Extensions join only when their panes land: until then their addresses are
+  /// Chrome's pages. One line per pane, a blank line between, so panes added in parallel merge cleanly.
   private static let nativeSettingsPaths: [String: String] = [
     "appearance": "appearance", "fonts": "appearance",
     "people": "appearance", "profiles": "appearance", "manageprofile": "appearance", "account": "appearance",
     "googleservices": "appearance", "signout": "appearance", "importdata": "appearance",
+
+    "general": "general",
+
+    "tabs": "tabs",
+
+    "shortcuts": "shortcuts",
+
+    "about": "about",
   ]
 
   /// Settings pages that are gone from the engine's page (tools/trim-settings-pak.py) with nothing of Ray's to stand in

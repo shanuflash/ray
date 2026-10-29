@@ -95,10 +95,27 @@ enum ProfileColor {
   /// or black (on a light one), just far enough. A black accent marks in near-white on a dark card and stays black
   /// on a light one. Fills with text on them keep the exact colour and use `foreground(on:)`.
   static func visible(on background: NSColor, minimum: CGFloat = 3) -> NSColor {
+    legible(NSColor(name: nil) { _ in accent }, on: background, minimum: minimum)
+  }
+
+  /// The same for any colour (a tint of the accent, say): itself where it has `minimum` contrast on `background`,
+  /// else moved toward white or black just far enough. Both may be dynamic; it is resolved when drawn.
+  static func legible(_ color: NSColor, on background: NSColor, minimum: CGFloat = 4.5) -> NSColor {
     NSColor(name: nil) { appearance in
       let name = appearance.bestMatch(from: [.darkAqua, .aqua]) ?? .aqua
-      let rgb = legible(resolved(accent, appearance: name), on: resolved(background, appearance: name), minimum: minimum)
+      let rgb = legible(resolved(color, appearance: name), on: resolved(background, appearance: name), minimum: minimum)
       return NSColor(srgbRed: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1)
+    }
+  }
+
+  /// `a` laid over `b` at `amount` (0: `b`, 1: `a`; `dark` in dark mode), as one solid colour; resolved when drawn.
+  static func mix(_ a: NSColor, over b: NSColor, _ light: CGFloat, dark: CGFloat? = nil) -> NSColor {
+    NSColor(name: nil) { appearance in
+      let name = appearance.bestMatch(from: [.darkAqua, .aqua]) ?? .aqua
+      let amount = name == .darkAqua ? dark ?? light : light
+      let x = resolved(a, appearance: name), y = resolved(b, appearance: name)
+      return NSColor(srgbRed: y.r + (x.r - y.r) * amount, green: y.g + (x.g - y.g) * amount,
+                     blue: y.b + (x.b - y.b) * amount, alpha: 1)
     }
   }
 

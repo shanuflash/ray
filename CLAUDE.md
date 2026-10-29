@@ -23,10 +23,12 @@ publicly or create accounts.
   current tab). Rows: autocompleted host match, typed URL or search, open tabs ("Switch to Tab"), history, and
   `BarActions`: menu commands read from the main menu (Ray's own items, validated as the menu does), matched by word
   starts of their title or synonyms, with the live key equivalent; an exact name leads unless a host autocompletes.
-  Ranking is Arc's: when nothing else leads, a page you go to leads over the typed search (Enter opens it): only for a
+  Then "Settings: …" rows (`SettingsSearch.barMatches`, matched the same way: each shown setting, section and pane,
+  at most 2), which open the Settings window at that row and flash it; one leads only when named in full after
+  "settings" with no host, command or page matching (check `settings-bar`). Ranking is Arc's: when nothing else leads, a page you go to leads over the typed search (Enter opens it): only for a
   search, from 3 characters, every word at a word start of its title or address, frecency ≥ 1.5 (Chromium's
   HistoryQuick: last 10 visits, each worth its recency; an open tab adds 1), never a search results page. Then the
-  typed row, actions, the other pages by match + frecency, and search suggestions last, only to fill the 5 shown rows
+  typed row, actions, settings, the other pages by match + frecency, and search suggestions last, only to fill the 5 shown rows
   (2 at most). The bar shows 5 rows and scrolls to 10 (overlay scroller). This window's active tab is never offered
   (nor its page as history); another tab on the same address is. Page rows: title, then `Suggestions.shortAddress`
   (host, "…", the path's last ~16 characters; a long host loses its start instead). Check `bar-ranking`.
@@ -42,15 +44,22 @@ publicly or create accounts.
   selection, "on" states, Settings' switches). Default: Dia's lavender; Settings › Theme sets it (`apply(hex:)`,
   posts `didChange`, and each window redraws its views and re-tints the wash, page line and downloads ring).
   `foreground(on:)` is the white or black with the higher WCAG contrast on a fill: use it for any text or icon on an
-  accent fill. Never use `NSColor.controlAccentColor` (`scripts/test.sh` fails on it).
+  accent fill. `legible(color, on:)` moves any (tint of the) colour just far enough to read on a background, and
+  `mix(a, over: b, light, dark:)` is a solid wash; both resolve when drawn, so they follow the setting and the
+  appearance. Never use `NSColor.controlAccentColor` (`scripts/test.sh` fails on it).
 - `SettingsCatalog`: every setting as one typed entry, `SettingKey<Value>` (a `static let` on `AnySettingKey`, named
   in its `all` list): id (also its Settings.json key and the test command's name; a rename goes through `aliases`),
   default, `validate` (clamp or refuse), scope (app; profile and Space later), `built` (an unbuilt one's row shows only
-  in test builds), and its UI: pane, group, title, detail, search keywords, control (toggle, choice with options,
-  colour, custom) and `rare` (under "More…"). Values are `SettingValue`s: Bool, Double, Int, String, String?. The
-  window's rows, `setting <id> <value>`, `settings catalog` and the state log's `settings` dump are generated from
-  it. **Adding a setting:** one entry plus its name in `all`, then the feature reads `RaySettings.shared[.id]` (and
-  `observe(.id)` if it follows changes); `settings-catalog` covers it with no check code.
+  in test builds), and its UI: pane, group, title, detail, search keywords, control (toggle, choice as a pop-up,
+  `segmented` for 2–3 options, `picture` options drawn by a view builder, colour, custom) and `rare` (under its group's
+  "More" line). Values are `SettingValue`s: Bool, Double, Int, String, String?. The window's rows, its search, the
+  command bar's "Settings: …" rows, `setting <id> <value>`, `settings catalog` and the state log's `settings` dump
+  are generated from it. `SettingPane` (same file) lists the panes in sidebar order with title, subtitle, SF Symbol
+  and sidebar section (top, "Your data", "More"); `isShown` hides a pane with no shown row and no content of its own,
+  in Ray.app only. **Adding a setting:** one entry plus its name in `all`, then the feature reads
+  `RaySettings.shared[.id]` (and `observe(.id)` if it follows changes); `settings-catalog` covers it with no check
+  code. `appearanceMode` and `scrollBars` are unbuilt (test builds only) and exercise the picture and segmented
+  controls.
 - `RaySettings`: the settings' values. `shared[.key]` reads, `set(.key, value)` writes, `apply(key, text)` (`default`
   resets any setting) is the one call the window's controls and the test command `setting` both make, and
   `observe(.key) { value in … }` / `observe([keys]) { … }` follow changes (main thread, once per run-loop turn, for as
@@ -59,10 +68,29 @@ publicly or create accounts.
   and keys this build doesn't know are written back as they were. Also holds Ray's own state there as typed fields,
   not settings: the hosts the user zoomed (see Page zoom below), `zoomAdopted`, the Settings window's frame and
   `onboarded`. Private windows read it, never write to it (their zoomed hosts stay in memory).
-- `SettingsWindow`: Ray's own Settings window (⌘, in the Ray menu, `ray://settings/appearance`; one pane, Appearance:
-  grouped rows built from the catalog, `RaySwitch` in the profile's colour, swatches plus a custom colour via
-  NSColorPanel, a zoom popup, an "All Settings…" link to `ray://settings`). `AddressInput.nativeSettingsPane(for:)` recognises the Appearance
-  address: typed or chosen ones open the window and never load; Chrome's page navigating itself there goes back.
+- `SettingsWindow`: Ray's own Settings window, direction G (PLAN.md §13): ⌘, (the pane last shown, else General),
+  `ray://settings/<pane>`, or a command bar row. 780×560, full-size content, the traffic lights over a 210 pt
+  sidebar in Ray's sidebar colour: a search field, the panes as 34 pt rows (icon and name; the selected one in
+  `SettingsColors.selectedFill`/`selectedInk`, a wash and a legible tint of the profile's colour), and "All Chrome
+  Settings…" (chrome://settings) at the bottom. Searching (`SettingsSearch`, after Ardia's `searchMatch.ts`: titles,
+  details, keywords, groups and pane names) replaces the pane list; ↑ ↓ ⏎ and Escape work, and choosing a result
+  opens its pane, scrolls to its row and flashes it (`SettingsFlash`: 120 ms in, 900 ms held, 700 ms out, on a
+  layer). `SettingsPaneView` is one pane: title (22 pt), a grey subtitle, an optional call-to-action strip, then
+  groups (13 pt semibold headers with room for one trailing control, 44 pt rows split by hairlines, no boxes, rare
+  rows under "More") in a column of at most 600 pt with 24 pt sides, scrolling with an overlay scroller.
+  `SettingsControls`: `RaySwitch`, `RaySegmentedControl`, `PictureChoiceControl` (2.5 pt ring and a check, in the
+  profile's colour), `SwatchRow`, `SettingsCallToAction` (not wired to anything yet), `AccentButton`, `LinkButton`.
+  `MiniRayWindow`: a tiny layer-drawn Ray window (sidebar rows, one active or new, the page with or without its
+  address bar, light or dark) for live pictures (`SettingsLivePicture`, beside the minimal URL and new-tab rows) and
+  picture choices. **Pane content:** `SettingsPanes.swift` defines `SettingsPaneContent` (sections placed top, after
+  a group or bottom, with search entries; a call to action; header controls; `.custom` controls; row pictures) and
+  the registry `SettingsPanes.make(_:)`. **Adding a pane's own UI:** one new file (`Host/SettingsPrivacy.swift`,
+  a class conforming to `SettingsPaneContent`) plus its line in the registry, and its `ray://settings/<pane>` line
+  in `AddressInput.nativeSettingsPaths` once it replaces Chrome's page; the window's layout code doesn't change
+  (example: `SettingsAbout.swift`). `AddressInput.nativeSettingsPane(for:)` recognises the Appearance address (and
+  Profiles) plus General, Tabs, Shortcuts and About: typed or chosen ones open the window and never load; Chrome's
+  page navigating itself there goes back. Privacy, Passwords, Autofill, Extensions and Search stay Chrome's pages
+  until their panes land.
   Settings that act elsewhere: minimal URL and loading progress (`PageToolbar`, `PageContainerView.showsProgress`),
   new tab position (`insertToday`), ⌃Tab in recent order (`cycleTabWithControl`, settled by a `flagsChanged` monitor
   when Control is released), ⇧⌘C and ⌘S (`MainMenu.applyShortcutSettings` removes their key equivalents so the page
@@ -143,11 +171,15 @@ publicly or create accounts.
 - `Host/TestCommands.swift`: with `RAY_TEST_COMMANDS=1`, stdin lines drive the real UI (`menu <action>`,
   `type <text>`, `enter`, `escape`) through the same code paths as the keyboard. DevTools can't reach native UI, so
   checks for the sidebar and address field go through this. Settings: `setting <id> <value>` (any catalog id, parsed
-  by its type; same call as the window's controls), `settings open|close|link|press <id> [n]|snap <path>|catalog`
-  (the window's controls are named by setting id in `settingsWindow.controls`), `zoom in|out|reset`, and
+  by its type; same call as the window's controls), `settings open [pane]|close|link|press <id> [n]|snap <path>|catalog`
+  (the window's controls are named by setting id in `settingsWindow.controls`), `settings search <text>`,
+  `settings choose <n>`, `settings key up|down|enter|escape` (the sidebar's search), `settings asapp on|off` (list
+  panes and rows as Ray.app does: unbuilt rows and empty panes hidden), `zoom in|out|reset`, and
   `key tab ctrl keywin` / `key ctrlup` for ⌃Tab walks. `onscreen on|off` puts the hidden window on the shown Space
   (accessory policy, nearly transparent, click-through, not activated) for checks of what pages draw. The state log
-  has `settings`, `settingsWindow`, `menuKeys`, `recentOrder`, `tabCycle`, each tab's `zoom` and `pages.switches`
+  has `settings`, `settingsWindow` (pane, panes listed, rows per pane by id, search results, `flashing` /
+  `lastFlash` / `flashVisible`, the selected row's colours and contrast, live pictures, open "More" lines),
+  `menuKeys`, `recentOrder`, `tabCycle`, each tab's `zoom` and `pages.switches`
   (per display frame of each tab switch: `o` old page, `n` new page drawn, `b` both, `-` blank; check
   `switch-no-blank`).
 - `engine/`: Ray's engine source (Phase B), generated: `tools/engine/sync-engine.sh` renames Ardia's `engine/`

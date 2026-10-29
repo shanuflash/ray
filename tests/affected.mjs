@@ -11,7 +11,7 @@ const pages = ["page-channel", "navigate", "target-blank", "window-open", "backg
 const permissions = ["permission", "permission-allow"];
 const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-switch-to-tab", "bar-history",
   "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions", "bar-search-google", "bar-actions",
-  "bar-ranking"];
+  "bar-ranking", "settings-bar"];
 const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];
 const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still"];
@@ -21,7 +21,8 @@ const pageSurface = ["switch-back-latency", "switch-no-blank", "top-strip-click"
 const otherApps = ["open-from-other-apps", "open-from-other-apps-launch"];
 const settings = ["settings-window", "settings-catalog", "settings-minimal-url", "settings-loading-progress", "settings-theme",
   "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling",
-  "settings-shortcuts", "settings-routes", "settings-trimmed", "settings-persist"];
+  "settings-shortcuts", "settings-routes", "settings-trimmed", "settings-persist", "settings-panes", "settings-search",
+  "settings-bar", "settings-colours"];
 // What a setting's value or its change notice reaches: the settings checks, the welcome (theme, keys), and the
 // features they drive (address bar, loading, site controls' zoom reset, ⇧⌘C, ⌘S, menu keys in the command bar).
 const settingReaders = [...settings, "onboarding", "page-toolbar", "page-loading", "load-sweep-once", "address-fragment",
@@ -44,7 +45,8 @@ export const areas = {
   "Host/EngineCalls.swift": "all",
   "Host/TestEnvironment.swift": "all",
   // Colours only: the checks that read a colour or draw with it.
-  "Host/ProfileColor.swift": ["page-loading", "site-controls", "tile-hover", "drag-to-favorite", "settings-theme", "settings-window"],
+  "Host/ProfileColor.swift": ["page-loading", "site-controls", "tile-hover", "drag-to-favorite", "settings-theme", "settings-window",
+    "settings-colours", "onboarding"],
   "Host/main.swift": "all",
   "Host/Bridging.h": "all",
   "Resources/": "all",
@@ -126,7 +128,18 @@ export const areas = {
   // The settings: storage and observers, and the catalog of what they are (each entry's window row and test command).
   "Host/RaySettings.swift": settingReaders,
   "Host/SettingsCatalog.swift": settingReaders,
-  "Host/SettingsWindow.swift": [...settings, "onboarding"],
+  // The Settings window: its frame and sidebar, the panes' layout, the pane-content registry and each pane's own
+  // content, the controls (RaySwitch and the swatches are also the welcome's), the live pictures and search (whose
+  // matches are also the command bar's "Settings: …" rows).
+  "Host/SettingsWindow.swift": settings,
+  "Host/SettingsPaneView.swift": settings,
+  "Host/SettingsPanes.swift": settings,
+  "Host/SettingsAppearance.swift": ["settings-panes", "settings-window"],
+  "Host/SettingsTabs.swift": ["settings-panes", "settings-window"],
+  "Host/SettingsAbout.swift": ["settings-panes", "settings-search"],
+  "Host/SettingsControls.swift": [...settings, "onboarding"],
+  "Host/MiniRayWindow.swift": ["settings-panes", "settings-window"],
+  "Host/SettingsSearch.swift": [...settings, ...commandBar],
   "Host/ArcImport.swift": ["arc-import", "import-browser"],
   // The first run's welcome and File › Import from Browser… (on the fake importer).
   "Host/Onboarding.swift": ["onboarding"],

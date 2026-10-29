@@ -391,6 +391,7 @@ private final class SuggestionCell: NSTableCellView {
     case .search: detail = suggestion.detail
     case .url, .history: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
     case .action: detail = ""
+    case .setting: detail = suggestion.detail
     }
     if !detail.isEmpty {
       text.append(NSAttributedString(

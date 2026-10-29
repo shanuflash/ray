@@ -1,24 +1,41 @@
 import AppKit
 
-/// Ray's own Settings window (⌘, from the Ray menu; `ray://settings/appearance` opens it too). One pane for now,
-/// Appearance, as grouped rounded rows: a title and a grey description on the left, the control on the right. The rows
-/// come from the settings catalog (`SettingsCatalog.swift`); every control goes through `RaySettings.apply`, the same
-/// call the test command `setting` makes.
+/// Ray's own Settings window (⌘, in the Ray menu; `ray://settings/<pane>`; the command bar's "Settings: …" rows).
+/// Direction G: a sidebar like Ray's own, darker than the content, with a search field on top, the panes as rows of
+/// icon and name (the selected one washed in the profile's colour) in three groups, and "All Chrome Settings…" at the
+/// bottom; the content is one roomy column (`SettingsPaneView`). Searching replaces the pane list with results;
+/// choosing one opens its pane, scrolls to its row and flashes it. Panes and rows come from the catalog
+/// (`SettingsCatalog.swift`) and each pane's `SettingsPaneContent` (`SettingsPanes.swift`).
 final class SettingsWindowController: NSObject, NSWindowDelegate {
   static let shared = SettingsWindowController()
 
-  private static let size = NSSize(width: 640, height: 560)
+  static let size = NSSize(width: 780, height: 560)
+  static let minSize = NSSize(width: 640, height: 440)
+  static let sidebarWidth: CGFloat = 210
 
   private var window: NSWindow?
-  private var pane: AppearancePaneView?
+  private var root: SettingsRootView?
+  private var paneViews: [SettingPane: SettingsPaneView] = [:]
+  private(set) var pane: SettingPane?
+  /// What ⌘, opens next: the pane last shown.
+  private var lastPane: SettingPane?
   private var saveFrame: DispatchWorkItem?
+  private var flashing: String?
+  private var lastFlash: String?
+  private var flashEnd: DispatchWorkItem?
 
   var isOpen: Bool { window?.isVisible ?? false }
   var isKey: Bool { window?.isKeyWindow ?? false }
 
-  /// Brings the window forward, making it first. `pane` names the pane to show (only "appearance" exists).
-  func show(pane name: String = "appearance") {
+  /// Brings the window forward at a pane: `name` is a pane's id (`ray://settings/<name>`); nil is the last pane shown,
+  /// or General. A pane the window doesn't list opens the first one it does.
+  func show(pane name: String? = nil) {
+    let wanted = name.flatMap(SettingPane.init(rawValue:)) ?? lastPane ?? .general
+    let shown = SettingPane.shown
+    let target = shown.contains(wanted) ? wanted : (shown.first ?? .appearance)
     let window = self.window ?? makeWindow()
+    root?.sidebar.reload()
+    select(target)
     if launchedInBackground {
       // A test instance never takes focus: the window goes on screen behind everything.
       window.orderBack(nil)
@@ -26,40 +43,50 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
       NSApp.activate()
       window.makeKeyAndOrderFront(nil)
     }
-    pane?.refresh()
     logAll("settingsWindow")
+  }
+
+  /// Opens the window at a search result or a command bar row: its pane, scrolled to its row, which flashes.
+  func reveal(_ target: SettingsTarget) {
+    show(pane: target.pane.rawValue)
+    guard let anchor = target.anchor else { return }
+    flash(anchor)
   }
 
   func close() { window?.performClose(nil) }
 
   private func makeWindow() -> NSWindow {
     let window = NSWindow(
-      contentRect: NSRect(origin: .zero, size: Self.size), styleMask: [.titled, .closable, .miniaturizable, .resizable],
+      contentRect: NSRect(origin: .zero, size: Self.size),
+      styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
       backing: .buffered, defer: false)
     window.title = "Settings"
+    window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
     window.isReleasedWhenClosed = false
     window.isRestorable = false
     window.animationBehavior = .none
     window.tabbingMode = .disallowed
-    window.minSize = NSSize(width: 520, height: 400)
-    window.backgroundColor = SettingsColors.background
+    window.minSize = Self.minSize
+    window.backgroundColor = SettingsColors.content
     window.delegate = self
-    let pane = AppearancePaneView()
-    let scroll = NSScrollView(frame: NSRect(origin: .zero, size: Self.size))
-    scroll.autoresizingMask = [.width, .height]
-    scroll.drawsBackground = false
-    scroll.hasVerticalScroller = true
-    scroll.autohidesScrollers = true
-    scroll.scrollerStyle = .overlay
-    scroll.documentView = pane
-    pane.frame = NSRect(origin: .zero, size: scroll.contentSize)
-    window.contentView = scroll
-    self.pane = pane
+    for pane in SettingPane.allCases {
+      let view = SettingsPaneView(pane: pane)
+      view.onResize = { [weak self] in self?.root?.fitDocument() }
+      paneViews[pane] = view
+    }
+    let root = SettingsRootView(frame: NSRect(origin: .zero, size: Self.size))
+    root.sidebar.onSelect = { [weak self] pane in self?.select(pane) }
+    root.sidebar.onChoose = { [weak self] target in self?.reveal(target) }
+    root.sidebar.onAllSettings = { [weak self] in self?.openAllSettings() }
+    root.sidebar.onSearch = { [weak self] in self?.logAll("settingsSearch") }
+    window.contentView = root
+    self.root = root
     if let text = RaySettings.shared.windowFrame {
       let frame = NSRectFromString(text)
       // Only where it still lands on a screen, and never smaller than the window's minimum.
-      if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }), frame.width >= 520, frame.height >= 400 {
+      if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }),
+         frame.width >= Self.minSize.width, frame.height >= Self.minSize.height {
         window.setFrame(frame, display: false)
       } else {
         window.center()
@@ -67,23 +94,61 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     } else {
       window.center()
     }
+    NotificationCenter.default.addObserver(self, selector: #selector(accentChanged), name: ProfileColor.didChange, object: nil)
     self.window = window
     return window
   }
 
+  /// Shows a pane in the content column, from its top.
+  private func select(_ pane: SettingPane) {
+    guard let root, let view = paneViews[pane] else { return }
+    if self.pane != pane {
+      self.pane = pane
+      root.show(view)
+    }
+    lastPane = pane
+    root.sidebar.selected = pane
+    logAll("settingsPane")
+  }
+
+  /// Scrolls the current pane to a row (or section) and flashes it.
+  private func flash(_ anchor: String) {
+    guard let root, let pane, let view = paneViews[pane] else { return }
+    // A rare row's "More" opens before the pane is measured.
+    guard let target = view.anchorView(anchor) else { return }
+    root.fitDocument()
+    root.layoutSubtreeIfNeeded()
+    let rect = target.convert(target.bounds, to: view)
+    view.scrollToVisible(rect.insetBy(dx: 0, dy: -48))
+    SettingsFlash.run(on: target)
+    flashing = anchor
+    lastFlash = anchor
+    flashEnd?.cancel()
+    let work = DispatchWorkItem { [weak self] in
+      self?.flashing = nil
+      self?.logAll("settingsFlash")
+    }
+    flashEnd = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + SettingsFlash.duration, execute: work)
+    logAll("settingsFlash")
+  }
+
+  func openAllSettings() { AppController.shared.openChromeSettings() }
+
+  @objc private func accentChanged() {
+    window?.contentView?.setNeedsDisplayRecursively()
+    for view in paneViews.values where view.superview == nil { view.setNeedsDisplayRecursively() }
+    logAll("settingsColour")
+  }
+
   // MARK: NSWindowDelegate
 
-  func windowDidResize(_ notification: Notification) {
-    guard let scroll = window?.contentView as? NSScrollView, let pane else { return }
-    pane.frame.size.width = scroll.contentSize.width
-    pane.needsLayout = true
-    rememberFrameSoon()
-  }
+  func windowDidResize(_ notification: Notification) { rememberFrameSoon() }
 
   func windowDidMove(_ notification: Notification) { rememberFrameSoon() }
 
   func windowWillClose(_ notification: Notification) {
-    pane?.closeColorPanel()
+    paneViews.values.forEach { $0.closeColorPanel() }
     if let window { RaySettings.shared.rememberWindowFrame(window.frame) }
     logAll("settingsWindow")
   }
@@ -106,628 +171,421 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   // MARK: Tests
 
   var debug: [String: Any] {
-    [
-      "open": isOpen, "pane": "appearance",
-      "windows": NSApp.windows.filter { $0.title == "Settings" && $0.isVisible }.count, "frame": window.map { NSStringFromRect($0.frame) } ?? "",
-      "title": window?.title ?? "", "controls": pane?.debug ?? [:],
+    var controls: [String: Any] = ["allSettingsLink": root?.sidebar.linkTitle ?? ""]
+    var rows: [String: Any] = [:]
+    var more: [String: Any] = [:]
+    var pictures: [String: Any] = [:]
+    for pane in SettingPane.allCases {
+      guard let view = paneViews[pane] else { continue }
+      controls.merge(view.controlsDebug) { a, _ in a }
+      pictures.merge(view.picturesDebug) { a, _ in a }
+      if pane.isShown { rows[pane.rawValue] = view.anchors }
+      if !view.moreOpen.isEmpty { more[pane.rawValue] = view.moreOpen }
+    }
+    let colours: [String: Any] = [
+      "fill": ProfileColor.hex(of: SettingsColors.selectedFill),
+      "fillDark": ProfileColor.hex(of: SettingsColors.selectedFill, appearance: .darkAqua),
+      "ink": ProfileColor.hex(of: SettingsColors.selectedInk),
+      "inkDark": ProfileColor.hex(of: SettingsColors.selectedInk, appearance: .darkAqua),
+      "contrast": ProfileColor.contrast(SettingsColors.selectedInk, SettingsColors.selectedFill, appearance: .aqua),
+      "contrastDark": ProfileColor.contrast(SettingsColors.selectedInk, SettingsColors.selectedFill, appearance: .darkAqua),
+      "sidebar": ProfileColor.hex(of: SettingsColors.sidebar),
+      "sidebarDark": ProfileColor.hex(of: SettingsColors.sidebar, appearance: .darkAqua),
+      "content": ProfileColor.hex(of: SettingsColors.content),
+      "contentDark": ProfileColor.hex(of: SettingsColors.content, appearance: .darkAqua),
+      "drawnFill": root?.sidebar.selectedRowFill ?? NSNull(),
+    ]
+    return [
+      "open": isOpen, "pane": pane?.rawValue ?? NSNull(),
+      "panes": SettingPane.shown.map(\.rawValue), "sidebarPanes": root?.sidebar.listedPanes ?? [],
+      "windows": NSApp.windows.filter { $0.title == "Settings" && $0.isVisible }.count,
+      "frame": window.map { NSStringFromRect($0.frame) } ?? "", "title": window?.title ?? "",
+      "controls": controls, "rows": rows, "more": more, "pictures": pictures,
+      "search": root?.sidebar.searchDebug ?? NSNull(),
+      "flashing": flashing ?? NSNull(), "lastFlash": lastFlash ?? NSNull(),
+      "flashVisible": lastFlash.map(anchorVisible) ?? false,
+      "selectedRow": colours, "looksLikeRayApp": AnySettingKey.looksLikeRayApp,
     ]
   }
 
-  /// For tests: draws the window's content into PNGs (light and dark), to look at its design.
+  /// Whether a row of the current pane is inside the visible part of the content.
+  private func anchorVisible(_ anchor: String) -> Bool {
+    guard let pane, let view = paneViews[pane], view.anchors.contains(anchor), let target = view.anchorView(anchor),
+          let clip = view.enclosingScrollView?.contentView else { return false }
+    let rect = target.convert(target.bounds, to: view)
+    return clip.documentVisibleRect.contains(rect)
+  }
+
+  /// For tests: draws the window into PNGs (light and dark), to look at its design.
   func snapshot(to path: String) -> Bool {
-    // The whole pane, not just what the window shows.
-    guard let window, let content = (window.contentView as? NSScrollView)?.documentView ?? window.contentView else { return false }
+    guard let window, let content = window.contentView else { return false }
     for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
       let old = window.appearance
       window.appearance = NSAppearance(named: appearance)
       defer { window.appearance = old }
       content.layoutSubtreeIfNeeded()
+      content.setNeedsDisplayRecursively()
       content.displayIfNeeded()
       guard let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return false }
       content.cacheDisplay(in: content.bounds, to: rep)
-      let image = NSImage(size: content.bounds.size)
-      image.lockFocus()
-      content.effectiveAppearance.performAsCurrentDrawingAppearance {
-        SettingsColors.background.setFill()
-        NSRect(origin: .zero, size: content.bounds.size).fill()
-      }
-      rep.draw(in: NSRect(origin: .zero, size: content.bounds.size))
-      image.unlockFocus()
-      guard let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
-      else { return false }
+      guard let png = rep.representation(using: .png, properties: [:]) else { return false }
       guard (try? png.write(to: URL(fileURLWithPath: path.replacingOccurrences(of: ".png", with: "-\(name).png")))) != nil
       else { return false }
     }
     return true
   }
 
-  /// For tests: the "All Settings…" link.
+  /// For tests: the "All Chrome Settings…" link.
   func pressAllSettings() -> Bool {
-    guard let pane else { return false }
-    pane.openAllSettings()
+    guard window != nil else { return false }
+    openAllSettings()
     return true
   }
 
-  /// For tests: a control pressed as a click would (a switch by name, `swatch <n>`, `zoom <n>`).
+  /// For tests: a control pressed as a click would (a switch by name, `<id> <n>` for a pop-up's item, a segment, a
+  /// picture or a swatch), in whichever pane it is.
   func press(_ words: [String]) -> Bool {
-    pane?.press(words) ?? false
+    for view in paneViews.values where view.press(words) { return true }
+    return false
+  }
+
+  /// For tests: `settings open <pane>`; false for a name that is no pane.
+  func open(paneNamed name: String) -> Bool {
+    guard SettingPane(rawValue: name) != nil else { return false }
+    show(pane: name)
+    return true
+  }
+
+  /// For tests: types into the sidebar's search field, as the keyboard would.
+  func search(_ text: String) -> Bool {
+    if window == nil { show() }
+    root?.sidebar.type(text)
+    return true
+  }
+
+  /// For tests: picks search result `index` as a click would.
+  func chooseResult(_ index: Int) -> Bool { root?.sidebar.choose(index) ?? false }
+
+  /// For tests: ↑ ↓ ⏎ or Escape in the search field.
+  func searchKey(_ name: String) -> Bool {
+    let selector: Selector
+    switch name {
+    case "up": selector = #selector(NSResponder.moveUp(_:))
+    case "down": selector = #selector(NSResponder.moveDown(_:))
+    case "enter": selector = #selector(NSResponder.insertNewline(_:))
+    case "escape": selector = #selector(NSResponder.cancelOperation(_:))
+    default: return false
+    }
+    return root?.sidebar.command(selector) ?? false
+  }
+
+  /// For tests: lists panes and rows as Ray.app would (unbuilt rows and empty panes hidden), or as test builds do.
+  func lookLikeRayApp(_ on: Bool) {
+    AnySettingKey.looksLikeRayApp = on
+    // Rows are built once: rebuild the panes so they follow.
+    guard window != nil else { return logAll("settingsWindow") }
+    for pane in SettingPane.allCases {
+      let view = SettingsPaneView(pane: pane)
+      view.onResize = { [weak self] in self?.root?.fitDocument() }
+      paneViews[pane] = view
+    }
+    pane = nil
+    root?.sidebar.reload()
+    if isOpen { show(pane: lastPane?.rawValue) }
+    logAll("settingsWindow")
   }
 }
 
-enum SettingsColors {
-  private static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
-    NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
-  }
+// MARK: Root
 
-  static let background = SidebarColors.background
-  /// The rounded group behind a set of rows: the sidebar's lifted white, and a step above the dark window.
-  static let group = dynamic(light: NSColor(white: 1, alpha: 1), dark: NSColor(white: 0.15, alpha: 1))
-  static let separator = PanelColors.border
-  static let switchOff = dynamic(light: NSColor(white: 0, alpha: 0.2), dark: NSColor(white: 1, alpha: 0.25))
-}
-
-// MARK: Pane
-
-/// Settings › Appearance. Its rows come from the catalog (`SettingsCatalog.swift`): every shown setting of the pane,
-/// in groups, each with the control its entry names.
-private final class AppearancePaneView: NSView {
-  private static let margin: CGFloat = 28
-  private static let maxWidth: CGFloat = 640
-
-  /// A setting's row and its control, as the window built it.
-  private enum Control {
-    case toggle(RaySwitch)
-    case choice(NSPopUpButton)
-    case colour(SwatchRow)
-  }
-
-  private let heading = NSTextField(labelWithString: "Appearance")
-  private var sections: [(header: NSTextField?, group: SettingsGroupView)] = []
-  private let allSettings = LinkButton(title: "All Settings…")
-  private let allSettingsNote = NSTextField(wrappingLabelWithString: "Chrome's other pages: privacy, passwords, extensions and more.")
-
-  private var controls: [(key: AnySettingKey, control: Control)] = []
-  private var settingsObservation: SettingsObservation?
-  /// The setting the colour panel is choosing for.
-  private var colourKey: AnySettingKey?
-
-  override var isFlipped: Bool { true }
+/// The window's content: the sidebar on the left (under the traffic lights) and the pane's scroll view.
+private final class SettingsRootView: NSView {
+  let sidebar = SettingsSidebarView()
+  private let scroll = NSScrollView()
 
   override init(frame: NSRect) {
     super.init(frame: frame)
-    heading.font = .systemFont(ofSize: 22, weight: .semibold)
-    addSubview(heading)
-
-    var group: SettingGroup?
-    var rows: [SettingRowView] = []
-    for key in AnySettingKey.all where key.ui.pane == .appearance && key.shown {
-      if let current = group, current != key.ui.group {
-        addSection(current.title, rows)
-        rows = []
-      }
-      group = key.ui.group
-      rows.append(row(for: key))
-    }
-    if let group { addSection(group.title, rows) }
-
-    allSettings.onClick = { [weak self] in self?.openAllSettings() }
-    allSettingsNote.font = .systemFont(ofSize: 12)
-    allSettingsNote.textColor = .secondaryLabelColor
-    addSubview(allSettings)
-    addSubview(allSettingsNote)
-
-    settingsObservation = RaySettings.shared.observe(AnySettingKey.all) { [weak self] in self?.refresh() }
-    NotificationCenter.default.addObserver(self, selector: #selector(accentChanged), name: ProfileColor.didChange, object: nil)
-    refresh()
+    wantsLayer = true
+    scroll.drawsBackground = false
+    scroll.hasVerticalScroller = true
+    scroll.autohidesScrollers = true
+    scroll.scrollerStyle = .overlay
+    scroll.automaticallyAdjustsContentInsets = false
+    addSubview(scroll)
+    addSubview(sidebar)
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
-  deinit { NotificationCenter.default.removeObserver(self) }
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+  override func updateLayer() { layer?.backgroundColor = SettingsColors.content.cgColor }
 
-  /// A setting's row: a switch or a pop-up beside its text, or the colour swatches under it. Every control sets the
-  /// setting through `RaySettings.apply`, as the test command `setting` does.
-  private func row(for key: AnySettingKey) -> SettingRowView {
-    let ui = key.ui
-    switch ui.control {
-    case .toggle:
-      let control = RaySwitch()
-      control.setAccessibilityLabel(ui.title)
-      control.onChange = { on in RaySettings.shared.apply(key, on ? "on" : "off") }
-      controls.append((key, .toggle(control)))
-      return SettingRowView(title: ui.title, detail: ui.detail, control: control)
-    case .choice(let options):
-      let control = NSPopUpButton(frame: .zero, pullsDown: false)
-      for option in options {
-        control.addItem(withTitle: option.title)
-        control.lastItem?.representedObject = option.value
+  func show(_ pane: SettingsPaneView) {
+    scroll.documentView = pane
+    fitDocument()
+    pane.scroll(.zero)
+  }
+
+  /// The document is as wide as the scroll view and as tall as its pane (at least the scroll view).
+  func fitDocument() {
+    guard let pane = scroll.documentView as? SettingsPaneView else { return }
+    let width = scroll.contentSize.width
+    pane.frame = NSRect(x: 0, y: pane.frame.minY, width: width, height: max(scroll.contentSize.height, pane.height(forWidth: width)))
+    pane.needsLayout = true
+  }
+
+  override func layout() {
+    super.layout()
+    let width = SettingsWindowController.sidebarWidth
+    sidebar.frame = NSRect(x: 0, y: 0, width: width, height: bounds.height)
+    scroll.frame = NSRect(x: width, y: 0, width: bounds.width - width, height: bounds.height)
+    fitDocument()
+  }
+}
+
+// MARK: Sidebar
+
+/// The window's sidebar: search on top, the panes (or search results while there is a query), and the link to
+/// Chrome's own settings at the bottom.
+private final class SettingsSidebarView: NSView, NSTextFieldDelegate {
+  var onSelect: ((SettingPane) -> Void)?
+  var onChoose: ((SettingsTarget) -> Void)?
+  var onAllSettings: (() -> Void)?
+  var onSearch: (() -> Void)?
+  var selected: SettingPane? {
+    didSet { navRows.forEach { $0.isSelected = $0.pane == selected } }
+  }
+
+  private let searchField = SettingsSearchField()
+  private let scroll = NSScrollView()
+  private let list = FlippedView()
+  private let link = LinkButton(title: "All Chrome Settings…")
+  private var navRows: [SettingsNavRow] = []
+  private var headers: [NSTextField] = []
+  private var resultRows: [SettingsResultRow] = []
+  private var results: [SettingsTarget] = []
+  private var selectedResult = 0
+  private let empty = settingsLabel("No Results", size: 13, weight: .medium, color: .secondaryLabelColor)
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    searchField.field.delegate = self
+    searchField.onClear = { [weak self] in self?.refreshResults() }
+    scroll.drawsBackground = false
+    scroll.hasVerticalScroller = true
+    scroll.autohidesScrollers = true
+    scroll.scrollerStyle = .overlay
+    scroll.automaticallyAdjustsContentInsets = false
+    scroll.documentView = list
+    link.background = SettingsColors.sidebar
+    link.font = .systemFont(ofSize: 12, weight: .medium)
+    link.onClick = { [weak self] in self?.onAllSettings?() }
+    empty.alignment = .center
+    addSubview(searchField)
+    addSubview(scroll)
+    addSubview(link)
+    reload()
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+  override func updateLayer() { layer?.backgroundColor = SettingsColors.sidebar.cgColor }
+
+  var linkTitle: String { link.title }
+  var listedPanes: [String] { query.isEmpty ? navRows.map(\.pane.rawValue) : [] }
+  private var query: String { searchField.field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+  /// The selected row's fill as drawn now (for the state log).
+  var selectedRowFill: String? {
+    guard let row = navRows.first(where: \.isSelected), let color = row.layer?.backgroundColor,
+          let ns = NSColor(cgColor: color) else { return nil }
+    return ProfileColor.hex(of: ns)
+  }
+
+  /// The pane list again, if the panes shown changed.
+  func reload() {
+    guard navRows.map(\.pane) != SettingPane.shown else { return }
+    navRows.forEach { $0.removeFromSuperview() }
+    headers.forEach { $0.removeFromSuperview() }
+    navRows = []
+    headers = []
+    var section: SettingPane.Section?
+    for pane in SettingPane.shown {
+      if pane.section != section, let title = pane.section.title {
+        let header = settingsLabel(title, size: 11, weight: .semibold, color: .tertiaryLabelColor)
+        header.identifier = NSUserInterfaceItemIdentifier(pane.section.rawValue)
+        headers.append(header)
+        list.addSubview(header)
       }
-      control.target = self
-      control.action = #selector(choiceChosen(_:))
-      control.setAccessibilityLabel(ui.title)
-      controls.append((key, .choice(control)))
-      return SettingRowView(title: ui.title, detail: ui.detail, control: control)
-    case .colour:
-      let swatches = SwatchRow()
-      swatches.onChoose = { hex in RaySettings.shared.apply(key, hex ?? "default") }
-      swatches.onCustom = { [weak self] in self?.openColorPanel(for: key) }
-      controls.append((key, .colour(swatches)))
-      return SettingRowView(title: ui.title, detail: ui.detail, accessory: swatches)
-    case .custom:
-      // No setting has a view of its own yet; one that does builds it here.
-      return SettingRowView(title: ui.title, detail: ui.detail)
+      section = pane.section
+      let row = SettingsNavRow(pane: pane)
+      row.isSelected = pane == selected
+      row.onClick = { [weak self] in self?.onSelect?(pane) }
+      navRows.append(row)
+      list.addSubview(row)
     }
+    refreshResults()
   }
 
-  private func addSection(_ title: String?, _ rows: [SettingRowView]) {
-    let header = title.map { text -> NSTextField in
-      let label = NSTextField(labelWithString: text)
-      label.font = .systemFont(ofSize: 12, weight: .semibold)
-      label.textColor = .secondaryLabelColor
-      addSubview(label)
-      return label
+  // MARK: Search
+
+  func controlTextDidChange(_ notification: Notification) { refreshResults() }
+
+  func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+    command(selector)
+  }
+
+  /// ↑ ↓ move through the results, ⏎ opens the one picked, Escape clears the search.
+  @discardableResult
+  func command(_ selector: Selector) -> Bool {
+    switch selector {
+    case #selector(NSResponder.moveUp(_:)):
+      guard !results.isEmpty else { return false }
+      pick(max(0, selectedResult - 1))
+    case #selector(NSResponder.moveDown(_:)):
+      guard !results.isEmpty else { return false }
+      pick(min(results.count - 1, selectedResult + 1))
+    case #selector(NSResponder.insertNewline(_:)):
+      guard results.indices.contains(selectedResult) else { return false }
+      onChoose?(results[selectedResult])
+    case #selector(NSResponder.cancelOperation(_:)):
+      guard !searchField.field.stringValue.isEmpty else { return false }
+      searchField.field.stringValue = ""
+      refreshResults()
+    default: return false
     }
-    let group = SettingsGroupView(rows: rows)
-    addSubview(group)
-    sections.append((header, group))
+    return true
   }
 
-  /// Shows the settings as they are now.
-  func refresh() {
-    let settings = RaySettings.shared
-    for (key, control) in controls {
-      let text = settings.text(of: key)
-      switch control {
-      case .toggle(let toggle): toggle.isOn = text == "on"
-      case .choice(let popup):
-        if let index = popup.itemArray.firstIndex(where: { $0.representedObject as? String == text }) { popup.selectItem(at: index) }
-      case .colour(let swatches): swatches.selection = text == "default" ? nil : text
-      }
+  /// For tests: the text typed, as the keyboard would leave it.
+  func type(_ text: String) {
+    searchField.field.stringValue = text
+    refreshResults()
+  }
+
+  func choose(_ index: Int) -> Bool {
+    guard results.indices.contains(index) else { return false }
+    pick(index)
+    onChoose?(results[index])
+    return true
+  }
+
+  private func pick(_ index: Int) {
+    selectedResult = index
+    for (offset, row) in resultRows.enumerated() { row.isSelected = offset == index }
+    if resultRows.indices.contains(index) { list.scrollToVisible(resultRows[index].frame.insetBy(dx: 0, dy: -8)) }
+    onSearch?()
+  }
+
+  private func refreshResults() {
+    resultRows.forEach { $0.removeFromSuperview() }
+    resultRows = []
+    results = query.isEmpty ? [] : SettingsSearch.search(query)
+    selectedResult = 0
+    for (index, target) in results.enumerated() {
+      let row = SettingsResultRow(target: target)
+      row.isSelected = index == 0
+      row.onClick = { [weak self] in _ = self?.choose(index) }
+      resultRows.append(row)
+      list.addSubview(row)
     }
+    let searching = !query.isEmpty
+    navRows.forEach { $0.isHidden = searching }
+    headers.forEach { $0.isHidden = searching }
+    if searching, results.isEmpty { list.addSubview(empty) } else { empty.removeFromSuperview() }
+    searchField.showsClear = searching
+    needsLayout = true
+    onSearch?()
   }
 
-  @objc private func accentChanged() { setNeedsDisplayRecursively() }
-
-  @objc private func choiceChosen(_ popup: NSPopUpButton) {
-    guard let entry = controls.first(where: { if case .choice(let control) = $0.control { return control === popup } else { return false } }),
-          let value = popup.selectedItem?.representedObject as? String else { return }
-    RaySettings.shared.apply(entry.key, value)
-  }
-
-  func openAllSettings() { AppController.shared.openChromeSettings() }
-
-  /// For tests: `<id>` presses a switch, `<id> <n>` picks a pop-up's item or a colour's swatch.
-  func press(_ words: [String]) -> Bool {
-    guard let id = words.first, let entry = controls.first(where: { $0.key.id == id }) else { return false }
-    let index = words.count == 2 ? Int(words[1]) : nil
-    switch entry.control {
-    case .toggle(let toggle):
-      guard words.count == 1 else { return false }
-      toggle.press()
-      return true
-    case .choice(let popup):
-      guard let index, index >= 0, index < popup.numberOfItems else { return false }
-      popup.selectItem(at: index)
-      choiceChosen(popup)
-      return true
-    case .colour(let swatches):
-      guard let index else { return false }
-      return swatches.press(index: index)
-    }
-  }
-
-  // MARK: Colour panel
-
-  /// The shared colour panel is also what a page's colour input uses: only close it if Settings opened it.
-  private var ownsColorPanel = false
-
-  private func openColorPanel(for key: AnySettingKey) {
-    let panel = NSColorPanel.shared
-    ownsColorPanel = true
-    colourKey = key
-    panel.showsAlpha = false
-    panel.setTarget(self)
-    panel.setAction(#selector(colorPanelChanged(_:)))
-    if let rgb = ProfileColor.parse(ProfileColor.hex(of: ProfileColor.accent)) {
-      panel.color = NSColor(srgbRed: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1)
-    }
-    panel.orderFront(nil)
-  }
-
-  @objc private func colorPanelChanged(_ panel: NSColorPanel) {
-    guard let key = colourKey, let rgb = panel.color.usingColorSpace(.sRGB) else { return }
-    func byte(_ v: CGFloat) -> Int { Int((min(1, max(0, v)) * 255).rounded()) }
-    RaySettings.shared.apply(key, String(format: "#%02X%02X%02X", byte(rgb.redComponent), byte(rgb.greenComponent), byte(rgb.blueComponent)))
-  }
-
-  func closeColorPanel() {
-    guard ownsColorPanel else { return }
-    ownsColorPanel = false
-    let panel = NSColorPanel.shared
-    panel.setTarget(nil)
-    panel.setAction(nil)
-    panel.close()
+  var searchDebug: [String: Any] {
+    [
+      "query": searchField.field.stringValue, "selected": results.isEmpty ? -1 : selectedResult,
+      "results": results.map { ["id": $0.id, "kind": $0.kind.rawValue, "pane": $0.pane.rawValue, "title": $0.title] },
+    ]
   }
 
   // MARK: Layout
 
   override func layout() {
     super.layout()
-    let margin = Self.margin
-    let width = min(Self.maxWidth, bounds.width) - margin * 2
-    let x = max(margin, (bounds.width - width) / 2)
-    var y: CGFloat = 20
-    let headingHeight = ceil(heading.intrinsicContentSize.height)
-    heading.frame = NSRect(x: x, y: y, width: width, height: headingHeight)
-    y += headingHeight + 16
-    for (header, group) in sections {
-      if let header {
-        let height = ceil(header.intrinsicContentSize.height)
-        header.frame = NSRect(x: x + 4, y: y, width: width - 8, height: height)
-        y += height + 6
-      }
-      let height = group.fittingHeight(width: width)
-      group.frame = NSRect(x: x, y: y, width: width, height: height)
-      y += height + 22
-    }
-    let linkSize = allSettings.intrinsicContentSize
-    allSettings.frame = NSRect(x: x + 4, y: y - 6, width: linkSize.width, height: linkSize.height)
-    let noteHeight = textHeight(allSettingsNote, width: width - 8)
-    allSettingsNote.frame = NSRect(x: x + 4, y: allSettings.frame.maxY + 2, width: width - 8, height: noteHeight)
-    y = allSettingsNote.frame.maxY + 28
-    if abs(frame.height - y) > 0.5, let scroll = enclosingScrollView {
-      frame.size.height = max(y, scroll.contentSize.height)
-    }
-  }
-
-  // MARK: State log
-
-  /// Each control by its setting's id: a switch's state, a pop-up's title (`<id>Options`: all of them), a colour's
-  /// selection (`<id>Swatches`, `<id>Selected`: how many, and which).
-  var debug: [String: Any] {
-    var out: [String: Any] = ["allSettingsLink": allSettings.title]
-    for (key, control) in controls {
-      switch control {
-      case .toggle(let toggle): out[key.id] = toggle.isOn
-      case .choice(let popup):
-        out[key.id] = popup.titleOfSelectedItem ?? ""
-        out["\(key.id)Options"] = popup.itemTitles
-      case .colour(let swatches):
-        out[key.id] = swatches.selection ?? "default"
-        out["\(key.id)Swatches"] = swatches.count
-        out["\(key.id)Selected"] = swatches.selectedIndex
-      }
-    }
-    return out
-  }
-}
-
-func textHeight(_ label: NSTextField, width: CGFloat) -> CGFloat {
-  guard !label.stringValue.isEmpty, let cell = label.cell else { return 0 }
-  return ceil(cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: max(10, width), height: 10_000)).height)
-}
-
-extension NSView {
-  /// Every view in the tree redraws (accent colours that views read in `updateLayer` or `draw`).
-  func setNeedsDisplayRecursively() {
-    needsDisplay = true
-    subviews.forEach { $0.setNeedsDisplayRecursively() }
-  }
-}
-
-// MARK: Rows
-
-/// A rounded group of rows with a hairline between them.
-private final class SettingsGroupView: NSView {
-  private let rows: [SettingRowView]
-  private var lines: [NSView] = []
-
-  init(rows: [SettingRowView]) {
-    self.rows = rows
-    super.init(frame: .zero)
-    wantsLayer = true
-    layer?.cornerRadius = 10
-    layer?.cornerCurve = .continuous
-    for (index, row) in rows.enumerated() {
-      addSubview(row)
-      if index > 0 {
-        let line = NSView()
-        line.wantsLayer = true
-        lines.append(line)
-        addSubview(line)
-      }
-    }
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override var isFlipped: Bool { true }
-  override var wantsUpdateLayer: Bool { true }
-
-  override func updateLayer() {
-    layer?.backgroundColor = SettingsColors.group.cgColor
-    layer?.borderColor = SettingsColors.separator.cgColor
-    layer?.borderWidth = 1
-    for line in lines { line.layer?.backgroundColor = SettingsColors.separator.cgColor }
-  }
-
-  func fittingHeight(width: CGFloat) -> CGFloat {
-    rows.reduce(0) { $0 + $1.fittingHeight(width: width) }
-  }
-
-  override func layout() {
-    super.layout()
+    let inset: CGFloat = 10
+    // Under the traffic lights.
+    searchField.frame = NSRect(x: inset, y: 42, width: bounds.width - inset * 2, height: 30)
+    let linkSize = link.intrinsicContentSize
+    link.frame = NSRect(x: inset + 10, y: bounds.height - 18 - linkSize.height, width: linkSize.width, height: linkSize.height)
+    scroll.frame = NSRect(x: 0, y: 82, width: bounds.width, height: max(0, link.frame.minY - 12 - 82))
+    let width = scroll.contentSize.width
     var y: CGFloat = 0
-    for (index, row) in rows.enumerated() {
-      let height = row.fittingHeight(width: bounds.width)
-      row.frame = NSRect(x: 0, y: y, width: bounds.width, height: height)
-      if index > 0 { lines[index - 1].frame = NSRect(x: 16, y: y, width: bounds.width - 32, height: 1) }
-      y += height
+    if query.isEmpty {
+      var headerIndex = 0
+      var section: SettingPane.Section?
+      for row in navRows {
+        if row.pane.section != section, row.pane.section.title != nil, headerIndex < headers.count {
+          y += 12
+          let header = headers[headerIndex]
+          let height = ceil(header.intrinsicContentSize.height)
+          header.frame = NSRect(x: inset + 10, y: y, width: width - inset * 2 - 10, height: height)
+          y += height + 6
+          headerIndex += 1
+        }
+        section = row.pane.section
+        row.frame = NSRect(x: inset, y: y, width: width - inset * 2, height: 34)
+        y += 34 + 1
+      }
+    } else if results.isEmpty {
+      empty.frame = NSRect(x: inset, y: 24, width: width - inset * 2, height: ceil(empty.intrinsicContentSize.height))
+      y = empty.frame.maxY
+    } else {
+      for row in resultRows {
+        row.frame = NSRect(x: inset, y: y, width: width - inset * 2, height: 42)
+        y += 42 + 1
+      }
     }
+    list.frame = NSRect(x: 0, y: 0, width: width, height: max(y + 8, scroll.contentSize.height))
   }
 }
 
-/// One setting: title and grey description on the left, a control on the right, or a wider accessory underneath.
-private final class SettingRowView: NSView {
-  private static let padding = NSEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
-
-  private let titleLabel: NSTextField
-  private let detailLabel: NSTextField
-  private let control: NSView?
-  private let accessory: NSView?
-
-  init(title: String, detail: String, control: NSView? = nil, accessory: NSView? = nil) {
-    titleLabel = NSTextField(wrappingLabelWithString: title)
-    detailLabel = NSTextField(wrappingLabelWithString: detail)
-    self.control = control
-    self.accessory = accessory
-    super.init(frame: .zero)
-    titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
-    detailLabel.font = .systemFont(ofSize: 12)
-    detailLabel.textColor = .secondaryLabelColor
-    for label in [titleLabel, detailLabel] {
-      label.isSelectable = false
-      label.cell?.wraps = true
-      label.cell?.truncatesLastVisibleLine = false
-    }
-    addSubview(titleLabel)
-    addSubview(detailLabel)
-    if let control { addSubview(control) }
-    if let accessory { addSubview(accessory) }
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override var isFlipped: Bool { true }
-
-  private var controlSize: NSSize { control.map { $0.fittingSize } ?? .zero }
-
-  private func textWidth(_ width: CGFloat) -> CGFloat {
-    let inset = Self.padding.left + Self.padding.right
-    return width - inset - (control == nil ? 0 : controlSize.width + 16)
-  }
-
-  func fittingHeight(width: CGFloat) -> CGFloat {
-    let text = textWidth(width)
-    let title = textHeight(titleLabel, width: text), detail = textHeight(detailLabel, width: text)
-    let block = title + (detail > 0 ? 2 + detail : 0)
-    var height = Self.padding.top + max(block, controlSize.height) + Self.padding.bottom
-    if let accessory { height += 10 + accessory.fittingSize.height }
-    return max(height, 52)
-  }
-
-  override func layout() {
-    super.layout()
-    let pad = Self.padding
-    let text = textWidth(bounds.width)
-    let title = textHeight(titleLabel, width: text), detail = textHeight(detailLabel, width: text)
-    let block = title + (detail > 0 ? 2 + detail : 0)
-    let top = accessory == nil ? (bounds.height - block) / 2 : pad.top
-    titleLabel.frame = NSRect(x: pad.left, y: top.rounded(), width: text, height: title)
-    detailLabel.frame = NSRect(x: pad.left, y: (top + title + 2).rounded(), width: text, height: detail)
-    if let control {
-      let size = controlSize
-      // Centred on the row, or on the text above an accessory.
-      let middle = accessory == nil ? bounds.height / 2 : pad.top + max(block, size.height) / 2
-      control.frame = NSRect(x: bounds.width - pad.right - size.width, y: (middle - size.height / 2).rounded(),
-                             width: size.width, height: size.height)
-    }
-    if let accessory {
-      let size = accessory.fittingSize
-      accessory.frame = NSRect(x: pad.left, y: (top + block + 10).rounded(), width: bounds.width - pad.left - pad.right, height: size.height)
-    }
-  }
-}
-
-// MARK: Controls
-
-/// A switch in the profile's colour (NSSwitch follows the system accent instead).
-final class RaySwitch: NSControl {
-  var onChange: ((Bool) -> Void)?
-  var isOn = false {
-    didSet {
-      guard oldValue != isOn else { return }
-      placeKnob(animated: window != nil)
-      needsDisplay = true
-      NSAccessibility.post(element: self, notification: .valueChanged)
-    }
-  }
-  private let knob = CALayer()
-
-  override init(frame: NSRect) {
-    super.init(frame: NSRect(x: 0, y: 0, width: 38, height: 22))
-    wantsLayer = true
-    layer?.cornerRadius = 11
-    knob.backgroundColor = NSColor.white.cgColor
-    knob.cornerRadius = 9
-    knob.shadowColor = NSColor.black.cgColor
-    knob.shadowOpacity = 0.25
-    knob.shadowRadius = 1.5
-    knob.shadowOffset = CGSize(width: 0, height: -0.5)
-    layer?.addSublayer(knob)
-    setAccessibilityRole(.checkBox)
-    focusRingType = .exterior
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override var isFlipped: Bool { true }
-  override var intrinsicContentSize: NSSize { NSSize(width: 38, height: 22) }
-  override var fittingSize: NSSize { intrinsicContentSize }
-  override var wantsUpdateLayer: Bool { true }
-  override var acceptsFirstResponder: Bool { true }
-  override var mouseDownCanMoveWindow: Bool { false }
-
-  override func updateLayer() {
-    layer?.backgroundColor = (isOn ? ProfileColor.accent : SettingsColors.switchOff).cgColor
-    placeKnob(animated: false)
-  }
-
-  override func layout() {
-    super.layout()
-    placeKnob(animated: false)
-  }
-
-  private func placeKnob(animated: Bool) {
-    CATransaction.begin()
-    CATransaction.setDisableActions(!animated)
-    CATransaction.setAnimationDuration(0.16)
-    knob.frame = CGRect(x: isOn ? bounds.width - 20 : 2, y: 2, width: 18, height: 18)
-    CATransaction.commit()
-  }
-
-  override func drawFocusRingMask() {
-    NSBezierPath(roundedRect: bounds, xRadius: 11, yRadius: 11).fill()
-  }
-
-  override var focusRingMaskBounds: NSRect { bounds }
-
-  override func mouseDown(with event: NSEvent) { press() }
-
-  override func keyDown(with event: NSEvent) {
-    if event.characters == " " { press() } else { super.keyDown(with: event) }
-  }
-
-  /// A click or the space bar.
-  func press() {
-    isOn.toggle()
-    onChange?(isOn)
-  }
-
-  override func accessibilityValue() -> Any? { NSNumber(value: isOn ? 1 : 0) }
-  override func accessibilityPerformPress() -> Bool {
-    press()
-    return true
-  }
-}
-
-/// The row of colour choices: the default, the presets, and a custom colour that opens the colour panel. Also the
-/// onboarding's colour step.
-final class SwatchRow: NSView {
-  var onChoose: ((String?) -> Void)?
-  var onCustom: (() -> Void)?
-  private var buttons: [SwatchButton] = []
-  private let custom = SwatchButton(hex: nil, isCustom: true, name: "Custom Colour…")
-
-  var count: Int { buttons.count + 1 }
-
-  /// The chosen colour as `#RRGGBB`, nil for the default.
-  var selection: String? {
-    didSet { updateSelection() }
-  }
-
-  func press(index: Int) -> Bool {
-    guard index >= 0, index < buttons.count else { return false }
-    buttons[index].onClick?()
-    return true
-  }
-
-  var selectedIndex: Int {
-    if let index = buttons.firstIndex(where: { $0.isSelected }) { return index }
-    return custom.isSelected ? buttons.count : -1
-  }
-
-  override var isFlipped: Bool { true }
-  override var fittingSize: NSSize { NSSize(width: 340, height: 28) }
+/// The search field: the sidebar's fill, a magnifier, and a clear button while there is text.
+private final class SettingsSearchField: NSView {
+  let field = NSTextField()
+  private let icon = NSImageView()
+  private let clear = NSButton()
+  var showsClear = false { didSet { clear.isHidden = !showsClear } }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
-    let entries: [(String?, String)] = [(nil, "Lavender")] + ProfileColor.presets.map { ($0.hex as String?, $0.name) }
-    for (hex, name) in entries {
-      let button = SwatchButton(hex: hex, isCustom: false, name: name)
-      button.onClick = { [weak self] in self?.onChoose?(hex) }
-      buttons.append(button)
-      addSubview(button)
-    }
-    custom.onClick = { [weak self] in self?.onCustom?() }
-    addSubview(custom)
-    updateSelection()
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  private func updateSelection() {
-    var matched = false
-    for button in buttons {
-      button.isSelected = button.hex == selection
-      matched = matched || button.isSelected
-    }
-    // A colour that isn't one of the swatches is the custom one.
-    custom.hex = matched ? nil : selection
-    custom.isSelected = !matched && selection != nil
-  }
-
-  override func layout() {
-    super.layout()
-    let size: CGFloat = 28, gap: CGFloat = 10
-    for (index, button) in (buttons + [custom]).enumerated() {
-      button.frame = NSRect(x: CGFloat(index) * (size + gap), y: 0, width: size, height: size)
-    }
-  }
-}
-
-/// One round colour choice; selected, it has a ring and a check mark in the colour that reads best on it.
-private final class SwatchButton: NSControl {
-  /// `#RRGGBB`; nil is the lavender, or for the custom button, no colour of its own yet.
-  var hex: String? {
-    didSet { if oldValue != hex { needsDisplay = true } }
-  }
-  let isCustom: Bool
-  var onClick: (() -> Void)?
-  var isSelected = false {
-    didSet { if oldValue != isSelected { needsDisplay = true } }
-  }
-  private let fill = CALayer()
-  private let rainbow = CAGradientLayer()
-  private let ring = CAShapeLayer()
-  private let check = NSImageView()
-
-  init(hex: String?, isCustom: Bool, name: String) {
-    self.hex = hex
-    self.isCustom = isCustom
-    super.init(frame: .zero)
     wantsLayer = true
-    toolTip = name
-    setAccessibilityRole(.radioButton)
-    setAccessibilityLabel(name)
-    fill.cornerCurve = .continuous
-    layer?.addSublayer(fill)
-    if isCustom {
-      rainbow.type = .conic
-      rainbow.startPoint = CGPoint(x: 0.5, y: 0.5)
-      rainbow.endPoint = CGPoint(x: 0.5, y: 0)
-      rainbow.colors = [0xFF5E5B, 0xFFD25E, 0x6BD968, 0x5ED2FF, 0x7B6BFF, 0xE56BFF, 0xFF5E5B].map {
-        NSColor(srgbRed: CGFloat(($0 >> 16) & 0xFF) / 255, green: CGFloat(($0 >> 8) & 0xFF) / 255, blue: CGFloat($0 & 0xFF) / 255, alpha: 1).cgColor
-      }
-      layer?.addSublayer(rainbow)
-    }
-    ring.fillColor = nil
-    ring.lineWidth = 2
-    layer?.addSublayer(ring)
-    check.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)
-    check.symbolConfiguration = .init(pointSize: 11, weight: .bold)
-    check.imageScaling = .scaleNone
-    addSubview(check)
+    layer?.cornerRadius = 8
+    layer?.cornerCurve = .continuous
+    icon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+    icon.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
+    icon.contentTintColor = .tertiaryLabelColor
+    field.isBezeled = false
+    field.isBordered = false
+    field.drawsBackground = false
+    field.focusRingType = .none
+    field.font = .systemFont(ofSize: 13)
+    field.placeholderString = "Search"
+    field.cell?.isScrollable = true
+    field.cell?.wraps = false
+    field.setAccessibilityLabel("Search settings")
+    clear.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Clear")
+    clear.isBordered = false
+    clear.bezelStyle = .regularSquare
+    clear.imagePosition = .imageOnly
+    clear.contentTintColor = .tertiaryLabelColor
+    clear.refusesFirstResponder = true
+    clear.target = self
+    clear.action = #selector(clearText)
+    clear.isHidden = true
+    addSubview(icon)
+    addSubview(field)
+    addSubview(clear)
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -735,80 +593,139 @@ private final class SwatchButton: NSControl {
   override var isFlipped: Bool { true }
   override var wantsUpdateLayer: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
-  override var acceptsFirstResponder: Bool { true }
-  override func hitTest(_ point: NSPoint) -> NSView? { bounds.contains(convert(point, from: superview)) ? self : nil }
+  override func updateLayer() { layer?.backgroundColor = SettingsColors.track.cgColor }
 
-  /// What shows inside the ring: the colour itself (the lavender follows the appearance).
-  private var color: NSColor? {
-    if let hex, let rgb = ProfileColor.parse(hex) {
-      return NSColor(srgbRed: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1)
-    }
-    return isCustom ? nil : ProfileColor.lavender
+  override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
+
+  var onClear: (() -> Void)?
+
+  @objc private func clearText() {
+    field.stringValue = ""
+    onClear?()
   }
+
+  override func layout() {
+    super.layout()
+    icon.frame = NSRect(x: 9, y: ((bounds.height - 16) / 2).rounded(), width: 16, height: 16)
+    let height = ceil(field.intrinsicContentSize.height)
+    field.frame = NSRect(x: 30, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 30 - 26, height: height)
+    clear.frame = NSRect(x: bounds.width - 24, y: ((bounds.height - 18) / 2).rounded(), width: 18, height: 18)
+  }
+}
+
+/// A row that lights on hover and washes in the profile's colour when selected (Ray's sidebar rows).
+private class SettingsSidebarRow: NSView {
+  var onClick: (() -> Void)?
+  var isSelected = false { didSet { if oldValue != isSelected { needsDisplay = true } } }
+  private var hovered = false { didSet { if oldValue != hovered { needsDisplay = true } } }
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.cornerRadius = 9
+    layer?.cornerCurve = .continuous
+    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+  override var mouseDownCanMoveWindow: Bool { false }
 
   override func updateLayer() {
-    CATransaction.begin()
-    CATransaction.setDisableActions(true)
-    let inset: CGFloat = 4
-    let inner = bounds.insetBy(dx: inset, dy: inset)
-    fill.frame = inner
-    fill.cornerRadius = inner.width / 2
-    fill.backgroundColor = color?.cgColor
-    rainbow.frame = inner
-    rainbow.cornerRadius = inner.width / 2
-    rainbow.isHidden = color != nil
-    ring.frame = bounds
-    ring.path = CGPath(ellipseIn: bounds.insetBy(dx: 1, dy: 1), transform: nil)
-    ring.strokeColor = (isSelected ? NSColor.labelColor.withAlphaComponent(0.55) : NSColor.clear).cgColor
-    CATransaction.commit()
-    check.isHidden = !isSelected
-    if let color { check.contentTintColor = ProfileColor.foreground(on: color) }
-    check.frame = bounds
+    layer?.backgroundColor = (isSelected ? SettingsColors.selectedFill : hovered ? SettingsColors.hover : .clear).cgColor
+    updateInk(isSelected ? SettingsColors.selectedInk : nil)
   }
 
-  override func mouseDown(with event: NSEvent) { onClick?() }
-  override func keyDown(with event: NSEvent) {
-    if event.characters == " " { onClick?() } else { super.keyDown(with: event) }
+  /// Text and icon colours: the selected ink, or nil for the usual ones.
+  func updateInk(_ ink: NSColor?) {}
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    needsDisplay = true
   }
+
+  override func mouseEntered(with event: NSEvent) { hovered = true }
+  override func mouseExited(with event: NSEvent) { hovered = false }
+  override func mouseDown(with event: NSEvent) { onClick?() }
   override func accessibilityPerformPress() -> Bool {
     onClick?()
     return true
   }
-  override func accessibilityValue() -> Any? { NSNumber(value: isSelected ? 1 : 0) }
 }
 
-/// A text link in the profile's colour.
-private final class LinkButton: NSButton {
-  var onClick: (() -> Void)?
+/// A pane in the sidebar: its icon and name, 34 pt.
+private final class SettingsNavRow: SettingsSidebarRow {
+  let pane: SettingPane
+  private let icon = NSImageView()
+  private let label: NSTextField
 
-  init(title: String) {
+  init(pane: SettingPane) {
+    self.pane = pane
+    label = settingsLabel(pane.title, size: 13)
     super.init(frame: .zero)
-    self.title = title
-    isBordered = false
-    bezelStyle = .regularSquare
-    font = .systemFont(ofSize: 13, weight: .medium)
-    target = self
-    action = #selector(clicked)
-    setButtonType(.momentaryChange)
-    focusRingType = .exterior
-    setAccessibilityRole(.link)
+    icon.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: nil)
+    icon.symbolConfiguration = .init(pointSize: 14, weight: .medium)
+    icon.imageScaling = .scaleNone
+    addSubview(icon)
+    addSubview(label)
+    setAccessibilityElement(true)
+    setAccessibilityRole(.button)
+    setAccessibilityLabel(pane.title)
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
-  override var wantsUpdateLayer: Bool { false }
-
-  override func draw(_ dirtyRect: NSRect) {
-    let attributes: [NSAttributedString.Key: Any] = [.font: font ?? .systemFont(ofSize: 13), .foregroundColor: ProfileColor.accent]
-    NSAttributedString(string: title, attributes: attributes).draw(at: NSPoint(x: 0, y: 1))
+  override func updateInk(_ ink: NSColor?) {
+    icon.contentTintColor = ink ?? .secondaryLabelColor
+    label.textColor = ink ?? .labelColor
+    label.font = .systemFont(ofSize: 13, weight: ink == nil ? .regular : .medium)
   }
 
-  override var intrinsicContentSize: NSSize {
-    let size = NSAttributedString(string: title, attributes: [.font: font ?? .systemFont(ofSize: 13)]).size()
-    return NSSize(width: ceil(size.width), height: ceil(size.height) + 2)
+  override func layout() {
+    super.layout()
+    icon.frame = NSRect(x: 8, y: ((bounds.height - 20) / 2).rounded(), width: 22, height: 20)
+    let height = ceil(label.intrinsicContentSize.height)
+    label.frame = NSRect(x: 36, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 44, height: height)
+  }
+}
+
+/// A search result: its title, and under it where it lives ("Appearance › Address bar").
+private final class SettingsResultRow: SettingsSidebarRow {
+  private let icon = NSImageView()
+  private let title: NSTextField
+  private let caption: NSTextField
+
+  init(target: SettingsTarget) {
+    title = settingsLabel(target.kind == .pane ? target.pane.title : target.title, size: 13)
+    caption = settingsLabel(target.caption, size: 11, color: .secondaryLabelColor)
+    super.init(frame: .zero)
+    icon.image = NSImage(systemSymbolName: target.pane.symbol, accessibilityDescription: nil)
+    icon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
+    icon.imageScaling = .scaleNone
+    addSubview(icon)
+    addSubview(title)
+    addSubview(caption)
+    setAccessibilityElement(true)
+    setAccessibilityRole(.button)
+    setAccessibilityLabel(target.title)
   }
 
-  override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+  required init?(coder: NSCoder) { fatalError() }
 
-  @objc private func clicked() { onClick?() }
+  override func updateInk(_ ink: NSColor?) {
+    icon.contentTintColor = ink ?? .tertiaryLabelColor
+    title.textColor = ink ?? .labelColor
+    caption.textColor = ink?.withAlphaComponent(0.8) ?? .secondaryLabelColor
+  }
+
+  override func layout() {
+    super.layout()
+    icon.frame = NSRect(x: 6, y: ((bounds.height - 18) / 2).rounded(), width: 20, height: 18)
+    let titleHeight = ceil(title.intrinsicContentSize.height), captionHeight = ceil(caption.intrinsicContentSize.height)
+    let top = ((bounds.height - titleHeight - captionHeight) / 2).rounded()
+    title.frame = NSRect(x: 30, y: top, width: bounds.width - 38, height: titleHeight)
+    caption.frame = NSRect(x: 30, y: top + titleHeight, width: bounds.width - 38, height: captionHeight)
+  }
 }

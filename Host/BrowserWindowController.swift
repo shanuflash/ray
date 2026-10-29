@@ -1547,7 +1547,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let rows = Suggestions.build(
       query: query, tabs: tabs, active: activeTab, history: history.entries,
       searches: wantsSearches ? searches.current(for: trimmed) : [], actions: BarActions.available,
-      frecency: history.frecency(of:), favicon: favicons.image(for:),
+      settings: SettingsSearch.barMatches, frecency: history.frecency(of:), favicon: favicons.image(for:),
       name: { [weak self] tab in self?.state.entry(for: tab)?.customTitle })
     bar.show(rows)
     let pages = rows.compactMap { row -> String? in
@@ -1592,6 +1592,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       if let tab = activeTab { focusPage(tab) }
       AppController.shared.noteFocused(self)
       BarActions.run(action)
+      return
+    case .setting(let target):
+      // Ray's Settings window, at that pane, scrolled to the row, which flashes.
+      if let tab = activeTab { focusPage(tab) }
+      SettingsWindowController.shared.reveal(target)
       return
     case .url(let target), .search(let target), .history(let target):
       url = target

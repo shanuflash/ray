@@ -180,6 +180,10 @@ let paneCases: [(String, String?)] = [
   ("chrome://settings", nil),
   ("chrome://settings/", nil),
   ("chrome://settings/privacy", nil),
+  // Ray's own panes by name; the ones Chrome still draws (privacy, passwords, autofill, extensions, search) stay Chrome's.
+  ("ray://settings/general", "general"), ("ray://settings/tabs", "tabs"), ("RAY://Settings/Shortcuts/", "shortcuts"),
+  ("ray://settings/about", "about"), ("ray://settings/passwords", nil), ("ray://settings/autofill", nil),
+  ("ray://settings/extensions", nil), ("ray://settings/search", nil), ("ray://settings/tabs/x", nil),
   ("chrome://settings/appearance/fonts", nil),
   ("chrome://extensions/appearance", nil),
   ("https://settings/appearance", nil),

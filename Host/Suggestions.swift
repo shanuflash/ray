@@ -7,6 +7,8 @@ struct Suggestion {
     case search(String)
     case history(String)
     case action(BarAction)
+    /// A pane, setting or section of Ray's Settings window ("Settings: …").
+    case setting(SettingsTarget)
   }
 
   let kind: Kind
@@ -21,6 +23,7 @@ struct Suggestion {
     case .tab(let tab): return "tab:\(tab.tabId)"
     case .url(let url), .search(let url), .history(let url): return "\(kindName):\(url)"
     case .action(let action): return "action:\(action.id)"
+    case .setting(let target): return "setting:\(target.id)"
     }
   }
 
@@ -31,6 +34,7 @@ struct Suggestion {
     case .search: return "search"
     case .history: return "history"
     case .action: return "action"
+    case .setting: return "setting"
     }
   }
 }
@@ -237,7 +241,8 @@ enum Suggestions {
   /// page is the one you're on), though another tab on the same address is.
   static func build(
     query raw: String, tabs: [RayCoreTab], active: RayCoreTab?, history: [HistoryItem], searches: [String],
-    actions: () -> [BarAction] = { [] }, frecency: (String) -> Double = { _ in 0 },
+    actions: () -> [BarAction] = { [] },
+    settings: (String) -> [(target: SettingsTarget, exact: Bool)] = { _ in [] }, frecency: (String) -> Double = { _ in 0 },
     favicon: (String) -> NSImage? = { _ in nil }, name: (RayCoreTab) -> String? = { _ in nil }
   ) -> [Suggestion] {
     let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -295,6 +300,15 @@ enum Suggestions {
         if index == 0, match.exact, match.action.leads, autocomplete == nil { leading = row } else { actionRows.append(row) }
       }
     }
+    // Settings by name after the commands ("Settings: Theme colour"). One leads only when it was named in full after
+    // "settings" and nothing real is there to go to: no host the field completes, no command, no page that matches.
+    var settingRows: [Suggestion] = []
+    if typedHost == nil {
+      for (index, match) in settings(query).enumerated() {
+        let row = settingSuggestion(match.target)
+        if index == 0, match.exact, leading == nil, autocomplete == nil, pages.isEmpty { leading = row } else { settingRows.append(row) }
+      }
+    }
     // With nothing else to lead, the best page you go to leads over a search for what you typed (Arc; Chromium's
     // "allowed to be default match"): only for a search (a typed address still goes there), from three characters,
     // matched at word starts, and never an old search results page (Enter would run that search, not yours).
@@ -307,6 +321,7 @@ enum Suggestions {
     }
     if let typed { rows.append(typed) }
     rows += actionRows
+    rows += settingRows
     rows += pages.map(\.row).filter { row in !rows.contains { same($0, row) } }
     // Search suggestions only fill what's left of the rows the bar shows at once, two at most, after the pages.
     let room = min(maxSearchSuggestions, max(0, visibleRows - rows.count))
@@ -397,6 +412,13 @@ enum Suggestions {
     Suggestion(
       kind: .action(action), title: action.title, detail: action.shortcut,
       icon: NSImage(systemSymbolName: action.symbol, accessibilityDescription: nil) ?? command)
+  }
+
+  private static func settingSuggestion(_ target: SettingsTarget) -> Suggestion {
+    let title = "Settings: " + (target.kind == .pane ? target.pane.title : target.title)
+    return Suggestion(
+      kind: .setting(target), title: title, detail: target.kind == .pane ? "" : target.caption,
+      icon: NSImage(systemSymbolName: target.pane.symbol, accessibilityDescription: nil) ?? command)
   }
 
   private static func searchSuggestion(_ text: String) -> Suggestion? {

@@ -2223,16 +2223,17 @@ const checks = {
     await until("settings window", async () => { await command("state"); return state().settingsWindow.open; });
     const win = () => state().settingsWindow;
     const c = () => win().controls;
-    assert(win().title === "Settings" && win().pane === "appearance", `window ${JSON.stringify(win())}`);
+    // ⌘, opens General the first time (later, the pane last shown).
+    assert(win().title === "Settings" && win().pane === "general", `window ${JSON.stringify(win())}`);
     assert(state().menuKeys.settings === ",", `Settings… answers to ${state().menuKeys.settings}`);
     const [, , width, height] = win().frame.match(/-?[\d.]+/g).map(Number);
-    assert(width === 640 && height >= 560 && height < 620, `the window is ${width} x ${height}`);
+    assert(width === 780 && height >= 560 && height < 620, `the window is ${width} x ${height}`);
     // The defaults, as the controls show them.
     assert(c().minimalURL === false && c().loadingProgress === true && c().newTabNextToActive === false &&
       c().recentTabCycling === true && c().copyLinkShortcut === true && c().sidebarShortcut === true, `switches ${JSON.stringify(c())}`);
     assert(c().defaultZoom === "100%" && c().defaultZoomOptions.length === 17 && c().defaultZoomOptions[0] === "25%" && c().defaultZoomOptions.at(-1) === "500%", `zoom ${c().defaultZoomOptions}`);
     assert(c().theme === "default" && c().themeSwatches === 9 && c().themeSelected === 0, `swatches ${c().theme} ${c().themeSwatches} ${c().themeSelected}`);
-    assert(c().allSettingsLink === "All Settings…", `link ${c().allSettingsLink}`);
+    assert(c().allSettingsLink === "All Chrome Settings…", `link ${c().allSettingsLink}`);
     // A control changes the setting, and a setting changed anywhere else shows in the control.
     await command("settings press minimalURL");
     await until("switch changed the setting", async () => { await command("state"); return state().settings.minimalURL === true; });
@@ -2630,6 +2631,220 @@ const checks = {
     await command("key ctrlup");
     assert(state().tabCycle === null, "a walk started with recently used order off");
     await resetSettings();
+  },
+  async "settings-panes"() {
+    // Direction G: every pane in the sidebar in its order (test builds list them all), rows from the catalog by pane,
+    // ray://settings/<pane> opens the window at that pane, and Ray.app hides unbuilt rows and empty panes.
+    await resetSettings();
+    await closeSettingsWindow().catch(() => {});
+    const win = () => state().settingsWindow;
+    const all = ["general", "tabs", "appearance", "search", "privacy", "passwords", "autofill", "extensions", "shortcuts", "about"];
+    await command("settings open appearance");
+    await until("appearance", async () => { await command("state"); return win().open && win().pane === "appearance"; });
+    assert(win().panes.join() === all.join() && win().sidebarPanes.join() === all.join(), `panes ${win().panes} / ${win().sidebarPanes}`);
+    const rows = win().rows;
+    assert(["theme", "appearanceMode", "minimalURL", "loadingProgress", "defaultZoom", "scrollBars"].every((id) => rows.appearance.includes(id)), `appearance rows ${rows.appearance}`);
+    assert(rows.tabs.join() === "newTabNextToActive,recentTabCycling" && rows.shortcuts.join() === "copyLinkShortcut,sidebarShortcut", `rows ${JSON.stringify(rows)}`);
+    assert(rows.about.includes("about.version") && rows.general.length === 0, `rows ${JSON.stringify(rows)}`);
+    assert((await commandResult("settings open nonsense")) === "no such pane", "a pane that isn't there opened");
+    // The new controls: segmented (scroll bars, a rare row under "More") and picture choices (light or dark).
+    assert(win().more.appearance.page === false, `More is open: ${JSON.stringify(win().more)}`);
+    await command("settings press scrollBars 2");
+    await until("segment chose Always", async () => { await command("state"); return state().settings.scrollBars === "always" && win().controls.scrollBars === "Always"; });
+    assert(win().controls.scrollBarsOptions.join() === "Automatic,When scrolling,Always", `segments ${win().controls.scrollBarsOptions}`);
+    await command("settings press appearanceMode 2");
+    await until("picture chose Dark", async () => { await command("state"); return state().settings.appearanceMode === "dark" && win().controls.appearanceModeSelected === 2; });
+    await setSetting("appearanceMode", "light");
+    await until("picture follows the setting", async () => { await command("state"); return win().controls.appearanceMode === "light" && win().controls.appearanceModeSelected === 1; });
+    await setSetting("scrollBars", "default");
+    await setSetting("appearanceMode", "default");
+    // Live pictures follow their settings.
+    assert(win().pictures.minimalURL?.minimalAddress === false && win().pictures.newTabNextToActive?.rows[0] === "new", `pictures ${JSON.stringify(win().pictures)}`);
+    await setSetting("minimalURL", "on");
+    await setSetting("newTabNextToActive", "on");
+    await until("pictures follow", async () => { await command("state"); return win().pictures.minimalURL.minimalAddress === true && win().pictures.newTabNextToActive.rows.join() === "plain,active,new,plain"; });
+    await resetSettings();
+    if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-appearance.png")}`);
+    // ray://settings/<pane>: typed, it opens the window there and loads nothing.
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
+    const before = activeTabState().url;
+    for (const pane of ["tabs", "shortcuts", "about", "general"]) {
+      await closeSettingsWindow();
+      await goTo(`ray://settings/${pane}`);
+      await until(`ray://settings/${pane}`, async () => { await command("state"); return win().open && win().pane === pane; });
+      await sleep(200);
+      await command("state");
+      assert(activeTabState().url === before, `ray://settings/${pane} changed the tab: ${activeTabState().url}`);
+    }
+    // ⌘, opens the pane last shown.
+    await command("settings open about");
+    await closeSettingsWindow();
+    await command("menu showSettings");
+    await until("last pane", async () => { await command("state"); return win().open && win().pane === "about"; });
+    await closeSettingsWindow();
+    // Chrome still draws Privacy: its address is Chrome's page, not the window.
+    const tabs = state().tabs.length;
+    await goTo("ray://settings/privacy", true);
+    await until("Chrome's privacy page", async () => { await command("state"); return activeTabState()?.url.startsWith("chrome://settings/privacy"); }, 10000);
+    assert(!win().open, "ray://settings/privacy opened the window");
+    await command("menu closeTab");
+    await until("privacy tab closed", async () => { await command("state"); return state().tabs.length === tabs; });
+    // As Ray.app shows it: unbuilt rows and panes with nothing to show are gone, from the sidebar and from routing.
+    await command("settings asapp on");
+    await command("settings open general");
+    await until("Ray.app's panes", async () => { await command("state"); return win().open && win().looksLikeRayApp; });
+    assert(win().panes.join() === "tabs,appearance,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
+    assert(win().pane === "tabs", `General (empty) opened as ${win().pane}`);
+    assert(!win().rows.appearance.includes("appearanceMode") && !win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
+    if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-as-app.png")}`);
+    await command("settings asapp off");
+    await command("state");
+    assert(win().panes.length === all.length && !win().looksLikeRayApp, `back to every pane: ${win().panes}`);
+    await closeSettingsWindow();
+  },
+  async "settings-search"() {
+    // The sidebar's search: results replace the panes while typing, ↑ ↓ ⏎ pick one, which opens its pane, scrolls to
+    // its row and flashes it (120 ms in, 900 ms held, 700 ms out); Escape clears.
+    await resetSettings();
+    await command("settings open general");
+    const win = () => state().settingsWindow;
+    const search = () => win().search;
+    await until("window", async () => { await command("state"); return win().open && win().pane === "general"; });
+    await command("settings search zoom");
+    await until("zoom results", async () => { await command("state"); return search().results.length > 0; });
+    assert(search().results[0].id === "defaultZoom" && search().selected === 0, `zoom: ${JSON.stringify(search())}`);
+    assert(win().sidebarPanes.length === 0, "the pane list stayed up while searching");
+    // Page zoom sits below the window's fold: choosing it scrolls it into view.
+    await command("settings key down");
+    await command("settings key up");
+    await command("state");
+    assert(search().selected === 0, `↑ after ↓: ${search().selected}`);
+    await command("settings key enter");
+    const flashed = await until("flash", async () => { await command("state"); return win().flashing === "defaultZoom" && win(); }, 3000, 50);
+    assert(flashed.pane === "appearance" && flashed.flashVisible, `flash ${JSON.stringify({ pane: flashed.pane, visible: flashed.flashVisible })}`);
+    await until("flash over", async () => { await command("state"); return win().flashing === null; }, 4000);
+    assert(win().lastFlash === "defaultZoom", `last flash ${win().lastFlash}`);
+    // A rare row: its group's "More" opens first.
+    await command("settings search scroll bars");
+    await until("scroll bars", async () => { await command("state"); return search().results[0]?.id === "scrollBars"; });
+    await command("settings choose 0");
+    await until("rare row flashed", async () => { await command("state"); return win().lastFlash === "scrollBars" && win().more.appearance.page === true; });
+    // Pane names, and a pane's own section (About Ray's version).
+    await command("settings search shortcuts");
+    await until("pane result", async () => { await command("state"); return search().results.some((r) => r.kind === "pane" && r.pane === "shortcuts"); });
+    await command("settings search version");
+    await until("section result", async () => { await command("state"); return search().results[0]?.id === "about.version"; });
+    await command("settings key enter");
+    await until("about", async () => { await command("state"); return win().pane === "about" && win().lastFlash === "about.version"; });
+    // Nothing found; Escape clears and the panes come back.
+    await command("settings search zzqqx");
+    await until("no results", async () => { await command("state"); return search().query === "zzqqx" && search().results.length === 0; });
+    await command("settings key escape");
+    await until("cleared", async () => { await command("state"); return search().query === "" && win().sidebarPanes.length === win().panes.length; });
+    // Ray.app doesn't find rows it doesn't show.
+    await command("settings asapp on");
+    await command("settings search scroll bars");
+    await until("searched", async () => { await command("state"); return search().query === "scroll bars"; });
+    assert(!search().results.some((r) => r.id === "scrollBars"), `Ray.app found an unbuilt row: ${JSON.stringify(search().results)}`);
+    await command("settings asapp off");
+    await command("settings search");
+    if (process.env.SNAP_DIR) {
+      await command("settings search address");
+      await command(`settings snap ${join(process.env.SNAP_DIR, "settings-search.png")}`);
+      await command("settings search");
+    }
+    await closeSettingsWindow();
+  },
+  async "settings-bar"() {
+    // ⌘T offers "Settings: …" for each shown setting and pane, after what you typed and the menu commands; one leads
+    // only when named in full after "settings" and no page or host matches.
+    await resetSettings();
+    await closeSettingsWindow().catch(() => {});
+    const barFor = async (text) => {
+      await command("menu newTab");
+      await until("bar open", async () => { await command("state"); return state().commandBar; });
+      await command(`type ${text}`);
+      return until(`rows for ${text}`, async () => { await command("state"); return state().commandBar?.query === text && state().commandBar; });
+    };
+    const settingRows = (bar) => bar.rows.filter((r) => r.kind === "setting");
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
+    let bar = await barFor("minimal url");
+    let at = bar.rows.findIndex((r) => r.kind === "setting" && r.title === "Settings: Show only the site in the address bar");
+    assert(at > 0 && bar.rows[at].detail === "Appearance › Address bar", `minimal url: ${JSON.stringify(bar.rows)}`);
+    assert(bar.rows[0].kind === "search", `a partial setting name took the first row: ${JSON.stringify(bar.rows[0])}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-settings.png")}`);
+    for (let i = 0; i < at; i++) await command("down");
+    await command("enter");
+    await until("window at the row", async () => { await command("state"); return state().commandBar === null && state().settingsWindow.open && state().settingsWindow.pane === "appearance" && state().settingsWindow.lastFlash === "minimalURL"; });
+    await closeSettingsWindow();
+    // Panes by name.
+    bar = await barFor("appearance");
+    assert(settingRows(bar).some((r) => r.title === "Settings: Appearance"), `appearance: ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+    // Named in full after "settings", with nothing else to go to: it leads and Enter opens it.
+    bar = await barFor("settings theme colour");
+    assert(bar.rows[0].kind === "setting" && bar.rows[0].title === "Settings: Theme colour", `exact: ${JSON.stringify(bar.rows)}`);
+    await command("enter");
+    await until("theme row", async () => { await command("state"); return state().commandBar === null && state().settingsWindow.lastFlash === "theme"; });
+    await closeSettingsWindow();
+    // A page that matches keeps the Enter row: a tab whose address has the same words.
+    await goTo(`${origin}/b?settings-theme-colour`, true);
+    await until("page", async () => { await command("state"); return activeTabState()?.url.endsWith("?settings-theme-colour"); });
+    const page = state().active;
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active again", () => state().active === tabFor("/a").id);
+    bar = await barFor("settings theme colour");
+    assert(bar.rows[0].kind !== "setting" && settingRows(bar).length > 0, `a setting led over a page: ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+    await command(`rowaction close ${entryOfTab(page).id}`);
+    await until("page closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === page); });
+    // An address is an address.
+    bar = await barFor("settings.localhost");
+    assert(bar.rows[0].kind === "url" && settingRows(bar).length === 0, `settings.localhost: ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+    // Rows Ray.app doesn't show aren't offered.
+    await command("settings asapp on");
+    bar = await barFor("scroll bars");
+    assert(!settingRows(bar).some((r) => r.title === "Settings: Show scroll bars"), `Ray.app offered an unbuilt row: ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+    await command("settings asapp off");
+    bar = await barFor("scroll bars");
+    assert(settingRows(bar).some((r) => r.title === "Settings: Show scroll bars"), `a test build hid an unbuilt row: ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+  },
+  async "settings-colours"() {
+    // The selected pane's wash and ink come from the profile's colour, readable in light and dark (4.5:1), and follow it.
+    await resetSettings();
+    await command("settings open appearance");
+    const win = () => state().settingsWindow;
+    await until("window", async () => { await command("state"); return win().open; });
+    const colours = () => win().selectedRow;
+    const readable = (c) => c.contrast >= 4.5 && c.contrastDark >= 4.5;
+    const lavender = await until("selection drawn", async () => {
+      await command("state");
+      return [colours().fill, colours().fillDark].includes(colours().drawnFill) && colours();
+    });
+    assert(readable(lavender), `default selection unreadable: ${JSON.stringify(lavender)}`);
+    assert(lavender.fill !== lavender.sidebar && lavender.fillDark !== lavender.sidebarDark, "the selection has no wash");
+    for (const hex of ["#12A594", "#000000", "#FFD60A"]) {
+      await setSetting("theme", hex);
+      // The row on screen redraws in it too.
+      const now = await until(`selection in ${hex}`, async () => {
+        await command("state");
+        const c = colours();
+        return c.fill !== lavender.fill && [c.fill, c.fillDark].includes(c.drawnFill) && c;
+      });
+      assert(readable(now), `${hex}: ${JSON.stringify(now)}`);
+    }
+    // Teal washes teal: green and blue above red.
+    await setSetting("theme", "#12A594");
+    await until("teal", async () => { await command("state"); const [r, g, b] = [1, 3, 5].map((i) => parseInt(colours().fill.slice(i, i + 2), 16)); return g > r && b > r; });
+    if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-teal.png")}`);
+    await resetSettings();
+    await until("lavender again", async () => { await command("state"); return colours().fill === lavender.fill; });
+    await closeSettingsWindow();
   },
   async "settings-shortcuts"() {
     await resetSettings();

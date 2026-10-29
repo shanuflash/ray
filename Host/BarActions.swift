@@ -154,8 +154,9 @@ enum BarActions {
   }
 
   /// Every typed word starts a word of the name, in order; earlier and longer matches score higher (after Ardia's
-  /// `scoreName`, without its substring and subsequence fallbacks).
-  private static func score(_ typed: [String], _ name: [String]) -> Int? {
+  /// `scoreName`, without its substring and subsequence fallbacks). The "Settings: …" rows match the same way
+  /// (`SettingsSearch.barMatches`).
+  static func score(_ typed: [String], _ name: [String]) -> Int? {
     guard !typed.isEmpty else { return nil }
     var from = 0
     var score = name.joined(separator: " ").hasPrefix(typed.joined(separator: " ")) ? 200 : 0
@@ -168,7 +169,7 @@ enum BarActions {
   }
 
   /// Lowercased words: apostrophes dropped ("today's" is one word), anything else not a letter or digit splits.
-  private static func words(_ text: String) -> [String] {
+  static func words(_ text: String) -> [String] {
     text.lowercased().replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "’", with: "")
       .split { !$0.isLetter && !$0.isNumber }.map(String.init)
   }

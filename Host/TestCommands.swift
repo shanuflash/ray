@@ -132,7 +132,8 @@ enum TestCommands {
 
   /// `setting <id> <value>`: any setting in the catalog, its value parsed by its type, through `RaySettings.apply`
   /// (the call the Settings window's own controls make); `default` for its default. A value it refuses is a usage
-  /// error. `settings open|close|link|press|snap|catalog` drive the window itself, or list the catalog.
+  /// error. `settings open [pane]|search <text>|choose <n>|key <k>|asapp on|off|close|link|press|snap|catalog` drive
+  /// the window itself, or list the catalog.
   private static func setting(_ argument: String) -> String {
     let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
     guard words.count == 2, RaySettings.shared.apply(id: words[0], words[1]) else {
@@ -143,8 +144,26 @@ enum TestCommands {
 
   private static func settingsWindow(_ argument: String) -> String {
     let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
+    let window = SettingsWindowController.shared
     switch words.first {
-    case "open": SettingsWindowController.shared.show()
+    case "open":
+      // `settings open`: as ⌘, does; `settings open <pane>`: as `ray://settings/<pane>` does.
+      if words.count == 2 {
+        guard window.open(paneNamed: words[1]) else { return "no such pane" }
+      } else {
+        window.show()
+      }
+    case "search":
+      // What the sidebar's search field holds, as if typed (`settings search` alone clears it).
+      _ = window.search(words.count == 2 ? words[1] : "")
+    case "choose":
+      guard words.count == 2, let index = Int(words[1]), window.chooseResult(index) else { return "no such result" }
+    case "key":
+      guard words.count == 2, window.searchKey(words[1]) else { return "usage: settings key up|down|enter|escape" }
+    case "asapp":
+      // Lists panes and rows as Ray.app does (unbuilt rows and empty panes hidden), or back to a test build's all.
+      guard words.count == 2, let on = Bool(settingText: words[1]) else { return "usage: settings asapp on|off" }
+      window.lookLikeRayApp(on)
     case "close": SettingsWindowController.shared.close()
     case "link": if !SettingsWindowController.shared.pressAllSettings() { return "no window" }
     case "press":
@@ -158,7 +177,7 @@ enum TestCommands {
       guard let data = try? JSONSerialization.data(withJSONObject: AnySettingKey.catalogDebug(RaySettings.shared), options: [.sortedKeys]),
             let text = String(data: data, encoding: .utf8) else { return "no catalog" }
       return text
-    default: return "usage: settings open|close|link|press|snap|catalog"
+    default: return "usage: settings open [pane]|search <text>|choose <n>|key <k>|asapp on|off|close|link|press|snap|catalog"
     }
     return "ok"
   }
