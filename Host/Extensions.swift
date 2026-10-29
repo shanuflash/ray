@@ -1,8 +1,8 @@
 import AppKit
 
 /// A window's extensions: the list from the engine, the menu behind the address bar's puzzle button (Arc keeps
-/// extensions there), action popups in a popover under that button, and Chrome's install prompt as a sheet.
-final class ExtensionsController: NSObject, NSPopoverDelegate, RayCoreTabDelegate {
+/// extensions there), action popups in a borderless window under that button, and Chrome's install prompt as a sheet.
+final class ExtensionsController: NSObject, RayCoreTabDelegate {
   struct Item {
     let id: String
     let name: String
@@ -17,8 +17,11 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, RayCoreTabDelegat
   var onChange: (() -> Void)?
   var openPage: ((String) -> Void)?
 
-  private var popover: NSPopover?
+  private var popupWindow: ExtensionPopupWindow?
   private var popupTab: RayCoreTab?
+  private weak var popupAnchor: NSView?
+  private var popupMonitors: [Any] = []
+  private var popupObservers: [NSObjectProtocol] = []
   private(set) var popupURL: String?
   private var prompt: (id: String, name: String, alert: NSAlert, add: NSButton)?
 
@@ -98,60 +101,145 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, RayCoreTabDelegat
 
   // MARK: Popup
 
-  /// Opens the extension's own popup page (only a chrome-extension:// page of that extension) in a popover.
+  /// Opens the extension's own popup page (only a chrome-extension:// page of that extension) in a borderless child
+  /// window under the anchor, as Chrome, Crest and Cra do. Not an NSPopover: on macOS 27 a popover composites its
+  /// material with what it hosts, and an opaque view behind Chrome's render view occludes the renderer's remote
+  /// layer, so the popup showed plain white however much its page drew.
   func showPopup(for id: String, tab: RayCoreTab, anchor: NSView) {
     let state = tab.actionStates(forExtensions: [id])[id] as? [String: Any]
     guard let url = state?["popup"] as? String, url.hasPrefix("chrome-extension://\(id)/"),
-          anchor.window != nil else { return }
+          let parent = anchor.window else { return }
     closePopup()
     guard let page = coreWindow.openExtensionView(url, profile: profile, kind: "popup") else { return }
     page.delegate = self
-    // Chrome's base under an extension popup is white (a dark-scheme page paints its own dark canvas over it);
-    // without one the popover's glass shows through pages that leave their background unset.
+    // Chrome's base under an extension popup is white (a dark-scheme page paints its own dark canvas over it). It is
+    // the page's own base, drawn by the renderer: nothing of Ray's sits behind the page.
     page.contentsBackgroundColor = .white
     popupTab = page
     popupURL = url
-    let controller = NSViewController()
-    let container = NSView(frame: NSRect(origin: .zero, size: Self.clamp(page.preferredSize)))
+    popupAnchor = anchor
+    let size = Self.clamp(page.preferredSize)
+    let container = NSView(frame: NSRect(origin: .zero, size: size))
     container.wantsLayer = true
-    container.layer?.backgroundColor = NSColor.white.cgColor
+    container.layer?.backgroundColor = NSColor.clear.cgColor
+    container.layer?.cornerRadius = 10
+    container.layer?.cornerCurve = .continuous
+    container.layer?.masksToBounds = true
+    // A hairline over the page's edge (a layer's border draws above its sublayers), so a white popup still reads
+    // against a white page.
+    container.layer?.borderWidth = 0.5
+    container.layer?.borderColor = NSColor.black.withAlphaComponent(0.15).cgColor
     page.view.frame = container.bounds
     page.view.autoresizingMask = [.width, .height]
     container.addSubview(page.view)
-    controller.view = container
-    let popover = NSPopover()
-    popover.contentViewController = controller
-    popover.contentSize = container.frame.size
-    popover.behavior = .transient
-    popover.animates = false
-    popover.delegate = self
-    self.popover = popover
-    popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+    let window = ExtensionPopupWindow(contentRect: container.frame, styleMask: .borderless, backing: .buffered,
+                                      defer: false)
+    window.isReleasedWhenClosed = false
+    window.isOpaque = false
+    window.backgroundColor = .clear
+    window.hasShadow = true
+    window.isMovable = false
+    window.animationBehavior = .none
+    window.collectionBehavior = [.transient, .ignoresCycle, .fullScreenAuxiliary]
+    window.contentView = container
+    window.onCancel = { [weak self] in self?.closePopup() }
+    popupWindow = window
+    place(window, size: size)
+    // A child of the browser window: it moves and orders with it, and stays over it (at its level, or a raised
+    // browser window would cover it).
+    window.level = parent.level
+    parent.addChildWindow(window, ordered: .above)
+    if NSApp.isActive { window.makeKey() }
     page.noteShown(byHost: true)
     page.focus()
+    watchForDismissal(parent: parent)
     onChange?()
   }
 
   func closePopup() {
-    popover?.close()
-  }
-
-  func popoverDidClose(_ notification: Notification) {
+    guard let window = popupWindow else { return }
     let page = popupTab
+    popupWindow = nil
     popupTab = nil
     popupURL = nil
-    popover = nil
+    popupAnchor = nil
+    for monitor in popupMonitors { NSEvent.removeMonitor(monitor) }
+    popupMonitors = []
+    for observer in popupObservers { NotificationCenter.default.removeObserver(observer) }
+    popupObservers = []
+    window.parent?.removeChildWindow(window)
+    window.orderOut(nil)
+    window.contentView = NSView()
+    window.close()
     if let page, !page.closed { page.close() }
     onChange?()
   }
 
+  /// A click in any other of Ray's windows (the browser window too), Escape, Ray going to the background or the
+  /// browser window closing ends the popup, as Chrome's ends when it loses focus. App-local monitors only.
+  private func watchForDismissal(parent: NSWindow) {
+    let click = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) {
+      [weak self] event in
+      if let self, let window = self.popupWindow, event.window !== window { self.closePopup() }
+      return event
+    }
+    // The page gets keys first, and Ray's render view doesn't hand an unused Escape back: the popup takes Escape
+    // while it is key.
+    let escape = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+      guard let self, let window = self.popupWindow, event.window === window, event.keyCode == 53,
+            event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty else { return event }
+      self.closePopup()
+      return nil
+    }
+    popupMonitors = [click, escape].compactMap { $0 }
+    let center = NotificationCenter.default
+    popupObservers = [
+      center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) {
+        [weak self] _ in self?.closePopup()
+      },
+      center.addObserver(forName: NSWindow.willCloseNotification, object: parent, queue: .main) {
+        [weak self] _ in self?.closePopup()
+      },
+    ]
+  }
+
+  /// Under the anchor and centred on it, inside the screen's visible area; above the anchor when there's no room
+  /// below. The top edge stays put as the page resizes itself.
+  private func place(_ window: NSWindow, size: NSSize) {
+    guard let anchor = popupAnchor, let parent = anchor.window else { return }
+    let rect = parent.convertToScreen(anchor.convert(anchor.bounds, to: nil))
+    let visible = (parent.screen ?? NSScreen.main)?.visibleFrame.insetBy(dx: 8, dy: 8) ?? .infinite
+    var frame = NSRect(x: (rect.midX - size.width / 2).rounded(), y: rect.minY - 4 - size.height,
+                       width: size.width, height: size.height)
+    if frame.minY < visible.minY, rect.maxY + 4 + size.height <= visible.maxY { frame.origin.y = rect.maxY + 4 }
+    frame.origin.x = max(min(frame.minX, visible.maxX - size.width), visible.minX)
+    frame.origin.y = max(frame.minY, visible.minY)
+    window.setFrame(frame, display: true)
+  }
+
   func tab(_ tab: RayCoreTab, preferredSizeDidChange size: NSSize) {
-    guard tab === popupTab else { return }
-    popover?.contentSize = Self.clamp(size)
+    guard tab === popupTab, let window = popupWindow else { return }
+    place(window, size: Self.clamp(size))
   }
 
   func tabWillClose(_ tab: RayCoreTab) {
-    if tab === popupTab { popover?.close() }
+    if tab === popupTab { closePopup() }
+  }
+
+  /// For the state log: the popup's window as it is (frame from the main screen's top left, as `screencapture -R`
+  /// takes it), and whether Chrome's content layer for its page has arrived under the render view.
+  var popupViewState: [String: Any]? {
+    guard let window = popupWindow, let page = popupTab else { return nil }
+    let top = NSScreen.screens.first?.frame.maxY ?? 0
+    let frame = window.frame
+    let render = PageFrameWatch.renderView(in: page.view)
+    let contentLayers = render?.layer?.sublayers?.reduce(0) { $0 + ($1.sublayers?.count ?? 0) } ?? 0
+    return [
+      "frame": String(format: "%.0f,%.0f,%.0f,%.0f", frame.minX, top - frame.maxY, frame.width, frame.height),
+      "visible": window.isVisible, "onScreen": window.occlusionState.contains(.visible), "child": window.parent != nil,
+      "opaque": window.isOpaque, "pageHidden": page.view.isHiddenOrHasHiddenAncestor, "renderView": render != nil,
+      "contentLayers": contentLayers, "behind": window.contentView?.subviews.count ?? 0,
+    ]
   }
 
   /// Chrome's popup limits: at least 25 pt, at most 800 × 600.
@@ -224,6 +312,14 @@ final class ExtensionsController: NSObject, NSPopoverDelegate, RayCoreTabDelegat
           let data = Data(base64Encoded: String(url[url.index(after: comma)...])) else { return nil }
     return NSImage(data: data)
   }
+}
+
+/// An extension popup's window: borderless, never main, key so the popup's own fields take typing.
+private final class ExtensionPopupWindow: NSWindow {
+  var onCancel: (() -> Void)?
+  override var canBecomeKey: Bool { true }
+  override var canBecomeMain: Bool { false }
+  override func cancelOperation(_ sender: Any?) { onCancel?() }
 }
 
 private final class RunChoice {

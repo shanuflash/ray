@@ -1358,19 +1358,79 @@ const checks = {
       icons: { 16: "icon.png", 48: "icon.png" },
     }));
     writeFileSync(join(dir, "icon.png"), solidPNG(48));
-    writeFileSync(join(dir, "popup.html"), `<!doctype html><body style="width:220px;height:90px">fixture popup</body>`);
+    // Shaped like real popups: a dark page whose script fills it in late, sizing it again (a green block).
+    writeFileSync(join(dir, "popup.html"), `<!doctype html><style>body{margin:0;background:#1d1d24;color:#eee;font:14px sans-serif}</style>` +
+      `<body><div id=app>loading</div><script src="popup.js"></script></body>`);
+    writeFileSync(join(dir, "popup.js"), `setTimeout(() => { const a = document.getElementById("app");
+      a.style.cssText = "width:296px;height:216px;padding:12px;background:#22aa66"; a.textContent = "fixture popup"; }, 300);`);
     const from = stderr.length;
     await command(`extinstall ${dir}`);
     const id = await until("installed", () => stderr.slice(from).match(/\[ray-test\] installed ([a-p]{32})/)?.[1], 15000);
     await until("listed", async () => { await command("state"); return state().extensions.some((e) => e.id === id && e.enabled); }, 8000);
     const before = state().sidebar.today.length;
-    await command(`extrun ${id}`);
-    await until("popup open", () => state().extensionPopup?.startsWith(`chrome-extension://${id}/popup.html`));
-    await until("popup page loaded", async () => (await targets()).some((t) => t.url.startsWith(`chrome-extension://${id}/popup.html`)), 8000);
-    assert(state().sidebar.today.length === before, "the popup page showed up as a tab");
-    assert(![...state().sidebar.today, ...state().sidebar.pinned].some((e) => e.url.startsWith("chrome-extension://")), "popup in the sidebar");
-    await command("extclose");
-    await until("popup closed", () => state().extensionPopup === null);
+    // On the shown desktop, so the popup draws and its pixels can be read back (skipped where it can't be).
+    const onScreen = await commandResult("onscreen on") === "ok";
+    try {
+      await command(`extrun ${id}`);
+      await until("popup open", () => state().extensionPopup?.startsWith(`chrome-extension://${id}/popup.html`));
+      const { sessionId } = await session(`chrome-extension://${id}/popup.html`);
+      const page = await until("popup filled in", async () => {
+        const p = await evaluate(sessionId, `({ text: document.body.innerText, w: innerWidth, h: innerHeight })`);
+        return p?.text === "fixture popup" && p.w >= 320 && p.h >= 240 ? p : null;
+      }, 8000);
+      assert(state().sidebar.today.length === before, "the popup page showed up as a tab");
+      assert(![...state().sidebar.today, ...state().sidebar.pinned].some((e) => e.url.startsWith("chrome-extension://")), "popup in the sidebar");
+      // App side: the popup's window follows the page's size, and its page is shown with Chrome's content under it.
+      const view = await until("popup window sized", async () => {
+        await command("state");
+        const v = state().extensionPopupView;
+        const [, , w, h] = v?.frame.split(",").map(Number) ?? [];
+        return v && w >= page.w && h >= page.h ? v : null;
+      }, 4000).catch(() => { throw new Error(`popup window ${JSON.stringify(state().extensionPopupView)}, page ${JSON.stringify(page)}`); });
+      assert(view.visible && !view.pageHidden, `popup window ${JSON.stringify(view)}`);
+      if (onScreen && view.onScreen) {
+        // What reaches the screen is the page: mostly its green block, not a blank (white) window. Green leads red and
+        // blue whatever the display's colour profile does to it.
+        const [x, y, w, h] = view.frame.split(",").map(Number);
+        const shot = join(dataDir, "popup-shot.bmp");
+        const result = await until("popup drawn", async () => {
+          if (spawnSync("screencapture", ["-x", "-t", "bmp", `-R${x},${y},${w},${h}`, shot]).status !== 0 || !existsSync(shot)) return { denied: true };
+          const bmp = readFileSync(shot);
+          const offset = bmp.readUInt32LE(10), width = bmp.readInt32LE(18), rows = Math.abs(bmp.readInt32LE(22));
+          if (bmp.readUInt16LE(28) !== 32) return { denied: true };
+          let green = 0, white = 0;
+          for (let i = 0; i < width * rows; i++) {
+            const [b, g, r] = [bmp[offset + 4 * i], bmp[offset + 4 * i + 1], bmp[offset + 4 * i + 2]];
+            if (g > r + 50 && g > b + 30) green++;
+            if (r > 235 && g > 235 && b > 235) white++;
+          }
+          const total = width * rows;
+          const sample = { green: +(green / total).toFixed(2), white: +(white / total).toFixed(2) };
+          return sample.green > 0.5 ? sample : null;
+        }, 3000, 250).catch(() => null);
+        assert(result, `the popup's window doesn't show its page (blank): ${JSON.stringify(view)}`);
+        if (result.denied) console.log("     note: screen capture not allowed, popup pixels not checked");
+      } else console.log("     note: test window not on the shown desktop, popup pixels not checked");
+      const [, , w, h] = view.frame.split(",").map(Number);
+      assert(w === page.w && h === page.h, `popup window ${w}×${h} for a ${page.w}×${page.h} page`);
+      assert(view.renderView && view.contentLayers > 0, `no content layer under the popup's render view: ${JSON.stringify(view)}`);
+      assert(view.behind === 1 && !view.opaque, `something drawn behind the popup's page: ${JSON.stringify(view)}`);
+      await command("extclose");
+      await until("popup closed", () => state().extensionPopup === null);
+      // A tab switch ends it (Chrome's popup closes when it loses focus), and so does the page closing itself.
+      await todayTabs(before + 1);
+      await command(`extrun ${id}`);
+      await until("popup open again", () => state().extensionPopup);
+      await command("menu nextTab");
+      await until("popup closed by a tab switch", async () => { await command("state"); return state().extensionPopup === null; });
+      await command(`extrun ${id}`);
+      await until("popup open once more", () => state().extensionPopup);
+      const again = await session(`chrome-extension://${id}/popup.html`);
+      await evaluate(again.sessionId, "window.close()");
+      await until("popup closed by its page", async () => { await command("state"); return state().extensionPopup === null && state().extensionPopupView === null; });
+    } finally {
+      if (onScreen) await commandResult("onscreen off");
+    }
     await command("menu toggleSiteControls");
     await until("panel lists it", async () => { await command("state"); return state().siteControls?.extensions.includes(id); });
     assert(state().siteControls.extensionIcons[id] === true, "the panel's tile has no icon for an extension with one");

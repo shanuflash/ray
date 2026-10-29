@@ -181,7 +181,10 @@ publicly or create accounts.
   ⇧⌘T use it; imports keep Arc's and Zen's names as names (`ArcImport.Node.tab`'s `name`). Never logged in normal
   runs. Test commands `rowaction rename <id>`, `rename <id> [text]`, `rowmenu <id>`; state log `customTitle` and
   `pageTitle` per entry; check `tab-rename` (restore compares every name after the relaunch).
-- `Extensions` (puzzle button in the sidebar address field, action popups in an NSPopover, install prompt),
+- `Extensions` (puzzle button in the sidebar address field, action popups in a borderless child window under the
+  button, Crest's way: rounded, no arrow, sized by the page, closed by a click elsewhere, Escape, a tab switch, Ray
+  going to the background or the page closing itself; state log `extensionPopupView`, check `extensions` reads its
+  pixels back with `onscreen on`; install prompt),
   `Downloads` (button in the sidebar footer, ⌥⌘L; the list slides up as a panel inside the sidebar), `FindBar` (⌘F),
   `PermissionPrompt` (site permissions, only over their own tab), `ArcImport` (the old Import from Arc…, sidebar
   only; its action still exists without a menu item), `Toast` (Arc's top-right note, "Copied Current URL"; a
@@ -384,9 +387,12 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
 - The engine silently cancels insecure downloads (HTTPS page → HTTP file); Keep/Discard only shows for files Chrome
   holds as dangerous. Ardia 0.2.42's "insecure download waits for Keep" is its app UI over the same engine tree
   (`ac_downloads_keep` already handles insecure ones), so on this engine nothing changes.
-- NSPopover is Liquid Glass on macOS 26+, so content without its own background shows the glass. Extension popups
-  get Chrome's white base (`contentsBackgroundColor`). The user dislikes popovers for Ray's own UI: build in-window
-  panels (downloads, site controls) that close on an outside click, Escape and tab switches.
+- NSPopover is Liquid Glass on macOS 26+, and on macOS 27 it blanks Chrome's content: the popover composites its
+  material with what it hosts and an opaque view behind a render view occludes the renderer's remote layer, so an
+  extension popup in one showed plain white though its page had drawn (Crest found the same). Never host a page in
+  an NSPopover or over an opaque view of Ray's: extension popups are a borderless child window with nothing behind
+  the page (its white base is the page's own `contentsBackgroundColor`). The user dislikes popovers for Ray's own UI
+  too: build in-window panels (downloads, site controls) that close on an outside click, Escape and tab switches.
 - Extension action icons can be empty (they load late, or only the background page sets one): fall back to the
   manifest icon from `ac_extensions_list`, as Chrome's toolbar does.
 - `NSTextField` labels draw from the top of their frame: make the frame exactly one line tall

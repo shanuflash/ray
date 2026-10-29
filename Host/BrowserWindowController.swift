@@ -948,6 +948,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if switched, !cycling { tabCycle = nil }
     if switched, findTab != nil, findTab !== tab { closeFind() }
     if switched { closeSiteControls() }
+    // An extension's popup belongs to the tab it opened over.
+    if switched { extensions.closePopup() }
     state.activeEntryID = entry.id
     if switched { permissions.update() }
     entry.lastActive = Date()
@@ -2114,6 +2116,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       }(),
       "extensions": extensions.items.map { ["id": $0.id, "name": $0.name, "enabled": $0.enabled] },
       "extensionPopup": extensions.popupURL ?? NSNull(),
+      "extensionPopupView": extensions.popupViewState ?? NSNull(),
       "siteControls": siteControls?.state ?? NSNull(),
       "sidebarOverToolbar": (root.subviews.firstIndex(of: sidebar.superview === root ? sidebar : floating) ?? -1)
         > (root.subviews.firstIndex(of: toolbar) ?? 0),

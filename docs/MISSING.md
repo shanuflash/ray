@@ -209,6 +209,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     double click on an unloaded tab loads it and keeps the field focused in the hidden test window; not yet tried in
     a key window, where the page could take focus as it loads. Fix where needed in `SidebarView.beginRename`. Found
     2026-10-29.
+17. **Extension popup details.** The popup window has no arrow (a system arrow would be filled with a colour Ray
+    can't know the page paints; Crest leaves it out too) and is centred under its button rather than following
+    Chrome's edge alignment. Escape is taken by the popup window before the page sees it (Ray's render view doesn't
+    hand an unused Escape back), so a popup's own Escape handling (closing its menu) closes the whole popup. Fix:
+    route the extension view's unhandled keys back to `ExtensionsController`. Found 2026-10-29.
 
 ## Done
 
@@ -229,3 +234,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Rename tabs (Rename… or a double click; kept over navigations and relaunches; Arc's names kept on import) | 2026-10-29, `feat: rename tabs` |
 | Settings: one typed catalog for every setting (storage, observers, test command, check generated from it) | 2026-10-29, `414495a` |
 | New Settings window (direction G): text sidebar with lavender wash, search with row flash, `ray://settings/<pane>`, "Settings: …" in the command bar, live pictures | 2026-10-29, `d88e0e3` |
+| Extension popups draw on macOS 27 (a borderless window, not an NSPopover, which showed them plain white) | 2026-10-29 |
