@@ -83,3 +83,28 @@ struct ImportSummary {
   var imported: [ImportItem: Int] = [:]
   var failed: [ImportItem: String] = [:]
 }
+
+// MARK: Session
+
+/// Runs an import. Owned by the importer side: screens call these and nothing else. Test builds read browsers from
+/// RAY_IMPORT_SOURCE_DIR (a fake ~/Library/Application Support, e.g. Importer/fixtures/home/Library/Application
+/// Support) and use RAY_IMPORT_SECRET as every browser's Safe Storage secret, so tests never touch a real profile or
+/// the Keychain.
+final class ImportSession {
+  /// Browsers found on this Mac, Arc first, then by name.
+  static func sources() -> [ImportSource] { [] }
+
+  /// Counts for the "what to bring" step, read off the main thread without any Keychain prompt; completion on main.
+  func preview(_ source: ImportSource, profile: ImportProfile, completion: @escaping (ImportPreview) -> Void) {
+    completion(ImportPreview())
+  }
+
+  /// Reads the chosen items (one Keychain prompt when any needs the key) and writes them into Ray: the sidebar of
+  /// `controller`'s window, and the engine's history, passwords, cookies and autofill. Events and completion on main.
+  func run(
+    _ source: ImportSource, profile: ImportProfile, items: Set<ImportItem>, into controller: BrowserWindowController,
+    event: @escaping (ImportEvent) -> Void, completion: @escaping (ImportSummary) -> Void
+  ) {
+    completion(ImportSummary())
+  }
+}
