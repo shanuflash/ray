@@ -3,8 +3,10 @@
 // started with and asked into $RAY_STANDIN_DIR. Never a real browser, never the network.
 //   RAY_STANDIN_DIR=<dir> node tests/jumpcloud-chrome-standin.mjs <Chrome's arguments>
 // <dir>/mode says how it behaves: "success" (the login page reaches the user console), "never" (it stays on the login
-// page), "silent" (it never answers, as a Chrome whose policy forbids remote debugging), "setup" (the Web Store
-// window, closed by the user after a moment).
+// page), "headlessNever" (it stays there when started with --headless=new, and gets there in 2 s in a window),
+// "silent" (it never answers, as a Chrome whose policy forbids remote debugging), "setup" (the Web Store window,
+// closed by the user after a moment). Headless relays come as createTarget about:blank, attachToTarget (flat),
+// Emulation.setUserAgentOverride and Page.navigate on that session.
 import { appendFileSync, readFileSync } from "node:fs";
 import { Socket } from "node:net";
 import { join } from "node:path";
@@ -43,18 +45,28 @@ else {
       httpOnly: false, secure: true, session: false, priority: "Medium", sourceScheme: "Secure", sourcePort: 443 },
   ];
   const info = (id) => ({ targetId: id, type: "page", title: "", url: targets.get(id), attached: false, canAccessOpener: false });
+  const sessions = new Map();
+  let nextSession = 1;
+  // A page reaching the console's login page signs in on its own (as JumpCloud Go does) when the mode says so: 0.4 s
+  // later, or 2 s later for a windowed Chrome after headless never got there.
+  const headless = process.argv.includes("--headless=new");
+  const navigated = (id, url) => {
+    if (!url.endsWith("/login")) return;
+    const delay = mode === "success" ? 400 : mode === "headlessNever" && !headless ? 2000 : null;
+    if (delay === null) return;
+    setTimeout(() => {
+      if (!targets.has(id)) return;
+      targets.set(id, url.replace(/\/login$/, "/userconsole/#/"));
+      emit("Target.targetInfoChanged", { targetInfo: info(id) });
+    }, delay);
+  };
   const handlers = {
     "Target.setDiscoverTargets": () => ({}),
     "Target.createTarget": ({ url }) => {
       const id = `T${nextTarget++}`;
       targets.set(id, url);
       setTimeout(() => emit("Target.targetCreated", { targetInfo: info(id) }), 20);
-      if (mode === "success" && url.endsWith("/login")) {
-        setTimeout(() => {
-          targets.set(id, url.replace(/\/login$/, "/userconsole/#/"));
-          emit("Target.targetInfoChanged", { targetInfo: info(id) });
-        }, 400);
-      }
+      navigated(id, url);
       if (mode === "setup") {
         setTimeout(() => {
           targets.delete(id);
@@ -62,6 +74,21 @@ else {
         }, 600);
       }
       return { targetId: id };
+    },
+    "Target.attachToTarget": ({ targetId }) => {
+      if (!targets.has(targetId)) throw new Error("No target with given id found");
+      const sessionId = `S${nextSession++}`;
+      sessions.set(sessionId, targetId);
+      return { sessionId };
+    },
+    "Emulation.setUserAgentOverride": () => ({}),
+    "Page.navigate": ({ url }, sessionId) => {
+      const id = sessions.get(sessionId);
+      if (!id) throw new Error("'Page.navigate' wasn't found");
+      targets.set(id, url);
+      setTimeout(() => emit("Target.targetInfoChanged", { targetInfo: info(id) }), 10);
+      navigated(id, url);
+      return { frameId: id, loaderId: "L1" };
     },
     "Browser.getWindowForTarget": () => ({ windowId: 7, bounds: { left: 0, top: 0, width: 800, height: 600, windowState: "normal" } }),
     "Browser.setWindowBounds": () => ({}),
@@ -83,10 +110,15 @@ else {
     for (let end; (end = buffer.indexOf(0)) >= 0; ) {
       const message = JSON.parse(buffer.subarray(0, end).toString("utf8"));
       buffer = buffer.subarray(end + 1);
-      log("cdp.jsonl", { pid: process.pid, method: message.method, params: message.params });
+      log("cdp.jsonl", { pid: process.pid, method: message.method, params: message.params, sessionId: message.sessionId });
       const handler = handlers[message.method];
-      if (handler) send({ id: message.id, result: handler(message.params ?? {}) });
-      else send({ id: message.id, error: { code: -32601, message: `'${message.method}' wasn't found` } });
+      const reply = message.sessionId ? { sessionId: message.sessionId } : {};
+      if (!handler) {
+        send({ ...reply, id: message.id, error: { code: -32601, message: `'${message.method}' wasn't found` } });
+        continue;
+      }
+      try { send({ ...reply, id: message.id, result: handler(message.params ?? {}, message.sessionId) }); }
+      catch (error) { send({ ...reply, id: message.id, error: { code: -32000, message: error.message } }); }
     }
   });
   // Ray went away: Chrome closes itself when its pipe closes.

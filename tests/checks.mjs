@@ -3318,9 +3318,11 @@ const checks = {
   async "jumpcloud-relay"() {
     // Settings › Passwords › Sign in with JumpCloud Go through Chrome (Host/JumpCloudRelay.swift), on an instance of
     // its own: console.jumpcloud.com maps to a local fixture (so the real host list is what triggers), and "Chrome" is
-    // tests/jumpcloud-chrome-standin.mjs on the DevTools pipe. Off: nothing starts. On: Chrome starts with its own
-    // profile (0700) and a pipe, never a port; only jumpcloud.com cookies land in Ray, replacing a stale session;
-    // the tab reloads; a private window never relays; the loop guard, the deadline, a silent Chrome and Set Up….
+    // tests/jumpcloud-chrome-standin.mjs on the DevTools pipe. Off: nothing starts. On: Chrome starts headless with
+    // its own profile (0700), a pipe (never a port) and ordinary Chrome's user agent, never brought forward; only
+    // jumpcloud.com cookies land in Ray, replacing a stale session; the tab reloads; a private window never relays;
+    // the loop guard; headless that doesn't finish falls back to a window (a note in full screen, in front otherwise);
+    // the deadline, a silent Chrome and Set Up….
     const dir = mkdtempSync(join(tmpdir(), "ray-jumpcloud-"));
     const data = join(dir, "data");
     const standin = join(dir, "standin");
@@ -3357,7 +3359,8 @@ const checks = {
         RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_START_URL: `${origin}/a`, RAY_IGNORE_CERT_ERRORS: "1",
         RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.jumpcloud`, RAY_REMOTE_DEBUGGING_PORT: String(devPort),
         RAY_HOST_RULES: `MAP console.jumpcloud.com 127.0.0.1:${jc.address().port}`,
-        RAY_JUMPCLOUD_RELAY_CHROME: wrapper, RAY_JUMPCLOUD_RELAY_DEADLINE: "4" },
+        RAY_JUMPCLOUD_RELAY_CHROME: wrapper, RAY_JUMPCLOUD_RELAY_DEADLINE: "6",
+        RAY_JUMPCLOUD_RELAY_HEADLESS_DEADLINE: "1.5", RAY_JUMPCLOUD_RELAY_CHROME_VERSION: "141.0.7390.123" },
       stdio: ["pipe", "ignore", "pipe"],
     });
     const exit = new Promise((r) => it.on("exit", (code, signal) => r(code ?? signal)));
@@ -3420,24 +3423,41 @@ const checks = {
       const profile = join(data, "JumpCloud Relay");
       mkdirSync(join(profile, "Default/Extensions/jdoahkhfkeipblhbhppmcbdgapeoaopa/3.3.5_0"), { recursive: true });
 
-      // Signed in: Chrome on the console's own login page (not the app's flow) in a 440×620 window, then only
-      // jumpcloud.com cookies come over, the stale session goes, and the tab reloads with the new one.
+      // Signed in, headless: Chrome without a window (never brought forward) on the console's own login page (not the
+      // app's flow) as ordinary Chrome 141, then only jumpcloud.com cookies come over, the stale session goes, and
+      // the tab reloads with the new one.
+      const base = [`--user-data-dir=${profile}`, "--remote-debugging-pipe", "--no-first-run", "--no-default-browser-check",
+        "--no-startup-window"];
+      const agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
+      const callsOf = (pid) => lines("cdp.jsonl").filter((c) => c.pid === pid);
       await goTo("/login?n=1");
       await until("signed in", async () => (await relay()).lastResult === "signedIn", 10000);
       let state = await relay();
-      assert(state.launches === 1 && state.cookiesImported === 2 && state.directoryMode === "700" && state.directory === profile,
-        `relay ${JSON.stringify(state)}`);
+      assert(state.launches === 1 && state.cookiesImported === 2 && state.directoryMode === "700" && state.directory === profile &&
+        state.lastMode === "headless" && state.activations === 0 && state.fallbacks === 0, `relay ${JSON.stringify(state)}`);
       const [launch] = lines("launches.jsonl");
-      assert(JSON.stringify(launch.argv) === JSON.stringify([`--user-data-dir=${profile}`, "--remote-debugging-pipe",
-        "--no-first-run", "--no-default-browser-check", "--no-startup-window"]), `Chrome's arguments: ${JSON.stringify(launch.argv)}`);
-      const calls = () => lines("cdp.jsonl").filter((c) => c.pid === launch.pid);
+      assert(JSON.stringify(launch.argv) === JSON.stringify([...base, "--headless=new", `--user-agent=${agent}`]),
+        `Chrome's arguments: ${JSON.stringify(launch.argv)}`);
+      assert(!launch.argv.some((a) => /headless/i.test(a) && a.startsWith("--user-agent")), "the user agent says headless");
+      const calls = () => callsOf(launch.pid);
+      const methods = calls().map((c) => c.method);
       const created = calls().find((c) => c.method === "Target.createTarget");
-      assert(created.params.url === "https://console.jumpcloud.com/login" && created.params.newWindow === true &&
-        created.params.width === 440 && created.params.height === 620, `createTarget ${JSON.stringify(created.params)}`);
-      const placed = calls().find((c) => c.method === "Browser.setWindowBounds");
-      assert(placed?.params.bounds.width === 440 && placed.params.bounds.height === 620, `window bounds ${JSON.stringify(placed)}`);
-      assert(calls().some((c) => c.method === "Storage.getCookies") && calls().some((c) => c.method === "Browser.close"),
-        `calls ${calls().map((c) => c.method)}`);
+      assert(created.params.url === "about:blank" && created.params.newWindow === undefined && created.params.width === undefined,
+        `createTarget ${JSON.stringify(created.params)}`);
+      const attach = calls().find((c) => c.method === "Target.attachToTarget");
+      assert(attach?.params.flatten === true, `attach ${JSON.stringify(attach)}`);
+      const override = calls().find((c) => c.method === "Emulation.setUserAgentOverride");
+      const brands = override?.params.userAgentMetadata?.brands ?? [];
+      assert(override?.sessionId === "S1" && override.params.userAgent === agent &&
+        brands.map((b) => `${b.brand};${b.version}`).join() === "Google Chrome;141,Not?A_Brand;8,Chromium;141" &&
+        override.params.userAgentMetadata.platform === "macOS" &&
+        !JSON.stringify(override.params).includes("Headless"), `user agent override ${JSON.stringify(override?.params)}`);
+      const navigate = calls().find((c) => c.method === "Page.navigate");
+      assert(navigate?.sessionId === "S1" && navigate.params.url === "https://console.jumpcloud.com/login" &&
+        methods.indexOf("Emulation.setUserAgentOverride") < methods.indexOf("Page.navigate"), `navigate ${JSON.stringify(navigate)}`);
+      assert(!methods.includes("Browser.setWindowBounds") && !methods.includes("Browser.getWindowForTarget"),
+        `a headless relay placed a window: ${methods}`);
+      assert(methods.includes("Storage.getCookies") && methods.includes("Browser.close"), `calls ${methods}`);
       await until("relay Chrome gone (and reaped)", () => !alive(launch.pid), 8000);
       assert(!lines("cdp.jsonl").some((c) => c.pid === launch.pid && c.signal), "the relay Chrome had to be killed after Browser.close");
       const reloads = await until("tab reloaded", () => {
@@ -3475,21 +3495,59 @@ const checks = {
       await ok("closewindow private");
       await until("back to the normal window", async () => (await now()).private === false, 8000);
 
-      // The user never finishes: the deadline closes Chrome and says so.
+      // Headless never gets there, Ray in full screen: headless Chrome closes, a visible one opens the 440×620 window,
+      // and Ray says so with a button instead of leaving its Space; the button brings Chrome forward.
+      mode("headlessNever");
+      await ok("jumpcloud fullscreen on");
+      let before = lines("launches.jsonl").length;
+      await goTo("/login?n=fb", true);
+      await until("fallback note", async () => (await now()).toast.includes("Finish signing in to JumpCloud in Chrome"), 8000, 50);
+      state = latest().jumpCloudRelay;
+      assert(state.fallbacks === 1 && state.mode === "window" && state.activations === 0 && state.launches === before + 2,
+        `full-screen fallback ${JSON.stringify(state)}`);
+      const [headlessRun, windowRun] = lines("launches.jsonl").slice(before);
+      assert(headlessRun.argv.includes("--headless=new") && JSON.stringify(windowRun.argv) === JSON.stringify(base),
+        `fallback arguments ${JSON.stringify([headlessRun.argv, windowRun.argv])}`);
+      assert(callsOf(headlessRun.pid).some((c) => c.method === "Browser.close"), "headless Chrome wasn't closed");
+      const shown = callsOf(windowRun.pid).find((c) => c.method === "Target.createTarget");
+      assert(shown.params.url === "https://console.jumpcloud.com/login" && shown.params.newWindow === true &&
+        shown.params.width === 440 && shown.params.height === 620, `fallback createTarget ${JSON.stringify(shown.params)}`);
+      const placed = callsOf(windowRun.pid).find((c) => c.method === "Browser.setWindowBounds");
+      assert(placed?.params.bounds.width === 440 && placed.params.bounds.height === 620, `window bounds ${JSON.stringify(placed)}`);
+      await ok("jumpcloud showchrome");
+      assert((await relay()).activations === 1, "the note's button didn't bring Chrome forward");
+      await until("signed in through the window", async () => (await relay()).lastResult === "signedIn", 10000);
+      assert(latest().jumpCloudRelay.cookiesImported === 2 && latest().jumpCloudRelay.lastMode === "window", "fallback import");
+      await until("fallback Chromes gone", () => !alive(headlessRun.pid) && !alive(windowRun.pid), 10000);
+      assert(!lines("cdp.jsonl").some((c) => c.pid === headlessRun.pid && c.signal), "headless Chrome had to be killed");
+
+      // Not in full screen: the fallback window comes forward by itself, as before.
+      await ok("jumpcloud fullscreen off");
+      before = lines("launches.jsonl").length;
+      await goTo("/login?n=fb2", true);
+      await until("fallback in front", async () => (await relay()).fallbacks === 2 && latest().jumpCloudRelay.activations === 2, 8000, 50);
+      await until("signed in again", async () => (await relay()).lastResult === "signedIn", 10000);
+      for (const started of lines("launches.jsonl").slice(before)) await until("Chrome gone", () => !alive(started.pid), 10000);
+
+      // The user never finishes: headless, then the window, then the deadline closes Chrome and says so.
       mode("never");
+      before = lines("launches.jsonl").length;
       await goTo("/login?n=3", true);
       await until("timed out", async () => (await relay()).lastResult === "timedOut", 12000);
-      assert(latest().toast.includes("didn't finish") && latest().jumpCloudRelay.launches === 2, `deadline: ${latest().toast}`);
-      const never = lines("launches.jsonl")[1];
-      await until("timed-out Chrome gone", () => !alive(never.pid), 10000);
+      assert(latest().toast.includes("didn't finish") && latest().jumpCloudRelay.launches === before + 2, `deadline: ${latest().toast}`);
+      for (const never of lines("launches.jsonl").slice(before)) await until("timed-out Chrome gone", () => !alive(never.pid), 10000);
 
-      // A Chrome that never answers its pipe (policy RemoteDebuggingAllowed off): given up on, and killed.
+      // A Chrome that never answers its pipe (policy RemoteDebuggingAllowed off): given up on, and killed; headless
+      // first, then once more with a window.
       mode("silent");
+      before = lines("launches.jsonl").length;
       await goTo("/login?n=4", true);
       await until("no answer", async () => (await relay()).lastResult === "noAnswer", 12000);
-      assert(latest().toast.includes("didn't answer") && latest().jumpCloudRelay.launches === 3, `silent: ${latest().toast}`);
-      const silent = lines("launches.jsonl")[2];
-      await until("silent Chrome gone", () => !alive(silent.pid), 10000);
+      assert(latest().toast.includes("didn't answer") && latest().jumpCloudRelay.launches === before + 2,
+        `silent: ${latest().toast} ${JSON.stringify(latest().jumpCloudRelay)}`);
+      const silent = lines("launches.jsonl").slice(before);
+      assert(silent[0].argv.includes("--headless=new") && !silent[1].argv.includes("--headless=new"), "silent fallback arguments");
+      for (const quiet of silent) await until("silent Chrome gone", () => !alive(quiet.pid), 10000);
 
       // Set Up…: the Web Store page at Chrome's own size; Chrome quits when its window closes.
       mode("setup");
@@ -3499,9 +3557,11 @@ const checks = {
       assert(rows.includes("jumpCloudRelay") && rows.includes("jumpCloudRelay.setup"), `passwords rows ${rows}`);
       assert(latest().jumpCloudRelay.status.includes("installed"), `status ${latest().jumpCloudRelay.status}`);
       await ok("settings close");
+      before = lines("launches.jsonl").length;
       await ok("jumpcloud setup");
-      await until("setup", async () => (await relay()).lastResult === "setup" && latest().jumpCloudRelay.launches === 4);
-      const setup = lines("launches.jsonl")[3];
+      await until("setup", async () => (await relay()).lastResult === "setup" && latest().jumpCloudRelay.launches === before + 1);
+      const setup = lines("launches.jsonl")[before];
+      assert(JSON.stringify(setup.argv) === JSON.stringify(base), `setup arguments ${JSON.stringify(setup.argv)}`);
       const setupCalls = lines("cdp.jsonl").filter((c) => c.pid === setup.pid);
       const store = setupCalls.find((c) => c.method === "Target.createTarget");
       assert(store.params.url === "https://chromewebstore.google.com/detail/jdoahkhfkeipblhbhppmcbdgapeoaopa" &&

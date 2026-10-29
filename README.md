@@ -31,8 +31,10 @@ Early and personal. Expect rough edges.
 - Can be your default browser (System Settings › Desktop & Dock › Default web browser): links from other apps, and
   HTML or PDF files you open with Ray, open as tabs, also when they launch Ray.
 - JumpCloud Go (passwordless work sign-in), through Google Chrome: with Settings › Passwords › Sign in with JumpCloud
-  Go through Chrome on, JumpCloud's login page opens a small Chrome window for Touch ID, then you're signed in in Ray.
-  JumpCloud's helper only answers browsers on its own list, so Ray borrows Chrome for that one step.
+  Go through Chrome on, JumpCloud's login page signs in through a hidden Chrome (no window, and Ray stays in full
+  screen), then you're signed in in Ray. If that doesn't finish in a few seconds, a small Chrome window opens instead
+  (in full screen, Ray offers a button for it rather than switching Spaces). JumpCloud's helper only answers browsers
+  on its own list, so Ray borrows Chrome for that one step.
 
 Not yet: Spaces, drag and drop between windows, Split View, Little Arc, installing imported extensions. The full
 list is in [docs/MISSING.md](docs/MISSING.md).

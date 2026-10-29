@@ -226,18 +226,29 @@ publicly or create accounts.
   apple generic and certificate leaf[subject.OU] = "EQHXZ8M8AV"`, resources not hashed) before every launch;
   `RelayChrome` posix_spawns it with only fds 0–4 (`--user-data-dir=<data>/JumpCloud Relay` made 0700,
   `--remote-debugging-pipe`, `--no-first-run`, `--no-default-browser-check`, `--no-startup-window`; never a port),
-  CDP as NUL-separated JSON on fds 3/4, reaped on exit, Browser.close then SIGTERM/SIGKILL. `Target.createTarget`
-  opens the console's own `/login` (never the app's SAML/OIDC URL) 440×620 over Ray's window; a `/userconsole` URL
-  (`Target.targetInfoChanged`) is signed in: `Storage.getCookies`, only jumpcloud.com and subdomains
-  (`isJumpCloudDomain`, dot boundary), `ac_site_data_clear` on jumpcloud.com (the import keeps cookies Ray has) then
-  `ac_cookies_import` through `callWithSecret`, and the tab reloads if still on that login page. Deadlines: 15 s for
-  Chrome's first answer (a policy may forbid the pipe), 120 s to sign in; one relay at a time; the same tab back on
-  the login page within 30 s (after the reload's own landing) gets a Toast, not another relay. Set Up… (Passwords'
-  own row, `SettingsJumpCloud.swift`) opens that Chrome on JumpCloud Go's Web Store page; Chrome quits when its last
-  window closes. Never the Keychain, never the user's Chrome profile; logs only the result name. Test builds use only
-  `RAY_JUMPCLOUD_RELAY_CHROME` (a stand-in, unchecked; never real Chrome) and `RAY_JUMPCLOUD_RELAY_DEADLINE`; test
-  command `jumpcloud setup|verify <app>`; state log `jumpCloudRelay`; check `jumpcloud-relay` (own instance,
-  `MAP console.jumpcloud.com` to a fixture, `tests/jumpcloud-chrome-standin.mjs` as Chrome).
+  CDP as NUL-separated JSON on fds 3/4, reaped on exit, Browser.close then SIGTERM/SIGKILL. A relay runs headless
+  first: `--headless=new` (Chrome's new headless is the full browser on that profile, extensions and native
+  messaging included; no window, no Dock icon) and `--user-agent=` ordinary Chrome's reduced UA for the bundle's
+  `CFBundleShortVersionString` (`RelayUserAgent`; no version, no headless), then `Target.createTarget` about:blank,
+  `Target.attachToTarget` (flat), `Emulation.setUserAgentOverride` with Chrome's own brand list (no
+  HeadlessChrome) and `Page.navigate` to the console's own `/login` (never the app's SAML/OIDC URL). Never activated,
+  so a full-screen Ray keeps its Space and Ray never takes focus back. Not signed in within `headlessDeadline` (10 s
+  from Chrome's answer), or headless Chrome quit, lost its page or never answered: it's closed and the relay starts
+  again in a visible Chrome, 440×620 over Ray's window, brought forward as before unless Ray's window is full screen;
+  then a held Toast "Finish signing in to JumpCloud in Chrome" whose button (`showChrome`) brings it forward. A
+  `/userconsole` URL (`Target.targetInfoChanged`) is signed in: `Storage.getCookies`, only jumpcloud.com and
+  subdomains (`isJumpCloudDomain`, dot boundary), `ac_site_data_clear` on jumpcloud.com (the import keeps cookies Ray
+  has) then `ac_cookies_import` through `callWithSecret`, and the tab reloads if still on that login page. Ray comes
+  back to the front only after a relay that brought Chrome forward. Deadlines: 15 s for each Chrome's first answer (a
+  policy may forbid the pipe), 120 s to sign in overall; one relay at a time; the same tab back on the login page
+  within 30 s (after the reload's own landing) gets a Toast, not another relay. Set Up… (Passwords' own row,
+  `SettingsJumpCloud.swift`) opens a visible Chrome on JumpCloud Go's Web Store page (a relay while it's open uses a
+  window in it); Chrome quits when its last window closes. Never the Keychain, never the user's Chrome profile; logs
+  only the result name. Test builds use only `RAY_JUMPCLOUD_RELAY_CHROME` (a stand-in, unchecked; never real Chrome),
+  `RAY_JUMPCLOUD_RELAY_CHROME_VERSION`, `RAY_JUMPCLOUD_RELAY_DEADLINE` and `RAY_JUMPCLOUD_RELAY_HEADLESS_DEADLINE`;
+  test command `jumpcloud setup|verify <app>|fullscreen on|off|showchrome`; state log `jumpCloudRelay` (`mode`,
+  `lastMode`, `activations`, `fallbacks`); check `jumpcloud-relay` (own instance, `MAP console.jumpcloud.com` to a
+  fixture, `tests/jumpcloud-chrome-standin.mjs` as Chrome).
 - Import: `Importer/` is Ardia's import core (Apache-2.0, `swift test --package-path Importer`, fixtures only, never a
   real profile), compiled into the app. `ImportSession` (the contract the screens use: `ImportItem`, `ImportSource`,
   `sources()`/`preview`/`run`) and `ImportWriter` (reading off the main thread, one Keychain prompt for the source's

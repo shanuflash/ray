@@ -210,7 +210,7 @@ export const areas = {
   "Host/PermissionPrompt.swift": permissions,
   "Host/SiteControls.swift": ["site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
-  "Host/Toast.swift": ["copy-url", "page-commands"],
+  "Host/Toast.swift": ["copy-url", "page-commands", "jumpcloud-relay"],
   "Host/Updater.swift": ["updater-config", "settings-general"],
   // ⇧⌘T and History › Recently Closed.
   "Host/ClosedTabs.swift": ["reopen-closed-tab", "tab-rename"],

@@ -183,15 +183,19 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     company's device check). **Workaround in Ray:** Settings › Passwords › "Sign in with JumpCloud Go through Chrome"
     (`jumpCloudRelay`, off by default, `Host/JumpCloudRelay.swift`): on JumpCloud's /login page, Ray starts real
     Google Chrome (signature checked: `com.google.Chrome`, team EQHXZ8M8AV) on its own profile
-    (`<data>/JumpCloud Relay`, 0700) over `--remote-debugging-pipe`, shows the console's own login page in a small
-    window for Touch ID, and on reaching /userconsole copies only jumpcloud.com cookies into Ray and reloads the tab.
-    Set Up… installs the extension into that profile once. Not yet tried against the real JumpCloud (needs the
-    owner's account): the trigger paths (`/login` on console(.eu)/sso(.eu).jumpcloud.com), the success URL
-    (`/userconsole…`) and whether a reload of the app's /login page finishes the SAML flow are read from JumpCloud's
-    login UI bundle, not seen. Follow-ups: the relay clears all of jumpcloud.com's site data in Ray before importing
-    (the engine's `ac_cookies_import` keeps cookies Ray already has, and `ac_site_data_clear` is the only delete);
-    a second Google Chrome shows in the Dock while it runs; a Chrome policy that turns off remote debugging
-    (`RemoteDebuggingAllowed`) makes it say Chrome didn't answer. Real fix: Developer ID signing (roadmap step 4),
+    (`<data>/JumpCloud Relay`, 0700) over `--remote-debugging-pipe`, loads the console's own login page there
+    headless (`--headless=new`, ordinary Chrome's user agent and client hints, no window, no Dock icon, never
+    activated, so a full-screen Ray stays on its Space), and on reaching /userconsole copies only jumpcloud.com
+    cookies into Ray and reloads the tab. If headless doesn't sign in within 10 s it starts again in a small visible
+    Chrome window (in full screen, Ray shows "Finish signing in to JumpCloud in Chrome" with a button instead of
+    switching Spaces). Set Up… installs the extension into that profile once. The owner's company sign-in worked
+    end to end on 2026-10-29 with the visible window (JumpCloud Go finishes by itself, no Touch ID); the headless
+    run still needs its real try (the native host's parent check should see the same signed Chrome executable).
+    Follow-ups: the relay clears all of jumpcloud.com's site data in Ray before importing (the engine's
+    `ac_cookies_import` keeps cookies Ray already has, and `ac_site_data_clear` is the only delete); the visible
+    fallback still shows a second Google Chrome in the Dock while it runs; a Chrome policy that turns off remote
+    debugging (`RemoteDebuggingAllowed`) makes it say Chrome didn't answer, and one that turns off headless mode
+    (`HeadlessMode`) costs a fallback. Real fix: Developer ID signing (roadmap step 4),
     settle the bundle id, then ask JumpCloud to add Ray's identifier and team to the host's list. Found 2026-10-29.
 16. **Tab rename details.** Arc's row tip says "Double-click to rename" once (Cra copies it); Ray shows no hint. A
     favorite's name is typed in a lifted row under its tile (Ardia and Crest use a sheet): worth a look by hand. A

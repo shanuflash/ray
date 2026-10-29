@@ -603,9 +603,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   private lazy var toast = ToastView()
 
-  func showToast(_ message: String, symbol: String? = nil, figure: Bool = false, action: (() -> Void)? = nil) {
+  func showToast(_ message: String, symbol: String? = nil, figure: Bool = false, duration: TimeInterval? = nil,
+                 action: (() -> Void)? = nil) {
     if toast.superview !== root { root.addSubview(toast, positioned: .above, relativeTo: nil) }
-    toast.show(message, symbol: symbol, figure: figure, action: action)
+    toast.show(message, symbol: symbol, figure: figure, duration: duration, action: action)
     layoutToast()
     logState("toast")
   }

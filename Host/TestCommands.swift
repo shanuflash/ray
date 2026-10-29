@@ -211,6 +211,8 @@ enum TestCommands {
 
   /// `jumpcloud setup`: Settings' Set Up… (Ray's Chrome stand-in on the Web Store page). `jumpcloud verify <app>`:
   /// whether that app passes the signature check Ray makes before it starts Google Chrome (`valid` / `invalid`).
+  /// `jumpcloud fullscreen on|off`: the relay treats Ray's window as full screen. `jumpcloud showchrome`: the
+  /// fallback note's button (Chrome's window to the front).
   private static func jumpCloud(_ argument: String) -> String {
     let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
     switch words.first {
@@ -220,7 +222,14 @@ enum TestCommands {
     case "verify":
       guard words.count == 2 else { return "usage: jumpcloud verify <app>" }
       return RelayChromeApp.isGoogleChrome(URL(fileURLWithPath: words[1])) ? "valid" : "invalid"
-    default: return "usage: jumpcloud setup|verify <app>"
+    case "fullscreen":
+      guard words.count == 2, ["on", "off"].contains(words[1]) else { return "usage: jumpcloud fullscreen on|off" }
+      JumpCloudRelay.shared.simulatesFullScreen = words[1] == "on"
+      return "ok"
+    case "showchrome":
+      JumpCloudRelay.shared.showChrome()
+      return "ok"
+    default: return "usage: jumpcloud setup|verify <app>|fullscreen on|off|showchrome"
     }
   }
 

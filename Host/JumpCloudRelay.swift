@@ -6,9 +6,11 @@ import Security
 // JumpCloud Go's native helper hands its sign-in token only to browsers on its own list, checked by the code signature
 // of the process that launched it (docs/MISSING.md, Known limitations #15), so Ray can never get one. Real Google
 // Chrome can. With the setting on, a normal Ray tab that lands on JumpCloud's user login page starts Ray's own Chrome
-// instance (its own profile next to Ray's data, never the user's Chrome profile), shows JumpCloud's login page there
-// in a small window for Touch ID, waits for the user console, then copies only jumpcloud.com cookies into Ray and
-// reloads the tab. Chrome is driven over `--remote-debugging-pipe` (file descriptors 3 and 4, NUL-separated JSON):
+// instance (its own profile next to Ray's data, never the user's Chrome profile), loads JumpCloud's login page there
+// headless (no window, no Dock icon, never activated, so a full-screen Ray stays on its Space), waits for the user
+// console, then copies only jumpcloud.com cookies into Ray and reloads the tab. If headless Chrome hasn't signed in
+// within `headlessDeadline`, the relay starts again in a small visible Chrome window (a full-screen Ray only gets a
+// note with a button that brings Chrome forward). Chrome is driven over `--remote-debugging-pipe` (file descriptors 3 and 4, NUL-separated JSON):
 // never a port, so nothing else on the Mac can reach it. Nothing here reads the Keychain.
 
 // MARK: Login pages
@@ -93,21 +95,25 @@ enum RelayChromeApp {
   static let requirement = #"identifier "com.google.Chrome" and anchor apple generic and certificate leaf[subject.OU] = "EQHXZ8M8AV""#
 
   enum Found {
-    case chrome(executable: String)
+    /// `version` is the bundle's CFBundleShortVersionString (`142.0.7444.60`), nil when it can't be read.
+    case chrome(executable: String, version: String?)
     case missing
     case unsigned
   }
 
   /// Google Chrome's executable once its signature checks out. Test builds take only `RAY_JUMPCLOUD_RELAY_CHROME` (a
-  /// stand-in, never checked) and never fall back to the real Chrome.
+  /// stand-in, never checked; its version from `RAY_JUMPCLOUD_RELAY_CHROME_VERSION`) and never fall back to the real
+  /// Chrome.
   static func locate() -> Found {
     if TestEnvironment.isTestBuild {
       guard let path = TestEnvironment["RAY_JUMPCLOUD_RELAY_CHROME"], !path.isEmpty else { return .missing }
-      return .chrome(executable: path)
+      return .chrome(executable: path, version: TestEnvironment["RAY_JUMPCLOUD_RELAY_CHROME_VERSION"])
     }
     guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.Chrome") else { return .missing }
     guard isGoogleChrome(app), let executable = Bundle(url: app)?.executableURL?.path else { return .unsigned }
-    return .chrome(executable: executable)
+    // Read fresh each time: Bundle caches its Info.plist, and Chrome updates itself in place.
+    let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))
+    return .chrome(executable: executable, version: info?["CFBundleShortVersionString"] as? String)
   }
 
   /// The app's code signature is valid and meets `requirement`. Resources aren't hashed (Chrome's framework is
@@ -122,9 +128,58 @@ enum RelayChromeApp {
   }
 }
 
+/// What headless Chrome tells sites it is: ordinary Chrome of the same version. Headless Chrome puts "HeadlessChrome"
+/// in its user agent (components/embedder_support/user_agent_utils.cc); `--user-agent` replaces that string, and
+/// `Emulation.setUserAgentOverride` sets the page's client hints as Chrome builds them for that version.
+enum RelayUserAgent {
+  /// Chrome's reduced user agent on a Mac (`Chrome/<major>.0.0.0`, macOS frozen at 10_15_7). Nil for a version that
+  /// doesn't start with a number.
+  static func string(version: String) -> String? {
+    guard let major = major(version) else { return nil }
+    return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/\(major).0.0.0 Safari/537.36"
+  }
+
+  static func major(_ version: String) -> Int? {
+    guard let first = version.split(separator: ".").first, let major = Int(first), major > 0 else { return nil }
+    return major
+  }
+
+  /// Chrome's brand list for `version` (GenerateBrandVersionList: a GREASE brand, Chromium and Google Chrome, in the
+  /// order the major version seeds); `full` gives each its full version, as Sec-CH-UA-Full-Version-List does.
+  static func brands(version: String, full: Bool) -> [[String: String]] {
+    guard let major = major(version) else { return [] }
+    let chars = [" ", "(", ":", "-", ".", "/", ")", ";", "=", "?", "_"]
+    let grease = ["8", "99", "24"][major % 3]
+    let own = full ? version : String(major)
+    let list = [
+      ["brand": "Not\(chars[major % chars.count])A\(chars[(major + 1) % chars.count])Brand",
+       "version": full ? "\(grease).0.0.0" : grease],
+      ["brand": "Chromium", "version": own], ["brand": "Google Chrome", "version": own],
+    ]
+    let orders = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]
+    var shuffled = list
+    for (index, place) in orders[major % orders.count].enumerated() { shuffled[place] = list[index] }
+    return shuffled
+  }
+
+  /// `Emulation.setUserAgentOverride`'s parameters for `version` on this Mac.
+  static func override(version: String) -> [String: Any]? {
+    guard let agent = string(version: version) else { return nil }
+    let os = ProcessInfo.processInfo.operatingSystemVersion
+    let metadata: [String: Any] = [
+      "brands": brands(version: version, full: false), "fullVersionList": brands(version: version, full: true),
+      "platform": "macOS", "platformVersion": "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)",
+      "architecture": "arm", "bitness": "64", "model": "", "mobile": false, "wow64": false,
+    ]
+    return ["userAgent": agent, "platform": "MacIntel", "userAgentMetadata": metadata]
+  }
+}
+
 /// One Chrome process Ray started, and the DevTools pipe to it. Main thread only.
 final class RelayChrome {
   let pid: pid_t
+  /// Started with `--headless=new`: no windows, no Dock icon, nothing to bring forward.
+  let headless: Bool
   /// Events (`Target.targetInfoChanged`, …) by method name.
   var onEvent: ((String, [String: Any]) -> Void)?
   /// The process is gone (quit, crashed or killed).
@@ -147,7 +202,7 @@ final class RelayChrome {
   private var received: [UInt8] = []
 
   /// Starts `executable` with `arguments`, Chrome reading fd 3 and writing fd 4. Nil if it can't start.
-  static func launch(_ executable: String, arguments: [String]) -> RelayChrome? {
+  static func launch(_ executable: String, arguments: [String], headless: Bool) -> RelayChrome? {
     var toChrome: [Int32] = [-1, -1]
     var fromChrome: [Int32] = [-1, -1]
     guard pipe(&toChrome) == 0 else { return nil }
@@ -199,11 +254,12 @@ final class RelayChrome {
     }
     // A write to a Chrome that has gone fails with EPIPE instead of signalling Ray.
     _ = fcntl(toChrome[1], F_SETNOSIGPIPE, 1)
-    return RelayChrome(pid: pid, write: toChrome[1], read: fromChrome[0])
+    return RelayChrome(pid: pid, headless: headless, write: toChrome[1], read: fromChrome[0])
   }
 
-  private init(pid: pid_t, write: Int32, read: Int32) {
+  private init(pid: pid_t, headless: Bool, write: Int32, read: Int32) {
     self.pid = pid
+    self.headless = headless
     toChrome = FileHandle(fileDescriptor: write, closeOnDealloc: true)
     fromChrome = FileHandle(fileDescriptor: read, closeOnDealloc: true)
     fromChrome.readabilityHandler = { [weak self] handle in
@@ -217,8 +273,10 @@ final class RelayChrome {
     exitSource = source
   }
 
-  /// Sends a command; `done` gets its result, or its error (also "Chrome is gone").
-  func send(_ method: String, _ params: [String: Any] = [:], done: (([String: Any]?, String?) -> Void)? = nil) {
+  /// Sends a command (to a target's flat session when `session` is set); `done` gets its result, or its error (also
+  /// "Chrome is gone").
+  func send(_ method: String, _ params: [String: Any] = [:], session: String? = nil,
+            done: (([String: Any]?, String?) -> Void)? = nil) {
     guard !gone else {
       done?(nil, "Chrome is gone")
       return
@@ -226,7 +284,9 @@ final class RelayChrome {
     let id = nextID
     nextID += 1
     if let done { waiting[id] = done }
-    guard var data = try? JSONSerialization.data(withJSONObject: ["id": id, "method": method, "params": params]) else {
+    var message: [String: Any] = ["id": id, "method": method, "params": params]
+    if let session { message["sessionId"] = session }
+    guard var data = try? JSONSerialization.data(withJSONObject: message) else {
       waiting.removeValue(forKey: id)?(nil, "unserialisable")
       return
     }
@@ -339,9 +399,13 @@ final class JumpCloudRelay {
   /// Ray's own Chrome profile, next to Settings.json (never the user's Chrome profile).
   let directory = ((dataDirectory as NSString).deletingLastPathComponent as NSString).appendingPathComponent("JumpCloud Relay")
 
-  /// How long the user has to sign in; how long Chrome has to answer at all. Test builds can shorten both.
+  /// How long the user has to sign in; how long Chrome has to answer at all (twice over when headless Chrome is
+  /// silent and a windowed one gets its turn). Test builds can shorten both.
   private let signInDeadline: TimeInterval = TestEnvironment["RAY_JUMPCLOUD_RELAY_DEADLINE"].flatMap(Double.init) ?? 120
-  private var answerDeadline: TimeInterval { min(15, signInDeadline / 2) }
+  private var answerDeadline: TimeInterval { min(15, signInDeadline / 3) }
+  /// How long headless Chrome has to reach the user console before the relay starts again in a visible window
+  /// (JumpCloud Go finishes on its own in a second or two when the device passes). Test builds can shorten it.
+  static let headlessDeadline: TimeInterval = TestEnvironment["RAY_JUMPCLOUD_RELAY_HEADLESS_DEADLINE"].flatMap(Double.init) ?? 10
 
   private var chrome: RelayChrome?
   private var relay: Relay?
@@ -354,6 +418,14 @@ final class JumpCloudRelay {
   private(set) var lastResult = "none"
   private(set) var cookiesImported = 0
   private var lastArguments: [String] = []
+  /// Times Ray asked macOS to bring Chrome forward (never for headless Chrome, never for a full-screen Ray by itself).
+  private(set) var activations = 0
+  /// Headless relays that started again in a visible window.
+  private(set) var fallbacks = 0
+  /// How the last relay reached Chrome: "headless" or "window".
+  private(set) var lastMode = "none"
+  /// Test builds: treat Ray's window as full screen (`jumpcloud fullscreen on`), as a hidden instance can't be.
+  var simulatesFullScreen = false
 
   private final class Relay {
     let match: JumpCloudLogin.Match
@@ -362,6 +434,13 @@ final class JumpCloudRelay {
     var targetID: String?
     var deadline: DispatchWorkItem?
     var importing = false
+    /// The relay runs in headless Chrome (until it falls back to a window).
+    var headless = false
+    /// Between closing headless Chrome and the visible one answering: its going isn't a failure.
+    var switching = false
+    var headlessDeadline: DispatchWorkItem?
+    /// Chrome was brought forward for it, so Ray comes back to the front when it ends.
+    var activated = false
 
     init(match: JumpCloudLogin.Match, tab: RayCoreTab, controller: BrowserWindowController) {
       self.match = match
@@ -436,46 +515,148 @@ final class JumpCloudRelay {
     relay.deadline = deadline
     DispatchQueue.main.asyncAfter(deadline: .now() + signInDeadline, execute: deadline)
     changed()
-    withChrome(failing: { [weak self, weak relay] result, note in
+    // Headless unless Ray's Chrome is already open with windows (Set Up…): then the relay's window joins it.
+    open(relay, headless: !(chrome.map { !$0.gone && !$0.closing && !$0.headless } ?? false))
+  }
+
+  /// Opens the console's login page for `relay` in headless Chrome (falling back to a window if it doesn't sign in in
+  /// time) or in a visible window.
+  private func open(_ relay: Relay, headless: Bool) {
+    relay.headless = headless
+    withChrome(headless: headless, wanted: { [weak self, weak relay] in relay != nil && self?.relay === relay },
+               failing: { [weak self, weak relay] result, note in
       guard let self, let relay, self.relay === relay else { return }
+      // A headless Chrome that never answered may be one a policy keeps from running headless: try a window.
+      if relay.headless, result == "noAnswer" { return self.fallBack(relay) }
       self.fail(relay, result, note: note)
     }) { [weak self, weak relay] chrome in
       guard let self, let relay, self.relay === relay else { return }
-      var params: [String: Any] = ["url": match.relayURL, "newWindow": true]
-      let bounds = self.bounds(over: controller.window)
-      for (key, value) in bounds { params[key] = value }
-      chrome.send("Target.createTarget", params) { [weak self, weak relay] result, _ in
-        guard let self, let relay, self.relay === relay else { return }
-        guard let target = result?["targetId"] as? String else {
-          return self.fail(relay, "chromeQuit", note: "JumpCloud sign-in didn't finish")
+      relay.switching = false
+      relay.headless = chrome.headless
+      self.lastMode = chrome.headless ? "headless" : "window"
+      self.changed()
+      guard chrome.headless else { return self.openWindow(relay, in: chrome) }
+      let fallback = DispatchWorkItem { [weak self, weak relay] in
+        guard let self, let relay else { return }
+        self.fallBack(relay)
+      }
+      relay.headlessDeadline = fallback
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.headlessDeadline, execute: fallback)
+      self.openHeadless(relay, in: chrome)
+    }
+  }
+
+  /// A page with no window: blank first, so the user agent override is in place before JumpCloud's first request.
+  private func openHeadless(_ relay: Relay, in chrome: RelayChrome) {
+    chrome.send("Target.createTarget", ["url": "about:blank"]) { [weak self, weak relay] result, _ in
+      guard let self, let relay, self.relay === relay, relay.headless else { return }
+      guard let target = result?["targetId"] as? String else { return self.fallBack(relay) }
+      relay.targetID = target
+      self.changed()
+      chrome.send("Target.attachToTarget", ["targetId": target, "flatten": true]) { [weak self, weak relay] result, _ in
+        guard let self, let relay, self.relay === relay, relay.headless, relay.targetID == target else { return }
+        guard let session = result?["sessionId"] as? String else { return self.fallBack(relay) }
+        let url = relay.match.relayURL
+        let navigate = { [weak self, weak relay] in
+          chrome.send("Page.navigate", ["url": url], session: session) { _, error in
+            guard let self, let relay, self.relay === relay, relay.headless, error != nil else { return }
+            self.fallBack(relay)
+          }
         }
-        relay.targetID = target
-        self.place(target, bounds: bounds, in: chrome)
-        self.bringForward(chrome)
-        self.changed()
+        // Without the override the page still gets `--user-agent`; only its client hints would name headless Chrome.
+        guard let version = self.chromeVersion, let override = RelayUserAgent.override(version: version) else {
+          return navigate()
+        }
+        chrome.send("Emulation.setUserAgentOverride", override, session: session) { _, _ in navigate() }
       }
     }
   }
 
+  /// Today's small window over Ray's. Brought forward unless Ray is in full screen, where macOS would leave Ray's
+  /// Space for it: a note's button does that when the user wants it.
+  private func openWindow(_ relay: Relay, in chrome: RelayChrome) {
+    guard let controller = relay.controller else { return fail(relay, "cancelled", note: "JumpCloud sign-in didn't finish") }
+    var params: [String: Any] = ["url": relay.match.relayURL, "newWindow": true]
+    let bounds = bounds(over: controller.window)
+    for (key, value) in bounds { params[key] = value }
+    chrome.send("Target.createTarget", params) { [weak self, weak relay] result, _ in
+      guard let self, let relay, self.relay === relay else { return }
+      guard let target = result?["targetId"] as? String else {
+        return self.fail(relay, "chromeQuit", note: "JumpCloud sign-in didn't finish")
+      }
+      relay.targetID = target
+      self.place(target, bounds: bounds, in: chrome)
+      if self.isFullScreen(relay.controller) {
+        relay.controller?.showToast("Finish signing in to JumpCloud in Chrome", symbol: "arrow.up.forward.app",
+                                    duration: 8) { [weak self] in self?.showChrome() }
+      } else {
+        relay.activated = true
+        self.bringForward(chrome)
+      }
+      self.changed()
+    }
+  }
+
+  /// Headless Chrome didn't sign in (in time, or at all): close it and start again in a visible window, on the same
+  /// profile once the headless one has quit.
+  private func fallBack(_ relay: Relay) {
+    guard self.relay === relay, relay.headless, !relay.importing, !relay.switching else { return }
+    relay.headlessDeadline?.cancel()
+    relay.headless = false
+    relay.switching = true
+    relay.targetID = nil
+    fallbacks += 1
+    NSLog("[ray] JumpCloud relay: headless didn't finish, opening a window")
+    if let chrome, !chrome.gone, chrome.headless { chrome.close() }
+    changed()
+    open(relay, headless: false)
+  }
+
+  /// The toast's button: Chrome's relay window in front (the user leaves a full-screen Ray for it).
+  func showChrome() {
+    guard let relay, !relay.headless, let chrome, !chrome.gone else { return }
+    relay.activated = true
+    bringForward(chrome)
+  }
+
+  private func isFullScreen(_ controller: BrowserWindowController?) -> Bool {
+    guard let window = controller?.window else { return false }
+    return window.styleMask.contains(.fullScreen) || (TestEnvironment.isTestBuild && simulatesFullScreen)
+  }
+
   // MARK: Chrome session
 
+  /// The version of the Chrome Ray last launched or located, for the user agent override.
+  private var chromeVersion: String?
+
   /// The running Chrome, or a new one once it has answered; `failing` on no Chrome, a bad signature or no answer.
-  private func withChrome(tries: Int = 0, failing: @escaping (String, String) -> Void,
-                          _ ready: @escaping (RelayChrome) -> Void) {
+  /// `headless` asks for a new Chrome without windows; a running Chrome with windows serves either. Headless Chrome
+  /// can't show the setup page: it's closed first unless a relay is using it.
+  private func withChrome(headless: Bool, wanted: @escaping () -> Bool = { true }, tries: Int = 0,
+                          failing: @escaping (String, String) -> Void, _ ready: @escaping (RelayChrome) -> Void) {
+    // Whoever asked has gone (the relay ended while this waited for the last Chrome to quit).
+    guard wanted() else { return }
     if let chrome, !chrome.gone {
+      if !chrome.closing, chrome.headless, !headless {
+        guard relay == nil else { return failing("busy", "JumpCloud sign-in is already open in Chrome") }
+        chrome.close()
+      }
       guard chrome.closing else { return ready(chrome) }
       // The last relay's Chrome is still quitting: a second Chrome on the same profile would hand over to it.
       guard tries < 40 else { return failing("busy", "JumpCloud sign-in is already open in Chrome") }
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-        self?.withChrome(tries: tries + 1, failing: failing, ready)
+        self?.withChrome(headless: headless, wanted: wanted, tries: tries + 1, failing: failing, ready)
       }
       return
     }
     let executable: String
+    let version: String?
     switch RelayChromeApp.locate() {
     case .missing: return failing("noChrome", "JumpCloud Go needs Google Chrome")
     case .unsigned: return failing("badSignature", "Google Chrome's signature didn't check out")
-    case .chrome(let path): executable = path
+    case .chrome(let path, let found):
+      executable = path
+      version = found
     }
     do {
       try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
@@ -484,13 +665,19 @@ final class JumpCloudRelay {
     } catch {
       return failing("noChrome", "Couldn't make Chrome's profile for JumpCloud Go")
     }
-    let arguments = [
+    var arguments = [
       "--user-data-dir=\(directory)", "--remote-debugging-pipe", "--no-first-run", "--no-default-browser-check",
       "--no-startup-window",
     ]
-    guard let chrome = RelayChrome.launch(executable, arguments: arguments) else {
+    // Headless only with a user agent to give it (it would otherwise call itself HeadlessChrome); without a version,
+    // the relay uses a window. Chrome's new headless mode is the full browser on the profile, extensions included.
+    let agent = version.flatMap(RelayUserAgent.string(version:))
+    let startsHeadless = headless && agent != nil
+    if startsHeadless, let agent { arguments += ["--headless=new", "--user-agent=\(agent)"] }
+    guard let chrome = RelayChrome.launch(executable, arguments: arguments, headless: startsHeadless) else {
       return failing("noChrome", "Google Chrome didn't start")
     }
+    chromeVersion = version
     launches += 1
     lastArguments = arguments
     self.chrome = chrome
@@ -508,9 +695,12 @@ final class JumpCloudRelay {
     var answered = false
     DispatchQueue.main.asyncAfter(deadline: .now() + answerDeadline) { [weak self, weak chrome] in
       guard let self, let chrome, !answered, self.chrome === chrome else { return }
+      // Given up on: its pending setDiscoverTargets ends with "Chrome is gone" when it quits, which isn't news.
+      answered = true
+      // Kept as `chrome` while it quits, so the next one waits for it (one Chrome per profile).
       chrome.onGone = nil
+      chrome.onEvent = nil
       chrome.terminate()
-      self.chrome = nil
       self.setupOpen = false
       failing("noAnswer", "Chrome didn't answer Ray. A policy may block it")
       self.changed()
@@ -532,6 +722,8 @@ final class JumpCloudRelay {
     case "Target.targetDestroyed":
       let target = params["targetId"] as? String
       if let relay, !relay.importing, target != nil, target == relay.targetID {
+        // Headless, nobody could have closed it: Chrome lost the page. A window is worth a try.
+        if relay.headless { return fallBack(relay) }
         relay.targetID = nil
         return fail(relay, "cancelled", note: "JumpCloud sign-in didn't finish")
       }
@@ -544,7 +736,11 @@ final class JumpCloudRelay {
   private func chromeGone() {
     chrome = nil
     setupOpen = false
-    if let relay, !relay.importing { fail(relay, "chromeQuit", note: "JumpCloud sign-in didn't finish") }
+    // Headless Chrome quitting by itself (a policy against headless mode, a crash) gets the window instead; the one
+    // a fallback closed was meant to go.
+    if let relay, !relay.importing, !relay.switching {
+      if relay.headless { fallBack(relay) } else { fail(relay, "chromeQuit", note: "JumpCloud sign-in didn't finish") }
+    }
     changed()
   }
 
@@ -564,12 +760,13 @@ final class JumpCloudRelay {
   private func signedIn(_ relay: Relay, in chrome: RelayChrome) {
     relay.importing = true
     relay.deadline?.cancel()
+    relay.headlessDeadline?.cancel()
     changed()
     chrome.send("Storage.getCookies") { [weak self] result, error in
       guard let self else { return }
       let cookies = (result?["cookies"] as? [[String: Any]] ?? []).compactMap(JumpCloudLogin.cookie(from:))
       self.retire(relay.targetID)
-      self.bringRayBack(relay.controller)
+      self.bringRayBack(relay)
       guard error == nil, !cookies.isEmpty else {
         return self.fail(relay, "noCookies", note: "Chrome had no JumpCloud sign-in to share")
       }
@@ -620,8 +817,9 @@ final class JumpCloudRelay {
     guard self.relay === relay else { return }
     self.relay = nil
     relay.deadline?.cancel()
+    relay.headlessDeadline?.cancel()
     if !relay.importing { retire(relay.targetID) }
-    bringRayBack(relay.controller)
+    bringRayBack(relay)
     finish(result, note: note, in: relay.controller)
   }
 
@@ -638,7 +836,7 @@ final class JumpCloudRelay {
 
   /// Settings' Set Up…: Ray's Chrome on JumpCloud Go's Web Store page, at Chrome's own size, until the user closes it.
   func setUp() {
-    withChrome(failing: { [weak self] result, note in
+    withChrome(headless: false, failing: { [weak self] result, note in
       self?.finish(result, note: note, in: nil)
     }) { [weak self] chrome in
       guard let self else { return }
@@ -674,15 +872,19 @@ final class JumpCloudRelay {
     }
   }
 
-  /// Chrome in front for Touch ID (never from a background test instance).
+  /// Chrome's window in front (never headless Chrome, which has none; never from a background test instance, though
+  /// it's counted there).
   private func bringForward(_ chrome: RelayChrome) {
+    guard !chrome.headless else { return }
+    activations += 1
     guard !launchedInBackground, let app = NSRunningApplication(processIdentifier: chrome.pid) else { return }
     NSApp.yieldActivation(to: app)
     app.activate(from: .current, options: [])
   }
 
-  private func bringRayBack(_ controller: BrowserWindowController?) {
-    guard !launchedInBackground, let controller else { return }
+  /// Ray back in front after a relay that brought Chrome forward; one that never left Ray takes no focus.
+  private func bringRayBack(_ relay: Relay) {
+    guard relay.activated, !launchedInBackground, let controller = relay.controller else { return }
     NSApp.activate()
     controller.window.makeKeyAndOrderFront(nil)
   }
@@ -704,7 +906,9 @@ final class JumpCloudRelay {
       "chromeRunning": chrome.map { !$0.gone } ?? false, "pid": chrome.map { Int($0.pid) } ?? NSNull(),
       "arguments": lastArguments, "directory": directory,
       "directoryMode": permissions.map { String($0.intValue, radix: 8) } ?? NSNull(),
-      "setUp": isSetUp, "status": status.text,
+      "setUp": isSetUp, "status": status.text, "activations": activations, "fallbacks": fallbacks,
+      "mode": relay.map { $0.headless ? "headless" : "window" } ?? "none", "lastMode": lastMode,
+      "chromeHeadless": chrome.map { !$0.gone && $0.headless } ?? false,
     ]
   }
 }

@@ -72,7 +72,9 @@ final class ToastView: NSView {
     return NSSize(width: min(limit, 14 + text + buttonWidth + 8), height: 46)
   }
 
-  func show(_ message: String, symbol: String? = nil, figure: Bool = false, action: (() -> Void)? = nil) {
+  /// `duration` holds it longer than the usual 2.4 s (a note whose button the user may want).
+  func show(_ message: String, symbol: String? = nil, figure: Bool = false, duration: TimeInterval? = nil,
+            action: (() -> Void)? = nil) {
     let wasShowing = !isHidden && !self.message.isEmpty
     self.message = message
     self.figure = figure
@@ -89,7 +91,7 @@ final class ToastView: NSView {
     hideWork?.cancel()
     let work = DispatchWorkItem { [weak self] in self?.hide() }
     hideWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + (figure ? 1.4 : 2.4), execute: work)
+    DispatchQueue.main.asyncAfter(deadline: .now() + (duration ?? (figure ? 1.4 : 2.4)), execute: work)
   }
 
   func hide() {
