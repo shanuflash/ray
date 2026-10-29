@@ -145,7 +145,7 @@ final class SettingsDataHeader: NSView, SettingsSizing {
 
 /// One item of a list: a round icon, a title over a grey line, and a chevron (or a control) on the right. A click
 /// opens or closes its details.
-final class SettingsItemRow: NSView, SettingsSizing {
+final class SettingsRecordRow: NSView, SettingsSizing {
   var onClick: (() -> Void)?
   private let icon = NSImageView()
   private let iconBack = NSView()
@@ -585,7 +585,7 @@ final class SettingsMoreToggle: NSView, SettingsSizing {
 
 /// "Delete …?" as a sheet on the Settings window: Cancel is the default, the confirming button is red when it
 /// destroys something. One at a time; tests answer it with `answer(_:)`, as a click on either button would.
-enum SettingsConfirm {
+enum SettingsRecordConfirm {
   private static var alert: NSAlert?
   /// What is being confirmed ("removePassword", "export", …), never its text (which names a site).
   private(set) static var pending: String?
@@ -804,7 +804,7 @@ final class SettingsDataGuard {
     observing = true
     NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
       guard (note.object as? NSWindow)?.delegate === SettingsWindowController.shared else { return }
-      SettingsConfirm.dismiss()
+      SettingsRecordConfirm.dismiss()
       self?.lock()
     }
     let workspace = NSWorkspace.shared.notificationCenter

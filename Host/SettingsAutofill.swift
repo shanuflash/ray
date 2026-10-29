@@ -62,7 +62,7 @@ final class AutofillPaneContent: SettingsPaneContent {
       "openAddress": addresses.openID ?? NSNull(), "openCard": cards.openID ?? NSNull(),
       "addingAddress": addresses.adding, "addingCard": cards.adding, "editingCard": cards.editing,
       "revealed": cards.revealed, "lastAddress": addresses.last, "lastCard": cards.last,
-      "formError": addresses.formError || cards.formError, "confirming": SettingsConfirm.pending ?? NSNull(),
+      "formError": addresses.formError || cards.formError, "confirming": SettingsRecordConfirm.pending ?? NSNull(),
     ]
   }
 
@@ -113,7 +113,7 @@ final class AutofillPaneContent: SettingsPaneContent {
       let pressed = addresses.openID != nil ? addresses.pressDelete() : cards.pressDelete()
       return pressed ? "ok" : "nothing open"
     case "confirm":
-      guard second == "yes" || second == "no", SettingsConfirm.answer(second == "yes") else { return "no sheet" }
+      guard second == "yes" || second == "no", SettingsRecordConfirm.answer(second == "yes") else { return "no sheet" }
     default:
       return "usage: autofill load|addaddress|addcard|open|close|edit|reveal|revealcheck|copy|pasteboard|remove|confirm"
     }
@@ -200,7 +200,7 @@ final class AutofillAddressesView: NSView, SettingsSizing {
     for (index, address) in list.enumerated() {
       let id = address["id"] ?? ""
       let title = [address["name"], address["organization"]].compactMap { $0 }.first { !$0.isEmpty } ?? "Address"
-      let row = SettingsItemRow(symbol: "house.fill", title: title, detail: Self.summary(of: address))
+      let row = SettingsRecordRow(symbol: "house.fill", title: title, detail: Self.summary(of: address))
       row.expanded = id == openID
       row.onClick = { [weak self] in self?.toggle(id) }
       items.append(.init(view: row, line: index > 0))
@@ -348,7 +348,7 @@ final class AutofillAddressesView: NSView, SettingsSizing {
 
   func pressDelete() -> Bool {
     guard let id = openID else { return false }
-    SettingsConfirm.ask(
+    SettingsRecordConfirm.ask(
       "removeAddress", title: "Delete this address?", message: "Ray won't fill it into forms any more. This can't be undone.",
       confirm: "Delete", from: self
     ) { [weak self] yes in
@@ -500,7 +500,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
     for (index, card) in list.enumerated() {
       let expiry = Self.expiry(card)
       let detail = [card.name, expiry.isEmpty ? "" : "Expires \(expiry)"].filter { !$0.isEmpty }.joined(separator: " · ")
-      let row = SettingsItemRow(symbol: "creditcard.fill", title: "\(Self.networkName(card.network)) •••• \(card.last4)", detail: detail)
+      let row = SettingsRecordRow(symbol: "creditcard.fill", title: "\(Self.networkName(card.network)) •••• \(card.last4)", detail: detail)
       row.expanded = card.id == openID
       row.onClick = { [weak self] in self?.toggle(card.id) }
       items.append(.init(view: row, line: index > 0))
@@ -538,7 +538,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
     openID = id
     render()
     let views = stack.items.map(\.view)
-    if let row = views.firstIndex(where: { ($0 as? SettingsItemRow)?.expanded == true }), row + 1 < views.count {
+    if let row = views.firstIndex(where: { ($0 as? SettingsRecordRow)?.expanded == true }), row + 1 < views.count {
       settingsScrollIntoView(views[row + 1])
     }
     settingsDataChanged("autofill")
@@ -716,7 +716,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
 
   func pressDelete() -> Bool {
     guard let id = openID, !adding, let card = list.first(where: { $0.id == id }) else { return false }
-    SettingsConfirm.ask(
+    SettingsRecordConfirm.ask(
       "removeCard", title: "Delete \(Self.networkName(card.network)) •••• \(card.last4)?",
       message: "Ray won't fill it in when you pay any more. This can't be undone.", confirm: "Delete", from: self
     ) { [weak self] yes in

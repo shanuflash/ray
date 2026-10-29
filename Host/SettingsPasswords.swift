@@ -101,7 +101,7 @@ final class PasswordsPaneContent: SettingsPaneContent {
       return saved.editFixture(login) ? "ok" : "no row open"
     case "remove": return saved.pressDelete() ? "ok" : "no row open"
     case "confirm":
-      guard rest == "yes" || rest == "no", SettingsConfirm.answer(rest == "yes") else { return "no sheet" }
+      guard rest == "yes" || rest == "no", SettingsRecordConfirm.answer(rest == "yes") else { return "no sheet" }
     case "more": more.toggleMore()
     case "export":
       guard rest.hasPrefix("/") else { return "usage: passwords export <absolute path>" }
@@ -199,7 +199,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
           : "No saved passwords match.")))
       }
       for (index, login) in list.enumerated() {
-        let row = SettingsItemRow(symbol: "key.fill", title: Self.host(of: login.origin),
+        let row = SettingsRecordRow(symbol: "key.fill", title: Self.host(of: login.origin),
                                   detail: login.username.isEmpty ? "No username" : login.username, headFirst: true)
         row.expanded = login == open
         row.onClick = { [weak self] in self?.toggle(login) }
@@ -213,7 +213,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
         for (index, origin) in exceptions.enumerated() {
           let allow = SettingsPushButton("Remove") { [weak self] in self?.allow(origin) }
           allow.setAccessibilityLabel("Remove \(Self.host(of: origin)) from never saved")
-          items.append(.init(view: SettingsItemRow(symbol: "nosign", title: Self.host(of: origin), detail: "", headFirst: true,
+          items.append(.init(view: SettingsRecordRow(symbol: "nosign", title: Self.host(of: origin), detail: "", headFirst: true,
                                                    trailing: allow), line: index > 0))
         }
       }
@@ -332,7 +332,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
   private var openCard: NSView? {
     guard open != nil else { return nil }
     let views = stack.items.map(\.view)
-    guard let row = views.firstIndex(where: { ($0 as? SettingsItemRow)?.expanded == true }), row + 1 < views.count else { return nil }
+    guard let row = views.firstIndex(where: { ($0 as? SettingsRecordRow)?.expanded == true }), row + 1 < views.count else { return nil }
     return views[row + 1]
   }
 
@@ -620,7 +620,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
   func pressDelete() -> Bool {
     guard let login = open else { return false }
     SettingsDataGuard.shared.touch()
-    SettingsConfirm.ask(
+    SettingsRecordConfirm.ask(
       "removePassword", title: "Delete the password for \(Self.host(of: login.origin))?",
       message: "Ray won't be able to fill it in any more. This can't be undone.", confirm: "Delete", from: self
     ) { [weak self] yes in
@@ -656,7 +656,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
       "locked": locked, "count": logins.count, "shown": list.count, "exceptions": exceptions.count,
       "open": open.flatMap { list.firstIndex(of: $0) } ?? -1, "revealed": revealed != nil,
       "editing": editCard != nil, "adding": addCard != nil, "formError": !(addForm?.errorText ?? editForm?.errorText ?? "").isEmpty,
-      "busy": busy, "last": last, "guardArmed": SettingsDataGuard.shared.armed, "confirming": SettingsConfirm.pending ?? NSNull(),
+      "busy": busy, "last": last, "guardArmed": SettingsDataGuard.shared.armed, "confirming": SettingsRecordConfirm.pending ?? NSNull(),
       "clipboardPending": SettingsPasteboard.clearPending, "idleSeconds": SettingsDataGuard.idle,
       "clearSeconds": SettingsPasteboard.clearDelay,
     ]
@@ -773,7 +773,7 @@ final class PasswordsMoreView: NSView, SettingsSizing {
   func pressExport(testPath: String?) -> Bool {
     guard window != nil else { return false }
     if !more.expanded { more.toggle() }
-    SettingsConfirm.ask(
+    SettingsRecordConfirm.ask(
       "exportPasswords", title: "Export your passwords?",
       message: "The file holds every saved password as plain text. Anyone who can open it can read them, so delete it once you're done with it.",
       confirm: "Export…", destructive: false, from: self

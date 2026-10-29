@@ -3051,7 +3051,8 @@ const checks = {
     await command("settings open search");
     await until("Ray.app's panes", async () => { await command("state"); return win().open && win().looksLikeRayApp; });
     assert(win().panes.join() === "general,tabs,appearance,search,privacy,passwords,autofill,extensions,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
-    assert(win().pane === "general", `Search (empty) opened as ${win().pane}`);
+    // Every pane has content of its own now, so none is hidden; Search opens as itself.
+    assert(win().pane === "search", `Search opened as ${win().pane}`);
     assert(!win().rows.appearance.includes("appearanceMode") && !win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
     if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-as-app.png")}`);
     await command("settings asapp off");

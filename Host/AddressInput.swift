@@ -38,9 +38,9 @@ enum AddressInput {
   /// values): Appearance and behavior (`/appearance`, its `/fonts` page), and Profiles (`/people` and the pages under
   /// it), whose colour is in Appearance. The engine's page has neither any more (tools/trim-settings-pak.py), so a
   /// typed or in-page address to one of them goes to the window, never to a page that would only show something else.
-  /// Then `ray://settings/<pane>` for each pane with content of Ray's own and no Chrome page by that name. Privacy,
-  /// Passwords, Autofill and Extensions join only when their panes land: until then their addresses are Chrome's
-  /// pages. Search engine (`/search`, `/searchEngines`) is gone from the engine's page too, and is Ray's Search pane.
+  /// Then `ray://settings/<pane>` for each pane with content of Ray's own and no Chrome page by that name. Privacy
+  /// (Chrome's Site settings), Passwords, Autofill and Extensions are Ray's panes too. Search engine (`/search`,
+  /// `/searchEngines`) is gone from the engine's page too, and is Ray's Search pane.
   /// One line per pane, a blank line between, so panes added in parallel merge cleanly.
   private static let nativeSettingsPaths: [String: String] = [
     "appearance": "appearance", "fonts": "appearance",
@@ -62,6 +62,8 @@ enum AddressInput {
     "content": "privacy", "content/all": "privacy", "content/sitedetails": "privacy", "content/zoomlevels": "privacy",
 
     "extensions": "extensions",
+
+    "search": "search", "searchengines": "search",
   ]
 
   /// `ray://settings/<name>` addresses whose Chrome namesake is another page: `ray://settings/privacy` is Ray's Privacy
@@ -69,9 +71,6 @@ enum AddressInput {
   /// Browsing, secure DNS…), which the pane doesn't cover. One line per pane.
   private static let raySettingsAliases: [String: String] = [
     "privacy": "content",
-  ]
-
-    "search": "search", "searchengines": "search",
   ]
 
   /// What follows `chrome://settings/` in a `chrome://` or `ray://` settings address (lowercased, no slashes at the

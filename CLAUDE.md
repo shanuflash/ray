@@ -146,7 +146,7 @@ publicly or create accounts.
   `settings-extensions`).
 - Settings › Passwords (`SettingsPasswords.swift`) and › Autofill (`SettingsAutofill.swift`), on the engine's
   `ac_passwords_*` and `ac_autofill_*` calls; `SettingsDataViews.swift` holds their pieces (`SettingsStack`, item rows,
-  inline cards and forms, `SettingsConfirm` sheets, `SettingsPasteboard`, `SecretJSON`, `SettingsDataGuard`).
+  inline cards and forms (`SettingsRecordRow`), `SettingsRecordConfirm` sheets, `SettingsPasteboard`, `SecretJSON`, `SettingsDataGuard`).
   Passwords: locked until Unlock (`ac_passwords_unlock`, the engine's Touch ID or login password, `ac_reauth.cc`);
   `SettingsDataGuard` locks it (and hides a shown card number) when the Settings window closes, after 5 min without a
   click or key in it (Chrome's `kPasswordManagerAuthValidity`), on sleep or a user switch. Unlocked: search, a row
