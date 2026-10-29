@@ -155,7 +155,9 @@ Smaller gaps found while building the items above. Each says where the fix goes.
    2026-10-29).
 8. **Test hygiene.** `settings-shortcuts` leaves a Save Page As sheet open (it presses ⌘S with that setting off);
    `close-last-window` now cancels it, but the check itself should close it. `folder-rename` fails when the hidden
-   test window lands on the visible desktop (also on older commits).
+   test window lands on the visible desktop (also on older commits). `switch-back-latency` hit-tests (400, 14), which is
+   the page toolbar now that it shows by default, so it never sees the page (it passes at (400, 200) with `onscreen
+   on`); `background-tab` fails right after boot on main too (its `#plain` lookup returns nothing). Found 2026-10-29.
 9. **Accent contrast elsewhere.** `ProfileColor.visible(on:)` keeps a black or white profile colour visible in the
    onboarding only; the sidebar selection and hover, loading glow, downloads ring, Settings' switches, command bar
    selection and site controls' "on" states would benefit too (owner to decide).
@@ -192,3 +194,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Address shows `#fragment` and `view-source:` URLs; IDN hosts as punycode (no spoof checker yet) | 2026-10-29, `2512bed` |
 | Command bar ranks your pages first like Arc, 5 rows, scroll to 10, never the active tab | 2026-10-29, `feat: command bar ranks pages like arc` |
 | Ray as a web browser to macOS (pickable as the default browser): links and HTML/PDF files from other apps open as Today tabs, also when they launch Ray | 2026-10-29, `feat: ray can be the default browser` |
+| Tab switch never flashes a blank page: the page left stays until the new one has drawn | 2026-10-29, `fix: no blank frame on tab switch` |

@@ -88,6 +88,36 @@ enum TestCommands {
     return "ok"
   }
 
+  /// `onscreen on|off`: puts the hidden test window on whatever Space is showing (a full-screen one too), almost fully
+  /// transparent and click-through, without activating Ray: checks of what pages draw need a window on screen, or
+  /// Chrome treats its pages as occluded and draws nothing. `off` puts it back.
+  private static var offScreenLook: (NSWindow.CollectionBehavior, CGFloat, NSWindow.Level, Bool)?
+  private static func onScreen(_ argument: String, _ window: NSWindow?) -> String {
+    guard let window else { return "no window" }
+    if argument == "on" {
+      if offScreenLook == nil {
+        offScreenLook = (window.collectionBehavior, window.alphaValue, window.level, window.ignoresMouseEvents)
+      }
+      // Only an accessory app's windows can join another app's full-screen Space.
+      NSApp.setActivationPolicy(.accessory)
+      window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+      window.alphaValue = 0.02
+      window.ignoresMouseEvents = true
+      // Above full-screen overlays such as the screenshot tool's, which would leave it covered.
+      window.level = .statusBar
+      window.orderFrontRegardless()
+    } else if let (behavior, alpha, level, ignores) = offScreenLook {
+      offScreenLook = nil
+      NSApp.setActivationPolicy(.regular)
+      window.collectionBehavior = behavior
+      window.alphaValue = alpha
+      window.level = level
+      window.ignoresMouseEvents = ignores
+      window.orderBack(nil)
+    }
+    return "ok"
+  }
+
   /// `key ctrlup`: Control let go, as a real keyboard reports it (through the event queue, where local monitors see it).
   private static func releaseControl(in window: NSWindow?) -> String {
     guard let window, let event = NSEvent.keyEvent(
@@ -446,6 +476,8 @@ enum TestCommands {
       NSApp.terminate(nil)
     case "state":
       AppController.shared.current?.logState("probe")
+    case "onscreen":
+      result = onScreen(argument, window)
     case "hit":
       let numbers = argument.split(separator: " ").compactMap { Double($0) }
       if let window, let frameView = window.contentView?.superview, numbers.count == 2 {

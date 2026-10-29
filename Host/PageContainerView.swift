@@ -54,6 +54,9 @@ final class PageContainerView: NSView {
     if let render = page?.subviews.first, let content = render.layer?.sublayers?.first {
       state["contentLayerMatches"] = content.bounds.size == render.bounds.size
     }
+    #if RAY_TEST_HOOKS
+    state["switches"] = switches
+    #endif
     if let devTools, devTools.superview === self {
       state["devToolsFrame"] = NSStringFromRect(devTools.frame)
       if let page, let pageIndex = subviews.firstIndex(of: page), let devIndex = subviews.firstIndex(of: devTools) {
@@ -73,6 +76,12 @@ final class PageContainerView: NSView {
   }
 
   func detach(_ tab: RayCoreTab) {
+    // The page held for a switch is going: the new page shows now, drawn or not.
+    if leaving === tab {
+      leaving = nil
+      release()
+    }
+    if shown === tab { release() }
     if tab.view.superview === self { tab.view.removeFromSuperview() }
     if shown === tab {
       shown = nil
@@ -80,20 +89,46 @@ final class PageContainerView: NSView {
     }
   }
 
+  // MARK: Switching
+
+  /// The page a switch left: it stays on screen, under the page switched to, until that one has drawn. A hidden
+  /// page has no compositor and shows only its background colour for a frame or more after it's shown, and the
+  /// page left loses its content as soon as it's hidden, so hiding one and showing the other at once flashes blank.
+  private var leaving: RayCoreTab?
+  private var firstFrame: PageFrameWatch?
+  private var releaseLink: CADisplayLink?
+  private var switchGeneration = 0
+
   func show(_ tab: RayCoreTab) {
     attach(tab)
     let previous = shown
     guard previous !== tab else { return }
+    // What the screen shows now: the page an unfinished switch is still holding (its new page hasn't drawn), else
+    // the one shown.
+    let held = firstFrame != nil ? leaving : nil
+    let onScreen = held ?? previous.flatMap { $0.view.superview === self && !$0.view.isHidden ? $0 : nil }
+    #if RAY_TEST_HOOKS
+    sampleSwitch(from: onScreen, to: tab)
+    #endif
     CATransaction.begin()
     CATransaction.setDisableActions(true)
+    // The page that isn't on screen goes at once: a switch's new page that never drew, or the page a switch that
+    // just finished is about to hide.
+    if held != nil, let previous, previous !== tab { hide(previous) }
+    if held == nil, let leaving, leaving !== tab { hide(leaving) }
+    stopSwitch()
+    leaving = nil
     shown = tab
     updateBackground()
+    // A page still visible (the one an unfinished switch was holding) has its compositor and its frame.
+    let drawn = !tab.view.isHidden
+    tab.view.alphaValue = 1
     tab.view.isHidden = false
     tab.noteShown(byHost: true)
     hideGeneration[tab.tabId, default: 0] += 1
-    if let previous, previous.view.superview === self {
-      previous.view.isHidden = true
-      noteHiddenLater(previous)
+    bringToFront(tab.view)
+    if let onScreen, onScreen !== tab {
+      hold(onScreen, until: tab, drawn: drawn)
     }
     setDevTools(tab.devToolsView)
     layoutPages()
@@ -102,14 +137,97 @@ final class PageContainerView: NSView {
   }
 
   func showNothing() {
+    stopSwitch()
+    if let leaving { hide(leaving) }
+    leaving = nil
     if let shown, shown.view.superview === self {
-      shown.view.isHidden = true
-      noteHiddenLater(shown)
+      shown.view.alphaValue = 1
+      hide(shown)
     }
     shown = nil
     setDevTools(nil)
     updateProgressHidden()
     updateBackground()
+  }
+
+  /// Keeps `old` on screen while `new` (on top, transparent) makes its first frame.
+  private func hold(_ old: RayCoreTab, until new: RayCoreTab, drawn: Bool) {
+    // Only a window on screen draws: elsewhere Chrome makes no frames, and nothing would show the switch anyway.
+    guard window?.occlusionState.contains(.visible) == true else {
+      hide(old)
+      return
+    }
+    leaving = old
+    if drawn {
+      newPageDrew()
+    } else if let watch = PageFrameWatch(page: new.view, onFrame: { [weak self] in self?.newPageDrew() }) {
+      firstFrame = watch
+      new.view.alphaValue = 0
+    } else {
+      leaving = nil
+      hide(old)
+      return
+    }
+    // A page that never draws (its renderer gone, a window moved off screen) mustn't keep the old one up.
+    let generation = switchGeneration
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+      guard let self, self.switchGeneration == generation else { return }
+      self.release()
+    }
+  }
+
+  /// The new page has its frame: it shows in the same commit as the layer that carries the frame. The old page is
+  /// hidden a display frame later, once that commit is on screen: hiding drops its content in the GPU process at
+  /// once, which could otherwise reach the screen before the new page does.
+  private func newPageDrew() {
+    firstFrame = nil
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    shown?.view.alphaValue = 1
+    CATransaction.commit()
+    let link = displayLink(target: self, selector: #selector(releaseAfterFrame(_:)))
+    link.add(to: .main, forMode: .common)
+    releaseLink = link
+  }
+
+  @objc private func releaseAfterFrame(_ link: CADisplayLink) { release() }
+
+  /// Ends the switch: the new page shows (if it hasn't yet) and the old one is hidden.
+  private func release() {
+    let old = leaving
+    stopSwitch()
+    leaving = nil
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    shown?.view.alphaValue = 1
+    if let old, old !== shown { hide(old) }
+    CATransaction.commit()
+  }
+
+  private func stopSwitch() {
+    switchGeneration += 1
+    firstFrame?.stop()
+    firstFrame = nil
+    releaseLink?.invalidate()
+    releaseLink = nil
+  }
+
+  private func hide(_ tab: RayCoreTab) {
+    guard tab.view.superview === self else { return }
+    tab.view.alphaValue = 1
+    tab.view.isHidden = true
+    noteHiddenLater(tab)
+  }
+
+  /// The shown page goes above the others (without leaving the view tree, which Chrome would see as hide and show),
+  /// so it covers the page left as soon as it draws, and takes the clicks.
+  private func bringToFront(_ page: NSView) {
+    guard subviews.last(where: { $0 !== devTools }) !== page else { return }
+    let context = Unmanaged.passUnretained(page).toOpaque()
+    sortSubviews({ a, b, context in
+      let page = Unmanaged<NSView>.fromOpaque(context!).takeUnretainedValue()
+      return a === page ? .orderedDescending : b === page ? .orderedAscending : .orderedSame
+    }, context: context)
   }
 
   private func updateBackground() {
@@ -199,6 +317,29 @@ final class PageContainerView: NSView {
     }
     CATransaction.commit()
   }
+
+  #if RAY_TEST_HOOKS
+  // MARK: Switch sampling (tests)
+
+  private var sampler: SwitchSampler?
+  /// The last switches' frames, newest last (`SwitchSampler`).
+  private var switches: [[String: Any]] = []
+  private var switchCount = 0
+
+  private func sampleSwitch(from previous: RayCoreTab?, to tab: RayCoreTab) {
+    sampler?.finish()
+    guard let previous, previous.view.superview === self, !previous.view.isHidden else { return }
+    switchCount += 1
+    let number = switchCount
+    sampler = SwitchSampler(container: self, from: previous, to: tab) { [weak self] record in
+      guard let self else { return }
+      var record = record
+      record["n"] = number
+      self.switches = Array((self.switches + [record]).suffix(20))
+      self.sampler = nil
+    }
+  }
+  #endif
 
   private func noteHiddenLater(_ tab: RayCoreTab) {
     let generation = hideGeneration[tab.tabId, default: 0]

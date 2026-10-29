@@ -15,6 +15,10 @@ publicly or create accounts.
 - `Host/`: the native app in Swift + AppKit. `Bridging.h` exposes the engine API. `BrowserWindowController` owns a
   window's tabs; `SidebarView` is the address field and tab list; `PageContainerView` shows one page at a time
   (others stay attached but hidden, with `noteShown(byHost:)`); `MainMenu` + `Shortcuts` do key routing.
+  A tab switch never shows a blank frame: the page left stays on screen until the new one's first frame
+  (`PageFrameWatch`: Chrome adds a new content layer under the render view when the page's new compositor delivers
+  one). The new page goes on top (`sortSubviews`) at alpha 0 and turns opaque in that same commit; the old one is
+  hidden a display frame later. A 0.3 s deadline if no frame comes; no hold when the window isn't on screen.
 - `CommandBarView` + `Suggestions`: the Arc-style command bar (⌘T new tab, ⌘L / clicking the sidebar address =
   current tab). Rows: autocompleted host match, typed URL or search, open tabs ("Switch to Tab"), history, and
   `BarActions`: menu commands read from the main menu (Ray's own items, validated as the menu does), matched by word
@@ -120,8 +124,11 @@ publicly or create accounts.
   `type <text>`, `enter`, `escape`) through the same code paths as the keyboard. DevTools can't reach native UI, so
   checks for the sidebar and address field go through this. Settings: `setting <name> <value>` (same call as the
   window's controls), `settings open|close|link|press <control> [n]|snap <path>`, `zoom in|out|reset`, and
-  `key tab ctrl keywin` / `key ctrlup` for ⌃Tab walks. The state log has `settings`, `settingsWindow`, `menuKeys`,
-  `recentOrder`, `tabCycle` and each tab's `zoom`.
+  `key tab ctrl keywin` / `key ctrlup` for ⌃Tab walks. `onscreen on|off` puts the hidden window on the shown Space
+  (accessory policy, nearly transparent, click-through, not activated) for checks of what pages draw. The state log
+  has `settings`, `settingsWindow`, `menuKeys`, `recentOrder`, `tabCycle`, each tab's `zoom` and `pages.switches`
+  (per display frame of each tab switch: `o` old page, `n` new page drawn, `b` both, `-` blank; check
+  `switch-no-blank`).
 - `engine/`: Ray's engine source (Phase B), generated: `tools/engine/sync-engine.sh` renames Ardia's `engine/`
   (`rename-ardia.py`: ArdiaCore→RayCore, bundle id, "Ray Safe Storage", links) and applies `engine-ray/` (dropped
   patches, removed files, fixups). Never edit `engine/` by hand. Its public API is
@@ -222,6 +229,13 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   previous commit (`git stash -u`, build, run, `git stash pop`) and compare.
 
 ## Gotchas (learnt the hard way)
+- A page view hidden in Ray is hidden to Chrome: `BrowserCompositorMac` drops its compositor at once (the GPU
+  clears its content, possibly before Ray's own commit lands) and makes a new one on show, so the page shows only
+  its background colour until a new CALayerHost arrives. Never hide the page on screen before its replacement has
+  drawn, and never move a page view out of the tree to reorder it (Chrome sees hide + show): use `sortSubviews`.
+- A test window on another app's full-screen Space isn't on screen: Chrome draws nothing and display links don't
+  tick. Checks of frames use `onscreen on` (only an accessory app's window can join that Space); `isOnActiveSpace`
+  stays false for a window on all Spaces, so go by `occlusionState`.
 - The settings-page trim (`tools/trim-settings-pak.py`) edits minified code of one engine version, matched by exact
   patterns, and the build stops with a message naming the pattern when one moves. On an engine bump, run the build, and
   if it stops, re-read `shared.rollup.js` (the resource that holds `function createPageVisibility()`; decompress it

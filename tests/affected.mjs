@@ -15,7 +15,7 @@ const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-
 const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];
 const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still"];
-const pageSurface = ["switch-back-latency", "top-strip-click", "toggle-keeps-page-still", "activate-target",
+const pageSurface = ["switch-back-latency", "switch-no-blank", "top-strip-click", "toggle-keeps-page-still", "activate-target",
   "devtools-docked", "background-tab"];
 
 const otherApps = ["open-from-other-apps", "open-from-other-apps-launch"];
@@ -128,6 +128,8 @@ export const areas = {
   "Host/Extensions.swift": ["extensions", "extension-prompt", "site-controls"],
   "Host/FindBar.swift": ["find-in-page"],
   "Host/PageContainerView.swift": pageSurface,
+  // When a page that was just shown has drawn (the tab switch holds the page left until then).
+  "Host/PageFrameWatch.swift": pageSurface,
   "Host/PageToolbar.swift": ["page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle",
     "top-strip-click"],
   // Which loads the address field sweeps for.
@@ -143,7 +145,7 @@ export const areas = {
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
-    "reopen-closed-tab", "close-last-window", ...otherApps],
+    "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

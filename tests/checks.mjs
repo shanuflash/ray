@@ -849,6 +849,63 @@ const checks = {
     console.log(`     page input surface shown ${shownAfter} ms after switching back`);
     assert(shownAfter !== null && shownAfter < 50, `page surface took ${shownAfter} ms`);
   },
+  async "switch-no-blank"() {
+    // Every display frame of a tab switch shows a page: the one left stays until the new one has drawn. The app
+    // records each frame of a switch: o the page left, n the new one (once drawn), b both, - neither (blank).
+    await needsFrames();
+    const activeBefore = state().activeEntry;
+    // On a full-screen Space the hidden window is off screen and Chrome draws nothing: bring it onto the shown
+    // Space, nearly transparent and click-through, for this check only.
+    let moved = false;
+    if (state().windowVisibleOnScreen === false || state().windowOnActiveSpace === false) {
+      await command("onscreen on");
+      moved = true;
+      await until("window on screen", async () => { await command("state"); return state().windowVisibleOnScreen; }, 5000, 100)
+        .catch(() => {});
+    }
+    const opened = [];
+    try {
+      // On all Spaces the window doesn't count as on the active one; what Chrome goes by is whether it's visible.
+      await command("state");
+      if (!state().windowVisibleOnScreen) {
+        throw new Skip(`the test window can't be put on screen (onActiveSpace ${state().windowOnActiveSpace}), so Chrome hides its pages`);
+      }
+      // Two pages in solid, different colours.
+      const colours = { red: "#d02020", blue: "#2040d0" };
+      for (const [name, colour] of Object.entries(colours)) {
+        const url = `${origin}/b?switch=${name}`;
+        const { targetId } = await send("Target.createTarget", { url });
+        opened.push(targetId);
+        await until(`${name} tab`, () => tabFor(url)?.title === "Page B");
+        const { sessionId } = await session(url);
+        await evaluate(sessionId, `document.documentElement.style.background = ${JSON.stringify(colour)}; true`);
+      }
+      const entryOf = (name) => allEntries().find((e) => e.live && e.url.endsWith(`/b?switch=${name}`)).id;
+      const lastSwitch = () => state().pages.switches?.at(-1)?.n ?? 0;
+      const seen = [];
+      for (let i = 0; i < 6; i++) {
+        // Long enough for the page left to lose its compositor, as on any real switch back.
+        await sleep(400);
+        await command("state");
+        const before = lastSwitch();
+        await command(`row ${entryOf(i % 2 ? "blue" : "red")}`);
+        const record = await until("switch sampled", async () => {
+          await command("state");
+          return lastSwitch() > before && state().pages.switches.at(-1);
+        }, 3000, 50);
+        if (record.frames === "") throw new Skip("no display frames arrived during the switch");
+        seen.push(record.frames);
+      }
+      console.log(`     switch frames: ${seen.join(" ")}`);
+      assert(seen.every((f) => !f.includes("-")), `blank frames while switching tabs: ${seen.join(" ")}`);
+      assert(seen.every((f) => f.endsWith("nn")), `the new page never drew: ${seen.join(" ")}`);
+    } finally {
+      if (activeBefore) await command(`row ${activeBefore}`);
+      for (const targetId of opened) await send("Target.closeTarget", { targetId });
+      if (moved) await command("onscreen off");
+      await settle();
+    }
+  },
   async "top-strip-click"() {
     await command("state");
     needsVisibleWindow();
