@@ -234,4 +234,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Rename tabs (Rename… or a double click; kept over navigations and relaunches; Arc's names kept on import) | 2026-10-29, `feat: rename tabs` |
 | Settings: one typed catalog for every setting (storage, observers, test command, check generated from it) | 2026-10-29, `414495a` |
 | New Settings window (direction G): text sidebar with lavender wash, search with row flash, `ray://settings/<pane>`, "Settings: …" in the command bar, live pictures | 2026-10-29, `d88e0e3` |
-| Extension popups draw on macOS 27 (a borderless window, not an NSPopover, which showed them plain white) | 2026-10-29 |
+| Extension popups draw on macOS 27 (a borderless window, not an NSPopover, which showed them plain white) | 2026-10-29, `fdc09cd` |
