@@ -204,7 +204,7 @@ enum TestCommands {
       "pin": .pin, "unpin": .unpin, "favorite": .addToFavorites, "unfavorite": .removeFromFavorites,
       "back": .backToPinned, "close": .close, "unload": .unload, "newfolder": .newFolder,
       "nestfolder": .newNestedFolder, "togglefolder": .toggleFolder, "outfolder": .removeFromFolder,
-      "deletefolder": .deleteFolder, "renamefolder": .renameFolder,
+      "deletefolder": .deleteFolder, "renamefolder": .renameFolder, "rename": .renameFolder,
     ]
     guard parts.count >= 2, let id = UUID(uuidString: parts[1]),
           let controller = AppController.shared.current, let entry = controller.state.entry(id: id) else {
@@ -254,13 +254,20 @@ enum TestCommands {
     }
   }
 
-  /// `rename <id> <title…>`: what the inline editor commits.
+  /// `rename <id> [title…]`: what the inline editor commits, for a folder or a tab (no title: a tab's page title).
   private static func rename(_ argument: String) -> String {
     let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
-    guard parts.count == 2, let id = UUID(uuidString: parts[0]), let controller = AppController.shared.current,
-          let entry = controller.state.entry(id: id) else { return "usage: rename <id> <title>" }
-    controller.rename(entry, to: parts[1])
+    guard !parts.isEmpty, let id = UUID(uuidString: parts[0]), let controller = AppController.shared.current,
+          let entry = controller.state.entry(id: id) else { return "usage: rename <id> [title]" }
+    controller.renameEntry(entry, to: parts.count == 2 ? parts[1] : "")
     return "ok"
+  }
+
+  /// `rowmenu <id>`: the titles of that row's context menu, as JSON.
+  private static func rowMenu(_ argument: String) -> String {
+    guard let id = UUID(uuidString: argument), let controller = AppController.shared.current,
+          let entry = controller.state.entry(id: id) else { return "usage: rowmenu <id>" }
+    return json(controller.menuTitles(for: entry))
   }
 
   private static var importSession: ImportSession?
@@ -364,6 +371,8 @@ enum TestCommands {
       result = rowAction(argument)
     case "rename":
       result = rename(argument)
+    case "rowmenu":
+      result = rowMenu(argument)
     case "extinstall":
       AppController.shared.current?.extensions.installUnpacked(argument) { id in
         FileHandle.standardError.write("[ray-test] installed \(id ?? "nothing")\n".data(using: .utf8)!)

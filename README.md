@@ -8,7 +8,8 @@ Early and personal. Expect rough edges.
 ## What works
 
 - Arc-style sidebar: pinned tiles, pinned tabs (closing one unloads it and resets it to its pinned URL, `/` when you've
-  wandered off), today tabs with Clear and 12-hour archiving, New Tab.
+  wandered off), today tabs with Clear and 12-hour archiving, New Tab. Rename any tab (right-click › Rename…, or
+  double-click its title); the name sticks across pages and relaunches, and Arc's names come over on import.
 - ⌘S hides the sidebar; hovering the left edge slides it back in as a floating panel, sprung to Arc's recorded motion.
 - Command bar (⌘T, ⌘L): open tabs, history, search suggestions, URLs, and Ray's own commands by name ("task manager",
   "clear cache", "zoom in"…) with their shortcuts.

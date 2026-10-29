@@ -78,6 +78,15 @@ publicly or create accounts.
   `EngineEvents` is the one engine event sink (`downloads.changed`, …), handed out by topic.
 - Pinned folders are `SidebarEntry`s of kind `.folder` inside `state.pinned`, kept in tree order with `parentID`
   links; `SidebarState.normalizePinned()` rebuilds a valid tree after every change and on load.
+- Tab names (Arc's Rename): `SidebarEntry.customTitle` (Sidebar.json `customTitle`, optional; `name(from:)` makes
+  it one plain line of at most 200 characters), which `displayTitle` prefers over `pageTitle`; page title updates
+  only ever write `title`. Rows' menus (tiles too) have Rename… (the `.renameFolder` action, for tabs as well) and,
+  once named, Use Page Title; a double click on a tab's title renames it; a favorite's field sits in a lifted row
+  under its tile (`SidebarView.beginRename`). `BrowserWindowController.setName` (MARK Tab names) commits: empty or
+  the page's own title clears it. The command bar (shown, and found by it or the page's title), Recently Closed and
+  ⇧⌘T use it; imports keep Arc's and Zen's names as names (`ArcImport.Node.tab`'s `name`). Never logged in normal
+  runs. Test commands `rowaction rename <id>`, `rename <id> [text]`, `rowmenu <id>`; state log `customTitle` and
+  `pageTitle` per entry; check `tab-rename` (restore compares every name after the relaunch).
 - `Extensions` (puzzle button in the sidebar address field, action popups in an NSPopover, install prompt),
   `Downloads` (button in the sidebar footer, ⌥⌘L; the list slides up as a panel inside the sidebar), `FindBar` (⌘F),
   `PermissionPrompt` (site permissions, only over their own tab), `ArcImport` (the old Import from Arc…, sidebar

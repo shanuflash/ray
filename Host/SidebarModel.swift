@@ -21,8 +21,23 @@ final class SidebarEntry: Codable {
   /// For folders: whether its items show. Optional so older files still load.
   var isOpen: Bool?
 
+  // MARK: Names and saved fields
+
   private enum CodingKeys: String, CodingKey {
-    case id, kind, pinnedURL, url, title, lastActive, parentID, isOpen
+    case id, kind, pinnedURL, url, title, customTitle, lastActive, parentID, isOpen
+  }
+
+  /// The tab's own name, from the user's Rename… (or Arc's, on import), shown in place of the page's title. Never
+  /// set from a page: page titles go to `title` only. Nil: the page's title shows. Optional so older files still load.
+  var customTitle: String?
+  static let nameLimit = 200
+
+  /// A name as the user typed it: one line of plain text, trimmed, at most `nameLimit` characters; nil when nothing
+  /// is left (the page's title shows again).
+  static func name(from text: String) -> String? {
+    let scalars = text.unicodeScalars.map { CharacterSet.controlCharacters.contains($0) ? " " : Character($0) }
+    let line = String(scalars).trimmingCharacters(in: .whitespacesAndNewlines)
+    return line.isEmpty ? nil : String(line.prefix(nameLimit))
   }
 
   var isFolder: Bool { kind == .folder }
@@ -52,6 +67,12 @@ final class SidebarEntry: Codable {
   }
 
   var displayTitle: String {
+    if let customTitle, !isFolder { return customTitle }
+    return pageTitle
+  }
+
+  /// The page's own title (the last one it had, while unloaded), or its address when it has none.
+  var pageTitle: String {
     if let tab, !tab.closed, !tab.title.isEmpty { return tab.title }
     return title.isEmpty ? AddressInput.display(for: currentURL) : title
   }

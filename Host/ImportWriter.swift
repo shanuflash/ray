@@ -107,7 +107,7 @@ enum ImportShape {
   }
 
   static func node(_ tab: ImportedTab) -> ArcImport.Node? {
-    isWeb(tab.url) ? .tab(url: tab.url, title: plain(tab.customTitle ?? tab.title)) : nil
+    isWeb(tab.url) ? .tab(url: tab.url, title: plain(tab.title), name: tab.customTitle.map(plain)) : nil
   }
 
   static func nodes(_ bookmarks: [BookmarkNode], depth: Int = 0) -> [ArcImport.Node] {
@@ -116,7 +116,8 @@ enum ImportShape {
       switch node.type {
       case .url:
         guard let url = node.url, isWeb(url) else { return nil }
-        return .tab(url: url, title: plain(node.title))
+        // A renamed tab (Arc's, Zen's): the link's title is its name, `pageTitle` the page's own.
+        return .tab(url: url, title: plain(node.pageTitle ?? node.title), name: node.pageTitle == nil ? nil : plain(node.title))
       case .folder:
         let children = nodes(node.children ?? [], depth: depth + 1)
         return children.isEmpty ? nil : .folder(title: plain(node.title), children: children)

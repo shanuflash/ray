@@ -5,7 +5,8 @@ import Foundation
 /// (`packages/import/ios/Core/ArcSidebar.swift`): flat lists of [id, object] pairs linked by `childrenIds`.
 struct ArcImport {
   indirect enum Node {
-    case tab(url: String, title: String)
+    /// `name`: the browser's own name for the tab (Arc's Rename), kept as Ray's; `title` is the page's.
+    case tab(url: String, title: String, name: String?)
     case folder(title: String, children: [Node])
   }
 
@@ -101,7 +102,7 @@ struct ArcImport {
       let custom = (item["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
       if let tab = data["tab"] as? [String: Any], let url = tab["savedURL"] as? String {
         guard seen.insert(id).inserted, safe(url) else { continue }
-        nodes.append(.tab(url: url, title: plain(custom ?? tab["savedTitle"] as? String ?? "")))
+        nodes.append(.tab(url: url, title: plain(tab["savedTitle"] as? String ?? ""), name: custom.map(plain)))
       } else if data["list"] != nil {
         nodes.append(.folder(title: plain(custom ?? "Folder"), children: tree(of: id, items: items, seen: &seen, depth: depth + 1)))
       } else if data["splitView"] != nil {

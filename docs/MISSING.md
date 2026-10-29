@@ -9,11 +9,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 
 ## Top priority (owner)
 
-1. **Rename tabs** (owner, 2026-10-29): give any tab its own name, as Arc does (right-click › Rename, or double-click
-   the title; the name sticks for pinned tabs and favorites across relaunches and page changes, and an empty name
-   goes back to the page's title). Today only folders can be renamed (`SidebarView.beginRename`, the `.renameFolder`
-   action, `BrowserWindowController.rename(_:to:)`); `SidebarEntry` needs a custom title that `displayTitle` prefers,
-   saved in Sidebar.json, and Arc import should keep Arc's custom titles (the importer already reads them).
+None open.
 
 ## Arc features Ray doesn't have
 
@@ -201,6 +197,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     check). Fix: Developer ID signing (roadmap step 4), settle the bundle id, then ask JumpCloud to add Ray's
     identifier and team to the host's list. Until then sign in to JumpCloud in Ray with password + MFA, if the org
     allows it. Found 2026-10-29.
+16. **Tab rename details.** Arc's row tip says "Double-click to rename" once (Cra copies it); Ray shows no hint. A
+    favorite's name is typed in a lifted row under its tile (Ardia and Crest use a sheet): worth a look by hand. A
+    double click on an unloaded tab loads it and keeps the field focused in the hidden test window; not yet tried in
+    a key window, where the page could take focus as it loads. Fix where needed in `SidebarView.beginRename`. Found
+    2026-10-29.
 
 ## Done
 
@@ -218,3 +219,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Command bar ranks your pages first like Arc, 5 rows, scroll to 10, never the active tab | 2026-10-29, `feat: command bar ranks pages like arc` |
 | Ray as a web browser to macOS (pickable as the default browser): links and HTML/PDF files from other apps open as Today tabs, also when they launch Ray | 2026-10-29, `feat: ray can be the default browser` |
 | Tab switch never flashes a blank page: the page left stays until the new one has drawn | 2026-10-29, `fix: no blank frame on tab switch` |
+| Rename tabs (Rename… or a double click; kept over navigations and relaunches; Arc's names kept on import) | 2026-10-29, `feat: rename tabs` |

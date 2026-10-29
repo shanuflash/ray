@@ -17,6 +17,8 @@ protocol SidebarViewDelegate: AnyObject {
   func sidebar(_ sidebar: SidebarView, perform action: SidebarRowAction, on entry: SidebarEntry)
   func sidebar(_ sidebar: SidebarView, move entry: SidebarEntry, to target: SidebarDropTarget)
   func sidebar(_ sidebar: SidebarView, rename entry: SidebarEntry, to title: String)
+  /// A tab's own name, as typed in its row (empty: back to the page's title).
+  func sidebar(_ sidebar: SidebarView, name entry: SidebarEntry, as name: String)
   func sidebarNewTab(_ sidebar: SidebarView)
   func sidebarOpenAddress(_ sidebar: SidebarView)
   func sidebarToggle(_ sidebar: SidebarView)
@@ -172,6 +174,8 @@ final class SidebarView: NSView {
   private static let liftDistance: CGFloat = 4
   private static let folderIndent: CGFloat = 16
   private var pendingRename: UUID?
+  /// A favorite being renamed: a lifted row under its tile holds the field (tiles have no title of their own).
+  private var tileEditor: (row: SidebarRowView, entry: SidebarEntry)?
   private static let scrollEdge: CGFloat = 28
 
   var isDragging: Bool { drag?.lifted == true }
@@ -276,6 +280,8 @@ final class SidebarView: NSView {
       row.show(entry, icon: entry.isFolder ? nil : delegate?.sidebarIcon(for: entry), selected: entry === active)
       row.animatesFold = false
       row.onClick = { [weak self] part in self?.clicked(entry, part: part) }
+      // A double click on a tab's title renames it (Arc's row tip says so); folders open and close on every click.
+      row.onDoubleClick = entry.isFolder ? nil : { [weak self] in self?.beginRename(entry) }
       row.onPointer = { [weak self, weak row] event in
         if let self, let row { self.pointer(event, on: row, entry: entry) }
       }
@@ -549,21 +555,52 @@ final class SidebarView: NSView {
     return result
   }
 
-  /// Starts renaming a folder in place (a new folder starts this way; the row's menu has Rename…, a double click does not).
+  /// Starts renaming a folder or a tab in place (a new folder starts this way; rows' menus have Rename…, and a tab's
+  /// title takes a double click). A favorite's name is edited in a lifted row under its tile.
   func beginRename(_ entry: SidebarEntry) {
     pendingRename = entry.id
     DispatchQueue.main.async { [weak self] in
       guard let self, self.pendingRename == entry.id else { return }
       self.pendingRename = nil
       self.layoutSubtreeIfNeeded()
-      guard let index = self.pinned.firstIndex(where: { $0 === entry }), index < self.pinnedRows.count else { return }
-      let row = self.pinnedRows[index]
-      row.scrollToVisible(row.bounds)
-      row.beginRename { [weak self] name in
+      let commit: (String?) -> Void = { [weak self] name in
         guard let self, let name else { return }
-        self.delegate?.sidebar(self, rename: entry, to: name)
+        if entry.isFolder {
+          self.delegate?.sidebar(self, rename: entry, to: name)
+        } else {
+          self.delegate?.sidebar(self, name: entry, as: name)
+        }
       }
+      if let index = self.favorites.firstIndex(where: { $0 === entry }), index < self.tiles.count {
+        self.beginTileRename(entry, under: self.tiles[index], commit)
+        return
+      }
+      guard let row = zip(self.pinnedRows + self.todayRows, self.pinned + self.today).first(where: { $0.1 === entry })?.0,
+            !row.isHidden else { return }
+      row.scrollToVisible(row.bounds)
+      row.beginRename(commit)
     }
+  }
+
+  private func beginTileRename(_ entry: SidebarEntry, under tile: FavoriteTileView, _ commit: @escaping (String?) -> Void) {
+    tileEditor?.row.removeFromSuperview()
+    let row = SidebarRowView()
+    row.show(entry, icon: delegate?.sidebarIcon(for: entry), selected: false)
+    let below = tile.convert(tile.bounds, to: self)
+    row.frame = NSRect(x: Self.inset, y: below.maxY + 4, width: bounds.width - Self.inset * 2, height: Self.rowHeight)
+    row.setLifted(true)
+    addSubview(row)
+    tileEditor = (row, entry)
+    row.beginRename { [weak self, weak row] name in
+      if let self, let row, self.tileEditor?.row === row { self.tileEditor = nil }
+      row?.removeFromSuperview()
+      commit(name)
+    }
+  }
+
+  /// The rows that can hold a rename field, with what each shows.
+  private var renameRows: [(SidebarRowView, SidebarEntry)] {
+    Array(zip(pinnedRows + todayRows, pinned + today)) + (tileEditor.map { [($0.row, $0.entry)] } ?? [])
   }
 
   /// Shows a drop hint at a frame (appearing in place, then following the layout), or hides it.
@@ -885,8 +922,8 @@ final class SidebarView: NSView {
     }
     frames["hidden"] = shownViews.filter { view, _ in view.isHidden || (view as? SidebarRowView)?.collapsing == true }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["litFolder"] = zip(pinnedRows, pinned).first { $0.0.dropTarget }?.1.id.uuidString ?? ""
-    frames["renaming"] = zip(pinnedRows, pinned).first { $0.0.isRenaming }?.1.id.uuidString ?? ""
-    if let done = pinnedRows.lazy.compactMap({ $0.doneButtonFrame }).first {
+    frames["renaming"] = renameRows.first { $0.0.isRenaming }?.1.id.uuidString ?? ""
+    if let done = renameRows.lazy.compactMap({ $0.0.doneButtonFrame }).first {
       frames["renameDone"] = String(format: "%.1f,%.1f,%.1f,%.1f", done.minX, height - done.maxY, done.width, done.height)
     }
     frames["hoveredTile"] = zip(tiles, favorites).first { $0.0.hovered }?.1.id.uuidString ?? ""
@@ -924,7 +961,7 @@ final class SidebarView: NSView {
 
   /// For tests: a click on the open rename field's Done button.
   func debugPressRenameDone() -> Bool {
-    guard let row = pinnedRows.first(where: { $0.isRenaming }) else { return false }
+    guard let row = renameRows.first(where: { $0.0.isRenaming })?.0 else { return false }
     row.pressDone()
     return true
   }
@@ -970,14 +1007,26 @@ final class SidebarView: NSView {
       holder.submenu = folders
       menu.addItem(holder)
     }
+    func addRename() {
+      add("Rename…", .renameFolder)
+      if entry.customTitle != nil {
+        let item = NSMenuItem(title: "Use Page Title", action: #selector(usePageTitle(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = entry
+        menu.addItem(item)
+      }
+      menu.addItem(.separator())
+    }
     switch entry.kind {
     case .today:
+      addRename()
       add("Pin Tab", .pin)
       add("Add to Favorites", .addToFavorites)
       addFolderMenu()
       menu.addItem(.separator())
       add("Close Tab", .close)
     case .pinned:
+      addRename()
       if entry.isAwayFromPinned { add("Back to Pinned URL", .backToPinned) }
       add("Add to Favorites", .addToFavorites)
       addFolderMenu()
@@ -994,6 +1043,7 @@ final class SidebarView: NSView {
       menu.addItem(.separator())
       add("Delete Folder", .deleteFolder)
     case .favorite:
+      addRename()
       if entry.isAwayFromPinned { add("Back to Favorite URL", .backToPinned) }
       add("Remove from Favorites", .removeFromFavorites)
       if entry.isLive {
@@ -1002,6 +1052,16 @@ final class SidebarView: NSView {
       }
     }
     return menu
+  }
+
+  @objc private func usePageTitle(_ item: NSMenuItem) {
+    guard let entry = item.representedObject as? SidebarEntry else { return }
+    delegate?.sidebar(self, name: entry, as: "")
+  }
+
+  /// For tests: the titles of an entry's context menu, separators as "-".
+  func debugMenuTitles(for entry: SidebarEntry) -> [String] {
+    menu(for: entry).items.map { $0.isSeparatorItem ? "-" : $0.title }
   }
 
   @objc private func menuAction(_ item: NSMenuItem) {
@@ -1480,6 +1540,8 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   let residency = TabResidency()
 
   var onClick: ((Part) -> Void)?
+  /// A double click on the title (not the icon); nil for rows that don't take one.
+  var onDoubleClick: (() -> Void)?
   var onPointer: ((NSEvent) -> Void)?
   private var lifted = false
   private let chevron = NSImageView()
@@ -1608,7 +1670,12 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   override func mouseDown(with event: NSEvent) {
     onPointer?(event)
     let point = convert(event.locationInWindow, from: nil)
-    onClick?(point.x < title.frame.minX - 2 ? .icon : .body)
+    let part: Part = point.x < title.frame.minX - 2 ? .icon : .body
+    if event.clickCount == 2, part == .body, editor == nil, let onDoubleClick {
+      onDoubleClick()
+      return
+    }
+    onClick?(part)
   }
 
   override func mouseDragged(with event: NSEvent) { onPointer?(event) }

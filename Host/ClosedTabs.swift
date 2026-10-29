@@ -14,6 +14,8 @@ struct ClosedTab {
   let pinnedURL: String?
   let url: String
   let title: String
+  /// The tab's own name (Rename…), shown in place of its title and given back when a Today tab comes back.
+  var customTitle: String?
   let favicon: NSImage?
   /// The key the engine's tab restore service holds the tab's back/forward list under (`ac_tab_restore_take`). Nil
   /// in a private window: the engine keeps nothing off the record, so those come back on their last page only.
@@ -25,7 +27,7 @@ struct ClosedTab {
   }
 
   var menuTitle: String {
-    let text = title.isEmpty ? AddressInput.display(for: url) : title
+    let text = customTitle ?? (title.isEmpty ? AddressInput.display(for: url) : title)
     return text.count > 60 ? String(text.prefix(59)) + "…" : text
   }
 }

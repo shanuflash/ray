@@ -1828,6 +1828,14 @@ const checks = {
       assert(folder("Reading")?.parent === personal.id && folder("Later")?.parent === folder("Reading").id, "Arc's nested folders didn't come over");
       const cal = sidebar.pinned.find((e) => e.pinnedURL === "https://calendar.example/");
       assert(cal?.title === "Cal" && cal.parent === personal.id && cal.live === false, `Arc's renamed pinned tab: ${JSON.stringify(cal)}`);
+      // Arc's names stay names (the page's own title stays its title): Rename shows them, and clearing brings the title back.
+      assert(cal.customTitle === "Cal" && cal.pageTitle === "Calendar – Week of Sep 1", `Arc's name: ${JSON.stringify(cal)}`);
+      const tunes = sidebar.favorites.find((e) => e.pinnedURL === "https://music.example/");
+      assert(tunes?.customTitle === "Tunes" && tunes.pageTitle === "Music", `Arc's favorite name: ${JSON.stringify(tunes)}`);
+      const renamedToday = sidebar.today.find((e) => e.url === "https://today2.example/");
+      assert(renamedToday?.customTitle === "Renamed today" && renamedToday.pageTitle === "Another today", `Arc's Today name: ${JSON.stringify(renamedToday)}`);
+      assert(sidebar.pinned.every((e) => e.kind === "folder" || e.pinnedURL === "https://calendar.example/" || e.customTitle === null),
+        `names on tabs Arc never renamed: ${JSON.stringify(sidebar.pinned.filter((e) => e.customTitle))}`);
       assert(sidebar.today.some((e) => e.pinnedURL === null && e.url === "https://today2.example/" && e.title === "Renamed today"),
         `Today: ${JSON.stringify(sidebar.today.map((e) => [e.url, e.title]))}`);
 
@@ -3127,6 +3135,10 @@ const checks = {
     assert(find("Cal")?.parent === personal.id && find("Left")?.parent === personal.id, "tabs not in their space");
     assert(reading?.parent === personal.id && find("A blog post")?.parent === reading.id && later?.parent === reading.id, "nesting lost");
     assert(find("Board")?.parent === work.id, "work tab misplaced");
+    assert(find("Cal")?.customTitle === "Cal" && find("Cal").pageTitle === "Calendar", `Arc's name: ${JSON.stringify(find("Cal"))}`);
+    const tunes = favorites.find((e) => e.title === "Tunes");
+    assert(tunes?.customTitle === "Tunes" && tunes.pageTitle === "Music", `Arc's favorite name: ${JSON.stringify(tunes)}`);
+    assert(find("A blog post")?.customTitle === null, "a tab Arc never renamed got a name");
     assert(![...favorites, ...pinned].some((e) => e.url.startsWith("javascript:")), "a javascript: link came in");
     assert([...favorites, ...pinned].filter((e) => e.url.includes(".example")).every((e) => !e.live), "imported tabs loaded");
     const count = pinned.length + favorites.length;
@@ -3399,6 +3411,144 @@ const checks = {
     await until("window back", async () => { await command("state"); return states.length > count + 1 && state().sidebar; }, 8000);
     assert(ids(state().sidebar) === before, "the reopened window lost tabs");
   },
+  async "tab-rename"() {
+    // Any tab gets a name of its own (Arc's Rename…): from its row's menu or a double click on its title, kept over
+    // navigations, page title changes and relaunches; an empty name goes back to the page's title.
+    const entry = (id) => allEntries().find((e) => e.id === id);
+    const fresh = async (path) => {
+      const before = new Set(allEntries().map((e) => e.id));
+      await send("Target.createTarget", { url: `${origin}${path}` });
+      return until(`tab ${path}`, async () => {
+        await command("state");
+        return allEntries().find((e) => !before.has(e.id) && e.url.includes(path) && e.live && e.pageTitle?.startsWith("Page"));
+      });
+    };
+    const renaming = (id) => until(`renaming ${id}`, async () => { await command("state"); return state().sidebarFrames.renaming === id; }, 3000);
+    const named = (id, name, what) => until(what, async () => { await command("state"); return entry(id)?.customTitle === name && state().sidebarFrames.renaming === ""; });
+    const t = (await fresh("/a?rename-today")).id;
+    let p = (await fresh("/b?rename-pinned")).id;
+    let f = (await fresh("/c?rename-favorite")).id;
+    await command(`rowaction pin ${p}`);
+    await until("pinned", () => entry(p)?.kind === "pinned");
+    await command(`rowaction favorite ${f}`);
+    await until("favorite", () => entry(f)?.kind === "favorite");
+    for (const id of [t, p, f]) {
+      const items = JSON.parse(await commandResult(`rowmenu ${id}`));
+      assert(items[0] === "Rename…" && !items.includes("Use Page Title"), `${entry(id).kind} menu: ${items}`);
+    }
+    assert(entry(t).customTitle === null && entry(t).title === "Page A", `before renaming: ${JSON.stringify(entry(t))}`);
+
+    // A Today tab, from its menu: the field starts on the page's title, all selected; Enter keeps what was typed.
+    await command(`row ${t}`);
+    await until("today tab active", () => state().activeEntry === t);
+    await command(`rowaction rename ${t}`);
+    await renaming(t);
+    await command("type Reading");
+    await command("enter");
+    await named(t, "Reading", "today tab named");
+    assert(entry(t).title === "Reading" && entry(t).pageTitle === "Page A", `named today tab: ${JSON.stringify(entry(t))}`);
+    assert(JSON.parse(await commandResult(`rowmenu ${t}`)).includes("Use Page Title"), "a named tab's menu has no Use Page Title");
+
+    // A pinned tab, by a double click on its title; Escape keeps the old name, Done the new one.
+    await settle();
+    const row = frameOf(p);
+    await command(`press ${row.cx} ${row.cy} 1`);
+    await command(`release ${row.cx} ${row.cy} 1`);
+    await command(`press ${row.cx} ${row.cy} 2`);
+    await command(`release ${row.cx} ${row.cy} 2`);
+    await renaming(p);
+    await command("type Work stuff");
+    await command("renamedone");
+    await named(p, "Work stuff", "pinned tab named by Done");
+    await command(`rowaction rename ${p}`);
+    await renaming(p);
+    await command("type Nope");
+    await command("escape");
+    await until("escape cancelled", async () => { await command("state"); return state().sidebarFrames.renaming === ""; });
+    assert(entry(p).customTitle === "Work stuff", `escape changed the name to ${entry(p).customTitle}`);
+
+    // A favorite: its tile has no title, so a lifted row under it holds the field; its tip is the name.
+    await command(`rowaction rename ${f}`);
+    await renaming(f);
+    await command("type Fav");
+    await command("enter");
+    await named(f, "Fav", "favorite named");
+
+    // The page moves on and retitles itself: the name stays, only the page's title follows.
+    await command(`row ${t}`);
+    await until("today tab active again", () => state().activeEntry === t);
+    const page = await session("?rename-today");
+    await evaluate(page.sessionId, `location.href = ${JSON.stringify(`${origin}/b?rename-today-2`)}`);
+    await until("navigated", async () => { await command("state"); return entry(t)?.url.includes("rename-today-2") && entry(t).pageTitle === "Page B"; });
+    const moved = await session("?rename-today-2");
+    await evaluate(moved.sessionId, `document.title = "Retitled by the page"`);
+    await until("page retitled", async () => { await command("state"); return entry(t)?.pageTitle === "Retitled by the page"; });
+    assert(entry(t).customTitle === "Reading" && entry(t).title === "Reading", `the page renamed the tab: ${JSON.stringify(entry(t))}`);
+
+    // The command bar shows the name, and finds the tab by it or by its page's title.
+    await command(`row ${p}`);
+    await until("pinned tab active", () => state().activeEntry === p);
+    for (const query of ["Readi", "Retitled"]) {
+      await command("menu newTab");
+      await command(`type ${query}`);
+      await until(`bar row for ${query}`, async () => {
+        await command("state");
+        return state().commandBar?.rows?.some((r) => r.kind === "tab" && r.tab === entry(t).tab && r.title === "Reading");
+      });
+      await command("escape");
+      await until("bar closed", async () => { await command("state"); return state().commandBar === null; });
+    }
+
+    // Very long names are cut; an empty one (or the page's own title) goes back to the page's title.
+    await command(`rename ${t} ${"x".repeat(250)}`);
+    await until("long name", async () => { await command("state"); return entry(t)?.customTitle?.length === 200; });
+    await command(`rename ${t} Reading`);
+    await named(t, "Reading", "named again");
+    await command(`rowaction rename ${f}`);
+    await renaming(f);
+    await command("type ");
+    await command("enter");
+    await named(f, null, "favorite's name cleared");
+    assert(entry(f).title === entry(f).pageTitle && entry(f).title === "Page C", `cleared favorite: ${JSON.stringify(entry(f))}`);
+
+    // Recently Closed and ⇧⌘T: a closed Today tab keeps its name, and comes back with it.
+    const gone = (await fresh("/c?rename-closed")).id;
+    await command(`rename ${gone} Gone soon`);
+    await named(gone, "Gone soon", "closing tab named");
+    await command(`rowaction close ${gone}`);
+    await until("closed", async () => { await command("state"); return !entry(gone) && state().recentlyClosed?.items?.[0]?.title === "Gone soon"; });
+    await command("closed 0");
+    await until("back with its name", async () => {
+      await command("state");
+      return allEntries().some((e) => e.url.includes("rename-closed") && e.customTitle === "Gone soon" && e.live);
+    });
+
+    // Unloading keeps it; Sidebar.json has it (the restore check finds every name again after the relaunch).
+    await command(`rowaction unload ${p}`);
+    await until("pinned tab unloaded", async () => { await command("state"); return entry(p)?.live === false; });
+    assert(entry(p).title === "Work stuff", `unloaded pinned tab: ${JSON.stringify(entry(p))}`);
+    // A double click on an unloaded tab: the first click loads it, and its page doesn't take the field's keys.
+    await settle();
+    const unloaded = frameOf(p);
+    await command(`press ${unloaded.cx} ${unloaded.cy} 1`);
+    await command(`release ${unloaded.cx} ${unloaded.cy} 1`);
+    await command(`press ${unloaded.cx} ${unloaded.cy} 2`);
+    await command(`release ${unloaded.cx} ${unloaded.cy} 2`);
+    await renaming(p);
+    await until("loaded", async () => { await command("state"); return entry(p)?.live && entry(p).pageTitle === "Page B"; });
+    await sleep(500);
+    await command("state");
+    assert(state().sidebarFrames.renaming === p, "the page took the rename field's focus as it loaded");
+    await command("escape");
+    await until("escaped", async () => { await command("state"); return state().sidebarFrames.renaming === ""; });
+    assert(entry(p).customTitle === "Work stuff", `escape changed the name to ${entry(p).customTitle}`);
+    const file = join(dataDir, "Sidebar.json");
+    await until("saved", () => {
+      const saved = JSON.parse(readFileSync(file, "utf8"));
+      return saved.pinned.some((e) => e.id === p && e.customTitle === "Work stuff") && saved.today.some((e) => e.id === t && e.customTitle === "Reading")
+        && saved.favorites.some((e) => e.id === f && e.customTitle === undefined);
+    }, 4000);
+  },
   async "settings-persist"() {
     // Non-default values for every setting; the next launch (the restore check) must find them as they were.
     await resetSettings();
@@ -3458,6 +3608,9 @@ const checks = {
     assert(JSON.stringify(after.pinned.map((e) => [e.id, e.pinnedURL, e.parent, e.title])) === JSON.stringify(before.pinned.map((e) => [e.id, e.pinnedURL, e.parent, e.title])), "pinned differ");
     assert(JSON.stringify(after.today.map((e) => e.id)) === JSON.stringify(before.today.map((e) => e.id)), "today differs");
     await until("active entry restored and loaded", () => state().activeEntry === savedActive && state().active !== null && oneVisibleActive());
+    // Tab names (the tab-rename check leaves some) come back as they were.
+    const names = (sidebar) => JSON.stringify([...sidebar.favorites, ...sidebar.pinned, ...sidebar.today].map((e) => [e.id, e.customTitle]));
+    assert(names(after) === names(before), `names after relaunch: ${names(after)} vs ${names(before)}`);
     const notActive = [...after.favorites, ...after.pinned, ...after.today].filter((e) => e.id !== savedActive);
     assert(notActive.every((e) => !e.live), "restored tabs other than the active one loaded at launch");
     // Downloads from before the restart are still listed, so the list can be opened again.

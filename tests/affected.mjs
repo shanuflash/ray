@@ -37,6 +37,10 @@ export const areas = {
   "Host/MainMenu.swift": "all",
   "Host/Shortcuts.swift": "all",
   "Host/SidebarModel.swift": "all",
+  // What Sidebar.json keeps of an entry, its name and titles, and what the sidebar shows of it.
+  "Host/SidebarModel.swift#Names and saved fields": [...pages, ...drag, ...commandBar, "tab-rename", "folder-create",
+    "folder-rename", "favorites", "pin-unload-restore", "tile-hover", "clear", "reopen-closed-tab", "arc-import",
+    "import-browser", "private-window", "close-last-window"],
   "Host/EngineCalls.swift": "all",
   "Host/TestEnvironment.swift": "all",
   // Colours only: the checks that read a colour or draw with it.
@@ -72,18 +76,20 @@ export const areas = {
     "download-insecure-blocked", "site-controls"],
   "Host/BrowserWindowController.swift#Test snapshots": ["folder-rename", "tile-hover", "bar-actions", "load-sweep-once"],
   "Host/BrowserWindowController.swift#Arc import": ["arc-import", "import-browser"],
-  "Host/BrowserWindowController.swift#Browser import": ["import-browser", "arc-import", "onboarding"],
+  "Host/BrowserWindowController.swift#Browser import": ["import-browser", "arc-import", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Onboarding": ["onboarding"],
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
   "Host/BrowserWindowController.swift#Toast": ["copy-url", "page-commands"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Site controls": ["site-controls", "extensions", "copy-url", "find-in-page"],
   "Host/BrowserWindowController.swift#Entries": "all",
-  "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab"],
+  "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename"],
+  // A tab's own name: Rename…, the double click, the test command's `rename` (folders too).
+  "Host/BrowserWindowController.swift#Tab names": ["tab-rename", "folder-rename"],
   "Host/BrowserWindowController.swift#Page toolbar": ["page-toolbar", "address-fragment", "page-loading", "load-sweep-once", "site-controls",
     "sidebar-toggle"],
   "Host/BrowserWindowController.swift#Sidebar visibility": [...sidebarMotion, "page-toolbar", "downloads"],
-  "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url", "onboarding"],
+  "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Pages": pageSurface,
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",
   "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "private-window", "close-last-window"],
@@ -99,9 +105,10 @@ export const areas = {
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
   "Host/SidebarView.swift": [...drag, "folder-create", "folder-toggle", "folder-rename", "folder-animation",
     "folder-drag-in", "folder-drag-folder", "folder-out-and-delete", "tile-hover", "favorites", "pin-unload-restore",
-    "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment"],
+    "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment", "tab-rename"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
-  "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder"],
+  // Also the rows' menus and the test hooks for renaming (the field, its Done button).
+  "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder", "folder-rename", "tab-rename"],
   "Host/SidebarView.swift#Downloads panel": ["downloads"],
 
   "Host/AddressInput.swift": [...commandBar, "page-toolbar", "site-controls", "settings-routes", "settings-trimmed",
@@ -120,14 +127,14 @@ export const areas = {
   "Host/RaySettings.swift": settingReaders,
   "Host/SettingsCatalog.swift": settingReaders,
   "Host/SettingsWindow.swift": [...settings, "onboarding"],
-  "Host/ArcImport.swift": ["arc-import"],
+  "Host/ArcImport.swift": ["arc-import", "import-browser"],
   // The first run's welcome and File › Import from Browser… (on the fake importer).
   "Host/Onboarding.swift": ["onboarding"],
   "Host/RaySettings.swift#Onboarding": ["onboarding"],
   // The settings in the state log: the checks that compare them (the restore check reads them after settings-persist).
   "Host/RaySettings.swift#State log": [...settings, "onboarding"],
   "Host/CommandBarView.swift": commandBar,
-  "Host/Suggestions.swift": commandBar,
+  "Host/Suggestions.swift": [...commandBar, "tab-rename"],
   // The command bar's action rows: menu commands by name (they run through the menu's own validation and selectors).
   "Host/BarActions.swift": [...commandBar, "page-commands", "copy-url"],
   "Host/Downloads.swift": ["downloads", "download-insecure-blocked"],
@@ -146,13 +153,13 @@ export const areas = {
   "Host/Toast.swift": ["copy-url", "page-commands"],
   "Host/Updater.swift": ["updater-config"],
   // ⇧⌘T and History › Recently Closed.
-  "Host/ClosedTabs.swift": ["reopen-closed-tab"],
+  "Host/ClosedTabs.swift": ["reopen-closed-tab", "tab-rename"],
   "Host/SafeStorage.swift": ["safe-storage-migration"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
   "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
-    "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank"],
+    "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

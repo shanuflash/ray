@@ -459,28 +459,34 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   ) -> SidebarImportCounts {
     var known = Set(state.allEntries.filter { !$0.isFolder }.map { $0.pinnedURL ?? $0.url })
     var counts = SidebarImportCounts()
-    func tabs(_ nodes: [ArcImport.Node]) -> [(url: String, title: String)] {
-      nodes.flatMap { node -> [(url: String, title: String)] in
+    func tabs(_ nodes: [ArcImport.Node]) -> [(url: String, title: String, name: String?)] {
+      nodes.flatMap { node -> [(url: String, title: String, name: String?)] in
         switch node {
-        case .tab(let url, let title): [(url, title)]
+        case .tab(let url, let title, let name): [(url, title, name)]
         case .folder(_, let children): tabs(children)
         }
       }
     }
+    // The other browser's own name for a tab (Arc's Rename) stays its name here; the page's title stays its title.
+    func entry(_ kind: SidebarEntry.Kind, _ url: String, _ title: String, _ name: String?) -> SidebarEntry {
+      let entry = SidebarEntry(kind: kind, url: url, title: title)
+      entry.customTitle = name.flatMap(SidebarEntry.name(from:)).flatMap { $0 == title ? nil : $0 }
+      return entry
+    }
     for tab in tabs(favorites) {
       guard known.insert(tab.url).inserted else { counts.alreadyFavorites += 1; continue }
-      state.favorites.append(SidebarEntry(kind: .favorite, url: tab.url, title: tab.title))
+      state.favorites.append(entry(.favorite, tab.url, tab.title, tab.name))
       counts.favorites += 1
     }
     var added: [SidebarEntry] = []
     func add(_ nodes: [ArcImport.Node], in parent: UUID?) {
       for node in nodes {
         switch node {
-        case .tab(let url, let title):
+        case .tab(let url, let title, let name):
           guard known.insert(url).inserted else { counts.alreadyPinned += 1; continue }
-          let entry = SidebarEntry(kind: .pinned, url: url, title: title)
-          entry.parentID = parent
-          added.append(entry)
+          let pinned = entry(.pinned, url, title, name)
+          pinned.parentID = parent
+          added.append(pinned)
           counts.pinned += 1
         case .folder(let title, let children):
           let folder = SidebarEntry.folder(title, in: parent)
@@ -498,7 +504,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state.normalizePinned()
     for tab in tabs(today) {
       guard known.insert(tab.url).inserted else { counts.alreadyToday += 1; continue }
-      state.today.append(SidebarEntry(kind: .today, url: tab.url, title: tab.title))
+      state.today.append(entry(.today, tab.url, tab.title, tab.name))
       counts.today += 1
     }
     changed(event)
@@ -1242,7 +1248,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard Self.isReopenable(url), !entry.isFolder, let index = section.firstIndex(where: { $0 === entry }) else { return }
     closedTabs.add(ClosedTab(
       entryID: entry.id, kind: entry.kind, index: index, parentID: entry.parentID, pinnedURL: entry.pinnedURL,
-      url: url, title: entry.title, favicon: favicon ?? favicons.image(for: url), restoreKey: key))
+      url: url, title: entry.title, customTitle: entry.customTitle, favicon: favicon ?? favicons.image(for: url),
+      restoreKey: key))
   }
 
   /// ⇧⌘T, or a History › Recently Closed item: the newest closed tab (or that one) back where it was, with its
@@ -1263,6 +1270,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     } else {
       // A Today tab, or a row deleted since: a new entry in the same place.
       entry = SidebarEntry(kind: closed.kind, url: closed.url, title: closed.title)
+      entry.customTitle = closed.customTitle
       switch closed.kind {
       case .today:
         state.today.insert(entry, at: min(closed.index, state.today.count))
@@ -1300,6 +1308,30 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     return true
   }
+
+  // MARK: Tab names
+
+  /// A tab's own name, from its row's Rename… or a double click on its title: shown in place of the page's title in
+  /// the sidebar, the command bar and Recently Closed, kept across navigations and relaunches. An empty name, or the
+  /// page's own title, clears it (the page's title shows again).
+  func setName(_ entry: SidebarEntry, to text: String) {
+    guard !entry.isFolder, state.entry(id: entry.id) === entry else { return }
+    var name = SidebarEntry.name(from: text)
+    if name == entry.pageTitle { name = nil }
+    guard name != entry.customTitle else { return }
+    entry.customTitle = name
+    changed("rename")
+  }
+
+  func sidebar(_ sidebar: SidebarView, name entry: SidebarEntry, as name: String) { setName(entry, to: name) }
+
+  /// For tests: `rename <id> <text>` commits what the inline field would, for a folder or a tab.
+  func renameEntry(_ entry: SidebarEntry, to text: String) {
+    if entry.isFolder { rename(entry, to: text) } else { setName(entry, to: text) }
+  }
+
+  /// For tests: an entry's context menu, as its titles.
+  func menuTitles(for entry: SidebarEntry) -> [String] { sidebar.debugMenuTitles(for: entry) }
 
   // MARK: Page toolbar
 
@@ -1515,7 +1547,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let rows = Suggestions.build(
       query: query, tabs: tabs, active: activeTab, history: history.entries,
       searches: wantsSearches ? searches.current(for: trimmed) : [], actions: BarActions.available,
-      frecency: history.frecency(of:), favicon: favicons.image(for:))
+      frecency: history.frecency(of:), favicon: favicons.image(for:),
+      name: { [weak self] tab in self?.state.entry(for: tab)?.customTitle })
     bar.show(rows)
     let pages = rows.compactMap { row -> String? in
       if case .history(let url) = row.kind { return url }
@@ -2007,6 +2040,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     func describe(_ entry: SidebarEntry) -> [String: Any] {
       [
         "id": entry.id.uuidString, "kind": entry.kind.rawValue, "title": entry.displayTitle,
+        "customTitle": entry.customTitle ?? NSNull(), "pageTitle": entry.isFolder ? NSNull() : entry.pageTitle,
         "url": entry.currentURL, "pinnedURL": entry.pinnedURL ?? NSNull(), "live": entry.isLive,
         "away": entry.isAwayFromPinned, "tab": entry.isLive ? Int(entry.tab!.tabId) : NSNull(),
         "parent": entry.parentID?.uuidString ?? NSNull(), "open": entry.isOpen ?? NSNull(),

@@ -238,13 +238,13 @@ enum Suggestions {
   static func build(
     query raw: String, tabs: [RayCoreTab], active: RayCoreTab?, history: [HistoryItem], searches: [String],
     actions: () -> [BarAction] = { [] }, frecency: (String) -> Double = { _ in 0 },
-    favicon: (String) -> NSImage? = { _ in nil }
+    favicon: (String) -> NSImage? = { _ in nil }, name: (RayCoreTab) -> String? = { _ in nil }
   ) -> [Suggestion] {
     let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     let others = tabs.filter { $0 !== active }
     let openURLs = Set(tabs.map(\.url))
     if query.isEmpty {
-      let open = others.prefix(limit).map(tabSuggestion)
+      let open = others.prefix(limit).map { tabSuggestion($0, name: name($0)) }
       let frequent = history
         .filter { !openURLs.contains($0.url) && $0.url.hasPrefix("http") }
         .sorted { ($0.visits, $0.lastVisit) > ($1.visits, $1.lastVisit) }
@@ -258,9 +258,13 @@ enum Suggestions {
     let tokens = needle.split(separator: " ").map(String.init)
     var pages: [Page] = []
     for tab in others {
-      guard let match = match(tokens, query: needle, title: tab.title.lowercased(), url: matchable(tab.url)) else { continue }
+      // A renamed tab shows its own name, and is found by it or by its page's title.
+      let own = name(tab)
+      let found = [own, tab.title].compactMap { $0 }
+        .compactMap { match(tokens, query: needle, title: $0.lowercased(), url: matchable(tab.url)) }
+      guard let match = found.max(by: { $0.score < $1.score }) else { continue }
       pages.append(Page(
-        row: tabSuggestion(tab), url: tab.url, match: match.score, strong: match.strong,
+        row: tabSuggestion(tab, name: own), url: tab.url, match: match.score, strong: match.strong,
         frecency: frecency(tab.url) + openTabFrecency))
     }
     // The current page's history entry goes with its tab (it's open), so it never comes back as a history row.
@@ -414,8 +418,8 @@ enum Suggestions {
       detail: title.isEmpty ? "" : shortAddress(url), icon: icon)
   }
 
-  private static func tabSuggestion(_ tab: RayCoreTab) -> Suggestion {
-    pageSuggestion(kind: .tab(tab), url: tab.url, title: tab.title, icon: tab.favicon ?? globe)
+  private static func tabSuggestion(_ tab: RayCoreTab, name: String?) -> Suggestion {
+    pageSuggestion(kind: .tab(tab), url: tab.url, title: name ?? tab.title, icon: tab.favicon ?? globe)
   }
 
   private static func historySuggestion(_ entry: HistoryItem, favicon: (String) -> NSImage?) -> Suggestion {
