@@ -130,6 +130,7 @@ final class SiteControlsView: NSView {
   /// For tests: presses a tile by name ("share", "copyLink", "find", "cast", "add", or an extension's id).
   func press(_ name: String) -> Bool {
     if name == "add" { addTile.onPress?(); return true }
+    if name == "siteSettings" { openSiteSettings(); return true }
     if let tile = quickTiles.first(where: { $0.name == name })?.tile ?? extensionTiles.first(where: { $0.id == name })?.tile,
        tile.isEnabled {
       tile.onPress?()
@@ -144,7 +145,7 @@ final class SiteControlsView: NSView {
 
   private func loadSettings() {
     guard let origin, isWeb else { return }
-    EngineCalls.call("ac_site_settings_get", profile: profile, args: ["origin": origin]) { [weak self] reply in
+    EngineCalls.call("ac_site_settings_get", profile: profile, args: ["origin": origin, "offTheRecord": profile.offTheRecord]) { [weak self] reply in
       guard let self, let list = reply?["settings"] as? [String: [String: Any]] else { return }
       let settings = Permission.order.compactMap { type -> (String, String, Bool)? in
         guard let info = list[type], let value = info["value"] as? String else { return nil }
@@ -208,7 +209,7 @@ final class SiteControlsView: NSView {
   /// Sets one permission for this site (`allow`, `block`, `ask` or `default`), then shows the engine's answer.
   func set(_ type: String, to value: String, completion: (() -> Void)? = nil) {
     guard let origin, isWeb, Permission.order.contains(type) else { return }
-    EngineCalls.call("ac_site_settings_set", profile: profile, args: ["origin": origin, "type": type, "value": value]) {
+    EngineCalls.call("ac_site_settings_set", profile: profile, args: ["origin": origin, "type": type, "value": value, "offTheRecord": profile.offTheRecord]) {
       [weak self] _ in
       self?.loadSettings()
       completion?()
@@ -240,7 +241,7 @@ final class SiteControlsView: NSView {
 
   @objc private func resetPermissions() {
     guard let origin, isWeb else { return }
-    EngineCalls.call("ac_site_settings_reset", profile: profile, args: ["origin": origin]) { [weak self] _ in
+    EngineCalls.call("ac_site_settings_reset", profile: profile, args: ["origin": origin, "offTheRecord": profile.offTheRecord]) { [weak self] _ in
       self?.loadSettings()
     }
   }
@@ -380,7 +381,7 @@ enum PanelColors {
 }
 
 /// The engine's site permissions, as Chrome's page info names them.
-private struct Permission {
+struct Permission {
   let title: String
   let symbol: String
 

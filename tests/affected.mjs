@@ -25,6 +25,7 @@ const settings = ["settings-window", "settings-catalog", "settings-minimal-url",
   "settings-bar", "settings-colours"];
 // Settings › General (SettingsGeneral.swift, CloseWarnings.swift): its pane, the two warnings and Start fresh.
 settings.push("settings-general", "warn-before-quitting", "warn-before-closing-window");
+settings.push("settings-privacy", "settings-extensions");
 // What a setting's value or its change notice reaches: the settings checks, the welcome (theme, keys), and the
 // features they drive (address bar, loading, site controls' zoom reset, ⇧⌘C, ⌘S, menu keys in the command bar).
 const settingReaders = [...settings, "onboarding", "page-toolbar", "page-loading", "load-sweep-once", "address-fragment",
@@ -87,7 +88,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
   "Host/BrowserWindowController.swift#Toast": ["copy-url", "page-commands"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
-  "Host/BrowserWindowController.swift#Site controls": ["site-controls", "extensions", "copy-url", "find-in-page"],
+  "Host/BrowserWindowController.swift#Site controls": ["site-controls", "extensions", "copy-url", "find-in-page", "settings-privacy"],
   "Host/BrowserWindowController.swift#Entries": "all",
   "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename", "warn-before-quitting"],
   // A tab's own name: Rename…, the double click, the test command's `rename` (folders too).
@@ -118,7 +119,7 @@ export const areas = {
   "Host/SidebarView.swift#Downloads panel": ["downloads"],
 
   "Host/AddressInput.swift": [...commandBar, "page-toolbar", "site-controls", "settings-routes", "settings-trimmed",
-    "address-fragment"],
+    "address-fragment", "settings-privacy", "settings-extensions"],
   // How the page address bar splits an address (lead, host, rest), and which URL a view-source: one is about.
   "Host/AddressInput.swift#Address display": ["address-fragment", "page-toolbar", "settings-minimal-url", "site-controls",
     "page-commands"],
@@ -143,6 +144,10 @@ export const areas = {
   "Host/SettingsAbout.swift": ["settings-panes", "settings-search"],
   "Host/SettingsGeneral.swift": ["settings-general", "settings-panes", "settings-search", "warn-before-quitting", "updater-config"],
   "Host/CloseWarnings.swift": ["warn-before-quitting", "warn-before-closing-window", "close-last-window", "private-window"],
+  // Settings › Privacy and Settings › Extensions, over the engine's data calls, and the pieces they share.
+  "Host/SettingsPrivacy.swift": ["settings-privacy", "settings-panes", "settings-search", "site-controls"],
+  "Host/SettingsExtensions.swift": ["settings-extensions", "settings-panes", "settings-search", "extensions"],
+  "Host/SettingsDataRows.swift": ["settings-privacy", "settings-extensions"],
   "Host/SettingsControls.swift": [...settings, "onboarding"],
   "Host/MiniRayWindow.swift": ["settings-panes", "settings-window"],
   "Host/SettingsSearch.swift": [...settings, ...commandBar],
@@ -167,7 +172,7 @@ export const areas = {
   // Which loads the address field sweeps for.
   "Host/LoadSweep.swift": ["page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar"],
   "Host/PermissionPrompt.swift": permissions,
-  "Host/SiteControls.swift": ["site-controls", "extensions"],
+  "Host/SiteControls.swift": ["site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/Toast.swift": ["copy-url", "page-commands"],
   "Host/Updater.swift": ["updater-config", "settings-general"],

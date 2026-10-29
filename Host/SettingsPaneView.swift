@@ -511,7 +511,7 @@ final class Hairline: NSView {
 }
 
 /// "More" at the end of a group with rare rows; "Less" once they show.
-private final class MoreLine: NSView, SettingsSizing {
+final class MoreLine: NSView, SettingsSizing {
   var onClick: (() -> Void)?
   var expanded = false { didSet { update() } }
   private let label = settingsLabel("More", size: 13, color: .secondaryLabelColor)
@@ -545,7 +545,7 @@ private final class MoreLine: NSView, SettingsSizing {
   override func layout() {
     super.layout()
     let height = ceil(label.intrinsicContentSize.height)
-    let width = ceil(label.intrinsicContentSize.width)
+    let width = ceil(label.intrinsicContentSize.width) + 4
     label.frame = NSRect(x: 0, y: ((bounds.height - height) / 2).rounded(), width: width, height: height)
     chevron.frame = NSRect(x: width + 4, y: ((bounds.height - 14) / 2).rounded(), width: 12, height: 14)
   }

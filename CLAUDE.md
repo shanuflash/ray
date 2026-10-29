@@ -108,6 +108,22 @@ publicly or create accounts.
   with "Don't ask again"; test command `warning confirm|suppress|cancel`. Start fresh: the launch's first normal
   window drops last time's Today tabs into Recently Closed (`startFresh`, `restore(fresh:)`). Checks
   `settings-general`, `warn-before-quitting` (own instances; also Start fresh), `warn-before-closing-window`.
+- `SettingsPrivacy` (Settings › Privacy, the normal profile's only, never a private window's): sites with a permission
+  of their own (`ac_site_settings_origins` + `_get`, sorted by registrable domain; a row opens to each permission's
+  pop-up, Reset Permissions and Clear Site Data…), the sites you zoomed (`RaySettings.zoomedHosts` with
+  `ac_zoom_list` levels; Reset un-marks the host and sets the default with `ac_zoom_set`, as Site controls' does),
+  apps sites may open (`ac_external_apps_*`), Clear browsing data (Chrome's dialog) and, under More, Chrome's
+  per-category defaults. Follows `siteSettings.changed` / `zoom.changed`. Chrome's Site settings pages
+  (`/content`, `/content/all`, `/content/siteDetails`, `/content/zoomLevels`) and `ray://settings/privacy`
+  (`AddressInput.raySettingsAliases`: Chrome's `/privacy` page stays Chrome's) open it; Site controls' Site
+  Settings… opens it at the site. `SettingsExtensions` (Settings › Extensions): `ac_extensions_list` rows (manifest
+  icon, version, description, switch) that open to site access, private windows, Options, Reload (unpacked),
+  Remove…; the Web Store; Load unpacked under More; Add from a link unbuilt (test builds only).
+  `ray://settings/extensions` opens it; chrome://extensions stays Chrome's. `SettingsDataRows`: what both share
+  (`SettingsDynamicList`, `SettingsItemRow`, `SettingsConfirm`: Cancel by default, the action dead for 0.5 s, the
+  full origin or the extension's ID; `SettingsPages.open` uses the normal window). Test commands `privacy …` and
+  `extpane …` answer with the pane's lists as JSON and press its controls (checks `settings-privacy`,
+  `settings-extensions`).
 - Page zoom: the engine keeps zoom per host and `tab.zoomFactor = x` writes that host's level, so Ray applies the
   default zoom itself: on a committed navigation (next run-loop turn, after the engine's own zoom) to a host the user
   hasn't zoomed, and on every tab when the default changes. `tabDidChangeZoom` on a settled host that isn't the

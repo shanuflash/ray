@@ -15,6 +15,7 @@ enum AddressInput {
     guard !text.isEmpty else { return nil }
     if text.lowercased().hasPrefix(internalScheme + "://") {
       text = "chrome://" + text.dropFirst(internalScheme.count + 3)
+      if let alias = settingsPath(of: text).flatMap({ raySettingsAliases[$0] }) { text = "chrome://settings/" + alias }
     } else if text.lowercased().hasPrefix(viewSource + internalScheme + "://") {
       // The source of one of the engine's own pages, written as the address shows it (`display(for:)`).
       text = viewSource + "chrome://" + text.dropFirst(viewSource.count + internalScheme.count + 3)
@@ -52,6 +53,17 @@ enum AddressInput {
     "shortcuts": "shortcuts",
 
     "about": "about",
+
+    "content": "privacy", "content/all": "privacy", "content/sitedetails": "privacy", "content/zoomlevels": "privacy",
+
+    "extensions": "extensions",
+  ]
+
+  /// `ray://settings/<name>` addresses whose Chrome namesake is another page: `ray://settings/privacy` is Ray's Privacy
+  /// pane (Chrome's Site settings), while `chrome://settings/privacy` stays Chrome's Privacy and security page (Safe
+  /// Browsing, secure DNS…), which the pane doesn't cover. One line per pane.
+  private static let raySettingsAliases: [String: String] = [
+    "privacy": "content",
   ]
 
   /// Settings pages that are gone from the engine's page (tools/trim-settings-pak.py) with nothing of Ray's to stand in
@@ -73,7 +85,9 @@ enum AddressInput {
   /// The pane of Ray's own Settings window that a `chrome://settings/<page>` (or `ray://`) address stands for; Chrome's
   /// other settings pages still load as they are.
   static func nativeSettingsPane(for url: String) -> String? {
-    settingsPath(of: url).flatMap { nativeSettingsPaths[$0] }
+    guard let path = settingsPath(of: url) else { return nil }
+    let ray = url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix(internalScheme + "://")
+    return nativeSettingsPaths[ray ? raySettingsAliases[path] ?? path : path]
   }
 
   /// Where the settings page goes for a page it no longer has (see `removedSettingsPaths`).

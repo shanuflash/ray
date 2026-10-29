@@ -113,13 +113,13 @@ enum SettingsPanes {
 
     case .search: return nil
 
-    case .privacy: return nil
+    case .privacy: return PrivacyPaneContent()
 
     case .passwords: return nil
 
     case .autofill: return nil
 
-    case .extensions: return nil
+    case .extensions: return ExtensionsPaneContent()
 
     case .shortcuts: return nil
 

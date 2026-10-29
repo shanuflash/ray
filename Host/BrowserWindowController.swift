@@ -752,8 +752,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     case .addExtension: openToday("https://chromewebstore.google.com/category/extensions", after: nil, foreground: true)
     case .runExtension(let id): extensions.run(id, on: tab, anchor: siteAnchor)
     case .siteSettings:
-      guard let origin, let site = origin.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return }
-      openToday("chrome://settings/content/siteDetails?site=\(site)", after: activeEntry, foreground: true)
+      // Settings › Privacy (Chrome's site details page stands for it), at this site; a private window's sites aren't there.
+      SettingsWindowController.shared.show(pane: SettingPane.privacy.rawValue)
+      if let origin, !isPrivate { (SettingsPanes.content(for: .privacy) as? PrivacyPaneContent)?.reveal(origin) }
     case .developerTools: toggleDevTools()
     case .clearData:
       guard let origin, let host = URLComponents(string: origin)?.host else { return }
@@ -764,7 +765,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       alert.addButton(withTitle: "Clear").hasDestructiveAction = true
       alert.beginSheetModal(for: window) { [weak self, weak tab] response in
         guard response == .alertSecondButtonReturn, let self else { return }
-        EngineCalls.call("ac_site_data_clear", profile: self.profile, args: ["origin": origin]) { [weak self] _ in
+        EngineCalls.call("ac_site_data_clear", profile: self.profile, args: ["origin": origin, "offTheRecord": self.isPrivate]) { [weak self] _ in
           tab?.userReload()
           self?.showToast("Cleared Site Data")
         }

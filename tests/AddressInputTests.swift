@@ -21,6 +21,8 @@ let cases: [(String, String?)] = [
   ("chrome://settings/searchEngines?x=1", "chrome://settings/"),
   ("chrome://settings/?search=theme", "chrome://settings/?search=theme"),
   ("chrome://settings/privacy", "chrome://settings/privacy"),
+  ("ray://settings/privacy", "chrome://settings/content"),
+  ("RAY://Settings/Privacy/", "chrome://settings/content"),
   ("chrome://settings/searchEngines/x", "chrome://settings/searchEngines/x"),
   ("chrome://extensions/search", "chrome://extensions/search"),
   ("ray://extensions", "chrome://extensions"),
@@ -183,7 +185,14 @@ let paneCases: [(String, String?)] = [
   // Ray's own panes by name; the ones Chrome still draws (privacy, passwords, autofill, extensions, search) stay Chrome's.
   ("ray://settings/general", "general"), ("ray://settings/tabs", "tabs"), ("RAY://Settings/Shortcuts/", "shortcuts"),
   ("ray://settings/about", "about"), ("ray://settings/passwords", nil), ("ray://settings/autofill", nil),
-  ("ray://settings/extensions", nil), ("ray://settings/search", nil), ("ray://settings/tabs/x", nil),
+  ("ray://settings/search", nil), ("ray://settings/tabs/x", nil),
+  // Privacy: Chrome's Site settings pages and ray://settings/privacy; Chrome's Privacy and security page stays Chrome's.
+  ("chrome://settings/content", "privacy"), ("chrome://settings/content/all", "privacy"),
+  ("chrome://settings/content/siteDetails?site=https%3A%2F%2Fexample.com", "privacy"), ("chrome://settings/content/zoomLevels", "privacy"),
+  ("ray://settings/privacy", "privacy"), ("RAY://Settings/Privacy/", "privacy"), ("chrome://settings/content/camera", nil),
+  ("chrome://settings/clearBrowserData", nil), ("chrome://settings/security", nil),
+  // Extensions: ray://settings/extensions; chrome://extensions is Chrome's page.
+  ("ray://settings/extensions", "extensions"), ("chrome://extensions", nil),
   ("chrome://settings/appearance/fonts", nil),
   ("chrome://extensions/appearance", nil),
   ("https://settings/appearance", nil),

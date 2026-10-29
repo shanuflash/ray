@@ -2691,18 +2691,19 @@ const checks = {
     await command("menu showSettings");
     await until("last pane", async () => { await command("state"); return win().open && win().pane === "about"; });
     await closeSettingsWindow();
-    // Chrome still draws Privacy: its address is Chrome's page, not the window.
+    // Chrome still draws Privacy and security: its address is Chrome's page, not the window (ray://settings/privacy is
+    // Ray's Privacy pane: settings-privacy).
     const tabs = state().tabs.length;
-    await goTo("ray://settings/privacy", true);
+    await goTo("chrome://settings/privacy", true);
     await until("Chrome's privacy page", async () => { await command("state"); return activeTabState()?.url.startsWith("chrome://settings/privacy"); }, 10000);
-    assert(!win().open, "ray://settings/privacy opened the window");
+    assert(!win().open, "chrome://settings/privacy opened the window");
     await command("menu closeTab");
     await until("privacy tab closed", async () => { await command("state"); return state().tabs.length === tabs; });
     // As Ray.app shows it: unbuilt rows and panes with nothing to show are gone, from the sidebar and from routing.
     await command("settings asapp on");
     await command("settings open search");
     await until("Ray.app's panes", async () => { await command("state"); return win().open && win().looksLikeRayApp; });
-    assert(win().panes.join() === "general,tabs,appearance,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
+    assert(win().panes.join() === "general,tabs,appearance,privacy,extensions,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
     assert(win().pane === "general", `Search (empty) opened as ${win().pane}`);
     assert(!win().rows.appearance.includes("appearanceMode") && !win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
     if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-as-app.png")}`);
@@ -3194,6 +3195,220 @@ const checks = {
     await sleep(300);
     await command("state");
     assert(state().tabs.length === tabCount && !state().tabs.some((t) => t.url.includes("/people")), "typing the Profiles address loaded a page");
+    await closeSettingsWindow();
+  },
+  async "settings-privacy"() {
+    // Settings › Privacy, all the normal profile's: sites with a permission of their own (one granted, one denied from
+    // the page's own prompt) with their permissions, Reset and Clear Site Data (asked first, the full origin, no click in
+    // its first half second); the sites you zoomed, with Reset; Chrome's Site settings addresses open the pane while
+    // its Privacy and security page stays Chrome's; a private window's sites never show.
+    await resetSettings();
+    await closeSettingsWindow().catch(() => {});
+    const win = () => state().settingsWindow;
+    const pane = async () => JSON.parse(await commandResult("privacy list"));
+    const site = async (o) => (await pane()).sites.find((s) => s.origin === o);
+    // A private window's sites are its own: a permission set there never shows in the pane (first, while no sheet
+    // has made the normal window key).
+    await command("menu newPrivateWindow");
+    await until("private window", async () => { await command("state"); return state().private === true && state().commandBar; });
+    await command(`type ${raytestOrigin}/b?private-privacy`);
+    await command("enter");
+    await until("private page", async () => { await command("state"); return state().private === true && activeTabState()?.url.includes("private-privacy"); });
+    await command("menu toggleSiteControls");
+    await until("private panel", async () => { await command("state"); return state().private === true && state().siteControls !== null; });
+    await command("site set camera allow");
+    await until("allowed in private", async () => { await command("state"); return state().siteControls?.settings.find((s) => s.title === "Camera")?.value === "Allowed"; });
+    await command("menu toggleSiteControls");
+    await command("key w cmd");
+    await until("private tab closed", async () => { await command("state"); return state().private === true && state().active === null; }, 5000);
+    await command("key w cmd keywin");
+    await until("back to the normal window", async () => { await command("state"); return state().private === false; }, 5000);
+    await command("settings open privacy");
+    await until("privacy pane", async () => { await command("state"); return win().open && win().pane === "privacy"; });
+    let p = await until("lists loaded", async () => { const p = await pane(); return p.loaded && p; });
+    assert(!p.sites.some((s) => s.origin === raytestOrigin), `a private window's permission is in the pane: ${JSON.stringify(p.sites)}`);
+    assert(p.empty.apps === "No apps yet Sites appear here after you let them always open an app, such as a meeting link opening its app.", `apps: ${JSON.stringify(p.empty)}`);
+    if (p.sites.length === 0) assert(p.empty.sites === "No sites yet Sites appear here after you allow or block something for them.", `empty sites: ${JSON.stringify(p.empty)}`);
+    const ask = async (url, answer) => {
+      await goTo(url, true);
+      await until(`${url} open`, async () => { await command("state"); return activeTabState()?.url === url; });
+      const { sessionId } = await session(url);
+      await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+      await evaluate(sessionId, `window.answer = null; Notification.requestPermission().then((r) => window.answer = r); 0`);
+      await until("prompt", async () => { await command("state"); return state().permission?.ready; }, 5000);
+      await command(`perm ${answer}`);
+      await until("answered", async () => (await evaluate(sessionId, `window.answer`)) === (answer === "allow" ? "granted" : "denied"));
+      return sessionId;
+    };
+    // Granted on localhost, denied on ray.test: both show up on their own, the pane open behind.
+    const local = await ask(`${localOrigin}/b?privacy`, "allow");
+    const secure = await ask(`${secureOrigin}/b?privacy`, "block");
+    p = await until("both sites listed", async () => {
+      const p = await pane();
+      return p.sites.find((s) => s.origin === localOrigin)?.permissions.notifications === "allow"
+        && p.sites.find((s) => s.origin === secureOrigin)?.permissions.notifications === "block" && p;
+    }, 8000);
+    const order = p.sites.map((s) => s.origin);
+    assert(order.indexOf(localOrigin) < order.indexOf(secureOrigin), `sites out of order: ${order}`);
+    assert(p.sites.find((s) => s.origin === secureOrigin).title === secureOrigin.replace("https://", "") && p.sites.find((s) => s.origin === localOrigin).title === localOrigin, `titles ${JSON.stringify(p.sites)}`);
+    // Site controls' Site Settings… opens the pane at its site.
+    await command("menu toggleSiteControls");
+    await until("panel open", async () => { await command("state"); return state().siteControls !== null; });
+    await command("site press siteSettings");
+    await until("pane at the site", async () => { await command("state"); return win().pane === "privacy" && (await site(secureOrigin))?.open; });
+    await command("state");
+    assert(state().siteControls === null, "the panel stayed open");
+    if (process.env.SNAP_DIR) { await sleep(300); await command(`settings snap ${join(process.env.SNAP_DIR, "settings-privacy.png")}`); }
+    // A permission changed in the pane is what the page sees.
+    await command(`privacy open ${localOrigin}`);
+    assert(await commandResult(`privacy set ${localOrigin} notifications block`) === "ok", "no notifications pop-up for localhost");
+    await until("blocked from the pane", async () => (await site(localOrigin))?.permissions.notifications === "block");
+    await until("the page sees it", async () => (await evaluate(local, `Notification.permission`)) === "denied");
+    // Reset hands the site back to the defaults and takes it off the list.
+    assert(await commandResult(`privacy reset ${localOrigin}`) === "ok", "no Reset for localhost");
+    await until("localhost gone", async () => !(await site(localOrigin)), 5000);
+    await until("the page sees the default", async () => (await evaluate(local, `Notification.permission`)) === "default");
+    // Clear Site Data asks first with the full origin; Cancel keeps everything, Clear deletes cookies and storage.
+    await evaluate(secure, `document.cookie = "ray=1; max-age=3600; secure"; localStorage.setItem("ray", "1"); 0`);
+    assert((await evaluate(secure, `document.cookie`)).includes("ray=1"), "no cookie to clear");
+    await command(`privacy clear ${secureOrigin}`);
+    const q = await until("asked", async () => (await pane()).confirm);
+    assert(q.message === `Clear cookies and site data for ${secureOrigin}?`, `question ${JSON.stringify(q)}`);
+    assert(await commandResult("privacy confirm accept") === "not ready", "Clear took a click in its first half second");
+    await command("privacy confirm cancel");
+    await until("question gone", async () => (await pane()).confirm === null);
+    assert((await evaluate(secure, `document.cookie`)).includes("ray=1"), "Cancel cleared the cookie");
+    await command(`privacy clear ${secureOrigin}`);
+    await until("asked again", async () => (await pane()).confirm?.ready === true, 3000);
+    assert(await commandResult("privacy confirm accept") === "ok", "Clear didn't take the click");
+    await until("cleared", async () => (await pane()).cleared[secureOrigin] !== undefined, 8000);
+    await until("cookie gone", async () => !(await evaluate(secure, `document.cookie`)).includes("ray=1"), 5000);
+    await evaluate(secure, `location.reload(); 0`);
+    await sleep(500);
+    const again = await session(`${secureOrigin}/b?privacy`);
+    await until("reloaded", async () => (await evaluate(again.sessionId, `document.readyState`)) === "complete");
+    assert(await evaluate(again.sessionId, `localStorage.getItem("ray")`) === null, "storage survived Clear Site Data");
+    assert((await site(secureOrigin))?.permissions.notifications === "block", "Clear Site Data took the permission too");
+    await command(`privacy reset ${secureOrigin}`);
+    await until("ray.test gone", async () => !(await site(secureOrigin)), 5000);
+    // Zoom levels: a site you zoom shows with its level; Reset hands it back to the default, as Site controls' does.
+    await goTo(`${raytestOrigin}/h?privacy`);
+    await until("ray.test page", async () => { await command("state"); return activeTabState()?.url.startsWith(raytestOrigin); });
+    await command("zoom in");
+    await until("zoomed", async () => { await command("state"); return state().settings.zoomedHosts.includes("ray.test"); });
+    await until("listed at 110%", async () => (await pane()).zoom.some((z) => z.host === "ray.test" && z.percent === 110), 5000);
+    assert(await commandResult("privacy zoomreset ray.test") === "ok", "no Reset for ray.test");
+    await until("reset", async () => { await command("state"); return !state().settings.zoomedHosts.includes("ray.test") && near(activeZoom(), 1); });
+    p = await until("off the list", async () => { const p = await pane(); return !p.zoom.some((z) => z.host === "ray.test") && p; });
+    if (p.zoom.length === 0) assert(p.empty.zoom?.startsWith("No zoomed sites"), `empty zoom: ${JSON.stringify(p.empty)}`);
+    // Clear browsing data: Chrome's dialog, in the normal window.
+    assert(await commandResult("privacy clearbrowsing") === "ok", "no Clear browsing data button");
+    await until("clear data page", async () => { await command("state"); return activeTabState()?.url === "chrome://settings/clearBrowserData"; });
+    await command("menu closeTab");
+    // Chrome's Site settings pages and ray://settings/privacy open the pane and load nothing; its Privacy and security
+    // page is still Chrome's.
+    for (const address of ["chrome://settings/content", "ray://settings/privacy", "chrome://settings/content/all"]) {
+      await closeSettingsWindow();
+      await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+      await until("/a active", () => state().active === tabFor("/a").id);
+      const before = activeTabState().url;
+      await goTo(address);
+      await until(`${address} opens the pane`, async () => { await command("state"); return win().open && win().pane === "privacy"; });
+      await sleep(200);
+      await command("state");
+      assert(activeTabState().url === before, `${address} changed the tab: ${activeTabState().url}`);
+    }
+    await closeSettingsWindow();
+    const tabs = state().tabs.length;
+    await goTo("chrome://settings/privacy", true);
+    await until("Chrome's privacy page", async () => { await command("state"); return activeTabState()?.url.startsWith("chrome://settings/privacy"); }, 10000);
+    assert(!win().open, "chrome://settings/privacy opened the window");
+    await command("menu closeTab");
+    await until("privacy tab closed", async () => { await command("state"); return state().tabs.length === tabs; });
+    for (const extra of state().tabs.filter((t) => t.url.includes("privacy"))) await command(`rowaction close ${entryOfTab(extra.id).id}`);
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await resetSettings();
+  },
+  async "settings-extensions"() {
+    // Settings › Extensions on a local unpacked fixture (nothing from the Web Store): load it from a folder, its row
+    // (icon, name, version, description, switch), site access, private windows, Options, Reload and Remove (asked
+    // first, its name and ID, no click in its first half second); ray://settings/extensions opens the pane.
+    await resetSettings();
+    await closeSettingsWindow().catch(() => {});
+    const win = () => state().settingsWindow;
+    const dir = join(dataDir, "settings-extension");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "manifest.json"), JSON.stringify({
+      manifest_version: 3, name: "Ray Settings Fixture", version: "2.1", description: "Checks the Extensions pane.",
+      icons: { 48: "icon.png" }, options_page: "options.html", host_permissions: ["<all_urls>"],
+    }));
+    writeFileSync(join(dir, "icon.png"), solidPNG(48));
+    writeFileSync(join(dir, "options.html"), `<!doctype html><title>Fixture options</title><body>options</body>`);
+    const pane = async () => JSON.parse(await commandResult("extpane list"));
+    const fixture = async () => (await pane()).extensions.find((e) => e.name === "Ray Settings Fixture");
+    await command("settings open extensions");
+    await until("extensions pane", async () => { await command("state"); return win().open && win().pane === "extensions"; });
+    await until("list loaded", async () => (await pane()).loaded);
+    // Load unpacked sits under More; Add from a link isn't built (test builds show it).
+    await command("extpane more");
+    const more = await pane();
+    assert(more.more && more.linkRow, `More: ${JSON.stringify(more)}`);
+    await command(`extpane unpacked ${dir}`);
+    const item = await until("installed and listed", async () => fixture(), 15000);
+    const id = item.id;
+    assert(item.enabled && item.switchOn === true && item.version === "2.1" && item.hasIcon && item.unpacked && item.options && item.open,
+      `the row: ${JSON.stringify(item)}`);
+    assert(item.detail === "Version 2.1 · Checks the Extensions pane.", `the row's line: ${item.detail}`);
+    assert(item.siteAccess === "ON_ALL_SITES" && item.access === "allSites", `site access ${item.siteAccess} / ${item.access}`);
+    if (process.env.SNAP_DIR) { await sleep(300); await command(`settings snap ${join(process.env.SNAP_DIR, "settings-extensions.png")}`); }
+    // Site access, both ways.
+    assert(await commandResult(`extpane access ${id} onClick`) === "ok", "no site access pop-up");
+    await until("on click", async () => (await fixture()).siteAccess === "ON_CLICK");
+    await command(`extpane access ${id} allSites`);
+    await until("all sites again", async () => (await fixture()).siteAccess === "ON_ALL_SITES");
+    // Private windows, both ways.
+    await command(`extpane private ${id}`);
+    await until("allowed in private windows", async () => (await fixture()).incognito === true);
+    await command(`extpane private ${id}`);
+    await until("not in private windows", async () => (await fixture()).incognito === false);
+    // Chrome reloads an extension when its private-window access changes: let it come back first.
+    await sleep(800);
+    await until("back after the reload", async () => (await fixture())?.enabled === true, 5000);
+    // Off and on again: the engine's own state, and the row follows.
+    await command(`extpane toggle ${id}`);
+    await until("off", async () => { const e = await fixture(); return e.enabled === false && e.switchOn === false; }, 5000)
+      .catch(async (e) => { throw new Error(`${e.message}: ${JSON.stringify(await fixture())}`); });
+    await command(`extpane toggle ${id}`);
+    await until("on", async () => { const e = await fixture(); return e.enabled === true && e.switchOn === true; });
+    // Options: the extension's own page, in a tab of the normal window.
+    assert(await commandResult(`extpane options ${id}`) === "ok", "no Options button");
+    await until("options tab", async () => { await command("state"); return activeTabState()?.url.startsWith(`chrome-extension://${id}/options.html`); });
+    assert(state().private === false, "Options opened in a private window");
+    await command("menu closeTab");
+    assert(await commandResult(`extpane reload ${id}`) === "ok", "no Reload for an unpacked extension");
+    await until("still there after Reload", async () => (await fixture())?.enabled === true);
+    // Remove asks first, naming it and its ID; Cancel keeps it.
+    await command(`extpane remove ${id}`);
+    const q = await until("asked", async () => (await pane()).confirm);
+    assert(q.message === "Remove “Ray Settings Fixture”?" && q.detail.includes(id), `question ${JSON.stringify(q)}`);
+    assert(await commandResult("extpane confirm accept") === "not ready", "Remove took a click in its first half second");
+    await command("extpane confirm cancel");
+    await until("question gone", async () => (await pane()).confirm === null);
+    assert(await fixture(), "Cancel removed it");
+    await command(`extpane remove ${id}`);
+    await until("asked again", async () => (await pane()).confirm?.ready === true, 3000);
+    assert(await commandResult("extpane confirm accept") === "ok", "Remove didn't take the click");
+    await until("removed", async () => !(await fixture()), 8000);
+    // ray://settings/extensions opens the pane and loads nothing.
+    await closeSettingsWindow();
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
+    const before = activeTabState().url;
+    await goTo("ray://settings/extensions");
+    await until("pane from its address", async () => { await command("state"); return win().open && win().pane === "extensions"; });
+    await sleep(200);
+    await command("state");
+    assert(activeTabState().url === before, `ray://settings/extensions changed the tab: ${activeTabState().url}`);
     await closeSettingsWindow();
   },
   async "sidebar-toggle"() {

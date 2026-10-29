@@ -541,6 +541,8 @@ enum TestCommands {
       result = pane == "no such control" || pane == "no pane" ? GeneralSystem.shared.command(words) : pane
     case "warning":
       result = CloseWarnings.command(argument)
+    case "privacy": result = PrivacyPaneContent.test(argument)
+    case "extpane": result = ExtensionsPaneContent.test(argument)
     case "dialogs":
       // Chrome's tab-modal dialogs: their own windows, beside the browser window. Frames in screen points.
       let browser = window
