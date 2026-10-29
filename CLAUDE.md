@@ -32,6 +32,25 @@ publicly or create accounts.
   (2 at most). The bar shows 5 rows and scrolls to 10 (overlay scroller). This window's active tab is never offered
   (nor its page as history); another tab on the same address is. Page rows: title, then `Suggestions.shortAddress`
   (host, "…", the path's last ~16 characters; a long host loses its start instead). Check `bar-ranking`.
+  Site searches (Chrome's keyword mode): a keyword (a site search's, or a built-in engine's host) then Tab, or a
+  space, scopes the bar (`CommandBarView.scope`, a chip in the profile's colour before the text, one row, no
+  suggestions sent); the exact keyword also gets a "Search <site>" row (Tab) after the first; Delete with nothing
+  typed leaves the scope with the keyword back. Checks `site-search`, `search-engine`, `search-suggestions-off`.
+- `SearchEngines` (`Host/SearchEngines.swift`): what the bar searches with. Ray's own list (Google, DuckDuckGo, Bing,
+  Brave Search, Ecosia, Kagi, Startpage, Perplexity; Ardia's minus its regional and AI-chat extras), not Chrome's
+  TemplateURLService (`ac_search_engines_list` only reads it, and the bar searches by itself), so pages that search
+  through Chrome ("Search Google for …") still use Chrome's default. `install()` points `AddressInput.searchTemplate`
+  (and so `isSearch`) at the chosen engine; `suggestURL` is nil with suggestions off or an engine without them
+  (Kagi, Perplexity), and `SearchSuggestions` then sends nothing. `SiteSearch` / `SiteSearchList` are the user's site
+  searches as a setting value (JSON list; Settings.json drops bad entries, text input refuses them); templates go
+  through `AddressInput.siteSearchTemplate` (http(s), a host, `%s` outside the host, no credentials, ≤ 2,048).
+  Test builds send every engine's suggestions to `RAY_SUGGEST_URL` (`%e` = the engine's id), never the network.
+- `SettingsSearchPane` (`Host/SettingsSearchPane.swift`; not `SettingsSearch`, the window's search box): Settings ›
+  Search, `ray://settings/search` and Chrome's `/search` and `/searchEngines`. Its catalog entries live there
+  (`searchEngine`, `searchSuggestions`, `siteSearches`, with `customTests` samples for `settings-catalog`): the
+  engines as a list with Make Default, the suggestions switch, and the site searches with an editor in the list
+  ("Add…" in the group header; no sheet or popover). Lists are `.custom` controls that adopt `SettingsWideControl`
+  and sit under their row's text at full width.
 - `PageToolbar`: Dia's address bar above the page (View › Show Address Bar on Page). Geometry is Ardia's
   (`third_party/ardia/apps/browser/src/components/ui/theme.ts` `layout`, `components/toolbar/Toolbar.tsx`): 41 pt,
   buttons centred at 21/56/92/127, address from 145; the host in medium weight, then path and query in grey
@@ -52,7 +71,8 @@ publicly or create accounts.
   default, `validate` (clamp or refuse), scope (app; profile and Space later), `built` (an unbuilt one's row shows only
   in test builds), and its UI: pane, group, title, detail, search keywords, control (toggle, choice as a pop-up,
   `segmented` for 2–3 options, `picture` options drawn by a view builder, colour, custom) and `rare` (under its group's
-  "More" line). Values are `SettingValue`s: Bool, Double, Int, String, String?. The window's rows, its search, the
+  "More" line). Values are `SettingValue`s: Bool, Double, Int, String, String?, `SiteSearchList` (a struct, so another
+  list type can conform too). A `.custom` control's entry passes `customTests` (samples, refusals) for the check. The window's rows, its search, the
   command bar's "Settings: …" rows, `setting <id> <value>`, `settings catalog` and the state log's `settings` dump
   are generated from it. `SettingPane` (same file) lists the panes in sidebar order with title, subtitle, SF Symbol
   and sidebar section (top, "Your data", "More"); `isShown` hides a pane with no shown row and no content of its own,
@@ -88,9 +108,9 @@ publicly or create accounts.
   a class conforming to `SettingsPaneContent`) plus its line in the registry, and its `ray://settings/<pane>` line
   in `AddressInput.nativeSettingsPaths` once it replaces Chrome's page; the window's layout code doesn't change
   (example: `SettingsAbout.swift`). `AddressInput.nativeSettingsPane(for:)` recognises the Appearance address (and
-  Profiles) plus General, Tabs, Shortcuts and About: typed or chosen ones open the window and never load; Chrome's
-  page navigating itself there goes back. Privacy, Extensions and Search stay Chrome's pages until their panes
-  land; Passwords and Autofill are Ray's (below).
+  Profiles) plus General, Tabs, Shortcuts, About and Search: typed or chosen ones open the window and never load;
+  Chrome's page navigating itself there goes back. Privacy (Chrome's Site settings), Extensions, Passwords and
+  Autofill are Ray's panes too (below).
   Settings that act elsewhere: minimal URL and loading progress (`PageToolbar`, `PageContainerView.showsProgress`),
   new tab position (`insertToday`), ⌃Tab in recent order (`cycleTabWithControl`, settled by a `flagsChanged` monitor
   when Control is released), ⇧⌘C and ⌘S (`MainMenu.applyShortcutSettings` removes their key equivalents so the page
@@ -209,8 +229,7 @@ publicly or create accounts.
   "Ardia" to "Ray" and swaps Ardia's logos in the engine's .pak files at build time) and
   `tools/trim-settings-pak.py` (takes Profiles, Appearance and behavior and Search engine out of the engine's chrome://settings page in
   `resources.pak`, also at build time; Ray's own Settings window has the first two, and `AddressInput.nativeSettingsPane`
-  sends those addresses there. Search is a fixed Google, so `/search` and `/searchEngines` have no pane:
-  `AddressInput.isRemovedSettingsPage` sends them to plain chrome://settings/).
+  sends those addresses there; `/search` and `/searchEngines` open Settings › Search).
 - `Resources/page_script.js`: runs in every frame; iframes return on its first line. Only `hello` today.
 - `tests/`: `checks.mjs` (DevTools + `[ray-state]` log checks on a hidden instance), `AddressInputTests.swift`,
   `affected.mjs` (which checks each file or `// MARK:` section can affect) and `changed.mjs` (diff → checks).
@@ -220,8 +239,11 @@ publicly or create accounts.
   by its type; same call as the window's controls), `settings open [pane]|close|link|press <id> [n]|snap <path>|catalog`
   (the window's controls are named by setting id in `settingsWindow.controls`), `settings search <text>`,
   `settings choose <n>`, `settings key up|down|enter|escape` (the sidebar's search), `settings asapp on|off` (list
-  panes and rows as Ray.app does: unbuilt rows and empty panes hidden), `zoom in|out|reset`, and
-  `key tab ctrl keywin` / `key ctrlup` for ⌃Tab walks. `onscreen on|off` puts the hidden window on the shown Space
+  panes and rows as Ray.app does: unbuilt rows and empty panes hidden), `searchpane state|default <id>|add|edit <kw>|
+  remove <kw>|fill <json>|save|cancel` (Settings › Search's own controls), `tab` / `backspace` (in the field, as the
+  keys), `zoom in|out|reset`, and
+  `key tab ctrl keywin` / `key ctrlup` for ⌃Tab walks. The command bar's state has its `scope` and each search
+  row's `url`. `onscreen on|off` puts the hidden window on the shown Space
   (accessory policy, nearly transparent, click-through, not activated) for checks of what pages draw. The state log
   has `settings`, `settingsWindow` (pane, panes listed, rows per pane by id, search results, `flashing` /
   `lastFlash` / `flashVisible`, the selected row's colours and contrast, live pictures, open "More" lines),

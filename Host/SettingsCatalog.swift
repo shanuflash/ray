@@ -18,6 +18,7 @@ extension AnySettingKey {
     copyLinkShortcut, sidebarShortcut,
     warnBeforeQuitting, warnBeforeClosingWindow, onQuit,  // General (SettingsGeneral.swift)
     offerToSavePasswords, autofillAddresses, autofillCards,  // Passwords, Autofill (SettingsPasswords.swift, SettingsAutofill.swift)
+    searchEngine, searchSuggestions, siteSearches,  // Search (SettingsSearchPane.swift)
   ]
 
   /// Old ids that now load into a renamed setting: `"oldId": "newId"`. The old key stays in Settings.json as it was.
@@ -304,12 +305,16 @@ class AnySettingKey {
   /// Whether the feature behind it exists. A row for one that doesn't shows only in test builds.
   let built: Bool
   let ui: SettingUI
+  /// A `.custom` control's values for the `settings-catalog` check, as text: ones it sets and reads back, ones it
+  /// must refuse (other controls' come from the control).
+  let customTests: (samples: [String], rejects: [String])?
 
-  fileprivate init(id: String, scope: SettingScope, built: Bool, ui: SettingUI) {
+  fileprivate init(id: String, scope: SettingScope, built: Bool, ui: SettingUI, customTests: (samples: [String], rejects: [String])?) {
     self.id = id
     self.scope = scope
     self.built = built
     self.ui = ui
+    self.customTests = customTests
   }
 
   /// Test builds show unbuilt rows and every pane; `settings asapp on` (tests only) shows what Ray.app shows.
@@ -342,7 +347,8 @@ final class SettingKey<Value: SettingValue>: AnySettingKey {
   private let logger: ((Value) -> Any)?
 
   init(_ id: String, default value: Value, validate: @escaping (Value) -> Value? = { $0 }, scope: SettingScope = .app,
-       built: Bool = true, ui: SettingUI, log: ((Value) -> Any)? = nil) {
+       built: Bool = true, ui: SettingUI, log: ((Value) -> Any)? = nil,
+       customTests: (samples: [String], rejects: [String])? = nil) {
     defaultValue = value
     // A choice (pop-up, segmented or pictures) accepts only its options.
     if let options = ui.control.options {
@@ -352,7 +358,7 @@ final class SettingKey<Value: SettingValue>: AnySettingKey {
       self.validate = validate
     }
     logger = log
-    super.init(id: id, scope: scope, built: built, ui: ui)
+    super.init(id: id, scope: scope, built: built, ui: ui, customTests: customTests)
   }
 
   /// The value from text: `default`, or what `Value` reads, validated.
@@ -471,7 +477,7 @@ extension AnySettingKey {
     case .choice(let options), .segmented(let options), .picture(let options, _):
       return [options.first, options.last].compactMap { $0?.value }
     case .colour: return [ProfileColor.presets[0].hex, ProfileColor.presets[1].hex, "default"]
-    case .custom: return []
+    case .custom: return customTests?.samples ?? []
     }
   }
 
@@ -481,7 +487,7 @@ extension AnySettingKey {
     case .toggle: return ["maybe", "2"]
     case .choice, .segmented, .picture: return ["nonsense", "999"]
     case .colour: return ["red", "#12345G", "#1234567"]
-    case .custom: return ["nonsense"]
+    case .custom: return customTests?.rejects ?? ["nonsense"]
     }
   }
 

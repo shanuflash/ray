@@ -382,6 +382,10 @@ enum TestCommands {
       if let editor { editor.doCommand(by: #selector(NSResponder.moveDown(_:))) } else { result = "no editor" }
     case "up":
       if let editor { editor.doCommand(by: #selector(NSResponder.moveUp(_:))) } else { result = "no editor" }
+    case "tab":
+      if let editor { editor.doCommand(by: #selector(NSResponder.insertTab(_:))) } else { result = "no editor" }
+    case "backspace":
+      if let editor { editor.doCommand(by: #selector(NSResponder.deleteBackward(_:))) } else { result = "no editor" }
     case "row":
       if let id = UUID(uuidString: argument), AppController.shared.current?.selectEntry(id: id) == true {} else {
         result = "no entry"
@@ -549,6 +553,8 @@ enum TestCommands {
     case "autofill":
       guard let answer = AutofillPaneContent.shared.test(line, argument) else { return }
       result = answer
+    case "searchpane":
+      result = SearchPaneContent.testCommand(argument)
     case "dialogs":
       // Chrome's tab-modal dialogs: their own windows, beside the browser window. Frames in screen points.
       let browser = window

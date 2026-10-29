@@ -64,6 +64,8 @@ const pages = {
 };
 // Requests to /safe-storage/…, with the cookies they carried (the safe-storage-migration check).
 const safeStorageRequests = [];
+// Requests for search suggestions: the query and whose engine asked (RAY_SUGGEST_URL's `%e`).
+const suggestRequests = [];
 function serve(req, res) {
   const url = new URL(req.url, "http://x");
   if (url.pathname.startsWith("/safe-storage/")) {
@@ -77,6 +79,7 @@ function serve(req, res) {
   }
   if (url.pathname === "/suggest") {
     const q = url.searchParams.get("q") ?? "";
+    suggestRequests.push({ q, engine: url.searchParams.get("engine") });
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify([q, q.startsWith("zz") ? [`${q} one`, `${q} two`, q] : []]));
   }
@@ -128,7 +131,7 @@ function launch() {
       RAY_BACKGROUND: "1",
       RAY_LOG_STATE: "1",
       RAY_TEST_COMMANDS: "1",
-      RAY_SUGGEST_URL: `${origin}/suggest?q=%s`,
+      RAY_SUGGEST_URL: `${origin}/suggest?q=%s&engine=%e`,
       RAY_SEARCH_URL: `${origin}/search?q=%s`,
       RAY_DATA_DIR: dataDir,
       RAY_DOWNLOADS_DIR: join(dataDir, "Downloads"),
@@ -595,8 +598,8 @@ const checks = {
       state().tabs.find((t) => t.id === state().active && t.url.startsWith(`${origin}/search?q=zzq`) && t.url.includes("one")));
   },
   async "bar-search-google"() {
-    // Search is a fixed Google (the engine's default can't be changed from Ray): the bar says so, and a search goes
-    // to the template (here the RAY_SEARCH_URL fixture), not to anything the engine reports.
+    // Google is the default (Settings › Search): the bar says so, and a search goes to the template (here the
+    // RAY_SEARCH_URL fixture), not to anything the engine reports.
     await command("menu newTab");
     await command("type fixed engine");
     const bar = await until("search row", () => state().commandBar?.query === "fixed engine" && state().commandBar.rows[0]?.kind === "search" && state().commandBar);
@@ -3047,7 +3050,7 @@ const checks = {
     await command("settings asapp on");
     await command("settings open search");
     await until("Ray.app's panes", async () => { await command("state"); return win().open && win().looksLikeRayApp; });
-    assert(win().panes.join() === "general,tabs,appearance,privacy,passwords,autofill,extensions,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
+    assert(win().panes.join() === "general,tabs,appearance,search,privacy,passwords,autofill,extensions,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
     assert(win().pane === "general", `Search (empty) opened as ${win().pane}`);
     assert(!win().rows.appearance.includes("appearanceMode") && !win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
     if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-as-app.png")}`);
@@ -3439,7 +3442,7 @@ const checks = {
   },
   async "settings-trimmed"() {
     // The engine's settings page has no Profiles, Appearance and behavior or Search engine (tools/trim-settings-pak.py):
-    // Ray's own Settings window has the first two, and Ray searches with a fixed Google.
+    // Ray's own Settings window has them (Appearance, and the Search pane).
     await resetSettings();
     await closeSettingsWindow().catch(() => {});
     const tabCount = state().tabs.length;
@@ -3508,29 +3511,33 @@ const checks = {
     await until("tab left Profiles", async () => { await command("state"); return !state().tabs.some((t) => t.url.includes("/people")); }, 6000);
     await closeSettingsWindow();
     await until("tab back on the settings page", async () => { await command("state"); return state().tabs.find((t) => t.id === settingsTab)?.url === "chrome://settings/"; }, 6000);
-    // Search engine is gone with no window to stand in for it: its addresses show the settings page itself, in the same
-    // tab, from a navigation in the page and typed (ray:// or chrome://).
+    // Search engine is Ray's Search pane: its addresses open the window there, from a navigation in the page (the tab
+    // goes back to the settings page) and typed (ray:// or chrome://, loading nothing).
     const noSearchPage = async (why) => {
       await command("state");
       // Only settings addresses count: earlier checks can leave the fixture's own /search page open.
       assert(state().tabs.length === tabCount + 1 && !state().tabs.some((t) => /^chrome:\/\/settings\/search/i.test(t.url)), `${why}: ${state().tabs.map((t) => t.url)}`);
-      assert(!state().settingsWindow.open, `${why} opened Ray's Settings window`);
+      assert(state().settingsWindow.open && state().settingsWindow.pane === "search", `${why} didn't open the Search pane`);
       const r = await read();
-      assert(r.searchPage === 0 && !r.views.includes("search") && r.last === "/performance", `${why} shows ${r.last} ${r.views}`);
+      assert(r.searchPage === 0 && !r.views.includes("search"), `${why} shows ${r.last} ${r.views}`);
     };
     for (const path of ["/searchEngines", "/search"]) {
+      await closeSettingsWindow().catch(() => {});
       await evaluate(sid, `location.href = "chrome://settings${path}"`);
+      await until(`window for ${path}`, async () => { await command("state"); return state().settingsWindow.open; });
       await until(`tab left ${path}`, async () => { await command("state"); return state().tabs.find((t) => t.id === settingsTab)?.url === "chrome://settings/"; }, 6000);
       await until(`settings page back after ${path}`, async () => (await read().catch(() => null))?.menu.length > 0, 10000);
-      await sleep(500);
       await noSearchPage(`navigating to ${path}`);
     }
     for (const typed of ["ray://settings/search", "chrome://settings/searchEngines"]) {
+      await closeSettingsWindow();
       await goTo(typed);
-      await sleep(1500);
-      await until(`settings page back after ${typed}`, async () => (await read().catch(() => null))?.menu.length > 0, 10000);
+      await until(`window for ${typed}`, async () => { await command("state"); return state().settingsWindow.open; });
+      await sleep(300);
       await noSearchPage(`typing ${typed}`);
+      assert(state().tabs.find((t) => t.id === settingsTab)?.url === "chrome://settings/", `typing ${typed} loaded a page`);
     }
+    await closeSettingsWindow();
     await command(`rowaction close ${entryOfTab(settingsTab).id}`);
     await until("settings tab closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === settingsTab); });
     // Typed, it opens the window and loads nothing.
@@ -4591,6 +4598,208 @@ const checks = {
       for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
       rmSync(dir, { recursive: true, force: true });
     }
+  },
+  async "search-engine"() {
+    // Settings › Search: the engines with Make Default; the command bar's typed search, its rows and its suggestions
+    // follow the chosen one (suggestions from the fixture, `engine` says whose asked); Kagi has none, so nothing is asked.
+    await resetSettings();
+    await command("setting searchEngine default");
+    await command("setting searchSuggestions on");
+    await command("settings open search");
+    await until("search pane", async () => { await command("state"); return state().settingsWindow.open && state().settingsWindow.pane === "search"; });
+    const pane = async () => JSON.parse(await commandResult("searchpane state"));
+    let p = await pane();
+    assert(p.engines.map((e) => e.id).join() === "google,duckduckgo,bing,brave,ecosia,kagi,startpage,perplexity", `engines ${JSON.stringify(p.engines)}`);
+    assert(p.engines.filter((e) => e.default).map((e) => e.id).join() === "google", `default ${JSON.stringify(p.engines)}`);
+    assert(state().settingsWindow.rows.search.join() === "searchEngine,searchSuggestions,siteSearches", `rows ${state().settingsWindow.rows.search}`);
+    await command("searchpane default duckduckgo");
+    await until("DuckDuckGo chosen", async () => { await command("state"); return state().settings.searchEngine === "duckduckgo"; });
+    p = await pane();
+    assert(p.engines.find((e) => e.id === "duckduckgo").default && !p.engines.find((e) => e.id === "google").default, `after Make Default ${JSON.stringify(p.engines)}`);
+    assert(p.template === "https://duckduckgo.com/?q=%s", `template ${p.template}`);
+    assert((await commandResult("searchpane default duckduckgo")) === "no such engine", "Make Default offered on the default");
+    if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-search-pane.png")}`);
+    await closeSettingsWindow();
+    const rowsFor = async (text, ready) => {
+      await command("menu newTab");
+      await until("bar open", async () => { await command("state"); return state().commandBar; });
+      await command(`type ${text}`);
+      return until(`rows for ${text}`, async () => { await command("state"); const bar = state().commandBar; return bar?.query === text && ready(bar) && bar; });
+    };
+    let asked = suggestRequests.length;
+    let bar = await rowsFor("zzduck", (b) => b.rows.some((r) => r.suggested));
+    assert(bar.rows[0].kind === "search" && bar.rows[0].detail === "Search DuckDuckGo" && bar.rows[0].url === "https://duckduckgo.com/?q=zzduck", `typed row ${JSON.stringify(bar.rows[0])}`);
+    assert(bar.rows.filter((r) => r.suggested).every((r) => r.url.startsWith("https://duckduckgo.com/?q=zzduck")), `suggestion rows ${JSON.stringify(bar.rows)}`);
+    const sent = suggestRequests.slice(asked);
+    assert(sent.some((r) => r.q === "zzduck") && sent.every((r) => r.engine === "duckduckgo"), `asked ${JSON.stringify(sent)}`);
+    await command("escape");
+    // Kagi has no suggestions: nothing is asked and none show.
+    await setSetting("searchEngine", "kagi");
+    asked = suggestRequests.length;
+    await rowsFor("zzkagi", (b) => b.rows[0]?.detail === "Search Kagi");
+    await sleep(500);
+    await command("state");
+    assert(!state().commandBar.rows.some((r) => r.suggested) && state().commandBar.rows[0].url === "https://kagi.com/search?q=zzkagi", `Kagi rows ${JSON.stringify(state().commandBar.rows)}`);
+    assert(suggestRequests.length === asked, `Kagi asked ${JSON.stringify(suggestRequests.slice(asked))}`);
+    await command("escape");
+    // Back to Google (the fixture stands in for it).
+    await setSetting("searchEngine", "default");
+    bar = await rowsFor("zzgoogle", (b) => b.rows.some((r) => r.suggested));
+    assert(bar.rows[0].detail === "Search Google" && bar.rows[0].url === `${origin}/search?q=zzgoogle`, `Google row ${JSON.stringify(bar.rows[0])}`);
+    assert(bar.rows.filter((r) => r.suggested).every((r) => r.url.startsWith(`${origin}/search?q=zzgoogle`)), `Google's suggestions ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+  },
+  async "search-suggestions-off"() {
+    // Search suggestions off: nothing typed in the command bar goes to the engine, and no suggestion rows.
+    await resetSettings();
+    await command("setting searchEngine default");
+    await setSetting("searchSuggestions", "off");
+    const asked = suggestRequests.length;
+    await command("menu newTab");
+    await until("bar open", async () => { await command("state"); return state().commandBar; });
+    await command("type zzoff");
+    await until("rows", async () => { await command("state"); return state().commandBar?.query === "zzoff"; });
+    await command("type  more");
+    await sleep(600);
+    await command("state");
+    const bar = state().commandBar;
+    assert(bar.rows[0].kind === "search" && !bar.rows.some((r) => r.suggested), `rows with suggestions off ${JSON.stringify(bar.rows)}`);
+    assert(suggestRequests.length === asked, `sent with suggestions off: ${JSON.stringify(suggestRequests.slice(asked))}`);
+    await command("escape");
+    // The pane's switch turns them back on.
+    await command("settings open search");
+    await until("search pane", async () => { await command("state"); return state().settingsWindow.pane === "search"; });
+    assert(state().settingsWindow.controls.searchSuggestions === false, `switch ${state().settingsWindow.controls.searchSuggestions}`);
+    await command("settings press searchSuggestions");
+    await until("on", async () => { await command("state"); return state().settings.searchSuggestions === true && state().settingsWindow.controls.searchSuggestions === true; });
+    await closeSettingsWindow();
+    await command("menu newTab");
+    await command("type zzon");
+    await until("suggestions back", async () => { await command("state"); return state().commandBar?.rows.some((r) => r.suggested); });
+    assert(suggestRequests.slice(asked).some((r) => r.q === "zzon"), "suggestions on asked nothing");
+    await command("escape");
+  },
+  async "site-search"() {
+    // Site searches: added in the pane's editor (bad ones refused with the reason), a keyword then Tab or a space
+    // scopes the command bar (a chip, one row, nothing sent for suggestions), Enter searches the site, Delete with
+    // nothing typed leaves the scope; edit and remove.
+    await resetSettings();
+    await command("setting searchEngine default");
+    await command("setting searchSuggestions on");
+    await command("setting siteSearches default");
+    await command("settings open search");
+    await until("search pane", async () => { await command("state"); return state().settingsWindow.open && state().settingsWindow.pane === "search"; });
+    const pane = async () => JSON.parse(await commandResult("searchpane state"));
+    let p = await pane();
+    assert(p.sites.empty && p.sites.rows.length === 0 && !p.sites.editorOpen, `empty list ${JSON.stringify(p.sites)}`);
+    await command("searchpane add");
+    const template = `${origin}/find?q=%s`;
+    for (const [fields, why] of [
+      [{ name: "", keyword: "fx", url: template }, "Enter a name."],
+      [{ name: "Fixture", keyword: "f x", url: template }, "one short word"],
+      [{ name: "Fixture", keyword: "google.com", url: template }, "already searches Google"],
+      [{ name: "Fixture", keyword: "fx", url: `${origin}/find?q=` }, "Put %s"],
+      [{ name: "Fixture", keyword: "fx", url: "javascript:alert(1)//%s" }, "starts with https://"],
+      [{ name: "Fixture", keyword: "fx", url: "file:///etc/%s" }, "starts with https://"],
+      [{ name: "Fixture", keyword: "fx", url: "https://%s.example.com/" }, "starts with https://"],
+    ]) {
+      await command(`searchpane fill ${JSON.stringify(fields)}`);
+      await command("searchpane save");
+      p = await pane();
+      assert(p.sites.editorOpen && p.sites.problem?.includes(why), `${JSON.stringify(fields)}: ${JSON.stringify(p.sites)}`);
+    }
+    await command("state");
+    assert(state().settings.siteSearches.length === 0, `a refused site search was saved: ${JSON.stringify(state().settings.siteSearches)}`);
+    if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-search-editor.png")}`);
+    await command(`searchpane fill ${JSON.stringify({ name: " Fixture ", keyword: "FX", url: template })}`);
+    await command("searchpane save");
+    const saved = await until("saved", async () => { await command("state"); return state().settings.siteSearches.length === 1 && state().settings.siteSearches[0]; });
+    assert(saved.name === "Fixture" && saved.keyword === "fx" && saved.url === template, `saved ${JSON.stringify(saved)}`);
+    p = await pane();
+    assert(!p.sites.editorOpen && p.sites.rows.join() === "fx" && !p.sites.empty, `after adding ${JSON.stringify(p.sites)}`);
+    // A keyword names one site search.
+    await command("searchpane add");
+    await command(`searchpane fill ${JSON.stringify({ name: "Other", keyword: "fx", url: template })}`);
+    await command("searchpane save");
+    p = await pane();
+    assert(p.sites.problem?.includes("already the keyword for Fixture"), `duplicate ${JSON.stringify(p.sites)}`);
+    await command("searchpane cancel");
+    if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-search-sites.png")}`);
+    await closeSettingsWindow();
+    // The keyword is offered ("Search Fixture", Tab), and Tab scopes the bar.
+    const asked = suggestRequests.length;
+    const bar = async (ready) => until("bar", async () => { await command("state"); const b = state().commandBar; return b && ready(b) && b; });
+    await command("menu newTab");
+    await command("type fx");
+    let shown = await bar((b) => b.query === "fx" && b.rows.some((r) => r.kind === "scope"));
+    assert(shown.rows[1].kind === "scope" && shown.rows[1].title === "Search Fixture" && shown.rows[1].detail === "Tab" && shown.scope === null, `keyword rows ${JSON.stringify(shown.rows)}`);
+    await command("tab");
+    shown = await bar((b) => b.scope?.name === "Fixture");
+    assert(shown.query === "" && shown.rows.length === 0, `scoped ${JSON.stringify(shown)}`);
+    await command("type zzsite query");
+    shown = await bar((b) => b.query === "zzsite query" && b.rows.length === 1);
+    assert(shown.scope?.keyword === "fx" && shown.rows[0].kind === "search" && shown.rows[0].detail === "Search Fixture" &&
+      shown.rows[0].url === `${origin}/find?q=zzsite%20query`, `scoped row ${JSON.stringify(shown)}`);
+    await sleep(400);
+    assert(!suggestRequests.slice(asked).some((r) => r.q.startsWith("zzsite")), `a scoped search was sent for suggestions: ${JSON.stringify(suggestRequests.slice(asked))}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-site-search.png")}`);
+    const before = state().tabs.length;
+    await command("enter");
+    const tab = await until("site search tab", async () => {
+      await command("state");
+      return state().tabs.length === before + 1 && state().tabs.find((t) => t.id === state().active && t.url === `${origin}/find?q=zzsite%20query`);
+    });
+    await command(`rowaction close ${entryOfTab(tab.id).id}`);
+    await until("site search tab closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === tab.id); });
+    // A space after the keyword scopes it too; Delete with nothing typed leaves, the keyword back in the field.
+    await command("menu newTab");
+    await command("type fx ");
+    shown = await bar((b) => b.scope?.keyword === "fx");
+    assert(shown.query === "", `after a space: ${JSON.stringify(shown)}`);
+    await command("backspace");
+    await bar((b) => b.scope === null && b.query === "fx");
+    await command("escape");
+    // Typed in one go, the rest is the query.
+    await command("menu newTab");
+    await command("type FX two words");
+    await bar((b) => b.scope?.keyword === "fx" && b.query === "two words");
+    await command("escape");
+    // Not a keyword: Tab moves down, as before; a built-in engine's host scopes to that engine.
+    await command("menu newTab");
+    await command("type fxx");
+    await bar((b) => b.query === "fxx");
+    await command("tab");
+    await command("state");
+    assert(state().commandBar.scope === null, `fxx scoped ${JSON.stringify(state().commandBar.scope)}`);
+    await command("escape");
+    await command("menu newTab");
+    await command("type duckduckgo.com");
+    await bar((b) => b.query === "duckduckgo.com");
+    await command("tab");
+    await bar((b) => b.scope?.name === "DuckDuckGo");
+    await command("type zzdd");
+    shown = await bar((b) => b.query === "zzdd" && b.rows.length === 1);
+    assert(shown.rows[0].url === "https://duckduckgo.com/?q=zzdd", `DuckDuckGo scope ${JSON.stringify(shown.rows)}`);
+    await command("escape");
+    // Edit the keyword, then remove it: the old keyword scopes nothing.
+    await command("settings open search");
+    await until("search pane", async () => { await command("state"); return state().settingsWindow.pane === "search"; });
+    await command("searchpane edit fx");
+    await command(`searchpane fill ${JSON.stringify({ keyword: "fy" })}`);
+    await command("searchpane save");
+    await until("edited", async () => { await command("state"); return state().settings.siteSearches.length === 1 && state().settings.siteSearches[0].keyword === "fy"; });
+    await command("searchpane remove fy");
+    await until("removed", async () => { await command("state"); return state().settings.siteSearches.length === 0; });
+    p = await pane();
+    assert(p.sites.empty && p.sites.rows.length === 0, `after removing ${JSON.stringify(p.sites)}`);
+    await closeSettingsWindow();
+    await command("menu newTab");
+    await command("type fy ");
+    await bar((b) => b.query === "fy ");
+    await command("state");
+    assert(state().commandBar.scope === null, "a removed keyword still scopes");
+    await command("escape");
+    await command("setting siteSearches default");
   },
   async "settings-persist"() {
     // Non-default values for every setting; the next launch (the restore check) must find them as they were.

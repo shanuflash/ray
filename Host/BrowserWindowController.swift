@@ -1557,6 +1557,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard let bar = commandBar else { return }
     let query =
       commandBarMode == .currentTab && bar.field.stringValue == activeEntry?.currentURL ? "" : bar.field.stringValue
+    // Scoped to a site search: only that search, nothing from tabs, history or the engine's suggestions.
+    if let scope = bar.scope {
+      bar.show(Suggestions.scoped(scope, query: query))
+      logState("commandBar")
+      return
+    }
     let wantsSearches = Suggestions.wantsSearchSuggestions(for: query)
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     let rows = Suggestions.build(
@@ -1574,7 +1580,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   private func requestSearchSuggestions() {
-    guard let bar = commandBar else { return }
+    guard let bar = commandBar, bar.scope == nil else { return }
     let query = bar.field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
     guard Suggestions.wantsSearchSuggestions(for: query) else { return }
     searches.fetch(query) { [weak self] in self?.refreshSuggestions() }
@@ -1595,6 +1601,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func commandBar(_ bar: CommandBarView, choose suggestion: Suggestion) {
+    // "Search Wikipedia" scopes the bar (as Tab does) and keeps it open.
+    if case .scope(let scope) = suggestion.kind { return bar.enter(scope) }
     let mode = commandBarMode
     closeCommandBar(focus: false)
     let url: String
@@ -1615,6 +1623,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       return
     case .url(let target), .search(let target), .history(let target):
       url = target
+    case .scope:
+      return
     }
     // ray://settings/appearance is Ray's own Settings window, never a page.
     if showNativeSettings(for: url) { return }
@@ -1801,11 +1811,6 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     // Appearance, so the tab goes back to where it was and the window opens.
     if !closing, let entry = state.entry(for: tab), let pane = AddressInput.nativeSettingsPane(for: tab.url) {
       leaveNativeSettings(tab, entry, pane: pane)
-      return
-    }
-    // The settings page has no Search engine section any more: wherever the address came from, it shows the page itself.
-    if !closing, AddressInput.isRemovedSettingsPage(tab.url) {
-      tab.loadURL(AddressInput.settingsHome, userInitiated: true)
       return
     }
     tabChanged(tab, event: "url")
@@ -2133,12 +2138,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "commandBar": commandBar.map { bar in
         [
           "mode": commandBarMode.rawValue, "query": bar.field.stringValue, "selected": bar.selectedIndex,
+          "scope": bar.scope.map { ["name": $0.name, "keyword": $0.keyword] } ?? NSNull(),
           "rowsFullyVisible": bar.rowsFullyVisible,
           "firstVisibleRow": bar.shownRows.first, "visibleRows": bar.shownRows.count,
           "rows": bar.suggestions.map { row -> [String: Any] in
             var logged: [String: Any] = ["kind": row.kindName, "title": row.title, "detail": row.detail]
             if row.suggested { logged["suggested"] = true }
             if case .tab(let tab) = row.kind { logged["tab"] = Int(tab.tabId) }
+            if case .search(let url) = row.kind { logged["url"] = url }
             return logged
           },
         ] as [String: Any]

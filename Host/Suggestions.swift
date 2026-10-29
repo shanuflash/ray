@@ -9,6 +9,8 @@ struct Suggestion {
     case action(BarAction)
     /// A pane, setting or section of Ray's Settings window ("Settings: …").
     case setting(SettingsTarget)
+    /// "Search Wikipedia": what you typed is a site search's keyword, and choosing this (or Tab) scopes the bar to it.
+    case scope(SearchScope)
   }
 
   let kind: Kind
@@ -24,6 +26,7 @@ struct Suggestion {
     case .url(let url), .search(let url), .history(let url): return "\(kindName):\(url)"
     case .action(let action): return "action:\(action.id)"
     case .setting(let target): return "setting:\(target.id)"
+    case .scope(let scope): return "scope:\(scope.keyword)"
     }
   }
 
@@ -35,6 +38,7 @@ struct Suggestion {
     case .history: return "history"
     case .action: return "action"
     case .setting: return "setting"
+    case .scope: return "scope"
     }
   }
 }
@@ -128,9 +132,9 @@ final class FaviconCache {
   }
 }
 
+/// The default engine's suggestions as you type (`SearchEngines.suggestURL`): nothing is sent when Settings › Search
+/// suggestions is off or the engine has none, and what one engine said is never shown for another.
 final class SearchSuggestions {
-  static let endpoint = TestEnvironment["RAY_SUGGEST_URL"]
-    ?? "https://suggestqueries.google.com/complete/search?client=firefox&q=%s"
   static var userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
   private static let minimumInterval: TimeInterval = 0.1
   private static let warmInterval: TimeInterval = 30
@@ -148,8 +152,22 @@ final class SearchSuggestions {
   private var lastRequest = Date.distantPast
   private var scheduled: DispatchWorkItem?
   private var wanted = ""
+  /// The endpoint the cache is from.
+  private var cachedFrom: String?
+
+  /// The endpoint to ask now, with the cache emptied when it changed (another engine, suggestions turned off).
+  private func endpoint() -> String? {
+    let now = SearchEngines.suggestURL
+    if now != cachedFrom {
+      cachedFrom = now
+      cache = [:]
+      shown = ("", [])
+    }
+    return now
+  }
 
   func current(for query: String) -> [String] {
+    guard endpoint() != nil else { return [] }
     let key = query.lowercased()
     if let exact = cache[key] { return exact }
     guard !shown.query.isEmpty, key.hasPrefix(shown.query) else { return [] }
@@ -157,7 +175,7 @@ final class SearchSuggestions {
   }
 
   func warm() {
-    guard Date().timeIntervalSince(lastRequest) > Self.warmInterval else { return }
+    guard endpoint() != nil, Date().timeIntervalSince(lastRequest) > Self.warmInterval else { return }
     lastRequest = Date()
     send("", then: nil)
   }
@@ -166,7 +184,7 @@ final class SearchSuggestions {
     let key = query.lowercased()
     wanted = key
     scheduled?.cancel()
-    guard !key.isEmpty, cache[key] == nil else { return }
+    guard endpoint() != nil, !key.isEmpty, cache[key] == nil else { return }
     let wait = Self.minimumInterval - Date().timeIntervalSince(lastRequest)
     let work = DispatchWorkItem { [weak self] in
       guard let self, self.wanted == key else { return }
@@ -182,8 +200,7 @@ final class SearchSuggestions {
   }
 
   private func send(_ key: String, then done: (() -> Void)?) {
-    let encoded = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))) ?? key
-    guard let url = URL(string: Self.endpoint.replacingOccurrences(of: "%s", with: encoded)) else { return }
+    guard let endpoint = endpoint(), let url = URL(string: AddressInput.searchURL(endpoint, query: key)) else { return }
     var request = URLRequest(url: url)
     request.assumesHTTP3Capable = true
     request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
@@ -193,7 +210,8 @@ final class SearchSuggestions {
             let json = try? JSONSerialization.jsonObject(with: data) as? [Any],
             json.count > 1, let list = json[1] as? [String] else { return }
       DispatchQueue.main.async {
-        guard let self else { return }
+        // An answer from an engine that is no longer the one asked is dropped.
+        guard let self, self.endpoint() == endpoint else { return }
         self.cache[key] = list
         if self.wanted.hasPrefix(key), key.count >= self.shown.query.count || !self.wanted.hasPrefix(self.shown.query) {
           self.shown = (key, list)
@@ -320,6 +338,11 @@ enum Suggestions {
       rows.append(page.row)
     }
     if let typed { rows.append(typed) }
+    // What you typed is a site search's keyword: offer to search that site (Tab does the same), after the first row so
+    // Enter keeps doing what it did (Chrome's keyword hint, Arc's "Search YouTube").
+    if !query.contains(" "), let scope = SearchEngines.scope(forKeyword: query) {
+      rows.insert(scopeSuggestion(scope), at: min(1, rows.count))
+    }
     rows += actionRows
     rows += settingRows
     rows += pages.map(\.row).filter { row in !rows.contains { same($0, row) } }
@@ -403,7 +426,7 @@ enum Suggestions {
   private static func typedSuggestion(_ query: String) -> Suggestion? {
     guard let url = AddressInput.url(for: query) else { return nil }
     if AddressInput.isSearch(url) {
-      return Suggestion(kind: .search(url), title: query, detail: "Search Google", icon: magnifier)
+      return Suggestion(kind: .search(url), title: query, detail: "Search \(SearchEngines.chosen.name)", icon: magnifier)
     }
     return Suggestion(kind: .url(url), title: AddressInput.display(for: url), detail: "Open", icon: globe)
   }
@@ -422,14 +445,26 @@ enum Suggestions {
   }
 
   private static func searchSuggestion(_ text: String) -> Suggestion? {
-    let query = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))) ?? text
-    let url = AddressInput.searchTemplate.replacingOccurrences(of: "%s", with: query)
+    let url = AddressInput.searchURL(AddressInput.searchTemplate, query: text)
     return Suggestion(kind: .search(url), title: text, detail: "", icon: magnifier, suggested: true)
   }
 
+  private static func scopeSuggestion(_ scope: SearchScope) -> Suggestion {
+    Suggestion(kind: .scope(scope), title: "Search \(scope.name)", detail: "Tab", icon: magnifier)
+  }
+
+  /// The bar's one row while it is scoped to a site search: what you typed, searched there. No pages, no suggestions:
+  /// nothing you type is sent anywhere before Enter.
+  static func scoped(_ scope: SearchScope, query raw: String) -> [Suggestion] {
+    let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty, let url = scope.url(for: query) else { return [] }
+    return [Suggestion(kind: .search(url), title: query, detail: "Search \(scope.name)", icon: magnifier)]
+  }
+
+  /// Whether to ask the search engine for suggestions as you type this: a search (not an address), with suggestions on.
   static func wantsSearchSuggestions(for raw: String) -> Bool {
     let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !query.isEmpty, query.count <= 200, let url = AddressInput.url(for: query) else { return false }
+    guard !query.isEmpty, SearchEngines.suggestURL != nil, query.count <= 200, let url = AddressInput.url(for: query) else { return false }
     return AddressInput.isSearch(url)
   }
 

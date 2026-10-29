@@ -2,8 +2,11 @@ import AppKit
 import UniformTypeIdentifiers
 
 enum AddressInput {
-  static let searchTemplate = TestEnvironment["RAY_SEARCH_URL"]
-    ?? "https://www.google.com/search?q=%s"
+  /// The default search engine's results address, `%s` for the query: Settings › Search. The app points this at the
+  /// chosen engine at launch (`SearchEngines.install`); until then, and in the unit tests, Google.
+  static var searchTemplate: String { searchTemplateSource() }
+  static var searchTemplateSource: () -> String = { googleSearchTemplate }
+  static let googleSearchTemplate = TestEnvironment["RAY_SEARCH_URL"] ?? "https://www.google.com/search?q=%s"
 
   private static let passThroughSchemes: Set<String> = ["http", "https", "file", "chrome", "about", "data", "view-source"]
 
@@ -23,24 +26,22 @@ enum AddressInput {
     if let colon = text.firstIndex(of: ":") {
       let scheme = text[..<colon].lowercased()
       if scheme == "javascript" { return nil }
-      if passThroughSchemes.contains(scheme) && !looksLikeHostAndPort(text) {
-        return isRemovedSettingsPage(text) ? settingsHome : text
-      }
+      if passThroughSchemes.contains(scheme) && !looksLikeHostAndPort(text) { return text }
     }
     if !text.contains(" "), let host = hostPart(of: text), isHost(host) {
       return (isLocal(host) ? "http://" : "https://") + text
     }
-    let query = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))) ?? text
-    return searchTemplate.replacingOccurrences(of: "%s", with: query)
+    return searchURL(searchTemplate, query: text)
   }
 
   /// Chrome settings pages Ray's own Settings window stands in for, and the pane each opens (`SettingPane`'s raw
   /// values): Appearance and behavior (`/appearance`, its `/fonts` page), and Profiles (`/people` and the pages under
   /// it), whose colour is in Appearance. The engine's page has neither any more (tools/trim-settings-pak.py), so a
   /// typed or in-page address to one of them goes to the window, never to a page that would only show something else.
-  /// Then `ray://settings/<pane>` for each pane with content of Ray's own and no Chrome page by that name. Search,
-  /// Privacy, Passwords, Autofill and Extensions join only when their panes land: until then their addresses are
-  /// Chrome's pages. One line per pane, a blank line between, so panes added in parallel merge cleanly.
+  /// Then `ray://settings/<pane>` for each pane with content of Ray's own and no Chrome page by that name. Privacy,
+  /// Passwords, Autofill and Extensions join only when their panes land: until then their addresses are Chrome's
+  /// pages. Search engine (`/search`, `/searchEngines`) is gone from the engine's page too, and is Ray's Search pane.
+  /// One line per pane, a blank line between, so panes added in parallel merge cleanly.
   private static let nativeSettingsPaths: [String: String] = [
     "appearance": "appearance", "fonts": "appearance",
     "people": "appearance", "profiles": "appearance", "manageprofile": "appearance", "account": "appearance",
@@ -70,10 +71,8 @@ enum AddressInput {
     "privacy": "content",
   ]
 
-  /// Settings pages that are gone from the engine's page (tools/trim-settings-pak.py) with nothing of Ray's to stand in
-  /// for them: Search engine (`/search`, `/searchEngines`), because Ray searches with a fixed Google. An address to one
-  /// of them goes to the settings page itself, never to a page that would only show something else.
-  private static let removedSettingsPaths: Set<String> = ["search", "searchengines"]
+    "search": "search", "searchengines": "search",
+  ]
 
   /// What follows `chrome://settings/` in a `chrome://` or `ray://` settings address (lowercased, no slashes at the
   /// ends), or nil for any other address. The address is a URL the engine or `url(for:)` gave, never something a page
@@ -107,14 +106,8 @@ enum AddressInput {
     return nativePages[host]
   }
 
-  /// Where the settings page goes for a page it no longer has (see `removedSettingsPaths`).
-  static let settingsHome = "chrome://settings/"
-
-  /// Whether `url` is one of the settings pages the engine's page no longer has.
-  static func isRemovedSettingsPage(_ url: String) -> Bool {
-    settingsPath(of: url).map { removedSettingsPaths.contains($0) } ?? false
-  }
-
+  /// Whether `url` is a results page of the default search engine (Chromium's `IsSearchURL` on its default provider):
+  /// what you typed became a search, and history's old searches never lead the command bar.
   static func isSearch(_ url: String) -> Bool {
     url.hasPrefix(searchTemplate.replacingOccurrences(of: "%s", with: ""))
   }
@@ -233,6 +226,43 @@ enum AddressInput {
     if let fragment = components.percentEncodedFragment { trail += "#" + fragment }
     if !trail.isEmpty, !trail.hasPrefix("/") { trail = "/" + trail }
     return AddressParts(host: bareHost + port, trail: trail)
+  }
+
+  // MARK: Search templates
+
+  /// The longest search address a site search may have (Crest's limit).
+  static let longestSearchTemplate = 2048
+  private static let searchTermsProbe = "ray-search-terms"
+
+  /// A search address the user gave a site search (Settings › Search), if Ray will search with it: http or https with
+  /// a host, `%s` where the query goes (in the path, query or fragment, never the host or port), no `user:pass@`, no
+  /// spaces or control characters, at most 2,048 characters. Nil for anything else: `javascript:`, `data:`, `file:`,
+  /// `chrome:` and an address without `%s` are never search addresses.
+  static func siteSearchTemplate(_ text: String) -> String? {
+    let template = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !template.isEmpty, template.utf8.count <= longestSearchTemplate, template.contains("%s"),
+          !template.unicodeScalars.contains(where: {
+            CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0)
+          })
+    else { return nil }
+    let probe = template.replacingOccurrences(of: "%s", with: searchTermsProbe)
+    guard let components = URLComponents(string: probe), let scheme = components.scheme?.lowercased(),
+          scheme == "http" || scheme == "https", let host = components.host, !host.isEmpty,
+          !host.lowercased().contains(searchTermsProbe), components.user == nil, components.password == nil
+    else { return nil }
+    return template
+  }
+
+  /// `query` searched with `template`: percent-encoded (spaces, `&`, `+`, `=`, `?` and `#` too) in place of each `%s`.
+  static func searchURL(_ template: String, query: String) -> String {
+    let encoded = query.addingPercentEncoding(
+      withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))) ?? query
+    return template.replacingOccurrences(of: "%s", with: encoded)
+  }
+
+  /// A site search's results for `query`; nil when its template isn't one Ray searches with (`siteSearchTemplate`).
+  static func siteSearchURL(_ template: String, query: String) -> String? {
+    siteSearchTemplate(template).map { searchURL($0, query: query) }
   }
 
   // MARK: Opens from other apps

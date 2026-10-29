@@ -22,6 +22,9 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   let field = NSTextField()
   private let panel = FlippedView()
   private let searchIcon = NSImageView()
+  private let chip = ScopeChip()
+  /// The site search the bar is scoped to (a keyword, then Tab or a space): what you type searches there.
+  private(set) var scope: SearchScope?
   private let separator = NSView()
   private let scrollView = QuietScrollView()
   private let tableView = NSTableView()
@@ -78,6 +81,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     searchIcon.symbolConfiguration = .init(pointSize: 13, weight: .semibold)
     searchIcon.contentTintColor = .secondaryLabelColor
     panel.addSubview(searchIcon)
+    chip.isHidden = true
+    panel.addSubview(chip)
 
     field.isBordered = false
     field.drawsBackground = false
@@ -161,6 +166,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
 
   func present(query: String) {
     lastPointer = NSEvent.mouseLocation
+    setScope(nil)
     field.stringValue = query
     window?.makeFirstResponder(field)
     field.currentEditor()?.selectAll(nil)
@@ -205,8 +211,11 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     let top = max(20, (bounds.height - restingHeight) / 2)
     panel.frame = NSRect(x: (bounds.width - width) / 2, y: top, width: width, height: height)
     searchIcon.frame = NSRect(x: Self.iconCenter - 9, y: (Self.fieldHeight - 18) / 2, width: 18, height: 18)
-    field.frame = NSRect(
-      x: Self.contentInset - 2, y: (Self.fieldHeight - 26) / 2, width: width - Self.contentInset - 24, height: 26)
+    // Scoped, the chip takes the icon's place and the text follows it.
+    let chipWidth = chip.isHidden ? 0 : chip.intrinsicContentSize.width
+    chip.frame = NSRect(x: Self.rowInset + 7, y: ((Self.fieldHeight - 28) / 2).rounded(), width: chipWidth, height: 28)
+    let fieldX = chip.isHidden ? Self.contentInset - 2 : chip.frame.maxX + 10
+    field.frame = NSRect(x: fieldX, y: (Self.fieldHeight - 26) / 2, width: width - fieldX - 24, height: 26)
     separator.frame = NSRect(x: 11, y: Self.fieldHeight - 1, width: width - 22, height: 1)
     separator.isHidden = suggestions.isEmpty
     scrollView.frame = NSRect(
@@ -235,7 +244,61 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   }
 
   func controlTextDidChange(_ notification: Notification) {
+    // A keyword and a space (typed, or pasted with more after it) scopes the bar, as Chrome's space trigger does.
+    let text = field.stringValue
+    if scope == nil, let space = text.firstIndex(of: " "), space != text.startIndex,
+       let found = SearchEngines.scope(forKeyword: String(text[..<space])) {
+      enter(found, query: String(text[text.index(after: space)...]))
+      return
+    }
+    delegate?.commandBar(self, queryChanged: text)
+  }
+
+  /// Scopes the bar to `scope`, the field holding `query` (what follows the keyword).
+  func enter(_ scope: SearchScope, query: String = "") {
+    setScope(scope)
+    if let editor = field.currentEditor() as? NSTextView {
+      editor.string = query
+      editor.setSelectedRange(NSRange(location: (query as NSString).length, length: 0))
+    } else {
+      field.stringValue = query
+    }
     delegate?.commandBar(self, queryChanged: field.stringValue)
+  }
+
+  private func setScope(_ scope: SearchScope?) {
+    self.scope = scope
+    chip.isHidden = scope == nil
+    searchIcon.isHidden = scope != nil
+    chip.name = scope?.name ?? ""
+    field.placeholderString = scope.map { "Search \($0.name)…" } ?? "Search or Enter URL…"
+    needsLayout = true
+  }
+
+  /// Tab on a keyword (the typed text, or the selected "Search …" row) scopes the bar; elsewhere it moves down.
+  private func tabPressed() {
+    if scope == nil {
+      let row = selectedIndex >= 0 && selectedIndex < suggestions.count ? suggestions[selectedIndex] : nil
+      if case .scope(let offered)? = row?.kind { return enter(offered) }
+      let text = field.stringValue.trimmingCharacters(in: .whitespaces)
+      if !text.isEmpty, !text.contains(" "), let found = SearchEngines.scope(forKeyword: text) { return enter(found) }
+    }
+    moveSelection(by: 1)
+  }
+
+  /// Delete with nothing typed leaves the scope, the keyword back in the field (Chrome, Ardia).
+  private func leaveScope() -> Bool {
+    guard let scope, field.stringValue.isEmpty else { return false }
+    setScope(nil)
+    let keyword = scope.keyword
+    if let editor = field.currentEditor() as? NSTextView {
+      editor.string = keyword
+      editor.setSelectedRange(NSRange(location: (keyword as NSString).length, length: 0))
+    } else {
+      field.stringValue = keyword
+    }
+    delegate?.commandBar(self, queryChanged: field.stringValue)
+    return true
   }
 
   func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -244,7 +307,11 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
       chooseSelected()
     case #selector(NSResponder.cancelOperation(_:)):
       delegate?.commandBarDismiss(self)
-    case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.insertTab(_:)):
+    case #selector(NSResponder.deleteBackward(_:)):
+      return leaveScope()
+    case #selector(NSResponder.insertTab(_:)):
+      tabPressed()
+    case #selector(NSResponder.moveDown(_:)):
       moveSelection(by: 1)
     case #selector(NSResponder.moveUp(_:)), #selector(NSResponder.insertBacktab(_:)):
       moveSelection(by: -1)
@@ -279,6 +346,63 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
 
 final class FlippedView: NSView {
   override var isFlipped: Bool { true }
+}
+
+/// The site a scoped bar searches, before the text: "Wikipedia" on a wash of the profile's colour.
+private final class ScopeChip: NSView {
+  private let icon = NSImageView()
+  private let label = NSTextField(labelWithString: "")
+  var name = "" {
+    didSet {
+      label.stringValue = name
+      setAccessibilityLabel("Searching \(name)")
+      invalidateIntrinsicContentSize()
+      needsLayout = true
+    }
+  }
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.cornerRadius = 7
+    layer?.cornerCurve = .continuous
+    icon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+    icon.symbolConfiguration = .init(pointSize: 11, weight: .semibold)
+    label.font = .systemFont(ofSize: 14, weight: .medium)
+    label.lineBreakMode = .byTruncatingTail
+    addSubview(icon)
+    addSubview(label)
+    setAccessibilityElement(true)
+    setAccessibilityRole(.staticText)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+  override var intrinsicContentSize: NSSize {
+    NSSize(width: min(220, ceil(label.attributedStringValue.size().width) + 4) + 10 + 14 + 6 + 10, height: 28)
+  }
+
+  private var fill: NSColor {
+    let panel = NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.115, alpha: 1) : .white }
+    return ProfileColor.mix(NSColor(name: nil) { _ in ProfileColor.accent }, over: panel, 0.16, dark: 0.28)
+  }
+
+  override func updateLayer() {
+    let fill = fill
+    layer?.backgroundColor = fill.cgColor
+    let ink = ProfileColor.legible(NSColor(name: nil) { _ in ProfileColor.accent }, on: fill, minimum: 4.5)
+    label.textColor = ink
+    icon.contentTintColor = ink
+  }
+
+  override func layout() {
+    super.layout()
+    icon.frame = NSRect(x: 10, y: ((bounds.height - 14) / 2).rounded(), width: 14, height: 14)
+    let height = ceil(label.intrinsicContentSize.height)
+    label.frame = NSRect(x: 30, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 40, height: height)
+  }
 }
 
 /// The list's scroll view: its scroller shows only while it scrolls (overlay style, whatever System Settings says), as
@@ -379,7 +503,10 @@ private final class SuggestionCell: NSTableCellView {
     self.suggestion = suggestion
     icon.image = suggestion.icon
     if case .tab = suggestion.kind { isTab = true } else { isTab = false }
-    if case .action = suggestion.kind { shortcut = suggestion.detail } else { shortcut = "" }
+    switch suggestion.kind {
+    case .action, .scope: shortcut = suggestion.detail
+    default: shortcut = ""
+    }
     action.stringValue = isTab ? "Switch to Tab" : shortcut
     action.font = isTab ? .systemFont(ofSize: 13, weight: .medium) : .systemFont(ofSize: 12)
     let text = NSMutableAttributedString(
@@ -390,7 +517,7 @@ private final class SuggestionCell: NSTableCellView {
     case .tab: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
     case .search: detail = suggestion.detail
     case .url, .history: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
-    case .action: detail = ""
+    case .action, .scope: detail = ""
     case .setting: detail = suggestion.detail
     }
     if !detail.isEmpty {

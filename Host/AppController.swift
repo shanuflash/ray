@@ -31,6 +31,7 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
       engine.pageScript = source
     }
     NSApp.delegate = self
+    SearchEngines.install()
     MainMenu.install(target: self)
     installReservedKeyRouting()
     TestCommands.start()

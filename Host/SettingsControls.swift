@@ -474,7 +474,8 @@ final class AccentButton: NSControl {
   override var isFlipped: Bool { true }
   override var wantsUpdateLayer: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
-  override var intrinsicContentSize: NSSize { NSSize(width: ceil(label.intrinsicContentSize.width) + 24, height: 28) }
+  // The text measured whole: a truncating label's intrinsic width runs a few points short ("A…" for "Add").
+  override var intrinsicContentSize: NSSize { NSSize(width: ceil(label.attributedStringValue.size().width) + 4 + 24, height: 28) }
 
   override func updateLayer() {
     layer?.backgroundColor = ProfileColor.accent.cgColor

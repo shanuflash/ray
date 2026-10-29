@@ -82,6 +82,9 @@ protocol SettingsSizing: AnyObject {
   func height(forWidth width: CGFloat) -> CGFloat
 }
 
+/// A `.custom` control that sits under its row's text at the column's full width (a list), not on the row's right.
+protocol SettingsWideControl: SettingsSizing {}
+
 enum SettingsPanes {
   private static var made: [SettingPane: SettingsPaneContent] = [:]
   private static var madeSections: [SettingPane: [SettingsSection]] = [:]
@@ -111,7 +114,7 @@ enum SettingsPanes {
 
     case .appearance: return AppearancePaneContent()
 
-    case .search: return nil
+    case .search: return SearchPaneContent()
 
     case .privacy: return PrivacyPaneContent()
 

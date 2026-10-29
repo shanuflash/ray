@@ -157,7 +157,10 @@ final class SettingsPaneView: NSView {
     case .custom(let name):
       let control = content?.control(named: name, for: key)
       if let control { controls.append((key, .custom(control))) }
-      made = SettingsRowView(title: ui.title, detail: ui.detail, control: control, picture: picture)
+      // A list (Settings › Search's engines) sits under the row's text at full width, as swatches do.
+      let wide = control is SettingsWideControl
+      made = SettingsRowView(
+        title: ui.title, detail: ui.detail, control: wide ? nil : control, picture: picture, accessory: wide ? control : nil)
     }
     made.anchor = key.id
     return made

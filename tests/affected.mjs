@@ -11,7 +11,8 @@ const pages = ["page-channel", "navigate", "target-blank", "window-open", "backg
 const permissions = ["permission", "permission-allow"];
 const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-switch-to-tab", "bar-history",
   "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions", "bar-search-google", "bar-actions",
-  "bar-ranking", "settings-bar"];
+  "bar-ranking", "settings-bar",
+  "search-engine", "search-suggestions-off", "site-search"];
 const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];
 const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still"];
@@ -22,7 +23,8 @@ const otherApps = ["open-from-other-apps", "open-from-other-apps-launch"];
 const settings = ["settings-window", "settings-catalog", "settings-minimal-url", "settings-loading-progress", "settings-theme",
   "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling",
   "settings-shortcuts", "settings-routes", "settings-trimmed", "settings-persist", "settings-panes", "settings-search",
-  "settings-bar", "settings-colours"];
+  "settings-bar", "settings-colours",
+  "search-engine", "search-suggestions-off", "site-search"];
 // Settings › General (SettingsGeneral.swift, CloseWarnings.swift): its pane, the two warnings and Start fresh.
 settings.push("settings-general", "warn-before-quitting", "warn-before-closing-window");
 settings.push("settings-privacy", "settings-extensions");
@@ -128,6 +130,8 @@ export const areas = {
   "Host/AddressInput.swift#Typed addresses": [...commandBar, "settings-routes"],
   // Which links and files from other apps Ray takes.
   "Host/AddressInput.swift#Opens from other apps": otherApps,
+  // Which site search addresses Ray takes, and how a query goes into one.
+  "Host/AddressInput.swift#Search templates": ["site-search", "search-engine", "bar-search-suggestions", "bar-search-google"],
   // Links and files from other apps (and the one that launched Ray), and where they open.
   "Host/LinksFromApps.swift": otherApps,
   "Host/BrowserWindowController.swift#Links from other apps": otherApps,
@@ -153,6 +157,10 @@ export const areas = {
   "Host/SettingsPasswords.swift": ["settings-passwords", "settings-panes", "settings-search"],
   "Host/SettingsAutofill.swift": ["settings-autofill", "settings-panes", "settings-search"],
   "Host/SettingsDataViews.swift": ["settings-passwords", "settings-autofill"],
+  // Settings › Search: its rows and controls, and the engines and site searches the command bar searches with.
+  "Host/SettingsSearchPane.swift": ["search-engine", "search-suggestions-off", "site-search", "settings-catalog", "settings-panes",
+    "settings-window", "settings-search", "settings-bar", "settings-persist"],
+  "Host/SearchEngines.swift": [...commandBar, "settings-catalog", "private-window"],
   "Host/SettingsControls.swift": [...settings, "onboarding"],
   "Host/MiniRayWindow.swift": ["settings-panes", "settings-window"],
   "Host/SettingsSearch.swift": [...settings, ...commandBar],
@@ -187,7 +195,7 @@ export const areas = {
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
-  "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
+  "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
     "warn-before-quitting", "warn-before-closing-window"],
 

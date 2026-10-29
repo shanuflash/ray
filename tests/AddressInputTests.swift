@@ -14,11 +14,9 @@ let cases: [(String, String?)] = [
   ("chrome://settings", "chrome://settings"),
   ("ray://settings", "chrome://settings"),
   ("RAY://settings/help", "chrome://settings/help"),
-  ("ray://settings/search", "chrome://settings/"),
-  ("chrome://settings/search", "chrome://settings/"),
-  ("RAY://Settings/Search/", "chrome://settings/"),
-  ("ray://settings/searchEngines", "chrome://settings/"),
-  ("chrome://settings/searchEngines?x=1", "chrome://settings/"),
+  // Settings' Search pages are addresses like any other (the window takes them: `nativeSettingsPane`).
+  ("ray://settings/search", "chrome://settings/search"),
+  ("chrome://settings/searchEngines?x=1", "chrome://settings/searchEngines?x=1"),
   ("chrome://settings/?search=theme", "chrome://settings/?search=theme"),
   ("chrome://settings/privacy", "chrome://settings/privacy"),
   ("ray://settings/privacy", "chrome://settings/content"),
@@ -182,10 +180,10 @@ let paneCases: [(String, String?)] = [
   ("chrome://settings", nil),
   ("chrome://settings/", nil),
   ("chrome://settings/privacy", nil),
-  // Ray's own panes by name; the ones Chrome still draws (privacy, passwords, autofill, extensions, search) stay Chrome's.
+  // Ray's own panes by name; the ones Chrome still draws (privacy, passwords, autofill, extensions) stay Chrome's.
   ("ray://settings/general", "general"), ("ray://settings/tabs", "tabs"), ("RAY://Settings/Shortcuts/", "shortcuts"),
   ("ray://settings/about", "about"), ("ray://settings/passwords", "passwords"), ("ray://settings/autofill", "autofill"),
-  ("ray://settings/search", nil), ("ray://settings/tabs/x", nil),
+  ("ray://settings/tabs/x", nil),
   // Privacy: Chrome's Site settings pages and ray://settings/privacy; Chrome's Privacy and security page stays Chrome's.
   ("chrome://settings/content", "privacy"), ("chrome://settings/content/all", "privacy"),
   ("chrome://settings/content/siteDetails?site=https%3A%2F%2Fexample.com", "privacy"), ("chrome://settings/content/zoomLevels", "privacy"),
@@ -198,6 +196,12 @@ let paneCases: [(String, String?)] = [
   ("chrome://settings/autofill", "autofill"), ("chrome://password-manager", "passwords"), ("chrome://password-manager/passwords", "passwords"),
   ("chrome://password-manager/settings?x=1", "passwords"), ("ray://password-manager/checkup", "passwords"),
   ("https://password-manager/passwords", nil), ("chrome://user@password-manager/", nil), ("chrome://passwords-manager/", nil),
+  // Search engine, gone from Chrome's page, is Ray's Search pane: typed, from a link or from the page itself.
+  ("chrome://settings/search", "search"), ("ray://settings/search", "search"), ("RAY://Settings/SearchEngines/", "search"),
+  ("chrome://settings/searchEngines#x", "search"), (" chrome://settings/search ", "search"),
+  ("chrome://settings/?search=a", nil), ("chrome://settings/searchEngines/x", nil), ("chrome://settings/searching", nil),
+  ("chrome://extensions/search", nil), ("https://settings/search", nil), ("https://example.com/settings/search", nil),
+  ("chrome://user@settings/search", nil),
   ("chrome://settings/appearance/fonts", nil),
   ("chrome://extensions/appearance", nil),
   ("https://settings/appearance", nil),
@@ -210,18 +214,66 @@ for (input, expected) in paneCases where AddressInput.nativeSettingsPane(for: in
   failures += 1
   print("FAIL nativeSettingsPane(\(input)) = \(AddressInput.nativeSettingsPane(for: input) ?? "nil"), want \(expected ?? "nil")")
 }
-// The Search engine page is gone from the settings page: its addresses (and only those) are "removed".
-let removedCases: [(String, Bool)] = [
-  ("chrome://settings/search", true), ("ray://settings/search", true), ("RAY://Settings/SearchEngines/", true),
-  ("chrome://settings/searchEngines#x", true), (" chrome://settings/search ", true),
-  ("chrome://settings", false), ("chrome://settings/", false), ("chrome://settings/?search=a", false),
-  ("chrome://settings/privacy", false), ("chrome://settings/searchEngines/x", false), ("chrome://settings/searching", false),
-  ("chrome://extensions/search", false), ("https://settings/search", false), ("https://example.com/settings/search", false),
-  ("chrome://user@settings/search", false), ("", false),
+// A site search's address (Settings › Search): http or https with a host, %s outside the host, nothing else.
+let templateCases: [(String, String?)] = [
+  ("https://en.wikipedia.org/w/index.php?search=%s", "https://en.wikipedia.org/w/index.php?search=%s"),
+  ("  https://github.com/search?q=%s&type=code  ", "https://github.com/search?q=%s&type=code"),
+  ("HTTP://localhost:8080/find?q=%s", "HTTP://localhost:8080/find?q=%s"),
+  ("https://open.spotify.com/search/%s", "https://open.spotify.com/search/%s"),
+  ("https://mail.google.com/mail/u/0/#search/%s", "https://mail.google.com/mail/u/0/#search/%s"),
+  ("http://127.0.0.1:9/s?q=%s&again=%s", "http://127.0.0.1:9/s?q=%s&again=%s"),
+  ("https://example.com/search?q=", nil),
+  ("https://example.com/search?q=%S", nil),
+  ("javascript:alert(1)//%s", nil),
+  ("JavaScript:void(%s)", nil),
+  ("data:text/html,%s", nil),
+  ("file:///tmp/%s", nil),
+  ("chrome://settings/?search=%s", nil),
+  ("ray://settings/?search=%s", nil),
+  ("ftp://example.com/%s", nil),
+  ("example.com/?q=%s", nil),
+  ("https://%s.example.com/", nil),
+  ("https://%s/", nil),
+  ("https://example.com:%s/", nil),
+  ("https://user:pass@example.com/?q=%s", nil),
+  ("https://user@example.com/?q=%s", nil),
+  ("https://example.com/a b?q=%s", nil),
+  ("https://example.com/?q=%s\n", "https://example.com/?q=%s"),
+  ("https://example.com/?q=%s\u{0}", nil),
+  ("https:///?q=%s", nil),
+  ("https://example.com/?q=%s&x=" + String(repeating: "a", count: 2048), nil),
+  ("", nil),
 ]
-for (input, expected) in removedCases where AddressInput.isRemovedSettingsPage(input) != expected {
+for (input, expected) in templateCases where AddressInput.siteSearchTemplate(input) != expected {
   failures += 1
-  print("FAIL isRemovedSettingsPage(\(input)) want \(expected)")
+  print("FAIL siteSearchTemplate(\(input.debugDescription)) = \(AddressInput.siteSearchTemplate(input).debugDescription), want \(expected.debugDescription)")
+}
+// A query in a template: encoded once, so it can't add parameters or a fragment, or spell a placeholder.
+let searchURLCases: [(String, String, String?)] = [
+  ("https://en.wikipedia.org/w/index.php?search=%s", "swift lang", "https://en.wikipedia.org/w/index.php?search=swift%20lang"),
+  ("https://x.example/?q=%s", "a&b=c#d?e+f", "https://x.example/?q=a%26b%3Dc%23d%3Fe%2Bf"),
+  ("https://x.example/?q=%s", "%s", "https://x.example/?q=%25s"),
+  ("https://x.example/?q=%s&r=%s", "é", "https://x.example/?q=%C3%A9&r=%C3%A9"),
+  ("javascript:alert(%s)", "1", nil),
+  ("https://x.example/", "q", nil),
+]
+for (template, query, expected) in searchURLCases where AddressInput.siteSearchURL(template, query: query) != expected {
+  failures += 1
+  print("FAIL siteSearchURL(\(template), \(query)) = \(AddressInput.siteSearchURL(template, query: query).debugDescription), want \(expected.debugDescription)")
+}
+// The default engine is the app's choice: what you type searches it, and only its results pages count as searches.
+let googleTemplate = AddressInput.searchTemplate
+AddressInput.searchTemplateSource = { "https://duckduckgo.com/?q=%s" }
+let engineChecks: [(String, Bool)] = [
+  ("follows", AddressInput.url(for: "hello world") == "https://duckduckgo.com/?q=hello%20world"),
+  ("isSearch", AddressInput.isSearch("https://duckduckgo.com/?q=a")),
+  ("other engine", !AddressInput.isSearch(googleTemplate.replacingOccurrences(of: "%s", with: "a"))),
+  ("addresses", AddressInput.url(for: "example.com") == "https://example.com"),
+]
+AddressInput.searchTemplateSource = { googleTemplate }
+for (name, ok) in engineChecks where !ok {
+  failures += 1
+  print("FAIL the chosen engine: \(name)")
 }
 // Text on an accent fill is white or black, whichever has the higher WCAG contrast ratio against it.
 let foregroundCases: [(String, Bool)] = [
@@ -304,6 +356,6 @@ for text in ["https://example.com/a.html", "file://host.example/a.html"] where U
   print("FAIL document(fromOtherApp: \(text)) was taken")
 }
 try? FileManager.default.removeItem(at: folder)
-let total = linkCases.count + documentCases.count + 2 + removedCases.count + foregroundCases.count + 7 + paneCases.count + cases.count + displayCases.count + pillCases.count + partsCases.count + autocompleteCases.count + lookCases.count
+let total = linkCases.count + documentCases.count + 2 + templateCases.count + searchURLCases.count + engineChecks.count + foregroundCases.count + 7 + paneCases.count + cases.count + displayCases.count + pillCases.count + partsCases.count + autocompleteCases.count + lookCases.count
 print(failures == 0 ? "all \(total) passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)
