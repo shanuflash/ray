@@ -1151,8 +1151,8 @@ const checks = {
     assert(dw >= 30 && dw <= 70 && dh >= 14 && dh <= 26, `Done button is ${dw}x${dh}`);
     assert(dx >= row.x + row.w / 2 && dx + dw <= row.x + row.w, `Done at ${dx} outside the row's end (${row.x}..${row.x + row.w})`);
     assert(Math.abs(dy + dh / 2 - row.cy) <= 1.5, `Done at ${dy + dh / 2}, row middle ${row.cy}`);
-    // The field's text sits where the label's was (the field editor draws half a point lower than a label).
-    assert(state().sidebarFrames.renameLook === "0,0.0,-0.5", `rename field look ${state().sidebarFrames.renameLook}`);
+    // The field's text sits where the label's was: the field takes the label's frame.
+    assert(state().sidebarFrames.renameLook === "0,0.0,0.0", `rename field look ${state().sidebarFrames.renameLook}`);
     await command("type Work Done");
     await command("renamedone");
     await until("committed by Done", async () => { await command("state"); return folderRow().title === "Work Done" && state().sidebarFrames.renaming === ""; });
@@ -3882,7 +3882,7 @@ const checks = {
     await command(`rowaction rename ${t}`);
     await renaming(t);
     // The active row's close button hides under the field (it showed through Done), and the text doesn't move.
-    assert(state().sidebarFrames.renameLook === "0,0.0,-0.5", `rename field look ${state().sidebarFrames.renameLook}`);
+    assert(state().sidebarFrames.renameLook === "0,0.0,0.0", `rename field look ${state().sidebarFrames.renameLook}`);
     await command("type Reading");
     await command("enter");
     await named(t, "Reading", "today tab named");

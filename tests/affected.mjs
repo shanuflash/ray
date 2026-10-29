@@ -217,7 +217,8 @@ export const areas = {
 // one also runs these, in suite order.
 export const needs = {
   "folder-toggle": ["folder-create"],
-  "folder-rename": ["folder-create"],
+  // Its double click starts on an open folder, as folder-toggle leaves it.
+  "folder-rename": ["folder-create", "folder-toggle"],
   "folder-animation": ["folder-create"],
   "folder-drag-in": ["folder-create"],
   "folder-drag-folder": ["folder-create"],

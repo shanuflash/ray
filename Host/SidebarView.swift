@@ -1829,7 +1829,8 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     field.drawsBackground = false
     field.focusRingType = .none
     field.delegate = self
-    field.frame = editorFrame
+    // The label's own frame puts the field's text exactly where the label drew it (an inset moves it).
+    field.frame = title.frame
     addSubview(field)
     editor = field
     onRenamed = done
@@ -1895,10 +1896,6 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     closeButton.isHidden = isNewTab || !closable || !(hovered || selected) || editor != nil
   }
 
-  /// The rename field over the title: the same frame puts its text where the label's was, but the field editor
-  /// draws it half a point lower.
-  private var editorFrame: NSRect { title.frame.offsetBy(dx: 0, dy: -0.5) }
-
   override func layout() {
     super.layout()
     CATransaction.begin()
@@ -1923,7 +1920,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
       title.frame = NSRect(x: textX, y: mid - 15, width: textWidth, height: 18)
       subtitle.frame = NSRect(x: textX, y: mid + 1.5, width: textWidth, height: 14)
     }
-    editor?.frame = editorFrame
+    editor?.frame = title.frame
   }
 }
 
