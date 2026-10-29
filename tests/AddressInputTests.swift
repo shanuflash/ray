@@ -184,7 +184,7 @@ let paneCases: [(String, String?)] = [
   ("chrome://settings/privacy", nil),
   // Ray's own panes by name; the ones Chrome still draws (privacy, passwords, autofill, extensions, search) stay Chrome's.
   ("ray://settings/general", "general"), ("ray://settings/tabs", "tabs"), ("RAY://Settings/Shortcuts/", "shortcuts"),
-  ("ray://settings/about", "about"), ("ray://settings/passwords", nil), ("ray://settings/autofill", nil),
+  ("ray://settings/about", "about"), ("ray://settings/passwords", "passwords"), ("ray://settings/autofill", "autofill"),
   ("ray://settings/search", nil), ("ray://settings/tabs/x", nil),
   // Privacy: Chrome's Site settings pages and ray://settings/privacy; Chrome's Privacy and security page stays Chrome's.
   ("chrome://settings/content", "privacy"), ("chrome://settings/content/all", "privacy"),
@@ -193,6 +193,11 @@ let paneCases: [(String, String?)] = [
   ("chrome://settings/clearBrowserData", nil), ("chrome://settings/security", nil),
   // Extensions: ray://settings/extensions; chrome://extensions is Chrome's page.
   ("ray://settings/extensions", "extensions"), ("chrome://extensions", nil),
+  // Passwords and Autofill: Chrome's settings pages and its password manager page, any path of it.
+  ("chrome://settings/passwords", "passwords"), ("chrome://settings/addresses", "autofill"), ("chrome://settings/payments", "autofill"),
+  ("chrome://settings/autofill", "autofill"), ("chrome://password-manager", "passwords"), ("chrome://password-manager/passwords", "passwords"),
+  ("chrome://password-manager/settings?x=1", "passwords"), ("ray://password-manager/checkup", "passwords"),
+  ("https://password-manager/passwords", nil), ("chrome://user@password-manager/", nil), ("chrome://passwords-manager/", nil),
   ("chrome://settings/appearance/fonts", nil),
   ("chrome://extensions/appearance", nil),
   ("https://settings/appearance", nil),

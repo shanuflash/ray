@@ -309,6 +309,69 @@ async function resetSettings() {
   await command("state");
 }
 
+/** A hidden instance of its own (own data dir, DevTools port and pasteboard), for checks that need launch settings the
+ * shared one hasn't (RAY_REAUTH, RAY_TEST_SECRETS). `cmd` answers as `commandResult` does; `now()` logs and returns its
+ * state; `stop()` quits it (killed after 15 s) and deletes its data dir. */
+function ownInstance(name, env) {
+  const dir = mkdtempSync(join(tmpdir(), `ray-${name}-`));
+  const it = { dir, log: "", states: [], port: 10100 + Math.floor(Math.random() * 200) };
+  let partial = "";
+  it.proc = spawn(join(app, "Contents/MacOS/Ray"), [], {
+    env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_DATA_DIR: dir,
+      RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.${name}`,
+      RAY_REMOTE_DEBUGGING_PORT: String(it.port), RAY_START_URL: `${origin}/b`, ...env },
+    stdio: ["pipe", "ignore", "pipe"],
+  });
+  it.proc.stdin.on("error", () => {});
+  it.proc.stderr.setEncoding("utf8");
+  it.proc.stderr.on("data", (chunk) => {
+    it.log += chunk;
+    const lines = (partial + chunk).split("\n");
+    partial = lines.pop();
+    for (const line of lines) {
+      const at = line.indexOf(stateMarker);
+      if (at >= 0) it.states.push(JSON.parse(line.slice(at + stateMarker.length)));
+    }
+  });
+  it.exit = new Promise((r) => it.proc.on("exit", (code, signal) => r(code ?? signal)));
+  const tail = () => it.log.split("\n").filter((l) => l.trim()).slice(-6).join(" | ").slice(-1500);
+  it.cmd = async (line, ms = 15000) => {
+    const marker = `[ray-test] ${line} -> `;
+    const from = it.log.length;
+    it.proc.stdin.write(line + "\n");
+    try {
+      return await until(`command ${line}`, () => {
+        const at = it.log.indexOf(marker, from);
+        return at >= 0 ? it.log.slice(at + marker.length).split("\n")[0] : null;
+      }, ms);
+    } catch (error) { throw new Error(`${error.message}; its log: ${tail()}`); }
+  };
+  it.ok = async (line) => {
+    const result = await it.cmd(line);
+    assert(result === "ok", `${line}: ${result}`);
+  };
+  it.now = async () => {
+    await it.cmd("state");
+    return it.states.at(-1);
+  };
+  it.until = async (what, test, ms = 10000) => {
+    try {
+      return await until(what, async () => { const s = await it.now(); return test(s) ? s : null; }, ms, 150);
+    } catch (error) {
+      const s = it.states.at(-1) ?? {};
+      throw new Error(`${error.message}; passwords ${JSON.stringify(s.passwordsPane)}, autofill ${JSON.stringify(s.autofillPane)}`);
+    }
+  };
+  it.stop = async () => {
+    it.proc.stdin.write("menu quit\n");
+    const code = await Promise.race([it.exit, sleep(15000).then(() => "timeout")]);
+    if (code === "timeout") it.proc.kill("SIGKILL");
+    rmSync(it.dir, { recursive: true, force: true });
+    assert(code !== "timeout", `the ${name} instance didn't quit within 15 s`);
+  };
+  return it;
+}
+
 const checks = {
   async boot() {
     await until("first tab", () => tabFor("/a"));
@@ -1726,6 +1789,287 @@ const checks = {
       for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
     }
   },
+  async "settings-passwords"() {
+    // Settings › Passwords on instances of its own whose engine answers the OS re-auth at once (RAY_REAUTH; no Touch ID
+    // or password prompt, never the login keychain): locked by default, Unlock, the list, show and copy, add, edit and
+    // delete, Export behind re-auth, CSV import, and no password, username or site in the state log or stderr.
+    const hex = () => Math.random().toString(16).slice(2, 10);
+    const secrets = [`Fx-${hex()}-"quoted"\\slash`, `Fx-${hex()}-second`, `Fx-${hex()}-third`, `Fx-${hex()}-csv`];
+    const logins = [
+      { origin: "https://login.fixture.test", username: "fixture.user@example.test", password: secrets[0] },
+      { origin: "https://login.fixture.test", username: "fixture.renamed@example.test", password: secrets[1] },
+      // Typed without a scheme, with a path: kept as https://accounts.fixture.test.
+      { origin: "accounts.fixture.test/login", username: "second@example.test", password: secrets[2] },
+    ];
+    const env = { RAY_TEST_SECRETS: JSON.stringify({ logins }) };
+    const pane = (s) => s.passwordsPane;
+    const running = [];
+    const files = mkdtempSync(join(tmpdir(), "ray-passwords-files-"));
+    try {
+      // Denied: Unlock with a password saved stays locked, and Export writes nothing.
+      const denied = ownInstance("passwords-denied", { ...env, RAY_REAUTH: "denied" });
+      running.push(denied);
+      await until("window", async () => (await denied.cmd("state", 20000)) === "ok" && denied.states.length > 0, 25000);
+      await denied.ok("settings open passwords");
+      let s = await denied.until("passwords pane", (s) => s.settingsWindow.pane === "passwords");
+      assert(pane(s).locked && pane(s).count === 0, `not locked at first: ${JSON.stringify(pane(s))}`);
+      // With nothing saved the engine unlocks without asking (Chrome's rule), so a password can be added.
+      await denied.ok("passwords unlock");
+      await denied.until("unlocked (empty)", (s) => !pane(s).locked);
+      await denied.ok("passwords add 0");
+      await denied.until("one saved", (s) => pane(s).count === 1 && pane(s).last === "added");
+      await denied.ok("passwords lock");
+      s = await denied.until("locked", (s) => pane(s).locked);
+      assert(pane(s).count === 0 && pane(s).shown === 0, `locking kept the list: ${JSON.stringify(pane(s))}`);
+      await denied.ok("passwords unlock");
+      s = await denied.until("unlock denied", (s) => pane(s).last === "denied");
+      assert(pane(s).locked, "a denied Unlock unlocked");
+      const deniedFile = join(files, "denied.csv");
+      await denied.ok(`passwords export ${deniedFile}`);
+      await denied.until("export warning", (s) => pane(s).confirming === "exportPasswords");
+      await denied.ok("passwords confirm yes");
+      await denied.until("export refused", (s) => pane(s).export === "reauthFailed");
+      assert(!existsSync(deniedFile), "a denied export wrote the file");
+      await denied.stop();
+
+      // Granted.
+      const it = ownInstance("passwords", { ...env, RAY_REAUTH: "granted" });
+      running.push(it);
+      await until("window", async () => (await it.cmd("state", 20000)) === "ok" && it.states.length > 0, 25000);
+      await it.ok("settings open passwords");
+      s = await it.until("passwords pane", (s) => s.settingsWindow.pane === "passwords");
+      assert(pane(s).locked, "Passwords isn't locked at first");
+      assert(s.settingsWindow.rows.passwords.join() === "offerToSaveLogins,passwords.saved,passwords.more",
+        `rows ${s.settingsWindow.rows.passwords}`);
+      if (process.env.SNAP_DIR) await it.ok(`settings snap ${join(process.env.SNAP_DIR, "settings-passwords-locked.png")}`);
+      await it.ok("passwords unlock");
+      await it.until("unlocked", (s) => !pane(s).locked && pane(s).guardArmed);
+      await it.ok("passwords add 0");
+      await it.until("first added", (s) => pane(s).count === 1 && pane(s).last === "added");
+      await it.ok("passwords add 2");
+      s = await it.until("second added", (s) => pane(s).count === 2 && pane(s).last === "added");
+      // A site already saved for that username isn't saved twice.
+      await it.ok("passwords add 0");
+      s = await it.until("duplicate refused", (s) => pane(s).formError && pane(s).adding);
+      assert(pane(s).count === 2, "a duplicate was saved");
+      await it.ok("passwords close");
+      // Search: by site or username, every word.
+      await it.ok("passwords search fixture.user");
+      await it.until("search narrows", (s) => pane(s).shown === 1);
+      await it.ok("passwords search nothing-like-it");
+      await it.until("search empties", (s) => pane(s).shown === 0);
+      await it.ok("passwords search");
+      await it.until("search cleared", (s) => pane(s).shown === 2);
+      // Sorted by site: accounts.fixture.test, then login.fixture.test.
+      await it.ok("passwords open 1");
+      await it.until("row open", (s) => pane(s).open === 1);
+      assert((await it.cmd("passwords revealcheck 0")) === "hidden", "the password showed before Show");
+      await it.ok("passwords reveal");
+      await it.until("revealed", (s) => pane(s).revealed);
+      assert((await it.cmd("passwords revealcheck 0")) === "match", "Show didn't show the saved password");
+      if (process.env.SNAP_DIR) {
+        await it.ok("passwords reveal");
+        await it.until("hidden again", (s) => !pane(s).revealed);
+        await sleep(200);
+        await it.ok(`settings snap ${join(process.env.SNAP_DIR, "settings-passwords-unlocked.png")}`);
+        await it.ok("passwords reveal");
+        await it.until("revealed again", (s) => pane(s).revealed);
+      }
+      // Copy: the password concealed and cleared later (only if still there); the username plain.
+      await it.ok("passwords copy password");
+      let board = JSON.parse(await it.cmd("passwords pasteboard 0"));
+      assert(board.password && board.concealed && board.clearPending, `copied password ${JSON.stringify(board)}`);
+      await it.ok("passwords clearnow");
+      board = JSON.parse(await it.cmd("passwords pasteboard 0"));
+      assert(board.empty && !board.clearPending, `the password stayed on the pasteboard ${JSON.stringify(board)}`);
+      await it.ok("passwords copy user");
+      board = JSON.parse(await it.cmd("passwords pasteboard 0"));
+      assert(board.username && !board.concealed && !board.clearPending, `copied username ${JSON.stringify(board)}`);
+      // Edit: a new username and password.
+      await it.ok("passwords edit 1");
+      s = await it.until("edited", (s) => pane(s).last === "edited" && !pane(s).editing);
+      assert(pane(s).count === 2 && !pane(s).revealed, `after the edit ${JSON.stringify(pane(s))}`);
+      await it.ok("passwords reveal");
+      await it.until("revealed after edit", (s) => pane(s).revealed);
+      assert((await it.cmd("passwords revealcheck 1")) === "match", "the edit didn't change the password");
+      // Delete asks first; Cancel keeps it.
+      await it.ok("passwords remove");
+      await it.until("delete asks", (s) => pane(s).confirming === "removePassword");
+      await it.ok("passwords confirm no");
+      s = await it.until("kept", (s) => pane(s).confirming === null);
+      assert(pane(s).count === 2, "Cancel deleted it");
+      await it.ok("passwords remove");
+      await it.until("delete asks again", (s) => pane(s).confirming === "removePassword");
+      await it.ok("passwords confirm yes");
+      s = await it.until("deleted", (s) => pane(s).count === 1 && pane(s).last === "removed");
+      assert(pane(s).open === -1 && !pane(s).revealed, "the deleted row stayed open");
+      // Five idle minutes (fired now) lock it and forget the list; so does closing the window.
+      await it.ok("passwords idle");
+      s = await it.until("idle lock", (s) => pane(s).locked);
+      assert(pane(s).count === 0 && !pane(s).guardArmed, `the idle lock kept something ${JSON.stringify(pane(s))}`);
+      await it.ok("passwords unlock");
+      await it.until("unlocked again", (s) => !pane(s).locked && pane(s).count === 1);
+      await it.ok("settings close");
+      s = await it.until("window closed", (s) => !s.settingsWindow.open);
+      assert(pane(s).locked && pane(s).count === 0, "closing Settings left Passwords unlocked");
+      // Export: a warning, then the engine's re-auth, then the file (whatever is saved, as plain text).
+      await it.ok("settings open passwords");
+      const exported = join(files, "Ray Passwords.csv");
+      await it.ok(`passwords export ${exported}`);
+      await it.until("export warning", (s) => pane(s).confirming === "exportPasswords" && pane(s).moreOpen);
+      await it.ok("passwords confirm yes");
+      await it.until("exported", (s) => pane(s).export === "succeeded");
+      const csv = readFileSync(exported, "utf8");
+      assert(/^name,url,username,password/.test(csv) && csv.includes(secrets[2]) && csv.includes("second@example.test"),
+        "the export doesn't hold the saved password");
+      rmSync(exported);
+      // Import a CSV (Chrome's columns): a new login comes in, one already saved counts as there.
+      const imported = join(files, "import.csv");
+      writeFileSync(imported, `name,url,username,password,note\nfixture,https://csv.fixture.test/,csv@example.test,${secrets[3]},\n` +
+        `accounts,https://accounts.fixture.test/,second@example.test,${secrets[2]},\n`);
+      await it.ok(`passwords importcsv ${imported}`);
+      s = await it.until("imported", (s) => !pane(s).importing && pane(s).imported.saved !== undefined);
+      assert(pane(s).imported.saved === 1 && pane(s).imported.existing === 1, `import ${JSON.stringify(pane(s).imported)}`);
+      await it.ok("passwords unlock");
+      await it.until("imported login listed", (s) => !pane(s).locked && pane(s).count === 2);
+      if (process.env.SNAP_DIR) await it.ok(`settings snap ${join(process.env.SNAP_DIR, "settings-passwords-more.png")}`);
+
+      // Nothing secret anywhere in the logs: no password in stderr; no username or site in any state line.
+      for (const each of [denied, it]) {
+        // As written, and as JSON writes it (the state log escapes the quotes and the backslash).
+        for (const secret of secrets) for (const form of [secret, JSON.stringify(secret).slice(1, -1)]) assert(!each.log.includes(form), "a password is in stderr");
+        const logged = JSON.stringify(each.states.map((s) => ({ passwordsPane: s.passwordsPane, settingsWindow: s.settingsWindow })));
+        for (const word of ["fixture.user", "fixture.renamed", "second@example", "csv@example", "fixture.test"])
+          assert(!logged.includes(word), `the state log names "${word}"`);
+      }
+      // The hook that answers re-auth isn't in Ray.app at all (only RayTests.app passes --ray-background).
+      assert(!readFileSync(join(root, "build/Ray.app/Contents/MacOS/Ray")).includes("--ray-background"), "Ray.app has the re-auth test hook");
+      assert(readFileSync(join(app, "Contents/MacOS/Ray")).includes("--ray-background"), "the test app lost its re-auth hook");
+      await it.stop();
+    } finally {
+      for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
+      for (const it of running) rmSync(it.dir, { recursive: true, force: true });
+      rmSync(files, { recursive: true, force: true });
+    }
+  },
+  async "settings-autofill"() {
+    // Settings › Autofill on instances of its own (RAY_REAUTH): addresses and cards added, edited and deleted (asked
+    // first), a card's number shown only through the engine's re-auth, and no number, name or address in the logs.
+    const number = "4242 4242 4242 4242";
+    const fixtures = {
+      addresses: [
+        { name: "Fixture Person", street: "1 Fixture Way", city: "Testville", postalCode: "12345", country: "United States",
+          phone: "+1 555 0100", email: "fixture.person@example.test" },
+        { name: "Renamed Person" },
+      ],
+      cards: [
+        { name: "Fixture Holder", number, month: 8, year: 2031 },
+        { name: "Renamed Holder" },
+        { name: "Bad Number", number: "4242 4242 4242 4241", month: 1, year: 30 },
+      ],
+    };
+    const env = { RAY_TEST_SECRETS: JSON.stringify(fixtures) };
+    const pane = (s) => s.autofillPane;
+    const running = [];
+    try {
+      // Denied: the number stays hidden.
+      const denied = ownInstance("autofill-denied", { ...env, RAY_REAUTH: "denied" });
+      running.push(denied);
+      await until("window", async () => (await denied.cmd("state", 20000)) === "ok" && denied.states.length > 0, 25000);
+      await denied.ok("settings open autofill");
+      await denied.until("autofill pane", (s) => s.settingsWindow.pane === "autofill");
+      await denied.ok("autofill addcard 0");
+      await denied.until("card added", (s) => pane(s).cards === 1);
+      await denied.ok("autofill open card 0");
+      await denied.ok("autofill reveal");
+      let s = await denied.until("reveal denied", (s) => pane(s).lastCard === "denied");
+      assert(!pane(s).revealed && (await denied.cmd("autofill revealcheck 0")) === "hidden", "a denied re-auth showed the number");
+      await denied.stop();
+
+      const it = ownInstance("autofill", { ...env, RAY_REAUTH: "granted" });
+      running.push(it);
+      await until("window", async () => (await it.cmd("state", 20000)) === "ok" && it.states.length > 0, 25000);
+      await it.ok("settings open autofill");
+      s = await it.until("autofill pane", (s) => s.settingsWindow.pane === "autofill");
+      assert(pane(s).addresses === 0 && pane(s).cards === 0, `a new profile has autofill ${JSON.stringify(pane(s))}`);
+      assert(s.settingsWindow.rows.autofill.join() === "autofillAddresses,autofillCards,autofill.addresses,autofill.cards",
+        `rows ${s.settingsWindow.rows.autofill}`);
+      // Addresses: add, edit, delete (asked first).
+      await it.ok("autofill addaddress 0");
+      s = await it.until("address added", (s) => pane(s).addresses === 1 && pane(s).lastAddress === "added");
+      const addressId = pane(s).addressIds[0];
+      await it.ok("autofill open address 0");
+      await it.until("address open", (s) => pane(s).openAddress === addressId);
+      await it.ok("autofill edit 1");
+      s = await it.until("address edited", (s) => pane(s).lastAddress === "saved" && pane(s).openAddress === null);
+      assert(pane(s).addresses === 1 && pane(s).addressIds[0] === addressId, `the edit added an address ${JSON.stringify(pane(s))}`);
+      // Cards: add (a bad number refused), show through re-auth, copy, edit, delete.
+      await it.ok("autofill addcard 2");
+      s = await it.until("bad number refused", (s) => pane(s).formError && pane(s).addingCard);
+      assert(pane(s).cards === 0, "a card with a bad number was saved");
+      await it.ok("autofill close");
+      await it.ok("autofill addcard 0");
+      s = await it.until("card added", (s) => pane(s).cards === 1 && pane(s).lastCard === "added");
+      const cardId = pane(s).cardIds[0];
+      if (process.env.SNAP_DIR) {
+        await it.ok("autofill close");
+        await it.ok(`settings snap ${join(process.env.SNAP_DIR, "settings-autofill.png")}`);
+        await it.ok("autofill open address 0");
+        await it.until("address open again", (s) => pane(s).openAddress === addressId);
+        await sleep(200);
+        await it.ok(`settings snap ${join(process.env.SNAP_DIR, "settings-autofill-address.png")}`);
+        await it.ok("autofill close");
+      }
+      await it.ok("autofill open card 0");
+      await it.until("card open", (s) => pane(s).openCard === cardId);
+      assert((await it.cmd("autofill revealcheck 0")) === "hidden", "the number showed before Show");
+      await it.ok("autofill reveal");
+      await it.until("number shown", (s) => pane(s).revealed);
+      if (process.env.SNAP_DIR) {
+        await it.ok("autofill reveal");
+        await it.until("number hidden", (s) => !pane(s).revealed);
+        await sleep(200);
+        await it.ok(`settings snap ${join(process.env.SNAP_DIR, "settings-autofill-card.png")}`);
+        await it.ok("autofill reveal");
+        await it.until("number shown again", (s) => pane(s).revealed);
+      }
+      assert((await it.cmd("autofill revealcheck 0")) === "match", "Show didn't show the card's number");
+      await it.ok("autofill copy");
+      const board = JSON.parse(await it.cmd("autofill pasteboard 0"));
+      assert(board.number && board.concealed && board.clearPending, `copied number ${JSON.stringify(board)}`);
+      await it.ok("passwords clearnow");
+      // Closing the window hides the number.
+      await it.ok("settings close");
+      s = await it.until("window closed", (s) => !s.settingsWindow.open);
+      assert(!pane(s).revealed, "closing Settings left the card number showing");
+      await it.ok("settings open autofill");
+      await it.ok("autofill open card 0");
+      await it.until("card open again", (s) => pane(s).openCard === cardId);
+      await it.ok("autofill edit 1");
+      s = await it.until("card edited", (s) => pane(s).lastCard === "saved" && !pane(s).editingCard);
+      assert(pane(s).cards === 1 && pane(s).cardIds[0] === cardId, `the edit added a card ${JSON.stringify(pane(s))}`);
+      await it.ok("autofill open card 0");
+      await it.ok("autofill remove");
+      await it.until("delete asks", (s) => pane(s).confirming === "removeCard");
+      await it.ok("autofill confirm yes");
+      await it.until("card deleted", (s) => pane(s).cards === 0 && pane(s).lastCard === "removed");
+      await it.ok("autofill open address 0");
+      await it.ok("autofill remove");
+      await it.until("address delete asks", (s) => pane(s).confirming === "removeAddress");
+      await it.ok("autofill confirm yes");
+      await it.until("address deleted", (s) => pane(s).addresses === 0 && pane(s).lastAddress === "removed");
+
+      for (const each of [denied, it]) {
+        for (const secret of ["4242424242424242", number]) assert(!each.log.includes(secret), "a card number is in stderr");
+        const logged = JSON.stringify(each.states.map((s) => s.autofillPane));
+        for (const word of ["Fixture", "Renamed", "Testville", "fixture.person", "555"]) assert(!logged.includes(word), `the state log names "${word}"`);
+      }
+      await it.stop();
+    } finally {
+      for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
+      for (const it of running) rmSync(it.dir, { recursive: true, force: true });
+    }
+  },
   async "import-browser"() {
     // ImportSession end to end on its own hidden instances: the importer's fixtures (Importer/fixtures/home) stand in
     // for ~/Library and the fixture secret for the Keychain (RAY_IMPORT_SECRET), so no real profile and no Keychain
@@ -2703,7 +3047,7 @@ const checks = {
     await command("settings asapp on");
     await command("settings open search");
     await until("Ray.app's panes", async () => { await command("state"); return win().open && win().looksLikeRayApp; });
-    assert(win().panes.join() === "general,tabs,appearance,privacy,extensions,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
+    assert(win().panes.join() === "general,tabs,appearance,privacy,passwords,autofill,extensions,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
     assert(win().pane === "general", `Search (empty) opened as ${win().pane}`);
     assert(!win().rows.appearance.includes("appearanceMode") && !win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
     if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-as-app.png")}`);

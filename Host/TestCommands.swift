@@ -543,6 +543,12 @@ enum TestCommands {
       result = CloseWarnings.command(argument)
     case "privacy": result = PrivacyPaneContent.test(argument)
     case "extpane": result = ExtensionsPaneContent.test(argument)
+    case "passwords":
+      guard let answer = PasswordsPaneContent.shared.test(line, argument) else { return }
+      result = answer
+    case "autofill":
+      guard let answer = AutofillPaneContent.shared.test(line, argument) else { return }
+      result = answer
     case "dialogs":
       // Chrome's tab-modal dialogs: their own windows, beside the browser window. Frames in screen points.
       let browser = window

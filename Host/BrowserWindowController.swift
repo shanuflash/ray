@@ -2114,7 +2114,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         > (root.subviews.firstIndex(of: toolbar) ?? 0),
       "installPrompt": extensions.promptState ?? NSNull(),
       "displayAsleep": CGDisplayIsAsleep(window.screen?.displayID ?? CGMainDisplayID()) != 0,
-      "pasteboard": Self.pasteboard.string(forType: .string) ?? NSNull(),
+      // A password or card number copied from Settings is concealed: never in this log.
+      "pasteboard": (SettingsPasteboard.isConcealed ? "<concealed>" : Self.pasteboard.string(forType: .string)) ?? NSNull(),
       "toast": toast.message,
       "toastTruncated": toast.truncated,
       "realLightsHidden": [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
@@ -2153,6 +2154,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     func tabID(_ entry: SidebarEntry) -> Any { entry.isLive ? Int(entry.tab!.tabId) : NSNull() }
     state["settings"] = RaySettings.shared.debug
     state["settingsWindow"] = SettingsWindowController.shared.debug
+    state["passwordsPane"] = PasswordsPaneContent.shared.debug
+    state["autofillPane"] = AutofillPaneContent.shared.debug
     state["updater"] = Updater.shared.debug
     state["general"] = GeneralSystem.shared.debug
     state["onboarding"] = onboarding?.debug ?? NSNull()

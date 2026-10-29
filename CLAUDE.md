@@ -89,8 +89,8 @@ publicly or create accounts.
   in `AddressInput.nativeSettingsPaths` once it replaces Chrome's page; the window's layout code doesn't change
   (example: `SettingsAbout.swift`). `AddressInput.nativeSettingsPane(for:)` recognises the Appearance address (and
   Profiles) plus General, Tabs, Shortcuts and About: typed or chosen ones open the window and never load; Chrome's
-  page navigating itself there goes back. Privacy, Passwords, Autofill, Extensions and Search stay Chrome's pages
-  until their panes land.
+  page navigating itself there goes back. Privacy, Extensions and Search stay Chrome's pages until their panes
+  land; Passwords and Autofill are Ray's (below).
   Settings that act elsewhere: minimal URL and loading progress (`PageToolbar`, `PageContainerView.showsProgress`),
   new tab position (`insertToday`), ⌃Tab in recent order (`cycleTabWithControl`, settled by a `flagsChanged` monitor
   when Control is released), ⇧⌘C and ⌘S (`MainMenu.applyShortcutSettings` removes their key equivalents so the page
@@ -124,6 +124,23 @@ publicly or create accounts.
   full origin or the extension's ID; `SettingsPages.open` uses the normal window). Test commands `privacy …` and
   `extpane …` answer with the pane's lists as JSON and press its controls (checks `settings-privacy`,
   `settings-extensions`).
+- Settings › Passwords (`SettingsPasswords.swift`) and › Autofill (`SettingsAutofill.swift`), on the engine's
+  `ac_passwords_*` and `ac_autofill_*` calls; `SettingsDataViews.swift` holds their pieces (`SettingsStack`, item rows,
+  inline cards and forms, `SettingsConfirm` sheets, `SettingsPasteboard`, `SecretJSON`, `SettingsDataGuard`).
+  Passwords: locked until Unlock (`ac_passwords_unlock`, the engine's Touch ID or login password, `ac_reauth.cc`);
+  `SettingsDataGuard` locks it (and hides a shown card number) when the Settings window closes, after 5 min without a
+  click or key in it (Chrome's `kPasswordManagerAuthValidity`), on sleep or a user switch. Unlocked: search, a row
+  opens its details (show/copy through `ac_passwords_reveal`, edit through `ac_passwords_update`, both re-authing per
+  the engine; delete after a sheet), Add…, Never saved; under More, CSV import (the importer's `PasswordsCSV` +
+  `ac_passwords_add`) and Export… (a warning, a save panel, `ac_passwords_export`, which always re-auths). A copied
+  password or card number is concealed (`org.nspasteboard.ConcealedType`) and cleared after 120 s if unchanged
+  (Chrome's `kClipboardClearDelay`). Autofill: addresses (edit inline, country by name or code) and cards (number
+  shown only through `ac_autofill_card_number`'s re-auth, Luhn-checked on add). Secrets go to the engine only as
+  `SecretJSON` through `EngineCalls.callWithSecret`; the state log (`passwordsPane`, `autofillPane`) has counts and
+  ids, and its `pasteboard` says `<concealed>` for them. "Offer to save passwords" and "Save and fill
+  addresses/cards" are unbuilt (no prompts yet). Routes: chrome://settings/passwords, /autofill, /addresses,
+  /payments and chrome://password-manager (any path; `AddressInput.nativePages`). Checks `settings-passwords`,
+  `settings-autofill`.
 - Page zoom: the engine keeps zoom per host and `tab.zoomFactor = x` writes that host's level, so Ray applies the
   default zoom itself: on a committed navigation (next run-loop turn, after the engine's own zoom) to a host the user
   hasn't zoomed, and on every tab when the default changes. `tabDidChangeZoom` on a settled host that isn't the
@@ -303,6 +320,11 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   run everything.
 - Animations: record what happened app-side (e.g. `navigationSteps` in the state log) instead of polling; a command
   round trip is slower than a 0.26 s spring.
+- OS re-auth (Touch ID or the login password) in tests: `RAY_REAUTH=granted|denied` on a hidden instance makes
+  main.swift pass `--ray-background` and `--ray-test=reauth=…` (compiled only into the test app), and the engine
+  answers at once with no prompt. A test instance without it never makes a re-auth call (`settingsReauthAllowed`).
+  Secrets for the panes' test commands come from `RAY_TEST_SECRETS` (JSON, by index), never a command line, which
+  stderr echoes. `ownInstance(name, env)` in checks.mjs starts such an instance on its own data dir.
 - Multi-window checks: `state()` is whichever window logged last; poll `command("state")`, which logs the current one.
 - Known environment noise. Spring checks skip while the display sleeps (`needsFrames`). Some checks only run when the
   hidden test window happens to land on the visible desktop: `switch-back-latency` then fails (on older commits

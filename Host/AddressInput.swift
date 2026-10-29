@@ -50,6 +50,10 @@ enum AddressInput {
 
     "tabs": "tabs",
 
+    "passwords": "passwords",
+
+    "autofill": "autofill", "addresses": "autofill", "payments": "autofill",
+
     "shortcuts": "shortcuts",
 
     "about": "about",
@@ -85,9 +89,22 @@ enum AddressInput {
   /// The pane of Ray's own Settings window that a `chrome://settings/<page>` (or `ray://`) address stands for; Chrome's
   /// other settings pages still load as they are.
   static func nativeSettingsPane(for url: String) -> String? {
-    guard let path = settingsPath(of: url) else { return nil }
+    guard let path = settingsPath(of: url) else { return nativePagePane(of: url) }
     let ray = url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix(internalScheme + "://")
-    return nativeSettingsPaths[ray ? raySettingsAliases[path] ?? path : path]
+    return nativeSettingsPaths[ray ? raySettingsAliases[path] ?? path : path] ?? nativePagePane(of: url)
+  }
+
+  /// Engine pages other than settings that a pane of the window stands for, by host, whatever their path:
+  /// chrome://password-manager (and its /passwords, /checkup, /settings) is Settings › Passwords.
+  private static let nativePages: [String: String] = [
+    "password-manager": "passwords",
+  ]
+
+  private static func nativePagePane(of url: String) -> String? {
+    guard let components = URLComponents(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
+          let scheme = components.scheme?.lowercased(), scheme == "chrome" || scheme == internalScheme,
+          components.user == nil, components.password == nil, let host = components.host?.lowercased() else { return nil }
+    return nativePages[host]
   }
 
   /// Where the settings page goes for a page it no longer has (see `removedSettingsPaths`).

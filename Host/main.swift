@@ -64,8 +64,19 @@ if safeStorage.mode == .mock || TestEnvironment.isTestBuild {
   // Test builds always pass it: the engine's test switches (its file keychain) only work on the mock keychain.
   engineArguments.append("--use-mock-keychain")
 }
-if TestEnvironment.isTestBuild, safeStorage.mode == .keychain, let base = TestEnvironment["RAY_DATA_DIR"] {
-  engineArguments += ["--ray-data-dir=\(base)", "--ray-test=keychain=file"]
+// The engine's own test switches (`--ray-test`, honoured only on a scratch data dir and the mock keychain).
+var engineTests: [String] = []
+if TestEnvironment.isTestBuild, safeStorage.mode == .keychain { engineTests.append("keychain=file") }
+#if RAY_TEST_HOOKS
+// RAY_REAUTH=granted|denied: the engine's OS re-auth (Touch ID or the login password, for saved passwords and card
+// numbers) answers at once in a hidden instance, with no prompt (engine/chromium/src/chrome/browser/ray/ac_reauth.cc).
+if launchedInBackground, let reauth = TestEnvironment["RAY_REAUTH"], reauth == "granted" || reauth == "denied" {
+  engineTests.append("reauth=\(reauth)")
+  engineArguments.append("--ray-background")
+}
+#endif
+if !engineTests.isEmpty, let base = TestEnvironment["RAY_DATA_DIR"] {
+  engineArguments += ["--ray-data-dir=\(base)", "--ray-test=" + engineTests.joined(separator: ",")]
 }
 if TestEnvironment["RAY_ENGINE_FEATURES"] == "none" {
   engineArguments.removeAll { $0.hasPrefix("--enable-features=") }

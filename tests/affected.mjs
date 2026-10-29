@@ -26,6 +26,7 @@ const settings = ["settings-window", "settings-catalog", "settings-minimal-url",
 // Settings › General (SettingsGeneral.swift, CloseWarnings.swift): its pane, the two warnings and Start fresh.
 settings.push("settings-general", "warn-before-quitting", "warn-before-closing-window");
 settings.push("settings-privacy", "settings-extensions");
+settings.push("settings-passwords", "settings-autofill");
 // What a setting's value or its change notice reaches: the settings checks, the welcome (theme, keys), and the
 // features they drive (address bar, loading, site controls' zoom reset, ⇧⌘C, ⌘S, menu keys in the command bar).
 const settingReaders = [...settings, "onboarding", "page-toolbar", "page-loading", "load-sweep-once", "address-fragment",
@@ -148,6 +149,10 @@ export const areas = {
   "Host/SettingsPrivacy.swift": ["settings-privacy", "settings-panes", "settings-search", "site-controls"],
   "Host/SettingsExtensions.swift": ["settings-extensions", "settings-panes", "settings-search", "extensions"],
   "Host/SettingsDataRows.swift": ["settings-privacy", "settings-extensions"],
+  // Settings › Passwords and › Autofill (on the engine's ac_passwords_* and ac_autofill_*), and their shared pieces.
+  "Host/SettingsPasswords.swift": ["settings-passwords", "settings-panes", "settings-search"],
+  "Host/SettingsAutofill.swift": ["settings-autofill", "settings-panes", "settings-search"],
+  "Host/SettingsDataViews.swift": ["settings-passwords", "settings-autofill"],
   "Host/SettingsControls.swift": [...settings, "onboarding"],
   "Host/MiniRayWindow.swift": ["settings-panes", "settings-window"],
   "Host/SettingsSearch.swift": [...settings, ...commandBar],

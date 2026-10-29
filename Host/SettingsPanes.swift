@@ -115,9 +115,9 @@ enum SettingsPanes {
 
     case .privacy: return PrivacyPaneContent()
 
-    case .passwords: return nil
+    case .passwords: return PasswordsPaneContent.shared
 
-    case .autofill: return nil
+    case .autofill: return AutofillPaneContent.shared
 
     case .extensions: return ExtensionsPaneContent()
 
