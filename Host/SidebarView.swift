@@ -923,6 +923,7 @@ final class SidebarView: NSView {
     frames["hidden"] = shownViews.filter { view, _ in view.isHidden || (view as? SidebarRowView)?.collapsing == true }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["litFolder"] = zip(pinnedRows, pinned).first { $0.0.dropTarget }?.1.id.uuidString ?? ""
     frames["renaming"] = renameRows.first { $0.0.isRenaming }?.1.id.uuidString ?? ""
+    frames["renameLook"] = renameRows.lazy.compactMap { $0.0.renameLook }.first ?? ""
     if let done = renameRows.lazy.compactMap({ $0.0.doneButtonFrame }).first {
       frames["renameDone"] = String(format: "%.1f,%.1f,%.1f,%.1f", done.minX, height - done.maxY, done.width, done.height)
     }
@@ -1828,12 +1829,13 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     field.drawsBackground = false
     field.focusRingType = .none
     field.delegate = self
-    field.frame = title.frame.insetBy(dx: -2, dy: 0)
+    field.frame = editorFrame
     addSubview(field)
     editor = field
     onRenamed = done
     title.isHidden = true
     chevron.isHidden = true
+    updateClose()
     addSubview(doneButton)
     needsLayout = true
     layoutSubtreeIfNeeded()
@@ -1845,6 +1847,13 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
 
   /// The Done button's frame in window coordinates (top-left origin is the caller's job), nil when not renaming.
   var doneButtonFrame: NSRect? { editor == nil ? nil : doneButton.convert(doneButton.bounds, to: nil) }
+
+  /// For tests: "close,dx,dy" while renaming: whether the close button shows, and the field's offset from the label.
+  var renameLook: String? {
+    guard let editor else { return nil }
+    return String(format: "%d,%.1f,%.1f", closeButton.isHidden ? 0 : 1, editor.frame.minX - title.frame.minX,
+                  editor.frame.minY - title.frame.minY)
+  }
 
   /// What a click on Done does: keeps the typed name. For tests too.
   @objc func pressDone() {
@@ -1859,6 +1868,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     doneButton.removeFromSuperview()
     title.isHidden = false
     chevron.isHidden = !isFolderRow
+    updateClose()
     needsLayout = true
     let done = onRenamed
     onRenamed = nil
@@ -1882,8 +1892,12 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   }
 
   private func updateClose() {
-    closeButton.isHidden = isNewTab || !closable || !(hovered || selected)
+    closeButton.isHidden = isNewTab || !closable || !(hovered || selected) || editor != nil
   }
+
+  /// The rename field over the title: the same frame puts its text where the label's was, but the field editor
+  /// draws it half a point lower.
+  private var editorFrame: NSRect { title.frame.offsetBy(dx: 0, dy: -0.5) }
 
   override func layout() {
     super.layout()
@@ -1909,7 +1923,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
       title.frame = NSRect(x: textX, y: mid - 15, width: textWidth, height: 18)
       subtitle.frame = NSRect(x: textX, y: mid + 1.5, width: textWidth, height: 14)
     }
-    editor?.frame = title.frame.insetBy(dx: -2, dy: 0)
+    editor?.frame = editorFrame
   }
 }
 
