@@ -422,6 +422,10 @@ final class JumpCloudRelay {
   private var relay: Relay?
   /// When each tab's relays started, for the loop guard.
   private var relays: [Int32: [TimeInterval]] = [:]
+  /// The "JumpCloud Go works in Ray" note was shown this launch (with the relay off).
+  private var noticeShown = false
+  /// Times it was shown (the state log; at most once a launch).
+  private var notices = 0
   private var setupOpen = false
   private var terminating: NSObjectProtocol?
 
@@ -488,15 +492,37 @@ final class JumpCloudRelay {
 
   /// A normal tab's main frame committed a new document (BrowserWindowController.tabDidCommitDocument).
   func documentCommitted(_ tab: RayCoreTab, in controller: BrowserWindowController) {
-    guard RaySettings.shared[.jumpCloudRelay], !controller.isPrivate, tab.profile?.offTheRecord != true,
+    guard !controller.isPrivate, tab.profile?.offTheRecord != true,
+          RaySettings.shared[.jumpCloudRelay] || !noticeShown,
           let match = JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) else { return }
     // Give the page a moment: signed in already, JumpCloud's script moves the tab on to the console by itself. Signed
     // out, the page may still rewrite its own address (a step, a query), so only reaching the console counts.
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleDelay) { [weak self, weak tab, weak controller] in
       guard let self, let tab, let controller, !tab.closed, tab.committedOrigin == match.origin,
             !JumpCloudLogin.reachedConsole(tab.url) else { return }
+      guard RaySettings.shared[.jumpCloudRelay] else { return self.showNotice(in: controller) }
       self.trigger(match, tab: tab, controller: controller)
     }
+  }
+
+  /// The relay is off and the user is about to sign in to JumpCloud: say once per launch that Ray can do JumpCloud
+  /// Go, with a button to the setting (Settings › Passwords, its row flashing).
+  private func showNotice(in controller: BrowserWindowController) {
+    guard !noticeShown else { return }
+    noticeShown = true
+    notices += 1
+    controller.showToast("JumpCloud Go works in Ray: turn it on in Settings", symbol: "gearshape", duration: 8) {
+      [weak self] in self?.openSetting()
+    }
+    changed()
+  }
+
+  /// Settings › Passwords at the relay's switch.
+  func openSetting() {
+    let key = AnySettingKey.jumpCloudRelay
+    SettingsWindowController.shared.reveal(SettingsTarget(
+      kind: .setting, pane: .passwords, anchor: key.id, title: key.ui.title, caption: "Passwords › Signing in",
+      detail: key.ui.detail, keywords: key.ui.keywords, group: SettingGroup.signIn.title ?? ""))
   }
 
   /// The tab stayed on the login page: relay, unless one is running or this tab keeps coming back.
@@ -915,6 +941,7 @@ final class JumpCloudRelay {
     let permissions = (try? FileManager.default.attributesOfItem(atPath: directory))?[.posixPermissions] as? NSNumber
     return [
       "state": state, "launches": launches, "lastResult": lastResult, "cookiesImported": cookiesImported,
+      "notices": notices,
       "chromeRunning": chrome.map { !$0.gone } ?? false, "pid": chrome.map { Int($0.pid) } ?? NSNull(),
       "arguments": lastArguments, "directory": directory,
       "directoryMode": permissions.map { String($0.intValue, radix: 8) } ?? NSNull(),

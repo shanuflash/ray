@@ -3419,10 +3419,21 @@ const checks = {
       await until("stale cookie", async () => (await rayCookies()).some((c) => c.name === "jcsession" && c.value === "stale"));
       assert((await relay()).launches === 0 && (await relay()).lastResult === "none", "the relay started on its own");
 
-      // Off (the default): the login page loads in Ray and nothing starts.
+      // Off (the default): the login page loads in Ray and nothing starts, but a note says Ray can do JumpCloud Go,
+      // once per launch; its button opens Settings › Passwords at the switch, flashing it.
       await goTo("/login?n=off");
-      await sleep(1000);
+      await until("off note", async () => (await now()).toast.includes("JumpCloud Go works in Ray"), 6000, 50);
       assert((await relay()).launches === 0 && lines("launches.jsonl").length === 0, "Chrome started with the setting off");
+      assert(latest().jumpCloudRelay.notices === 1, "the off note isn't recorded");
+      await ok("jumpcloud opensetting");
+      await until("Passwords at the switch", async () => {
+        const w = (await now()).settingsWindow;
+        return w.open && w.pane === "passwords" && (w.flashing === "jumpCloudRelay" || w.lastFlash === "jumpCloudRelay");
+      }, 6000);
+      await ok("settings close");
+      await goTo("/login?n=off2");
+      await sleep(2500);
+      assert((await relay()).notices === 1, "the off note showed twice in one launch");
 
       // On, without JumpCloud Go in Ray's Chrome profile: a note pointing to Set Up, no Chrome.
       await ok("setting jumpCloudRelay on");
