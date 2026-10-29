@@ -329,7 +329,7 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
 - Every wait has a deadline.
 - Verify before calling something done: build, run hidden, check over DevTools (port) and the stderr log; say what
   still needs a visual check.
-- UI hot paths (sidebar, tab rows, window chrome) are AppKit + Core Animation, never SwiftUI. Animations run on
+- UI hot paths (sidebar, tab rows, window chrome) and Settings are AppKit + Core Animation, never SwiftUI. Animations run on
   layers, not main-thread timers. A tab switch shows the page before any store update.
 - No WebKit, no Ardia performance messages in the page script. Peek and a built-in content blocker are open
   decisions (PLAN.md, "Open decisions"): don't build either until the owner decides.

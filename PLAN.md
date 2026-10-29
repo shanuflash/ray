@@ -54,7 +54,6 @@ Recorded for the owner to decide. Don't act on them until they do.
 | Name | "Ray" is hard to search: it collides with ray-project/ray, Raycast and Spatie Ray. Keep it, or rename before launch? |
 | Peek | Reconsidering (2026-10-29): Arc's link preview may be needed for Arc's feel. Bring back Ardia's engine hook, or build it on plain tabs? Until decided, "No" below stands. |
 | Content blocker | Reconsidering (2026-10-29): a built-in blocker may be needed so switching from Arc needs no extension. Ardia's own uBlock Origin with its navigation hold (still in the engine, idle), or uBlock Origin Lite preinstalled? Until decided, "None built in" below stands. |
-| Settings toolkit | The settings revamp (section 13): AppKit, like the rest of Ray, or SwiftUI, which "UI" below allows for Settings? Decide with the mockups. |
 
 ## Decisions so far
 
@@ -66,7 +65,7 @@ Recorded for the owner to decide. Don't act on them until they do.
 | Engine | Ardia's engine, renamed and built from source (Phase B, since 0.2.0). Phase A (Ardia's prebuilt) is over |
 | Import | Ardia's import core (`Importer/`, Apache-2.0) for reading; Ray writes through the engine's `ac_*` calls; never another browser's settings |
 | Onboarding | Once per profile (new ones, and every profile from 0.2.0 and earlier on its next launch), as an overlay in the browser window in Ray's own style; Arc first and recommended |
-| UI | AppKit + Core Animation; SwiftUI only for Settings |
+| UI | AppKit + Core Animation everywhere, Settings included (owner 2026-10-29: "whichever is smoother and lightweight"); no SwiftUI |
 | Peek | **No** |
 | DRM sites → WebKit | **No.** Chromium only; Netflix-type sites won't play (no Widevine) |
 | Content blocker | **None built in.** The user installs uBlock Origin Lite from the Web Store (Basic mode is cheapest) |
@@ -459,7 +458,8 @@ Arc has one.
   fields, off (15); edit any shortcut, none changed (4).
 - **Advanced/About:** version, source code, licenses; All Chrome Settings….
 
-**Toolkit:** open decision (AppKit or SwiftUI), see "Open decisions".
+**Toolkit:** AppKit + Core Animation (owner 2026-10-29): smoother and lighter than SwiftUI, reuses `RaySwitch`, the
+profile colour and the sidebar's look, and the live pictures animate on layers like the rest of Ray.
 
 **Order:**
 1. Configuration system: the catalog, typed storage, observers, generated test command, state log and check;
