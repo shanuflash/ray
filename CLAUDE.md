@@ -75,6 +75,14 @@ publicly or create accounts.
 - Page commands (`BrowserWindowController` `// MARK: Page commands`): Print, Save Page As and Task Manager run
   Chrome's own commands (`executeChromeCommand`, ids from chrome_command_ids.h); View Source opens a `view-source:`
   tab; History and Clear Browsing Data open (or switch to) Chrome's pages. Check `page-commands`.
+- `ClosedTabs`: ⇧⌘T and History › Recently Closed (`ClosedTabsMenu.shared` is their menu target, which `BarActions`
+  also accepts). Records ⌘W / row Close / Clear Today, tags normal tabs with `ac_tab_restore_tag` so Chrome's tab
+  restore keeps their history (`ac_tab_restore_take` + `coreWindow.restoreTab` put them back in their sidebar place);
+  private windows keep their own in-memory list. Check `reopen-closed-tab`.
+- Address display: `AddressInput.addressParts(for:)` (lead / host / trail, fragment kept, percent-encoded),
+  `unwrapped`/`innerURL(of:)` for `view-source:`, `blob:`, `filesystem:` (one level, like Chrome; the security icon
+  judges the inner URL); hosts shown as punycode until Ray has an IDN spoof checker (Ardia's `idn.ts`). Check
+  `address-fragment`.
 - `LoadSweep` + `LoadingWash` (PageToolbar): the address field's loading glow, Dia's measured shape, one sweep per
   main-frame navigation the user started or the page committed (Chrome's frame-level loading/progress would
   restart it); check `load-sweep-once`.

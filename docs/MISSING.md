@@ -77,3 +77,6 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 | Import from Arc and other browsers (pinned, favorites, open tabs, history, bookmarks, passwords, cookies, autofill) and first-run onboarding | 2026-10-29, `0154dab` … `58611e6` |
 | Command bar actions (Ray's menu commands by name, with shortcuts) | 2026-10-29, `893280a` |
 | Address bar loading glow: one Dia sweep per navigation | 2026-10-29, `6b2f1e1` |
+| One signing identity ("Ray Code Signing"): no keychain prompt on every build | 2026-10-29, `ec95fc8` |
+| Reopen closed tab (⇧⌘T) back in its sidebar place, History › Recently Closed, and in the command bar | 2026-10-29, `609d4b2`, `8850dd4` |
+| Address shows `#fragment` and `view-source:` URLs; IDN hosts as punycode (no spoof checker yet) | 2026-10-29, `2512bed` |
