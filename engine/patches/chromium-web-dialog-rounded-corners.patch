@@ -1,0 +1,64 @@
+Ray: Chrome's tab-modal web dialogs (print preview, …) get rounded corners like Chrome's other
+dialogs, with their page clipped to match. ConstrainedDialogWebView isn't a DialogDelegate, so its frame was
+square, and the page filled it edge to edge.
+
+--- a/chrome/browser/ui/views/constrained_web_dialog_delegate_views.cc
++++ b/chrome/browser/ui/views/constrained_web_dialog_delegate_views.cc
+@@ -26,6 +26,9 @@
+ #include "ui/base/page_transition_types.h"
+ #include "ui/views/controls/webview/unhandled_keyboard_event_handler.h"
+ #include "ui/views/controls/webview/webview.h"
++#include "ui/views/bubble/bubble_frame_view.h"
++#include "ui/views/controls/native/native_view_host.h"
++#include "ui/views/layout/layout_provider.h"
+ #include "ui/views/view.h"
+ #include "ui/views/view_class_properties.h"
+ #include "ui/views/widget/widget.h"
+@@ -95,8 +98,14 @@
+   gfx::Size GetMaximumSize() const override;
+   void DocumentOnLoadCompletedInPrimaryMainFrame() override;
+ 
++ protected:
++  // views::View:
++  void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
++
+  private:
+   void UpdateAccessibleNameForRootView();
++  // Ray: the dialog's corner radius, which its page is clipped to as well.
++  static int CornerRadius();
+ 
+   base::WeakPtr<content::WebContents> initiator_web_contents_;
+ 
+@@ -464,9 +473,31 @@
+ 
+ std::unique_ptr<views::FrameView> ConstrainedDialogWebView::CreateFrameView(
+     views::Widget* widget) {
+-  return views::DialogDelegate::CreateDialogFrameView(widget);
++  std::unique_ptr<views::FrameView> frame =
++      views::DialogDelegate::CreateDialogFrameView(widget);
++  // Ray: rounded like Chrome's other dialogs (this one isn't a DialogDelegate,
++  // so CreateDialogFrameView leaves it square).
++  static_cast<views::BubbleFrameView*>(frame.get())
++      ->SetRoundedCorners(gfx::RoundedCornersF(CornerRadius()));
++  return frame;
+ }
+ 
++int ConstrainedDialogWebView::CornerRadius() {
++  return views::LayoutProvider::Get()->GetCornerRadiusMetric(
++      views::ShapeContextTokens::kDialogRadius);
++}
++
++void ConstrainedDialogWebView::OnBoundsChanged(
++    const gfx::Rect& previous_bounds) {
++  views::WebView::OnBoundsChanged(previous_bounds);
++  // Ray: the page fills the dialog edge to edge, so it's clipped to the frame's
++  // corners, as Chrome's WebUI bubbles and search engine choice dialog do. Laid
++  // out means in its widget, where WebView has attached the page's native view.
++  if (holder()->native_view()) {
++    holder()->SetNativeViewCornerRadii(gfx::RoundedCornersF(CornerRadius()));
++  }
++}
++
+ bool ConstrainedDialogWebView::ShouldShowCloseButton() const {
+   // No close button if the dialog doesn't want a title bar.
+   return impl_->GetWebDialogDelegate()->ShouldShowDialogTitle();

@@ -1405,10 +1405,22 @@ const checks = {
       assert(near(activeZoom(), want), `${what}: zoom ${activeZoom()}, wanted ${want}`);
     };
     await zoomTo("= cmd", 1.1, "⌘=");
+    // Arc's zoom level at the top right of the page, after a zoom you asked for.
+    assert(state().toast === "110%" && state().toastTruncated === false, `zoom indicator says ${JSON.stringify(state().toast)}`);
     await zoomTo("- cmd", 1, "⌘−");
     await zoomTo("= cmd", 1.1, "⌘= again");
     await zoomTo("= cmd", 1.25, "⌘= twice");
     await zoomTo("0 cmd", 1, "⌘0");
+    assert(state().toast === "100%", `after ⌘0 the indicator says ${JSON.stringify(state().toast)}`);
+    // A navigation settling the default zoom isn't a zoom you asked for: no indicator.
+    await until("indicator gone", async () => { await command("state"); return state().toast === ""; }, 5000);
+    await setSetting("defaultZoom", "1.25");
+    await until("default applied", async () => { await command("state"); return near(activeZoom(), 1.25); });
+    await sleep(400);
+    await command("state");
+    assert(state().toast === "", `changing the default showed ${JSON.stringify(state().toast)}`);
+    await setSetting("defaultZoom", "1");
+    await until("default back", async () => { await command("state"); return near(activeZoom(), 1); });
     // View Source (⌥⌘U): the page's source in a new tab, not for Chrome's own pages.
     await command("key u cmd opt keywin");
     await until("source tab", async () => { await command("state"); return activeTabState()?.url === `view-source:${origin}/b?commands`; });
@@ -1446,6 +1458,18 @@ const checks = {
     await until("print command", async () => { await command("state"); return state().chromeCommand?.name === "print"; });
     assert(state().chromeCommand.ran === true, "the engine didn't take Print");
     await until("print preview", async () => (await targets()).some((t) => t.url.startsWith("chrome://print")), 8000);
+    // Centred on the page both ways, as Arc and Dia show it (Chrome hangs it from the top of the page).
+    const rect = (text) => text.match(/-?[\d.]+/g).map(Number);
+    const [wx, wy] = rect(state().windowFrame);
+    const [, toolbarY] = rect(state().toolbar.frame);
+    const [, , pageWidth, pageHeight] = rect(state().pages.pageFrame);
+    const [toolbarX] = rect(state().toolbar.frame);
+    let dialog;
+    await until("print preview window", async () => { dialog = JSON.parse(await commandResult("dialogs"))[0]; return dialog; });
+    const [dx, dy, dw, dh] = rect(dialog);
+    const pageMidY = wy + toolbarY - pageHeight / 2, pageMidX = wx + toolbarX + pageWidth / 2;
+    assert(Math.abs(dy + dh / 2 - pageMidY) <= 2 && Math.abs(dx + dw / 2 - pageMidX) <= 2,
+      `print preview at ${dialog}, page centre (${pageMidX}, ${pageMidY})`);
     // Its Cancel button closes it (a real click on the dialog's own control).
     const preview = await session("chrome://print");
     const deepFind = `const deep = (root, sel, out = []) => { for (const el of root.querySelectorAll("*")) if (el.shadowRoot) deep(el.shadowRoot, sel, out); root.querySelectorAll(sel).forEach((e) => out.push(e)); return out; };`;

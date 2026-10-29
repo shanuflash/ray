@@ -35,6 +35,12 @@ export const areas = {
   "Host/Bridging.h": "all",
   "Resources/": "all",
   "engine/": "all",
+  // Tab-modal dialogs (print preview): where they sit and their corners.
+  "engine/raycore/src/ray/core/ac_modal_dialog_host.mm": ["page-commands"],
+  // A series line changes with its patch file, which has its own entry (or falls under engine/: all).
+  "engine/patches/series": [],
+  "engine/patches/chromium-web-dialog-rounded-corners.patch": ["page-commands"],
+  "engine-ray/fixups/0004-dialogs-centred-and-rounded.patch": ["page-commands"],
   "engine-ray/": "all",
   "engine.lock": "all",
   "scripts/build-app.sh": "all",
@@ -57,7 +63,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Test snapshots": ["folder-rename", "tile-hover"],
   "Host/BrowserWindowController.swift#Arc import": ["arc-import"],
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
-  "Host/BrowserWindowController.swift#Toast": ["copy-url"],
+  "Host/BrowserWindowController.swift#Toast": ["copy-url", "page-commands"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Site controls": ["site-controls", "extensions", "copy-url", "find-in-page"],
   "Host/BrowserWindowController.swift#Entries": "all",
@@ -71,7 +77,8 @@ export const areas = {
     "site-controls", "find-in-page", "settings-zoom", "settings-routes", "settings-trimmed"],
   "Host/BrowserWindowController.swift#Settings": [...settings, "page-toolbar", "page-loading"],
   "Host/BrowserWindowController.swift#Page commands": ["page-commands"],
-  "Host/BrowserWindowController.swift#Page zoom": ["settings-zoom", "settings-private-zoom", "settings-window", "site-controls"],
+  "Host/BrowserWindowController.swift#Page zoom": ["settings-zoom", "settings-private-zoom", "settings-window", "site-controls",
+    "page-commands"],
   "Host/BrowserWindowController.swift#State log": [],
 
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
@@ -96,7 +103,7 @@ export const areas = {
   "Host/PermissionPrompt.swift": permissions,
   "Host/SiteControls.swift": ["site-controls", "extensions"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
-  "Host/Toast.swift": ["copy-url"],
+  "Host/Toast.swift": ["copy-url", "page-commands"],
   "Host/Updater.swift": ["updater-config"],
   "Host/SafeStorage.swift": ["safe-storage-migration"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],

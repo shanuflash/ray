@@ -288,6 +288,13 @@ enum TestCommands {
       result = setting(argument)
     case "settings":
       result = settingsWindow(argument)
+    case "dialogs":
+      // Chrome's tab-modal dialogs: their own windows, beside the browser window. Frames in screen points.
+      let browser = window
+      let frames = NSApp.windows.filter { $0 !== browser && $0 is NSPanel == false
+        && $0.contentView?.subviews.contains { "\(type(of: $0))" == "WebContentsViewCocoa" } == true }
+        .map { NSStringFromRect($0.frame) }
+      result = "[" + frames.map { "\"\($0)\"" }.joined(separator: ",") + "]"
     case "zoom":
       if AppController.shared.current?.zoomCommand(argument) != true { result = "usage: zoom in|out|reset (a page open)" }
     case "drag":

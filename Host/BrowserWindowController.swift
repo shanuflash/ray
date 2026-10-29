@@ -435,9 +435,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   private lazy var toast = ToastView()
 
-  func showToast(_ message: String, symbol: String? = nil, action: (() -> Void)? = nil) {
+  func showToast(_ message: String, symbol: String? = nil, figure: Bool = false, action: (() -> Void)? = nil) {
     if toast.superview !== root { root.addSubview(toast, positioned: .above, relativeTo: nil) }
-    toast.show(message, symbol: symbol, action: action)
+    toast.show(message, symbol: symbol, figure: figure, action: action)
     layoutToast()
     logState("toast")
   }
@@ -1482,7 +1482,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
   }
 
-  func tabDidChangeZoom(_ tab: RayCoreTab) { noteZoomChanged(tab) }
+  func tabDidChangeZoom(_ tab: RayCoreTab) {
+    noteZoomChanged(tab)
+    if tab === zoomIndicatorTab { showZoomIndicator(for: tab) }
+  }
 
   func tabDidChangeLoading(_ tab: RayCoreTab) {
     pages.updateProgress(for: tab)
@@ -1618,16 +1621,37 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     logState("zoom")
   }
 
-  /// For tests: ⌘+ and ⌘− as the engine does them, and the site controls' Reset.
+  /// View › Zoom In, Zoom Out and Actual Size (⌘+ ⌘− ⌘0), also the test command `zoom in|out|reset`: a step as the
+  /// engine takes it, or back to the default, with Arc's "110%" at the top right.
   func zoomCommand(_ word: String) -> Bool {
     guard let tab = activeTab else { return false }
     switch word {
-    case "in": tab.zoomStep(1)
-    case "out": tab.zoomStep(-1)
-    case "reset": resetZoom(of: tab)
+    case "in", "out":
+      // The engine reports the new level in tabDidChangeZoom; a step past the limits changes nothing, so the
+      // indicator shows the level as it is.
+      zoomIndicatorTab = tab
+      let before = tab.zoomFactor
+      tab.zoomStep(word == "in" ? 1 : -1)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self, weak tab] in
+        guard let self, let tab, self.zoomIndicatorTab === tab else { return }
+        if abs(tab.zoomFactor - before) < 0.002 { self.showZoomIndicator(for: tab) }
+        self.zoomIndicatorTab = nil
+      }
+    case "reset":
+      resetZoom(of: tab)
+      showZoomIndicator(for: tab)
     default: return false
     }
     return true
+  }
+
+  /// The tab a zoom command is waiting to hear back from.
+  private weak var zoomIndicatorTab: RayCoreTab?
+
+  private func showZoomIndicator(for tab: RayCoreTab) {
+    zoomIndicatorTab = nil
+    guard tab === activeTab else { return }
+    showToast("\(Int((tab.zoomFactor * 100).rounded()))%", figure: true)
   }
 
   // MARK: Page commands

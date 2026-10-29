@@ -2,14 +2,18 @@ import AppKit
 
 /// A short note at the top right of the page, as Arc shows "Copied Current URL": 14 pt medium text in a 46 pt
 /// rounded panel, an optional button in a rounded square on the right. It drops in from above on a spring and lifts
-/// away as it fades, after a couple of seconds.
+/// away as it fades, after a couple of seconds. A figure (Arc's zoom level, "110%") is a smaller panel of bold
+/// digits.
 final class ToastView: NSView {
   private let label = NSTextField(labelWithString: "")
   private let button = NSButton()
   private var action: (() -> Void)?
   private var hideWork: DispatchWorkItem?
   private(set) var message = ""
+  private var figure = false
   private static let font = NSFont.systemFont(ofSize: 14, weight: .medium)
+  private static let figureFont = NSFont.monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+  private var font: NSFont { figure ? Self.figureFont : Self.font }
   private static let buttonSize: CGFloat = 31
   private static let rise: CGFloat = 14
 
@@ -62,14 +66,19 @@ final class ToastView: NSView {
   /// The size it wants for its message, at most `limit` wide: the text measured in its font, plus the label's own
   /// few points of padding, so it never truncates while there's room.
   func fit(_ limit: CGFloat) -> NSSize {
-    let text = ceil((message as NSString).size(withAttributes: [.font: Self.font]).width) + 6
+    let text = ceil((message as NSString).size(withAttributes: [.font: font]).width) + 6
+    if figure { return NSSize(width: min(limit, 12 + text + 12), height: 38) }
     let buttonWidth = button.isHidden ? 0 : Self.buttonSize + 10
     return NSSize(width: min(limit, 14 + text + buttonWidth + 8), height: 46)
   }
 
-  func show(_ message: String, symbol: String? = nil, action: (() -> Void)? = nil) {
+  func show(_ message: String, symbol: String? = nil, figure: Bool = false, action: (() -> Void)? = nil) {
     let wasShowing = !isHidden && !self.message.isEmpty
     self.message = message
+    self.figure = figure
+    label.font = font
+    label.alignment = figure ? .center : .natural
+    layer?.cornerRadius = figure ? 10 : 12
     label.stringValue = message
     button.isHidden = symbol == nil
     button.image = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
@@ -80,7 +89,7 @@ final class ToastView: NSView {
     hideWork?.cancel()
     let work = DispatchWorkItem { [weak self] in self?.hide() }
     hideWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + 2.4, execute: work)
+    DispatchQueue.main.asyncAfter(deadline: .now() + (figure ? 1.4 : 2.4), execute: work)
   }
 
   func hide() {
@@ -148,7 +157,7 @@ final class ToastView: NSView {
   /// For tests: whether the shown message is cut short.
   var truncated: Bool {
     layoutSubtreeIfNeeded()
-    return label.frame.width < ceil((message as NSString).size(withAttributes: [.font: Self.font]).width)
+    return label.frame.width < ceil((message as NSString).size(withAttributes: [.font: font]).width)
   }
 
   override func layout() {
@@ -156,6 +165,10 @@ final class ToastView: NSView {
     let mid = bounds.height / 2
     button.frame = NSRect(x: bounds.width - 8 - Self.buttonSize, y: mid - Self.buttonSize / 2,
                           width: Self.buttonSize, height: Self.buttonSize)
+    if figure {
+      label.frame = NSRect(x: 8, y: mid - 10, width: max(0, bounds.width - 16), height: 20)
+      return
+    }
     let right = button.isHidden ? bounds.width - 8 : button.frame.minX - 10
     label.frame = NSRect(x: 14, y: mid - 9, width: max(0, right - 14), height: 18)
   }

@@ -46,7 +46,10 @@ gfx::Point DialogPositionInHostView(NSView* host_view,
   int x = page.x() + (page.width() - size.width()) / 2;
   x = std::min(x, host_width - size.width());
   x = std::max(x, 0);
-  return gfx::Point(x, page.y());
+  // Ray: centred on the page both ways, as Arc and Dia show tab-modal dialogs,
+  // rather than hanging from its top edge as Chrome's do.
+  const int y = page.y() + std::max(0, (page.height() - size.height()) / 2);
+  return gfx::Point(x, y);
 }
 
 bool WindowIsForeground(NSWindow* window) {
