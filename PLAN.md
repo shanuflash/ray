@@ -402,14 +402,26 @@ diff line, `apply` case, window row). Instead:
   catalog entry plus the feature code that reads it.
 
 **Look: not Ardia's.** Ardia's window is a System Settings clone (source list, blue selection pill, grouped inset
-cards); Ray's must not look like it, and today's Ray window gets replaced. Mockups first, owner picks a direction
-before any window code. Ideas that carry into any direction: the profile colour as the only accent; picture choices
-as tiny live Ray windows tinted with your colour; a search result scrolls to its row and runs one `LoadSweep`
-glow across it; settings reachable from the ⌘T command bar; no "Show advanced settings" switch (rare rows sit
-under a "More…" line in their group).
+cards); Ray's must not look like it, and today's Ray window gets replaced. **Owner picked direction G (2026-10-29)**
+after two rounds of mockups (A–F rejected: tile grids, chip bars, card hubs and icon-only rails):
+- **Sidebar with text**, styled like Ray's own sidebar, darker than the content: a search field on top, then rows
+  of icon + name (General, Tabs and sidebar, Appearance, Search), a "Your data" group (Privacy, Passwords,
+  Autofill, Extensions) and a "More" group (Shortcuts, About Ray). Rows about 34 pt with 9 pt corners and the
+  sidebar's hover.
+- **Selection: lavender wash**: the selected row is filled with a soft tint of the profile colour, its icon and
+  name in a light tint of it. No blue, no pill outline.
+- **Content: one roomy column**, no inset cards: the pane's name large, one plain line under it saying what the
+  pane is for, then 44 pt rows split by hairlines. Controls are `RaySwitch`, segmented controls and pop-ups, all
+  in the profile colour.
+- **Live pictures** beside the settings they show: a tiny Ray window in your colour that changes as you change
+  the setting (where new tabs land, light or dark, address bar position).
+- **Rare rows** sit under a "More" line at the end of their group; no "Show advanced settings" switch.
+- A pane's one call to action (Make default) is a tinted strip at the top, not a dialog.
+- Also: a search result scrolls to its row and runs one `LoadSweep` glow across it; every setting is reachable
+  from the ⌘T command bar.
 
-**Panes:** General · Tabs & Sidebar · Appearance · Search · Privacy & Security · Passwords · Autofill · Extensions ·
-Shortcuts · Advanced/About. Profiles and Spaces arrive with Spaces. Live Folders and Calendar get panes only when
+**Panes**, in sidebar order: General · Tabs and sidebar · Appearance · Search; Your data: Privacy · Passwords ·
+Autofill · Extensions; More: Shortcuts · About Ray (the old Advanced/About). Profiles and Spaces arrive with Spaces. Live Folders and Calendar get panes only when
 those features exist. "All Chrome Settings…" stays as a link.
 
 **What goes in each pane, with defaults.** ✓ = in Ray's Settings window today; (menu) or (Chrome page) = Ray has
@@ -444,7 +456,7 @@ Arc has one.
 **Order:**
 1. Configuration system: the catalog, typed storage, observers, generated test command, state log and check;
    today's eight settings move onto it with no visible change.
-2. Mockups of two or three directions; the owner picks one.
+2. Mockups: done, direction G picked (see "Look").
 3. The new window: navigation, search, `ray://settings/<pane>` routing, rows generated from the catalog.
 4. Every Ray-owned setting above as a catalog entry, built or not; the built ones wired.
 5. Search pane: engine choice, custom site searches, suggestions; `AddressInput`'s search URL and the `/search`
