@@ -416,7 +416,7 @@ after two rounds of mockups (A–F rejected: tile grids, chip bars, card hubs an
   the setting (where new tabs land, light or dark, address bar position).
 - **Rare rows** sit under a "More" line at the end of their group; no "Show advanced settings" switch.
 - A pane's one call to action (Make default) is a tinted strip at the top, not a dialog.
-- Also: a search result scrolls to its row and runs one `LoadSweep` glow across it; every setting is reachable
+- Also: a search result scrolls to its row and flashes it once in a profile-colour wash (120/900/700 ms); every setting is reachable
   from the ⌘T command bar.
 - **Borrowed from Ardia's content** (`third_party/ardia/apps/browser/src/components/settings`): row text lives
   apart from the UI (`rows/*.ts`: section → rows with title, description, keywords), which is what our catalog
@@ -462,10 +462,10 @@ Arc has one.
 profile colour and the sidebar's look, and the live pictures animate on layers like the rest of Ray.
 
 **Order:**
-1. Configuration system: the catalog, typed storage, observers, generated test command, state log and check;
+1. **Done 2026-10-29, `414495a`.** Configuration system: the catalog, typed storage, observers, generated test command, state log and check;
    today's eight settings move onto it with no visible change.
 2. Mockups: done, direction G picked (see "Look").
-3. The new window: navigation, search, `ray://settings/<pane>` routing, rows generated from the catalog.
+3. **Done 2026-10-29, `d88e0e3`.** The new window: navigation, search, `ray://settings/<pane>` routing, rows generated from the catalog.
 4. Every Ray-owned setting above as a catalog entry, built or not; the built ones wired.
 5. Search pane: engine choice, custom site searches, suggestions; `AddressInput`'s search URL and the `/search`
    trim in `tools/trim-settings-pak.py` change with it.
