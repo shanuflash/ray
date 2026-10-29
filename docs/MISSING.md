@@ -257,4 +257,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Settings › Privacy (every site's permissions, zoom levels, apps sites may open, clear data) and › Extensions (switches, site access, private windows, options, reload, remove, load unpacked); Site controls in a private window no longer write to the normal profile | 2026-10-29, `0eaf904` |
 | Settings › Passwords (locked behind Touch ID, search, show, copy, edit, add, delete, CSV import and export) and › Autofill (addresses, cards) | 2026-10-29, `d34b5c4` |
 | Settings › Search: default engine, suggestions switch, site searches with a keyword and Tab in the command bar | 2026-10-29, `7d54ba9` |
-| JumpCloud Go sign-in relayed through Google Chrome (Settings › Passwords; known limitation #15) | 2026-10-29, `feat: jumpcloud go through chrome` |
+| JumpCloud Go sign-in relayed through Google Chrome (Settings › Passwords; known limitation #15) | 2026-10-29, `0b6fb3f` |
