@@ -68,6 +68,14 @@ publicly or create accounts.
   `PermissionPrompt` (site permissions, only over their own tab), `ArcImport` (the old Import from Arc…, sidebar
   only; its action still exists without a menu item), `Toast` (Arc's top-right note, "Copied Current URL"; a
   `figure` style is the zoom level note, "110%", shown after ⌘+ ⌘− ⌘0 but never when Ray applies the default zoom).
+- `LinksFromApps`: Ray as a web browser to macOS. Info.plist (`build-app.sh`) declares http/https and HTML, XHTML,
+  PDF (`AddressInput.documentTypes`; no `file` scheme), so Ray can be picked as the default browser. Ray installs its
+  own GetURL and Open Documents Apple Event handlers on willFinishLaunching (AppKit's never reached the delegate);
+  links go through `AddressInput.link(fromOtherApp:)` (http(s) only), files only from Open Documents through
+  `document(fromOtherApp:)` (real local files of those types). Each opens as a Today tab in the normal window, the
+  last one active. A launch by a link waits for AppKit's launch to finish (its event comes after the engine starts)
+  and opens the links in place of the start page. Test command `appopen link|files|direct`; checks
+  `open-from-other-apps` and `open-from-other-apps-launch` (a cold start through `open -g -n`, its own data dir).
 - Import: `Importer/` is Ardia's import core (Apache-2.0, `swift test --package-path Importer`, fixtures only, never a
   real profile), compiled into the app. `ImportSession` (the contract the screens use: `ImportItem`, `ImportSource`,
   `sources()`/`preview`/`run`) and `ImportWriter` (reading off the main thread, one Keychain prompt for the source's
@@ -225,6 +233,10 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   `validateMenuItem` disables never fires its shortcut either.
 - Info.plist needs the privacy usage strings (camera, microphone, location, Bluetooth, audio capture): without them
   TCC kills Ray the moment a site asks.
+- The launch's open event (a link or file that started Ray) is dispatched after `engineDidStart` (the engine's start
+  runs on the main loop before AppKit's launch finishes), and AppKit's own handlers never reached
+  `application(_:open:)` in Ray, even with the delegate set on willFinishLaunching: `LinksFromApps` installs Ray's
+  handlers there and holds the first window until didFinishLaunching (13 ms on a link launch, none otherwise).
 - The engine silently cancels insecure downloads (HTTPS page → HTTP file); Keep/Discard only shows for files Chrome
   holds as dangerous. Ardia 0.2.42's "insecure download waits for Keep" is its app UI over the same engine tree
   (`ac_downloads_keep` already handles insecure ones), so on this engine nothing changes.
@@ -252,8 +264,9 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
   and the tab's `committedOrigin`; ignore any URL or origin a page reports about itself.
 - **Page channel:** `Resources/page_script.js` runs in every frame; iframes return on its first line unless a feature
   needs them. Treat every message as untrusted: check kind, types and sizes; never act on it across tabs.
-- **URLs from anywhere** (address field, command bar, history, suggestions, drag and drop, `Sidebar.json`, popups) go
-  through `AddressInput`. Never load `javascript:`. Load `data:`/`file:` only when the user typed it.
+- **URLs from anywhere** (address field, command bar, history, suggestions, drag and drop, `Sidebar.json`, popups,
+  other apps) go through `AddressInput`. Never load `javascript:`. Load `data:`/`file:` only when the user typed it,
+  or (`file:` only) opened that file with Ray from Finder; another app's links are http(s) only.
 - **Address display:** the host leads and stands out (any path after it is grey and is what gets cut when long),
   long hosts elided from the start, `user:pass@` hidden, port shown, paths kept percent-encoded; never show
   page-controlled text where the address goes.

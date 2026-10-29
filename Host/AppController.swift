@@ -35,14 +35,21 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     installReservedKeyRouting()
     TestCommands.start()
     Updater.shared.start()
-    let main = openMainWindow(startURL: TestEnvironment["RAY_START_URL"])
-    // A new data dir's first window welcomes you (once; never in a test instance unless a check asks).
-    if OnboardingView.showsAtLaunch { main?.showOnboarding(.firstRun) }
+    // The first window once AppKit's launch is over, so a link or file that launched Ray (its launch's open event
+    // comes in after the engine starts) opens in place of the start page, with the session behind it.
+    LinksFromApps.whenLaunched { [self] links in
+      let main = openMainWindow(startURL: TestEnvironment["RAY_START_URL"], forLinks: !links.isEmpty)
+      if let main, !links.isEmpty { openLinks(links, in: main) }
+      // A new data dir's first window welcomes you (once; never in a test instance unless a check asks).
+      if OnboardingView.showsAtLaunch { main?.showOnboarding(.firstRun) }
+    }
   }
 
-  /// The normal window, from Sidebar.json; Ray keeps one, since there's one sidebar session.
+  /// The normal window, from Sidebar.json; Ray keeps one, since there's one sidebar session. `forLinks`: links from
+  /// other apps are about to open in it, so a window opened for them skips its start page (a new tab, or
+  /// RAY_START_URL), as Chrome closes its New Tab page for them.
   @discardableResult
-  private func openMainWindow(startURL: String? = nil) -> BrowserWindowController? {
+  func openMainWindow(startURL: String? = nil, forLinks: Bool = false) -> BrowserWindowController? {
     if let open = windows.first(where: { !$0.isPrivate }) {
       if !launchedInBackground { open.window.makeKeyAndOrderFront(nil) }
       return open
@@ -50,7 +57,7 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     guard let engine = RayCoreEngine.shared else { return nil }
     let controller = makeWindow(profile: engine.defaultProfile)
     controller.present(background: launchedInBackground)
-    controller.restore(startURL: startURL)
+    if !forLinks { controller.restore(startURL: startURL) }
     controller.searches.warm()
     return controller
   }

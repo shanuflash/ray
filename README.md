@@ -24,6 +24,8 @@ Early and personal. Expect rough edges.
 - Full screen edge to edge when the sidebar is hidden.
 - DevTools (⌥⌘I), popups and `target=_blank` as tabs.
 - Updates itself (Ray › Check for Updates…).
+- Can be your default browser (System Settings › Desktop & Dock › Default web browser): links from other apps, and
+  HTML or PDF files you open with Ray, open as tabs, also when they launch Ray.
 
 Not yet: Spaces, drag and drop between windows, Split View, Little Arc, installing imported extensions. The full
 list is in [docs/MISSING.md](docs/MISSING.md).

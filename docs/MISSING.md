@@ -16,7 +16,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 2. **Profiles**: several logins (Arc ties a profile to a Space). Ray has one profile; the engine has
    `loadProfile`/`offTheRecordProfileFor`.
 3. **Split View**: two or more pages side by side in one window.
-4. **Little Arc**: the small window for links opened from other apps (⌥⌘N).
+4. **Little Arc**: the small window for links opened from other apps (⌥⌘N). Links from other apps would open there;
+   today they open as a Today tab in the normal window (`Host/LinksFromApps.swift`).
 5. **Archive view**: Ray archives stale Today tabs but has no way to browse or restore them.
 
 6. **Peek**: Arc's preview of a link in a floating card over the page (open it fully or dismiss). Ray dropped the
@@ -69,7 +70,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 16. **Make Ray the default browser** from Ray: a "Default browser" row with a Make Default button in Settings, a step
     in the onboarding (after the import, "Open links from other apps in Ray?"), and a gentle note when Ray isn't the
     default (Chrome's infobar, Arc's prompt). Uses `NSWorkspace.setDefaultApplication(at:toOpenURLsWithScheme:)`,
-    which shows macOS's own confirmation. Needs Ray to declare http/https and HTML first (in progress 2026-10-29).
+    which shows macOS's own confirmation. Ray already declares http/https and HTML and opens their links, so it
+    can be picked in System Settings meanwhile.
 
 **Already working through Chrome's defaults:** right-click menus, spell check, `chrome://` pages.
 
@@ -159,3 +161,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Reopen closed tab (⇧⌘T) back in its sidebar place, History › Recently Closed, and in the command bar | 2026-10-29, `609d4b2`, `8850dd4` |
 | Address shows `#fragment` and `view-source:` URLs; IDN hosts as punycode (no spoof checker yet) | 2026-10-29, `2512bed` |
 | Command bar ranks your pages first like Arc, 5 rows, scroll to 10, never the active tab | 2026-10-29, `feat: command bar ranks pages like arc` |
+| Ray as a web browser to macOS (pickable as the default browser): links and HTML/PDF files from other apps open as Today tabs, also when they launch Ray | 2026-10-29, `feat: ray can be the default browser` |

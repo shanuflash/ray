@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 enum AddressInput {
   static let searchTemplate = TestEnvironment["RAY_SEARCH_URL"]
@@ -190,6 +191,39 @@ enum AddressInput {
     if let fragment = components.percentEncodedFragment { trail += "#" + fragment }
     if !trail.isEmpty, !trail.hasPrefix("/") { trail = "/" + trail }
     return AddressParts(host: bareHost + port, trail: trail)
+  }
+
+  // MARK: Opens from other apps
+
+  /// The document types Ray opens from Finder, as Info.plist declares them (scripts/build-app.sh), Arc's set: HTML
+  /// and XHTML (what macOS needs to list Ray as a web browser) and PDF (the engine's PDF viewer; an alternate, so
+  /// Preview stays the default).
+  static let documentTypes = ["public.html", "public.xhtml", "com.adobe.pdf"]
+
+  /// Chrome's longest URL (url::kMaxURLChars); anything longer from another app is refused.
+  private static let longestLink = 2 * 1024 * 1024
+
+  /// A link another app handed Ray (a click in Mail, `open -a Ray <url>`), as the address to load: http or https
+  /// with a host, nothing else. Never `javascript:`, `data:`, `file:` or the engine's own pages: another app can
+  /// send any URL it likes, and Chrome only takes web URLs from a launch too (`ValidateLaunchUrlWebSafe`).
+  static func link(fromOtherApp url: URL) -> String? {
+    let text = url.absoluteString
+    guard text.utf8.count <= longestLink, let components = URLComponents(string: text),
+          let scheme = components.scheme?.lowercased(), scheme == "http" || scheme == "https",
+          let host = components.host, !host.isEmpty else { return nil }
+    return Self.url(for: text)
+  }
+
+  /// A file another app or Finder asked Ray to open (a document open, never a `file:` link), as its `file:` address:
+  /// only an existing local regular file whose type is one of `documentTypes`. A symlink counts as the file it points
+  /// to. Opening one is the user's choice in Finder, as typing a `file:` address is.
+  static func document(fromOtherApp url: URL) -> String? {
+    guard url.isFileURL, url.host.map({ $0.isEmpty || $0 == "localhost" }) ?? true, url.user == nil else { return nil }
+    let file = url.standardizedFileURL.resolvingSymlinksInPath()
+    guard let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .contentTypeKey]),
+          values.isRegularFile == true, let type = values.contentType,
+          documentTypes.contains(where: { UTType($0).map(type.conforms(to:)) ?? false }) else { return nil }
+    return Self.url(for: URL(fileURLWithPath: file.path).absoluteString)
   }
 
   // MARK: Typed addresses

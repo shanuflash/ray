@@ -227,6 +227,65 @@ where (ProfileColor.parse(text) != nil) != valid {
   failures += 1
   print("FAIL parse(\(text)) validity")
 }
-let total = removedCases.count + foregroundCases.count + 7 + paneCases.count + cases.count + displayCases.count + pillCases.count + partsCases.count + autocompleteCases.count + lookCases.count
+// Links from other apps: http(s) with a host, nothing else.
+let linkCases: [(String, String?)] = [
+  ("https://example.com/x?q=1#f", "https://example.com/x?q=1#f"),
+  ("HTTP://Example.com", "HTTP://Example.com"),
+  ("http://localhost:3000/", "http://localhost:3000/"),
+  ("javascript:alert(1)", nil),
+  ("JavaScript:alert(1)", nil),
+  ("data:text/html,x", nil),
+  ("chrome://settings", nil),
+  ("ray://settings", nil),
+  ("view-source:https://example.com", nil),
+  ("about:blank", nil),
+  ("file:///etc/hosts", nil),
+  ("https:example.com", nil),
+  ("ftp://example.com", nil),
+  ("mailto:a@example.com", nil),
+]
+for (input, expected) in linkCases {
+  let got = URL(string: input).flatMap { AddressInput.link(fromOtherApp: $0) }
+  if got != expected {
+    failures += 1
+    print("FAIL link(fromOtherApp: \(input)) = \(got.debugDescription), expected \(expected.debugDescription)")
+  }
+}
+// Documents: existing local regular files of the declared types only.
+let folder = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("ray-docs-\(getpid())")
+try? FileManager.default.createDirectory(at: folder.appendingPathComponent("dir.html"), withIntermediateDirectories: true)
+for name in ["a page.html", "b.xhtml", "c.pdf", "d.txt", "e.sh", "f.svg"] {
+  FileManager.default.createFile(atPath: folder.appendingPathComponent(name).path, contents: Data("x".utf8))
+}
+try? FileManager.default.createSymbolicLink(at: folder.appendingPathComponent("link.html"),
+                                            withDestinationURL: folder.appendingPathComponent("a page.html"))
+try? FileManager.default.createSymbolicLink(at: folder.appendingPathComponent("sneaky.html"),
+                                            withDestinationURL: folder.appendingPathComponent("e.sh"))
+let real = folder.resolvingSymlinksInPath()
+let documentCases: [(String, String?)] = [
+  ("a page.html", real.appendingPathComponent("a page.html").absoluteString),
+  ("b.xhtml", real.appendingPathComponent("b.xhtml").absoluteString),
+  ("c.pdf", real.appendingPathComponent("c.pdf").absoluteString),
+  ("link.html", real.appendingPathComponent("a page.html").absoluteString),
+  ("sneaky.html", nil),
+  ("d.txt", nil),
+  ("e.sh", nil),
+  ("f.svg", nil),
+  ("dir.html", nil),
+  ("missing.html", nil),
+]
+for (name, expected) in documentCases {
+  let got = AddressInput.document(fromOtherApp: folder.appendingPathComponent(name))
+  if got != expected {
+    failures += 1
+    print("FAIL document(fromOtherApp: \(name)) = \(got.debugDescription), expected \(expected.debugDescription)")
+  }
+}
+for text in ["https://example.com/a.html", "file://host.example/a.html"] where URL(string: text).flatMap({ AddressInput.document(fromOtherApp: $0) }) != nil {
+  failures += 1
+  print("FAIL document(fromOtherApp: \(text)) was taken")
+}
+try? FileManager.default.removeItem(at: folder)
+let total = linkCases.count + documentCases.count + 2 + removedCases.count + foregroundCases.count + 7 + paneCases.count + cases.count + displayCases.count + pillCases.count + partsCases.count + autocompleteCases.count + lookCases.count
 print(failures == 0 ? "all \(total) passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)

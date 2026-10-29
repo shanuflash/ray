@@ -89,4 +89,8 @@ let argv = engineArguments.map { UnsafePointer<CChar>(strdup($0)!) }
 let argvBuffer = UnsafeMutablePointer<UnsafePointer<CChar>>.allocate(capacity: argv.count)
 argvBuffer.initialize(from: argv, count: argv.count)
 
+// The link or file that launches Ray arrives while AppKit finishes launching, before the engine has started: Ray's
+// delegate is in place for it (Host/LinksFromApps.swift).
+LinksFromApps.install()
+
 exit(RayCoreEngine.run(withArgc: Int32(argv.count), argv: argvBuffer, delegate: AppController.shared))

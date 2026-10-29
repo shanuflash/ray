@@ -102,6 +102,40 @@ build() {
   <key>SUPublicEDKey</key><string>$sparkle_key</string>
   <key>SUEnableAutomaticChecks</key><true/>
   <key>SUScheduledCheckInterval</key><integer>86400</integer>
+  <!-- A web browser to macOS (System Settings › Desktop & Dock › Default web browser lists apps that take http,
+       https and HTML): links come to AppController's application(_:open:) (Host/LinksFromApps.swift). No file:
+       scheme, unlike Chrome: a file: link from another app is refused, files only come in as documents. The document
+       types are Arc's and match AddressInput.documentTypes: HTML and XHTML, and PDF as an alternate (Open With),
+       so Preview stays the default for PDFs. -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>Web site URL</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>CFBundleURLSchemes</key><array><string>http</string><string>https</string></array>
+    </dict>
+  </array>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key><string>HTML document</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>LSHandlerRank</key><string>Default</string>
+      <key>LSItemContentTypes</key><array><string>public.html</string></array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key><string>XHTML document</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>LSHandlerRank</key><string>Default</string>
+      <key>LSItemContentTypes</key><array><string>public.xhtml</string></array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key><string>PDF document</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>LSHandlerRank</key><string>Alternate</string>
+      <key>LSItemContentTypes</key><array><string>com.adobe.pdf</string></array>
+    </dict>
+  </array>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
   <!-- What macOS shows when a site you allowed first asks for these; without them it kills the app (as Chrome declares). -->

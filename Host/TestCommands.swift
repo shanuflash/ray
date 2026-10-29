@@ -50,6 +50,44 @@ enum TestCommands {
   private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53, "tab": 48, ",": 43, "=": 24, "-": 27,
                                                      "0": 29, "p": 35, "u": 32, "y": 16]
 
+  /// `appopen link <url> …`: each URL as another app sends a link, a GetURL Apple Event (to this process only, so no
+  /// other app is involved and nothing asks for Automation access); AppKit's own handler hands it to
+  /// `application(_:open:)`. `appopen files <path> …`: the paths in one Open Documents event, as Finder sends them.
+  /// `appopen direct <url> …`: all URLs in one `application(_:open:)` call with no event behind it.
+  private static func openFromOtherApp(_ argument: String) -> String {
+    let words = argument.split(separator: " ").map(String.init)
+    guard let kind = words.first, words.count > 1 else { return "usage: appopen link|files|direct <url or path> …" }
+    let items = Array(words.dropFirst())
+    let me = NSAppleEventDescriptor(processIdentifier: ProcessInfo.processInfo.processIdentifier)
+    func send(_ event: NSAppleEventDescriptor) -> Bool {
+      (try? event.sendEvent(options: [.noReply], timeout: 5)) != nil
+    }
+    switch kind {
+    case "link":
+      for item in items {
+        let event = NSAppleEventDescriptor(
+          eventClass: AEEventClass(kInternetEventClass), eventID: AEEventID(kAEGetURL), targetDescriptor: me,
+          returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID))
+        event.setParam(NSAppleEventDescriptor(string: item), forKeyword: keyDirectObject)
+        if !send(event) { return "not sent" }
+      }
+    case "files":
+      let event = NSAppleEventDescriptor(
+        eventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEOpenDocuments), targetDescriptor: me,
+        returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID))
+      let list = NSAppleEventDescriptor.list()
+      for (index, item) in items.enumerated() {
+        list.insert(NSAppleEventDescriptor(fileURL: URL(fileURLWithPath: item)), at: index + 1)
+      }
+      event.setParam(list, forKeyword: keyDirectObject)
+      if !send(event) { return "not sent" }
+    case "direct":
+      AppController.shared.application(NSApp, open: items.compactMap { URL(string: $0) })
+    default: return "usage: appopen link|files|direct <url or path> …"
+    }
+    return "ok"
+  }
+
   /// `key ctrlup`: Control let go, as a real keyboard reports it (through the event queue, where local monitors see it).
   private static func releaseControl(in window: NSWindow?) -> String {
     guard let window, let event = NSEvent.keyEvent(
@@ -332,7 +370,10 @@ enum TestCommands {
     case "closewindow":
       // A sheet left open (Save Page As from an earlier check's ⌘S) keeps a window from closing: cancel it first, as
       // you would before closing the window.
-      if let window = AppController.shared.current?.window {
+      // `closewindow private`: the private window, whichever window is current.
+      let target = argument == "private"
+        ? AppController.shared.windows.first(where: { $0.isPrivate }) : AppController.shared.current
+      if let window = target?.window {
         if let sheet = window.attachedSheet {
           window.endSheet(sheet, returnCode: .cancel)
           DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { window.performClose(nil) }
@@ -342,6 +383,8 @@ enum TestCommands {
       }
     case "reopen":
       _ = AppController.shared.applicationShouldHandleReopen(NSApp, hasVisibleWindows: false)
+    case "appopen":
+      result = openFromOtherApp(argument)
     case "perm":
       if AppController.shared.current?.permissions.press(argument) != true { result = "not ready" }
     case "aboutsnap":

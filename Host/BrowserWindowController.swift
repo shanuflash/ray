@@ -1577,6 +1577,19 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     closeCommandBar(focus: true)
   }
 
+  // MARK: Links from other apps
+
+  /// Links and files from other apps (LinksFromApps), already through AddressInput: each a new Today tab, as if
+  /// opened one after another, the last one active. A command bar in the way closes, so the page shows and has the
+  /// focus, as Chrome's omnibox gives it up for them.
+  func openFromOtherApps(_ urls: [String]) {
+    guard !urls.isEmpty else { return }
+    closeCommandBar(focus: false)
+    for (index, url) in urls.enumerated() {
+      openToday(url, after: nil, foreground: index == urls.count - 1)
+    }
+  }
+
   // MARK: Pages
 
   func pageContains(windowPoint point: NSPoint) -> Bool {

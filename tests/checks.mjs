@@ -1410,6 +1410,175 @@ const checks = {
     await until("private page gone", async () => !(await targets()).some((t) => t.url.includes("/b?private")), 8000);
     assert(state().activeEntry === mainEntry, "the normal window changed while the private one was open");
   },
+  async "open-from-other-apps"() {
+    // Ray as a web browser to macOS: the build declares http(s) and HTML (what System Settings › Default web browser
+    // lists) and PDF, and no file: scheme.
+    const plist = JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", join(app, "Contents/Info.plist")], { encoding: "utf8" }));
+    const schemes = (plist.CFBundleURLTypes ?? []).flatMap((t) => t.CFBundleURLSchemes ?? []);
+    assert(schemes.includes("http") && schemes.includes("https"), `URL schemes: ${schemes}`);
+    assert(!schemes.includes("file"), "Ray claims file: links");
+    const types = (plist.CFBundleDocumentTypes ?? []).flatMap((t) => t.LSItemContentTypes ?? []);
+    for (const type of ["public.html", "public.xhtml", "com.adobe.pdf"]) assert(types.includes(type), `no ${type} in ${types}`);
+    assert(plist.CFBundleDocumentTypes.every((t) => t.CFBundleTypeRole === "Viewer"), "a document type isn't Viewer");
+
+    const otherAppOpens = (log, from) => [...log.slice(from).matchAll(/\[ray\] from other apps: (\d+) received, (\d+) accepted, (\w+)(, queued)?/g)]
+      .map((m) => ({ received: +m[1], accepted: +m[2], kind: m[3], queued: !!m[4] }));
+    await command("state");
+    const activeIs = (part) => async () => {
+      await command("state");
+      const t = tabFor(part);
+      return t && state().active === t.id && state().private === false && t;
+    };
+
+    // A link, as another app sends it (a GetURL Apple Event): a new active Today tab in the normal window.
+    await command(`appopen link ${origin}/b?other=1`);
+    const first = await until("link tab", activeIs("/b?other=1"));
+    assert(entryOfTab(first.id)?.kind === "today", "the link didn't open as a Today tab");
+    assert(oneVisibleActive(), "the link's tab isn't the one visible page");
+
+    // Anything but http(s) is refused: the engine's pages, script, data and file links; then a good one to wait on.
+    let mark = stderr.length;
+    const tabsBefore = state().tabs.length;
+    for (const bad of ["javascript:alert(1)", "chrome://settings", "ray://settings", "data:text/html,<b>x</b>",
+      "file:///private/etc/hosts", "view-source:https://example.com", "about:blank"])
+      await command(`appopen link ${bad}`);
+    await command(`appopen direct chrome://version javascript:void(0)`);
+    await command(`appopen link ${origin}/b?other=after`);
+    await until("link after the refused ones", activeIs("/b?other=after"));
+    const refused = otherAppOpens(stderr, mark);
+    assert(refused.at(-1)?.accepted === 1 && refused.slice(0, -1).every((r) => r.accepted === 0),
+      `a refused URL was taken: ${JSON.stringify(refused)}`);
+    assert(state().tabs.length === tabsBefore + 1, `${state().tabs.length - tabsBefore} tabs from one good link`);
+    assert(!state().tabs.some((t) => /^(javascript|data|file|view-source|about):|^chrome:\/\/(settings|version)/.test(t.url)),
+      `a refused URL opened: ${state().tabs.map((t) => t.url)}`);
+
+    // Several at once: all as tabs, the last one active.
+    await command(`appopen direct ${origin}/b?many=1 ${origin}/b?many=2 ${origin}/b?many=3`);
+    await until("last of several active", activeIs("/b?many=3"));
+    const today = state().sidebar.today.map((e) => e.url);
+    assert(["/b?many=1", "/b?many=2", "/b?many=3"].every((u) => today.some((url) => url.includes(u))), `Today: ${today}`);
+
+    // A command bar in the way closes for the link, so its page shows.
+    await command("menu newTab");
+    await until("command bar", async () => { await command("state"); return state().commandBar; });
+    await command(`appopen link ${origin}/b?other=bar`);
+    await until("link over the command bar", activeIs("/b?other=bar"));
+    assert(state().commandBar === null, "the command bar stayed over the link's page");
+
+    // Files: an HTML file from a document open (Finder's) opens as a file: page; other types, folders, missing files
+    // and a file: link don't.
+    const files = join(dataDir, "other-apps");
+    mkdirSync(join(files, "folder.html"), { recursive: true });
+    writeFileSync(join(files, "page.html"), "<title>Local file</title><p>local</p>");
+    writeFileSync(join(files, "notes.txt"), "notes");
+    writeFileSync(join(files, "run.sh"), "#!/bin/sh\necho hi\n");
+    mark = stderr.length;
+    await command(`appopen files ${["notes.txt", "run.sh", "folder.html", "missing.html"].map((f) => join(files, f)).join(" ")}`);
+    await command(`appopen link file://${join(files, "page.html")}`);
+    await until("refusals logged", () => otherAppOpens(stderr, mark).length === 2);
+    assert(otherAppOpens(stderr, mark).every((r) => r.accepted === 0), `a file was taken: ${JSON.stringify(otherAppOpens(stderr, mark))}`);
+    await command(`appopen files ${join(files, "page.html")}`);
+    const local = await until("local file tab", activeIs("/other-apps/page.html"));
+    assert(local.url.startsWith("file:///"), `the file opened as ${local.url}`);
+    await until("local file loaded", async () => { await command("state"); return tabFor("/other-apps/page.html")?.title === "Local file"; });
+    assert(!state().tabs.some((t) => /notes\.txt|run\.sh|folder\.html|missing\.html/.test(t.url)), "a refused file opened");
+
+    // With a private window in front, the link still goes to the normal window.
+    await command("menu newPrivateWindow");
+    await until("private window", async () => { await command("state"); return state().private === true; });
+    const privateStates = states.length;
+    await command(`appopen link ${origin}/b?other=private`);
+    await until("link in the normal window", activeIs("/b?other=private"));
+    assert(!states.slice(privateStates).some((s) => s.private && s.tabs.some((t) => t.url.includes("other=private"))),
+      "the link opened in the private window");
+    await command("closewindow private");
+    await until("private window closed", async () => (await commandResult("windows")) === "1");
+    await command("state");
+  },
+  async "open-from-other-apps-launch"() {
+    // A cold start by a link and then by a file, the way macOS starts Ray for them: `open -g -n` (a new instance, never
+    // brought to the front) with the URL or file, on its own data dir. Its log goes to a file, and its test commands
+    // come through a FIFO, since Launch Services starts it, not this script.
+    const otherAppOpens = (log, from) => [...log.slice(from).matchAll(/\[ray\] from other apps: (\d+) received, (\d+) accepted, (\w+)(, queued)?/g)]
+      .map((m) => ({ received: +m[1], accepted: +m[2], kind: m[3], queued: !!m[4] }));
+    const { openSync, writeSync, closeSync, constants: fsConstants } = await import("node:fs");
+    const dir = mkdtempSync(join(tmpdir(), "ray-open-"));
+    const page = join(dir, "launch page.html");
+    writeFileSync(page, "<title>Launch file</title><p>launch</p>");
+    let it = null;
+    const start = (target) => {
+      const log = join(dir, `log-${Date.now()}.txt`);
+      writeFileSync(log, "");
+      const fifo = join(dir, `stdin-${Date.now()}`);
+      execFileSync("mkfifo", [fifo]);
+      // Opened read-write so neither side waits for the other.
+      const input = openSync(fifo, fsConstants.O_RDWR);
+      const env = { RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_DATA_DIR: dir,
+        RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.open`,
+        RAY_SUGGEST_URL: `${origin}/suggest?q=%s`, RAY_SEARCH_URL: `${origin}/search?q=%s`, RAY_START_URL: `${origin}/a?start` };
+      execFileSync("open", ["-g", "-n", "-i", fifo, "-o", "/dev/null", "--stderr", log,
+        ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]), "-a", app, target]);
+      it = { log, input, text: () => readFileSync(log, "utf8") };
+      it.states = () => it.text().split("\n").filter((l) => l.includes(stateMarker)).map((l) => JSON.parse(l.slice(l.indexOf(stateMarker) + stateMarker.length)));
+      it.pids = () => {
+        const r = spawnSync("lsof", ["-t", log], { encoding: "utf8" });
+        return r.stdout.split("\n").filter(Boolean).filter((pid) =>
+          spawnSync("ps", ["-p", pid, "-o", "comm="], { encoding: "utf8" }).stdout.trim().endsWith("/Contents/MacOS/Ray"));
+      };
+      return it;
+    };
+    const cmd = async (line) => {
+      const marker = `[ray-test] ${line} -> `;
+      const from = it.text().length;
+      writeSync(it.input, line + "\n");
+      return until(`command ${line}`, () => {
+        const text = it.text();
+        const at = text.indexOf(marker, from);
+        return at >= 0 ? text.slice(at + marker.length).split("\n")[0] : null;
+      }, 20000);
+    };
+    const tail = () => it.text().split("\n").filter((l) => l.trim()).slice(-6).join(" | ").slice(-1500);
+    const waitFor = async (what, fn) => {
+      try { return await until(what, fn, 25000); } catch (error) { throw new Error(`${error.message}; its log: ${tail()}`); }
+    };
+    const stop = async () => {
+      writeSync(it.input, "menu quit\n");
+      await waitFor("instance quit", () => it.pids().length === 0);
+      closeSync(it.input);
+    };
+    const settled = (part) => async () => {
+      if ((await cmd("state")) !== "ok") return null;
+      const s = it.states().at(-1);
+      const tab = s?.tabs.find((t) => t.url.includes(part));
+      return tab && s.active === tab.id && s;
+    };
+    try {
+      // 1. A fresh profile, launched by a link: the link is the one tab, in place of the start page.
+      start(`${origin}/b?launch=link`);
+      let s = await waitFor("launch link active", settled("/b?launch=link"));
+      const opens = otherAppOpens(it.text(), 0);
+      assert(opens.length === 1 && opens[0].accepted === 1 && opens[0].kind === "links", `opens: ${JSON.stringify(opens)}`);
+      assert(opens[0].queued, "the launch link arrived after the engine started (not queued for the first window)");
+      assert(s.sidebar.today.length === 1, `Today after a link launch: ${s.sidebar.today.map((e) => e.url)}`);
+      assert(!s.tabs.some((t) => t.url.includes("?start")), "the start page opened beside the launch link");
+      assert(s.commandBar === null, "a new-tab command bar opened over the launch link");
+      await sleep(800);
+      await stop();
+
+      // 2. The same profile, launched by an HTML file from Finder: the session comes back, the file opens on top.
+      start(page);
+      s = await waitFor("launch file active", settled("launch%20page.html"));
+      const fileOpens = otherAppOpens(it.text(), 0);
+      assert(fileOpens.length === 1 && fileOpens[0].kind === "documents" && fileOpens[0].queued, `opens: ${JSON.stringify(fileOpens)}`);
+      const urls = s.sidebar.today.map((e) => e.url);
+      assert(urls.some((u) => u.includes("/b?launch=link")), `the session didn't come back: ${urls}`);
+      assert(urls.length === 2 && !s.tabs.some((t) => t.url.includes("?start")), `Today: ${urls}`);
+      await stop();
+      rmSync(dir, { recursive: true, force: true });
+    } finally {
+      for (const pid of it?.pids() ?? []) spawnSync("kill", ["-TERM", pid]);
+    }
+  },
   async "safe-storage-migration"() {
     // Ray 0.1's data, encrypted under the mock keychain's public key, moves to Ray's own key on the first launch
     // that leaves the mock keychain: cookies survive, the database stops opening with the mock key, and the move

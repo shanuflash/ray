@@ -18,6 +18,7 @@ const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-
 const pageSurface = ["switch-back-latency", "top-strip-click", "toggle-keeps-page-still", "activate-target",
   "devtools-docked", "background-tab"];
 
+const otherApps = ["open-from-other-apps", "open-from-other-apps-launch"];
 const settings = ["settings-window", "settings-minimal-url", "settings-loading-progress", "settings-theme",
   "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling",
   "settings-shortcuts", "settings-routes", "settings-trimmed", "settings-persist"];
@@ -106,6 +107,11 @@ export const areas = {
     "page-commands"],
   // The helpers that read what was typed: the command bar's.
   "Host/AddressInput.swift#Typed addresses": [...commandBar, "settings-routes"],
+  // Which links and files from other apps Ray takes.
+  "Host/AddressInput.swift#Opens from other apps": otherApps,
+  // Links and files from other apps (and the one that launched Ray), and where they open.
+  "Host/LinksFromApps.swift": otherApps,
+  "Host/BrowserWindowController.swift#Links from other apps": otherApps,
   "Host/RaySettings.swift": "all",
   "Host/SettingsWindow.swift": [...settings, "onboarding"],
   "Host/ArcImport.swift": ["arc-import"],
@@ -137,7 +143,7 @@ export const areas = {
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
-    "reopen-closed-tab", "close-last-window"],
+    "reopen-closed-tab", "close-last-window", ...otherApps],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],
