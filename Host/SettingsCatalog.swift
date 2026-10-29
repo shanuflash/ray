@@ -29,6 +29,7 @@ extension AnySettingKey {
     sidebarMediaControls,
     autoPictureInPicture,
     undoReopensClosedTab,
+    shortcuts,  // Shortcuts (MenuShortcuts.swift, SettingsShortcutEditor.swift)
   ]
 
   /// Old ids that now load into a renamed setting: `"oldId": "newId"`. The old key stays in Settings.json as it was.
@@ -289,7 +290,7 @@ enum SettingPane: String, CaseIterable {
 
     case .extensions: return Info(title: "Extensions", subtitle: "What you've installed, and what each may reach.", symbol: "puzzlepiece.extension", section: .data)
 
-    case .shortcuts: return Info(title: "Shortcuts", subtitle: "Keys Ray keeps for itself, and which go to the page.", symbol: "command", section: .more)
+    case .shortcuts: return Info(title: "Shortcuts", subtitle: "Every command's key, and which keys go to the page.", symbol: "command", section: .more)
 
     case .about: return Info(title: "About Ray", subtitle: "Ray's version and the engine under it.", symbol: "info.circle", section: .more)
     }

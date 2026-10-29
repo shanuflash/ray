@@ -124,7 +124,7 @@ enum SettingsPanes {
 
     case .extensions: return ExtensionsPaneContent()
 
-    case .shortcuts: return nil
+    case .shortcuts: return ShortcutsPaneContent()
 
     case .about: return AboutPaneContent()
     }

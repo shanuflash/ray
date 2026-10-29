@@ -2199,6 +2199,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "settings": MainMenu.keyEquivalent(of: #selector(AppController.showSettings(_:))) ?? NSNull(),
       "savePage": MainMenu.keyEquivalent(of: #selector(AppController.savePage(_:))) ?? NSNull(),
     ] as [String: Any]
+    state["shortcuts"] = MenuShortcuts.debug
     state["welcomeAgainItem"] = MainMenu.alternateInfo(of: #selector(AppController.showWelcomeAgain(_:))) ?? NSNull()
     state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
       .sorted { $0.lastActive > $1.lastActive }.map(tabID)

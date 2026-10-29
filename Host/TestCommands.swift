@@ -34,7 +34,7 @@ enum TestCommands {
     // `keywin`: make the window key first (without ordering it front), so the press takes AppKit's real key path.
     if parts.contains("keywin") { window.makeKey() }
     // A real keyboard reports the shifted character (⇧⌘C arrives as "C"), even ignoring modifiers.
-    let typed = character == "tab" ? "\t" : character
+    let typed = typedCharacters[character] ?? character
     let shown = flags.contains(.shift) ? typed.uppercased() : typed
     for type in [NSEvent.EventType.keyDown, .keyUp] {
       guard let event = NSEvent.keyEvent(
@@ -48,7 +48,32 @@ enum TestCommands {
   }
 
   private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53, "tab": 48, ",": 43, "=": 24, "-": 27,
-                                                     "0": 29, "p": 35, "u": 32, "y": 16, "z": 6]
+                                                     "0": 29, "p": 35, "u": 32, "y": 16, "z": 6, "k": 40, "j": 38, "q": 12, "h": 4, "m": 46,
+                                                     "e": 14, "o": 31, "space": 49, "delete": 51, "fwddelete": 117, "f5": 96, "3": 20]
+
+  /// What a key types when it isn't its own name.
+  private static let typedCharacters: [String: String] = [
+    "tab": "\t", "esc": "\u{1b}", "space": " ", "delete": "\u{7f}",
+    "fwddelete": String(Character(UnicodeScalar(UInt32(NSDeleteFunctionKey))!)),
+    "f5": String(Character(UnicodeScalar(UInt32(NSF5FunctionKey))!)),
+  ]
+
+  /// `shortcuts type <key> [cmd shift opt ctrl]`: a key press in `window`, as the shortcut editor's key monitor gets it.
+  private static func shortcutKeyEvent(_ argument: String, in window: NSWindow?) -> NSEvent? {
+    let parts = argument.split(separator: " ").map(String.init)
+    guard let window, let character = parts.first, let code = keyCodes[character] else { return nil }
+    var flags: NSEvent.ModifierFlags = []
+    if parts.contains("cmd") { flags.insert(.command) }
+    if parts.contains("shift") { flags.insert(.shift) }
+    if parts.contains("opt") { flags.insert(.option) }
+    if parts.contains("ctrl") { flags.insert(.control) }
+    let typed = typedCharacters[character] ?? character
+    let shown = flags.contains(.shift) ? typed.uppercased() : typed
+    return NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+      windowNumber: window.windowNumber, context: nil, characters: shown, charactersIgnoringModifiers: shown,
+      isARepeat: false, keyCode: code)
+  }
 
   /// `appopen link <url> …`: each URL as another app sends a link, a GetURL Apple Event (to this process only, so no
   /// other app is involved and nothing asks for Automation access); AppKit's own handler hands it to
@@ -574,6 +599,8 @@ enum TestCommands {
       result = SearchPaneContent.testCommand(argument)
     case "jumpcloud":
       result = jumpCloud(argument)
+    case "shortcuts":
+      result = ShortcutsPaneContent.testCommand(argument, makeEvent: shortcutKeyEvent)
     case "dialogs":
       // Chrome's tab-modal dialogs: their own windows, beside the browser window. Frames in screen points.
       let browser = window

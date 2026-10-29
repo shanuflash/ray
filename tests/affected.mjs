@@ -25,7 +25,7 @@ const settingFeatures = ["settings-appearance-mode", "settings-scroll-bars", "se
   "settings-sidebar-button", "settings-fade-unloaded", "settings-reorder-haptics", "settings-undo-reopens"];
 const settings = ["settings-window", "settings-catalog", "settings-minimal-url", "settings-loading-progress", "settings-theme",
   "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling",
-  "settings-shortcuts", "settings-routes", "settings-trimmed", "settings-persist", "settings-panes", "settings-search",
+  "settings-shortcuts", "settings-shortcut-editor", "settings-routes", "settings-trimmed", "settings-persist", "settings-panes", "settings-search",
   "settings-bar", "settings-colours", ...settingFeatures,
   "search-engine", "search-suggestions-off", "site-search", "jumpcloud-relay"];
 // Settings › General (SettingsGeneral.swift, CloseWarnings.swift): its pane, the two warnings and Start fresh.
@@ -46,6 +46,16 @@ export const areas = {
     "settings-shortcuts", "clear", "folder-create", "pin-unload-restore"],
   "Host/MainMenu.swift": "all",
   "Host/Shortcuts.swift": "all",
+  // Each menu command's key (defaults, the user's shortcuts, the ⇧⌘C and ⌘S switches) and the reserved keys.
+  "Host/MenuShortcuts.swift": "all",
+  // The setting's value (its text, Settings.json, validation): the settings checks and the editor's.
+  "Host/MenuShortcuts.swift#Setting": [...settingReaders, "settings-shortcut-editor"],
+  // What a command conflicts with: the editor's refusals and Replace.
+  "Host/MenuShortcuts.swift#Who holds a key": ["settings-shortcut-editor", "settings-catalog"],
+  "Host/MenuShortcuts.swift#Tests": ["settings-shortcut-editor", "settings-persist"],
+  // Settings › Shortcuts' editor (its list, recording, conflicts, Reset All).
+  "Host/SettingsShortcutEditor.swift": ["settings-shortcut-editor", "settings-shortcuts", "settings-panes", "settings-window",
+    "settings-search", "settings-catalog", "settings-persist"],
   "Host/SidebarModel.swift": "all",
   // What Sidebar.json keeps of an entry, its name and titles, and what the sidebar shows of it.
   "Host/SidebarModel.swift#Names and saved fields": [...pages, ...drag, ...commandBar, "tab-rename", "folder-create",
@@ -214,7 +224,7 @@ export const areas = {
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
   "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
-    "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens"],
+    "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

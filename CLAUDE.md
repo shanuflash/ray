@@ -116,7 +116,7 @@ publicly or create accounts.
   row (`SettingsJumpCloud.swift`).
   Settings that act elsewhere: minimal URL and loading progress (`PageToolbar`, `PageContainerView.showsProgress`),
   new tab position (`insertToday`), ⌃Tab in recent order (`cycleTabWithControl`, settled by a `flagsChanged` monitor
-  when Control is released), ⇧⌘C and ⌘S (`MainMenu.applyShortcutSettings` removes their key equivalents so the page
+  when Control is released), ⇧⌘C and ⌘S (`MenuShortcuts.defaultKey` drops their key equivalents so the page
   gets the keys), page zoom, light or dark and scroll bars (`AppLook`), the sidebar button (`SidebarView.showsToggle`,
   `PageToolbarView.showsSidebarButton`), faded unloaded tabs (`SidebarView.iconAlpha`), the reorder haptic
   (`retarget` in the sidebar's drag) and ⌘Z (`UndoCloseTab`).
@@ -171,6 +171,17 @@ publicly or create accounts.
   addresses/cards" are unbuilt (no prompts yet). Routes: chrome://settings/passwords, /autofill, /addresses,
   /payments and chrome://password-manager (any path; `AddressInput.nativePages`). Checks `settings-passwords`,
   `settings-autofill`.
+- `MenuShortcuts`: every menu command's key, decided in one place (`apply`, at launch and on each change): the user's
+  own from the `shortcuts` setting (`ShortcutOverrides`: action id → `ctrl+opt+shift+cmd+k` or `none`), else the
+  default (the ⇧⌘C and ⌘S switches decide Copy URL's, Toggle Sidebar's and Save Page As'), which yields to a key the
+  user gave another command. Ray's own commands can change, except Quit and Settings; macOS's items (Hide, Minimize,
+  Cut/Copy/Paste, Undo, Full Screen) aren't listed and keep their keys, and no command takes those or macOS's own
+  (⌘⇥, ⌘Space, screenshots: `macOSKeys`). A key needs ⌘ or ⌃ (⌥ alone types é), or is F1–F20. Reserved keys follow
+  their commands (`isReserved`, Chrome's reserved commands). The command bar reads item keys live.
+  `SettingsShortcutEditor`: Settings › Shortcuts' list by menu with a search field, Reset All, key-cap fields that
+  record the next key (Escape cancels, Delete leaves none), Replace/Cancel in the list for a key another command has.
+  Test command `shortcuts state|search|record <id>|type <key> [mods]|replace|cancel|reset <id>|resetall|scroll`; the
+  state log's `shortcuts` (each command's key, the reserved keys). Check `settings-shortcut-editor`.
 - Page zoom: the engine keeps zoom per host and `tab.zoomFactor = x` writes that host's level, so Ray applies the
   default zoom itself: on a committed navigation (next run-loop turn, after the engine's own zoom) to a host the user
   hasn't zoomed, and on every tab when the default changes. `tabDidChangeZoom` on a settled host that isn't the
@@ -475,8 +486,9 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
 - **Every security-relevant behaviour gets a check** in `tests/checks.mjs`.
 
 ## Key routing
-- `preHandleKeyEvent` runs only Chrome's reserved set (`Shortcuts.isReserved`: ⌘T ⌘W ⌘N ⌘Q ⌘, ⇧⌘T ⇧⌘W ⇧⌘N ⇧⌘[ ⇧⌘]
-  ⌃Tab) before the page. Everything else reaches the page first; `handleKeyEvent` (page didn't use it) sends it to
+- `preHandleKeyEvent` runs only Chrome's reserved set (`Shortcuts.isReserved`: by default ⌘T ⌘W ⌘N ⌘Q ⌘, ⇧⌘T ⇧⌘W
+  ⇧⌘N ⇧⌘[ ⇧⌘] ⌃Tab) before the page. It is the reserved commands' keys as the menu has them now
+  (`MenuShortcuts.isReserved`), so a key changed in Settings › Shortcuts moves with its command. Everything else reaches the page first; `handleKeyEvent` (page didn't use it) sends it to
   the main menu.
 
 ## Rules

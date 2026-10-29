@@ -193,21 +193,5 @@ enum BarActions {
   }
 
   /// A menu item's key equivalent as the menu draws it: ⌃⌥⇧⌘ then the key.
-  static func shortcut(of item: NSMenuItem) -> String {
-    let key = item.keyEquivalent
-    guard !key.isEmpty else { return "" }
-    var modifiers = item.keyEquivalentModifierMask
-    // An uppercase letter is a shifted key whether or not the mask says so.
-    if key.count == 1, let first = key.first, first.isLetter, first.isUppercase { modifiers.insert(.shift) }
-    var text = ""
-    if modifiers.contains(.control) { text += "⌃" }
-    if modifiers.contains(.option) { text += "⌥" }
-    if modifiers.contains(.shift) { text += "⇧" }
-    if modifiers.contains(.command) { text += "⌘" }
-    let named: [String: String] = [
-      String(UnicodeScalar(UInt8(NSBackspaceCharacter))): "⌫", String(UnicodeScalar(UInt8(NSDeleteCharacter))): "⌫",
-      "\t": "⇥", "\r": "↩", " ": "Space", "\u{1b}": "⎋",
-    ]
-    return text + (named[key] ?? key.uppercased())
-  }
+  static func shortcut(of item: NSMenuItem) -> String { KeyCombo(item: item)?.display ?? "" }
 }

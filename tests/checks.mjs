@@ -309,7 +309,7 @@ async function resetSettings() {
   for (const [name, value] of [["minimalURL", "off"], ["loadingProgress", "on"], ["theme", "default"], ["defaultZoom", "1"],
     ["newTabNextToActive", "off"], ["recentTabCycling", "on"], ["copyLinkShortcut", "on"], ["sidebarShortcut", "on"],
     ["appearanceMode", "auto"], ["scrollBars", "system"], ["pageAddressBar", "on"], ["showSidebarButton", "on"],
-    ["fadeUnloadedTabs", "off"], ["tabReorderHaptics", "on"], ["undoReopensClosedTab", "off"]])
+    ["fadeUnloadedTabs", "off"], ["tabReorderHaptics", "on"], ["undoReopensClosedTab", "off"], ["shortcuts", "default"]])
     await command(`setting ${name} ${value}`);
   await command("state");
 }
@@ -3067,7 +3067,7 @@ const checks = {
     assert(win().panes.join() === all.join() && win().sidebarPanes.join() === all.join(), `panes ${win().panes} / ${win().sidebarPanes}`);
     const rows = win().rows;
     assert(["theme", "appearanceMode", "minimalURL", "loadingProgress", "defaultZoom", "scrollBars"].every((id) => rows.appearance.includes(id)), `appearance rows ${rows.appearance}`);
-    assert(rows.tabs.join() === "newTabNextToActive,recentTabCycling,showSidebarButton,showClearButton,hideAddressBarWhileScrolling,fadeUnloadedTabs,tabReorderHaptics,sidebarMediaControls,autoPictureInPicture" && rows.shortcuts.join() === "copyLinkShortcut,sidebarShortcut,undoReopensClosedTab", `rows ${JSON.stringify(rows)}`);
+    assert(rows.tabs.join() === "newTabNextToActive,recentTabCycling,showSidebarButton,showClearButton,hideAddressBarWhileScrolling,fadeUnloadedTabs,tabReorderHaptics,sidebarMediaControls,autoPictureInPicture" && rows.shortcuts.join() === "copyLinkShortcut,sidebarShortcut,undoReopensClosedTab,shortcuts", `rows ${JSON.stringify(rows)}`);
     assert(rows.about.includes("about.version") && rows.general.includes("onQuit"), `rows ${JSON.stringify(rows)}`);
     assert((await commandResult("settings open nonsense")) === "no such pane", "a pane that isn't there opened");
     // The new controls: segmented (scroll bars, a rare row under "More") and picture choices (light or dark).
@@ -3777,6 +3777,163 @@ const checks = {
       await resetSettings().catch(() => {});
       if (state()?.windowOnActiveSpace === false) throw new Skip("the test window left the active Space mid-check");
       throw error;
+    }
+  },
+  async "settings-shortcut-editor"() {
+    // Settings › Shortcuts lists Ray's menu commands by menu; a field records the next key press (⌘ or ⌃ with a key, or
+    // a function key), which the menu, the command bar and the reserved-key routing then follow. A key another command
+    // has asks to Replace it; macOS's keys and the locked commands' are refused; Delete leaves none; Reset All brings
+    // Ray's keys back.
+    const editor = async () => JSON.parse(await commandResult("shortcuts state"));
+    const keys = () => state().shortcuts.keys;
+    const saved = () => state().settings.shortcuts ?? {};
+    const row = (ed, id) => ed.rows.find((r) => r.id === id);
+    const openPane = async () => {
+      await command("settings open shortcuts");
+      await until("shortcuts pane", async () => { await command("state"); return state().settingsWindow.open && state().settingsWindow.pane === "shortcuts"; });
+    };
+    let tab = null;
+    try {
+      await resetSettings();
+      await openPane();
+      let ed = await editor();
+      for (const group of ["Ray", "File", "Edit", "View", "History", "Window"]) assert(ed.groups.includes(group), `groups ${ed.groups}`);
+      for (const id of ["newTab", "closeTab", "copyURL", "toggleSidebar", "reopenClosedTab", "zoomIn", "selectTab1", "nextTab"])
+        assert(row(ed, id), `${id} isn't listed: ${ed.rows.map((r) => r.id)}`);
+      // macOS's own items aren't listed (their keys stay theirs); Quit and Settings are, and can't change.
+      assert(!ed.rows.some((r) => ["Copy", "Paste", "Undo", "Minimize", "Hide Ray", "Enter Full Screen"].includes(r.title)), `system items listed: ${ed.rows.map((r) => r.title)}`);
+      assert(row(ed, "quit").locked && row(ed, "showSettings").locked && !row(ed, "newTab").locked, "locked rows");
+      assert((await commandResult("shortcuts record quit")) === "no such command", "Quit started recording");
+      assert(row(ed, "copyURL").field === "⇧⌘C" && row(ed, "zoomIn").field === "⌘+" && !ed.resetAllEnabled, `fields ${JSON.stringify(row(ed, "copyURL"))}`);
+      if (process.env.SNAP_DIR) {
+        await command("shortcuts scroll");
+        await command(`settings snap ${join(process.env.SNAP_DIR, "shortcut-editor.png")}`);
+      }
+      // Search by title.
+      await command("shortcuts search zoom");
+      ed = await editor();
+      assert(ed.rows.length >= 2 && ed.rows.every((r) => /zoom/i.test(`${r.title} ${r.menu}`)) && row(ed, "zoomIn"), `zoom: ${ed.rows.map((r) => r.title)}`);
+      await command("shortcuts search zzqqx");
+      ed = await editor();
+      assert(ed.rows.length === 0 && ed.empty, `nothing matches: ${JSON.stringify(ed.rows)}`);
+      await command("shortcuts search");
+
+      // Record ⌃⌘K for Copy URL. A key without ⌘ or ⌃, macOS's ⌘Q and Edit's ⌘C are refused; it keeps listening.
+      await command("shortcuts record copyURL");
+      ed = await editor();
+      assert(ed.recording === "copyURL" && row(ed, "copyURL").field === "Type Shortcut", `recording ${JSON.stringify(ed)}`);
+      if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "shortcut-recording.png")}`);
+      for (const [press, says] of [["k", "⌘ or ⌃"], ["k opt", "⌘ or ⌃"], ["q cmd", "macOS"], ["c cmd", "Copy"], ["3 cmd shift", "screenshot"]]) {
+        await command(`shortcuts type ${press}`);
+        ed = await editor();
+        assert(ed.recording === "copyURL" && ed.notice?.kind === "problem" && ed.notice.text.includes(says), `${press}: ${JSON.stringify(ed.notice)}`);
+      }
+      await command("state");
+      assert(keys().copyURL === "⇧⌘C" && !("copyURL" in saved()), `a refused key changed Copy URL: ${keys().copyURL}`);
+      await command("shortcuts type k ctrl cmd");
+      await until("⌃⌘K saved", async () => { await command("state"); return saved().copyURL === "ctrl+cmd+k" && keys().copyURL === "⌃⌘K"; });
+      ed = await editor();
+      assert(ed.recording === null && ed.notice === null && row(ed, "copyURL").customized && row(ed, "copyURL").field === "⌃⌘K" && ed.resetAllEnabled, `after recording ${JSON.stringify(ed)}`);
+      assert(state().menuKeys.copyURL === "k", `the menu item's key ${state().menuKeys.copyURL}`);
+
+      // The new key copies the page's address; ⇧⌘C no longer does.
+      await closeSettingsWindow();
+      await goTo(`${origin}/b?editorA`, true);
+      tab = await until("tab", async () => { await command("state"); return activeTabState()?.url.endsWith("?editorA") && activeTabState(); });
+      const urlA = activeTabState().url;
+      await command("key k ctrl cmd");
+      await until("⌃⌘K copied", async () => { await command("state"); return state().pasteboard === urlA; });
+      await goTo(`${origin}/b?editorB`);
+      await until("editorB", async () => { await command("state"); return activeTabState()?.url.endsWith("?editorB"); });
+      await command("key c cmd shift");
+      await sleep(600);
+      await command("state");
+      assert(state().pasteboard === urlA, `⇧⌘C still copied: ${state().pasteboard}`);
+      // The command bar shows Copy URL's new key.
+      await command("menu newTab");
+      await until("bar open", async () => { await command("state"); return state().commandBar; });
+      await command("type copy url");
+      const bar = await until("copy url row", async () => { await command("state"); return state().commandBar?.query === "copy url" && state().commandBar; });
+      const action = bar.rows.find((r) => r.kind === "action" && r.title === "Copy URL");
+      assert(action?.detail === "⌃⌘K", `the command bar shows ${JSON.stringify(action)}`);
+      await command("escape");
+      await until("bar closed", async () => { await command("state"); return state().commandBar === null; });
+
+      // Conflict → Replace: ⌃⌘K for New Folder takes it from Copy URL, which then has none.
+      await openPane();
+      await command("shortcuts record newFolder");
+      await command("shortcuts type k ctrl cmd");
+      ed = await editor();
+      assert(ed.notice?.kind === "conflict" && ed.notice.holder === "copyURL" && ed.notice.combo === "⌃⌘K" && ed.recording === null, `conflict ${JSON.stringify(ed.notice)}`);
+      await command("state");
+      assert(saved().copyURL === "ctrl+cmd+k" && !("newFolder" in saved()), "the conflict changed a key before Replace");
+      if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "shortcut-conflict.png")}`);
+      await command("shortcuts replace");
+      await until("replaced", async () => { await command("state"); return saved().newFolder === "ctrl+cmd+k" && saved().copyURL === "none" && keys().newFolder === "⌃⌘K" && keys().copyURL === ""; });
+      // Cancel leaves both: ⌘D is Pin Tab's (by default).
+      await command("shortcuts record reload");
+      await command("shortcuts type d cmd");
+      ed = await editor();
+      assert(ed.notice?.kind === "conflict" && ed.notice.holder === "togglePin", `⌘D: ${JSON.stringify(ed.notice)}`);
+      await command("shortcuts cancel");
+      ed = await editor();
+      await command("state");
+      assert(ed.notice === null && keys().reload === "⌘R" && keys().togglePin === "⌘D" && !("reload" in saved()), `after Cancel ${JSON.stringify(keys())}`);
+      // Replacing a default: Pin Tab's ⌘D yields while Reload has it, and is back once Reload is reset.
+      await command("shortcuts record reload");
+      await command("shortcuts type d cmd");
+      await command("shortcuts replace");
+      await until("⌘D is Reload's", async () => { await command("state"); return keys().reload === "⌘D" && keys().togglePin === "" && saved().reload === "cmd+d" && !("togglePin" in saved()); });
+      await command("shortcuts reset reload");
+      await until("Reload reset", async () => { await command("state"); return keys().reload === "⌘R" && keys().togglePin === "⌘D" && !("reload" in saved()); });
+
+      // Delete leaves a command with none; Escape changes nothing.
+      await command("shortcuts record find");
+      await command("shortcuts type delete");
+      await until("Find has none", async () => { await command("state"); return saved().find === "none" && keys().find === ""; });
+      ed = await editor();
+      assert(row(ed, "find").field === "None" && ed.recording === null, `Find's field ${JSON.stringify(row(ed, "find"))}`);
+      await command("shortcuts record findNext");
+      await command("shortcuts type esc");
+      ed = await editor();
+      await command("state");
+      assert(ed.recording === null && keys().findNext === "⌘G" && !("findNext" in saved()), "Escape changed Find Next");
+
+      // Reserved keys follow their command: New Tab on ⌃⌘J reaches Ray before the page; ⌘T is the page's.
+      await command("shortcuts record newTab");
+      await command("shortcuts type j ctrl cmd");
+      await until("New Tab on ⌃⌘J", async () => { await command("state"); return keys().newTab === "⌃⌘J" && state().shortcuts.reserved.includes("⌃⌘J") && !state().shortcuts.reserved.includes("⌘T"); });
+      await closeSettingsWindow();
+      await command("key j ctrl cmd keywin");
+      await until("⌃⌘J opened the command bar", async () => { await command("state"); return state().commandBar; }, 5000);
+      await command("escape");
+      await until("bar closed", async () => { await command("state"); return state().commandBar === null; });
+      await command("key t cmd keywin");
+      await sleep(600);
+      await command("state");
+      assert(state().commandBar === null, "⌘T still opened the command bar");
+
+      // Reset All: Ray's own keys again, reserved ones too.
+      await openPane();
+      await command("shortcuts resetall");
+      await until("reset", async () => {
+        await command("state");
+        return Object.keys(saved()).length === 0 && keys().copyURL === "⇧⌘C" && keys().find === "⌘F" && keys().newTab === "⌘T" &&
+          keys().newFolder === "⌥⌘N" && state().shortcuts.reserved.includes("⌘T") && !state().shortcuts.reserved.includes("⌃⌘J");
+      });
+      ed = await editor();
+      assert(!ed.resetAllEnabled && !ed.rows.some((r) => r.customized), "Reset All left a customized row");
+      await closeSettingsWindow();
+    } finally {
+      await command("shortcuts search").catch(() => {});
+      await resetSettings().catch(() => {});
+      await closeSettingsWindow().catch(() => {});
+      if (tab) {
+        // Closed as a page closes itself, so Recently Closed (which reopen-closed-tab counts) gets nothing more.
+        const target = (await targets()).find((t) => t.url.includes("?editorB") || t.url.includes("?editorA"));
+        if (target) await send("Target.closeTarget", { targetId: target.targetId });
+        await until("editor tab closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === tab.id); });
+      }
     }
   },
   async "reopen-closed-tab"() {
@@ -5340,7 +5497,8 @@ const checks = {
     // Non-default values for every setting; the next launch (the restore check) must find them as they were.
     await resetSettings();
     for (const [name, value] of [["minimalURL", "on"], ["loadingProgress", "off"], ["theme", "#E5589D"], ["defaultZoom", "1.25"],
-      ["newTabNextToActive", "on"], ["recentTabCycling", "off"], ["copyLinkShortcut", "off"], ["sidebarShortcut", "off"]])
+      ["newTabNextToActive", "on"], ["recentTabCycling", "off"], ["copyLinkShortcut", "off"], ["sidebarShortcut", "off"],
+      ["shortcuts", `{"newFolder":"ctrl+cmd+k","find":"none"}`]])
       await setSetting(name, value);
     await command("settings open");
     await closeSettingsWindow();
@@ -5348,7 +5506,8 @@ const checks = {
     await until("saved", () => existsSync(file) && JSON.parse(readFileSync(file, "utf8")).theme === "#E5589D", 4000);
     const saved = JSON.parse(readFileSync(file, "utf8"));
     assert(saved.minimalURL === true && saved.loadingProgress === false && saved.defaultZoom === 1.25 && saved.newTabNextToActive === true &&
-      saved.recentTabCycling === false && saved.copyLinkShortcut === false && saved.sidebarShortcut === false, `Settings.json ${JSON.stringify(saved)}`);
+      saved.recentTabCycling === false && saved.copyLinkShortcut === false && saved.sidebarShortcut === false &&
+      saved.shortcuts?.newFolder === "ctrl+cmd+k" && saved.shortcuts?.find === "none", `Settings.json ${JSON.stringify(saved)}`);
     assert(!/(https?:|password|cookie)/i.test(readFileSync(file, "utf8")), "Settings.json holds something it shouldn't");
     await command("state");
     savedSettings = state().settings;
@@ -5383,6 +5542,8 @@ const checks = {
     const canon = (o) => JSON.stringify(o, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort()) : v));
     assert(canon(state().settings) === canon(savedSettings), `settings changed over the relaunch: ${JSON.stringify(state().settings)} vs ${JSON.stringify(savedSettings)}`);
     assert(state().menuKeys.copyURL === "" && state().menuKeys.toggleSidebar === "", `menu keys after relaunch ${JSON.stringify(state().menuKeys)}`);
+    // The user's shortcuts are the menu's again (settings-persist's ⌃⌘K for New Folder, Find with none).
+    assert(state().shortcuts.keys.newFolder === "⌃⌘K" && state().shortcuts.keys.find === "", `shortcuts after relaunch ${JSON.stringify(state().shortcuts.keys)}`);
     await command("settings open");
     await until("settings window after relaunch", async () => { await command("state"); return state().settingsWindow.open; });
     const shown = state().settingsWindow.controls;

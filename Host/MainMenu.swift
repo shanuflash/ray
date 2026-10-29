@@ -35,7 +35,7 @@ enum MainMenu {
       .separator(),
       item("Import from Browser…", #selector(AppController.importFromBrowser(_:)), nil, target: target),
       .separator(),
-      // ⌘S is Toggle Sidebar unless Settings frees it; then it's Save Page As, as in Chrome (applyShortcutSettings).
+      // ⌘S is Toggle Sidebar unless Settings frees it; then it's Save Page As, as in Chrome (MenuShortcuts.defaultKey).
       item("Save Page As…", #selector(AppController.savePage(_:)), nil, target: target),
       item("Print…", #selector(AppController.printPage(_:)), "p", target: target),
       item("Print Using System Dialog…", #selector(AppController.printWithSystemDialog(_:)), "p", [.command, .option], target: target),
@@ -115,25 +115,10 @@ enum MainMenu {
 
     NSApp.mainMenu = main
     NSApp.windowsMenu = window.submenu
-    applyShortcutSettings()
-    shortcutSettings = RaySettings.shared.observe([.copyLinkShortcut, .sidebarShortcut]) { applyShortcutSettings() }
+    // Each command's key: the user's own (Settings › Shortcuts), else its default, which the ⇧⌘C and ⌘S switches
+    // decide for Copy URL, Toggle Sidebar and Save Page As. At launch and on every change (MenuShortcuts.apply).
+    MenuShortcuts.install()
     UndoCloseTab.shared.install()
-  }
-
-  private static var shortcutSettings: SettingsObservation?
-
-  /// Settings can take ⇧⌘C and ⌘S away from the menu, so the page gets those keys. Run at launch and on every change.
-  static func applyShortcutSettings() {
-    let settings = RaySettings.shared
-    setKey(#selector(AppController.copyURL(_:)), on: settings[.copyLinkShortcut], key: "C", modifiers: [.command, .shift])
-    setKey(#selector(AppController.toggleSidebar(_:)), on: settings[.sidebarShortcut], key: "s", modifiers: [.command])
-    setKey(#selector(AppController.savePage(_:)), on: !settings[.sidebarShortcut], key: "s", modifiers: [.command])
-  }
-
-  private static func setKey(_ action: Selector, on: Bool, key: String, modifiers: NSEvent.ModifierFlags) {
-    guard let menu = NSApp.mainMenu, let entry = find(action, in: menu) else { return }
-    entry.keyEquivalent = on ? key : ""
-    entry.keyEquivalentModifierMask = on ? modifiers : []
   }
 
   private static func find(_ action: Selector, in menu: NSMenu) -> NSMenuItem? {
