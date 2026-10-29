@@ -2274,6 +2274,174 @@ const checks = {
     await settle();
     assert(state().sidebar.pinned.length + state().sidebar.favorites.length === count, "importing twice added duplicates");
   },
+  async onboarding() {
+    // The first run's welcome and File › Import from Browser…, on the fake importer (RAY_IMPORT_FAKE), in instances
+    // of their own on a new data dir (RAY_ONBOARDING: test builds otherwise never show it, so this main instance
+    // starts plain). SNAP_DIR=<dir> also saves each step, light and dark.
+    await command("state");
+    assert(state().onboarding === null, "a test instance showed the onboarding without RAY_ONBOARDING");
+    const dir = mkdtempSync(join(tmpdir(), "ray-onboarding-"));
+    const shots = process.env.SNAP_DIR;
+    if (shots) mkdirSync(shots, { recursive: true });
+    const running = [];
+    const start = () => {
+      const it = { log: "", states: [] };
+      let partial = "";
+      it.proc = spawn(join(app, "Contents/MacOS/Ray"), [], {
+        env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_ONBOARDING: "1",
+          RAY_IMPORT_FAKE: "1", RAY_DATA_DIR: dir, RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_START_URL: `${origin}/a`,
+          RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.onboarding` },
+        stdio: ["pipe", "ignore", "pipe"],
+      });
+      it.proc.stdin.on("error", () => {});
+      it.proc.stderr.setEncoding("utf8");
+      it.proc.stderr.on("data", (chunk) => {
+        it.log += chunk;
+        const lines = (partial + chunk).split("\n");
+        partial = lines.pop();
+        for (const line of lines) {
+          const at = line.indexOf(stateMarker);
+          if (at >= 0) it.states.push(JSON.parse(line.slice(at + stateMarker.length)));
+        }
+      });
+      it.exit = new Promise((r) => it.proc.on("exit", (code, signal) => r(code ?? signal)));
+      running.push(it);
+      return it;
+    };
+    const run = async (it, line) => {
+      const marker = `[ray-test] ${line} -> `;
+      const from = it.log.length;
+      it.proc.stdin.write(line + "\n");
+      const result = await until(`command ${line}`, () => {
+        const at = it.log.indexOf(marker, from);
+        return at >= 0 ? it.log.slice(at + marker.length).split("\n")[0] : null;
+      }, 20000);
+      assert(result === "ok", `${line}: ${result}`);
+    };
+    const probe = async (it) => { await run(it, "state"); return it.states.at(-1); };
+    const flow = async (it) => (await probe(it))?.onboarding;
+    const reach = (it, what, fn, ms = 8000) => until(what, async () => { const o = await flow(it); return o && fn(o) ? o : null; }, ms, 150);
+    const gone = (it) => until("onboarding gone", async () => (await probe(it))?.onboarding === null, 5000, 150);
+    // Snapshots wait for the step's slide and the card's spring to settle.
+    const snap = async (it, name) => { if (shots) { await sleep(700); await run(it, `onboarding snap ${join(shots, `${name}.png`)}`); } };
+    const stop = async (it) => {
+      it.proc.stdin.write("menu quit\n");
+      const code = await Promise.race([it.exit, sleep(15000).then(() => "timeout")]);
+      assert(code !== "timeout", "an onboarding instance didn't quit within 15 s");
+    };
+    try {
+      // 1. A new data dir: the welcome, over the window, with the keyboard.
+      const first = start();
+      let o = await reach(first, "welcome", (o) => o.step === "welcome", 25000);
+      assert(o.mode === "firstRun" && o.dots === 6 && o.dot === 0 && o.primary === "Get started" && o.back === null, `welcome ${JSON.stringify(o)}`);
+      const [, , cardW, cardH] = o.cardFrame.split(",").map(Number);
+      assert(cardW === 460 && cardH >= 400 && o.cardInWindow, `card frame ${o.cardFrame}`);
+      assert(o.focused, "the overlay doesn't have the keyboard");
+      await snap(first, "1-welcome");
+      // Escape never ends the first run; ⌘T opens nothing under the veil.
+      await run(first, "onboarding escape");
+      await run(first, "menu newTab");
+      await sleep(500);
+      const afterKeys = await probe(first);
+      assert(afterKeys.onboarding?.step === "welcome" && !afterKeys.onboarding.closing, "Escape dismissed the first run");
+      assert(afterKeys.commandBar === null, "the command bar opened under the onboarding");
+      // 2. Where from: Arc first, recommended and chosen, its profiles in a picker; Safari says what's in the way.
+      await run(first, "onboarding next");
+      o = await reach(first, "source step", (o) => o.step === "source" && o.sources.every((s) => s.note || s.summary));
+      assert(o.sources.map((s) => s.id).join() === "arc,chrome,safari" && o.sources[0].recommended && o.source === "arc", `sources ${JSON.stringify(o.sources)}`);
+      assert(o.profilePicker && o.profile === "Default" && o.freshLink && o.back === "Back" && o.dot === 1, `source step ${JSON.stringify(o)}`);
+      assert(o.sources[2].note === "Needs Full Disk Access", "Safari's note is missing");
+      await snap(first, "2-source");
+      await run(first, "onboarding choose chrome");
+      o = await reach(first, "chrome chosen", (o) => o.source === "chrome");
+      assert(!o.profilePicker, "a one-profile browser shows a profile picker");
+      await run(first, "onboarding choose arc");
+      await run(first, "onboarding profile Profile 1");
+      o = await reach(first, "work profile", (o) => o.profile === "Profile 1" && /23 pinned tabs/.test(o.sources[0].summary ?? ""));
+      await run(first, "onboarding profile Default");
+      // 3. What to bring: all Arc gives, all ticked, counts where the preview has them; the unlock note follows the ticks.
+      await run(first, "onboarding next");
+      o = await reach(first, "items step", (o) => o.step === "items");
+      assert(o.title === "Bring from Arc" && o.items.length === 8 && o.checked.join() === o.items.join() && o.unlockNote && o.primary === "Import",
+        `items step ${JSON.stringify(o)}`);
+      assert(o.counts.pinnedTabs === 42 && o.counts.passwords === undefined, `counts ${JSON.stringify(o.counts)}`);
+      await snap(first, "3-items");
+      for (const item of ["passwords", "cookies", "autofill"]) await run(first, `onboarding toggle ${item}`);
+      o = await flow(first);
+      assert(!o.unlockNote && !o.checked.includes("passwords"), `unlock note without locked items ${JSON.stringify(o)}`);
+      for (const item of ["passwords", "cookies", "autofill", "extensions"]) await run(first, `onboarding toggle ${item}`);
+      o = await flow(first);
+      assert(o.unlockNote && o.checked.length === 7 && !o.checked.includes("extensions"), `ticks ${JSON.stringify(o.checked)}`);
+      // Back and forth keeps the choice.
+      await run(first, "onboarding back");
+      await reach(first, "back to source", (o) => o.step === "source");
+      await run(first, "onboarding next");
+      o = await reach(first, "items again", (o) => o.step === "items");
+      assert(o.checked.length === 7, `ticks after going back ${JSON.stringify(o.checked)}`);
+      // 4. Moving in: each row ends done with its count, or (the fake's cards) quietly failed; then Continue.
+      await run(first, "onboarding import");
+      o = await reach(first, "importing", (o) => o.step === "importing");
+      assert(o.back === null && !o.primaryEnabled && o.running, `while importing ${JSON.stringify(o)}`);
+      await snap(first, "4-moving-in");
+      o = await reach(first, "import done", (o) => o.imported, 15000);
+      assert(o.rows.length === 7 && o.progress === 1 && o.primaryEnabled && o.primary === "Continue", `after import ${JSON.stringify(o)}`);
+      for (const row of o.rows) {
+        assert(row.item === "autofill" ? row.state === "failed" && row.reason : row.state === "done" && row.count > 0, `row ${JSON.stringify(row)}`);
+      }
+      await snap(first, "5-moved-in");
+      // 5. Colour: a swatch goes through Settings › Theme's own call, so the profile's colour follows.
+      await run(first, "onboarding next");
+      await reach(first, "theme step", (o) => o.step === "theme");
+      await run(first, "onboarding swatch 1");
+      const themed = await probe(first);
+      assert(themed.settings.theme.setting === "#2F6BEA" && themed.settings.theme.accent === "#2F6BEA" && themed.onboarding.swatch === "#2F6BEA",
+        `theme ${JSON.stringify(themed.settings.theme)}`);
+      await snap(first, "6-theme");
+      // 6. Three keys; Start browsing ends it, for good.
+      await run(first, "onboarding next");
+      o = await reach(first, "keys step", (o) => o.step === "keys");
+      assert(o.keys.join(" ") === "⌘T ⌘S ⇧⌘C" && o.primary === "Start browsing" && o.dot === 5, `keys ${JSON.stringify(o)}`);
+      await snap(first, "7-keys");
+      await run(first, "onboarding finish");
+      await gone(first);
+      const saved = JSON.parse(readFileSync(join(dir, "Settings.json"), "utf8"));
+      assert(saved.onboarded === true && saved.theme === "#2F6BEA", `Settings.json ${JSON.stringify(saved)}`);
+      await stop(first);
+      // The same data dir again: no welcome. File › Import from Browser… is the import steps alone, and Escape leaves it.
+      const second = start();
+      await until("second instance", async () => (await probe(second))?.sidebar, 25000, 200);
+      await sleep(1000);
+      assert((await probe(second)).onboarding === null, "the welcome showed again on the same data dir");
+      await run(second, "menu importFromBrowser");
+      o = await reach(second, "import from browser", (o) => o.step === "source");
+      assert(o.mode === "importOnly" && o.dots === 3 && o.dot === 0 && !o.freshLink && o.back === "Cancel" && o.source === "arc",
+        `import from browser ${JSON.stringify(o)}`);
+      await snap(second, "8-import-from-browser");
+      await run(second, "onboarding escape");
+      await gone(second);
+      // Start fresh goes straight to the colour; a key Settings turned off isn't offered.
+      await run(second, "setting copyLinkShortcut off");
+      await run(second, "onboarding show");
+      await reach(second, "welcome on demand", (o) => o.step === "welcome");
+      await run(second, "onboarding next");
+      await reach(second, "source", (o) => o.step === "source");
+      await run(second, "onboarding fresh");
+      await reach(second, "fresh to the colour", (o) => o.step === "theme" && o.dot === 4);
+      await run(second, "onboarding back");
+      await reach(second, "back to source", (o) => o.step === "source");
+      await run(second, "onboarding fresh");
+      await reach(second, "the colour again", (o) => o.step === "theme");
+      await run(second, "onboarding next");
+      o = await reach(second, "keys without ⇧⌘C", (o) => o.step === "keys");
+      assert(o.keys.join(" ") === "⌘T ⌘S", `keys with copy link off ${JSON.stringify(o.keys)}`);
+      await run(second, "onboarding finish");
+      await gone(second);
+      await stop(second);
+      rmSync(dir, { recursive: true, force: true });
+    } finally {
+      for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
+    }
+  },
   async "close-last-window"() {
     // Closing the only window leaves Ray running; the Dock icon brings it back with its tabs.
     const ids = (sidebar) => JSON.stringify(["favorites", "pinned", "today"].map((k) => sidebar[k].map((e) => e.id)));

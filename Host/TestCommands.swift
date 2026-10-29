@@ -159,6 +159,23 @@ enum TestCommands {
     }
   }
 
+  /// `onboarding show|next|back|…|snap <path>`: the onboarding overlay, pressed as a click would.
+  private static func onboarding(_ argument: String) -> String {
+    guard let controller = AppController.shared.current else { return "no window" }
+    let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
+    switch words.first {
+    case "show":
+      controller.showOnboarding(.firstRun)
+      return "ok"
+    case "snap":
+      guard words.count == 2 else { return "usage: onboarding snap <path>" }
+      return controller.snapshotOnboarding(to: words[1]) ? "ok" : "no onboarding"
+    default:
+      guard let view = controller.onboarding else { return "no onboarding" }
+      return view.command(argument.split(separator: " ").map(String.init))
+    }
+  }
+
   /// `rename <id> <title…>`: what the inline editor commits.
   private static func rename(_ argument: String) -> String {
     let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -280,6 +297,8 @@ enum TestCommands {
       result = extensionPrompt(argument)
     case "extclose":
       AppController.shared.current?.extensions.closePopup()
+    case "onboarding":
+      result = onboarding(argument)
     case "arcimport":
       if AppController.shared.current?.answerArcImport(argument == "accept") != true { result = "no prompt" }
     case "import":

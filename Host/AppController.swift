@@ -35,7 +35,9 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     installReservedKeyRouting()
     TestCommands.start()
     Updater.shared.start()
-    openMainWindow(startURL: TestEnvironment["RAY_START_URL"])
+    let main = openMainWindow(startURL: TestEnvironment["RAY_START_URL"])
+    // A new data dir's first window welcomes you (once; never in a test instance unless a check asks).
+    if OnboardingView.showsAtLaunch { main?.showOnboarding(.firstRun) }
   }
 
   /// The normal window, from Sidebar.json; Ray keeps one, since there's one sidebar session.
@@ -227,7 +229,14 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
   @objc func focusAddress(_ sender: Any?) { current?.focusAddress() }
   @objc func copyURL(_ sender: Any?) { current?.copyURL() }
   @objc func newFolder(_ sender: Any?) { current?.newFolder() }
+  /// The sidebar-only Arc import (no menu item since Import from Browser…; its check still drives it).
   @objc func importFromArc(_ sender: Any?) { current?.importFromArc() }
+  /// File › Import from Browser…: the onboarding's import steps, over the normal window (never a private one).
+  @objc func importFromBrowser(_ sender: Any?) {
+    let window = current.flatMap { $0.isPrivate ? nil : $0 } ?? openMainWindow()
+    if let window, !launchedInBackground { window.window.makeKeyAndOrderFront(nil) }
+    window?.showOnboarding(.importOnly)
+  }
   @objc func showDownloads(_ sender: Any?) { current?.toggleDownloads() }
   @objc func toggleToolbar(_ sender: Any?) { current?.toggleToolbar() }
   @objc func toggleFullAddress(_ sender: Any?) { current?.toggleFullAddress() }

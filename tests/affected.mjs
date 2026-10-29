@@ -62,7 +62,8 @@ export const areas = {
     "download-insecure-blocked", "site-controls"],
   "Host/BrowserWindowController.swift#Test snapshots": ["folder-rename", "tile-hover"],
   "Host/BrowserWindowController.swift#Arc import": ["arc-import", "import-browser"],
-  "Host/BrowserWindowController.swift#Browser import": ["import-browser", "arc-import"],
+  "Host/BrowserWindowController.swift#Browser import": ["import-browser", "arc-import", "onboarding"],
+  "Host/BrowserWindowController.swift#Onboarding": ["onboarding"],
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
   "Host/BrowserWindowController.swift#Toast": ["copy-url", "page-commands"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
@@ -70,7 +71,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Entries": "all",
   "Host/BrowserWindowController.swift#Page toolbar": ["page-toolbar", "page-loading", "site-controls", "sidebar-toggle"],
   "Host/BrowserWindowController.swift#Sidebar visibility": [...sidebarMotion, "page-toolbar", "downloads"],
-  "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url"],
+  "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url", "onboarding"],
   "Host/BrowserWindowController.swift#Pages": pageSurface,
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",
   "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "private-window", "close-last-window"],
@@ -92,8 +93,13 @@ export const areas = {
 
   "Host/AddressInput.swift": [...commandBar, "page-toolbar", "site-controls", "settings-routes", "settings-trimmed"],
   "Host/RaySettings.swift": "all",
-  "Host/SettingsWindow.swift": settings,
+  "Host/SettingsWindow.swift": [...settings, "onboarding"],
   "Host/ArcImport.swift": ["arc-import"],
+  // The first run's welcome and File › Import from Browser… (on the fake importer).
+  "Host/Onboarding.swift": ["onboarding"],
+  "Host/RaySettings.swift#Onboarding": ["onboarding"],
+  // The settings in the state log: the checks that compare them (the restore check reads them after settings-persist).
+  "Host/RaySettings.swift#State log": [...settings, "onboarding"],
   "Host/CommandBarView.swift": commandBar,
   "Host/Suggestions.swift": commandBar,
   "Host/Downloads.swift": ["downloads", "download-insecure-blocked"],
@@ -109,15 +115,16 @@ export const areas = {
   "Host/SafeStorage.swift": ["safe-storage-migration"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
-  "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser"],
+  "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser", "onboarding"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],
   "tests/SafeStorageTests.swift": [],
-  // The importer's own tests (swift test) cover its readers; import-browser runs it end to end in the app.
-  "Importer/": ["import-browser"],
+  // The importer's own tests (swift test) cover its readers; import-browser runs it end to end in the app, and
+  // onboarding drives its screens on the importer's fixtures.
+  "Importer/": ["import-browser", "onboarding"],
   "Importer/Tests/": [],
-  "Host/ImportSession.swift": ["import-browser"],
+  "Host/ImportSession.swift": ["import-browser", "onboarding"],
   "Host/ImportWriter.swift": ["import-browser"],
   "tests/affected.mjs": [],
   "tests/changed.mjs": [],

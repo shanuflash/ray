@@ -616,8 +616,9 @@ final class RaySwitch: NSControl {
   }
 }
 
-/// The row of colour choices: the default, the presets, and a custom colour that opens the colour panel.
-private final class SwatchRow: NSView {
+/// The row of colour choices: the default, the presets, and a custom colour that opens the colour panel. Also the
+/// onboarding's colour step.
+final class SwatchRow: NSView {
   var onChoose: ((String?) -> Void)?
   var onCustom: (() -> Void)?
   private var buttons: [SwatchButton] = []

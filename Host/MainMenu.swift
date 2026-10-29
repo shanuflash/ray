@@ -31,7 +31,7 @@ enum MainMenu {
       item("Back to Pinned URL", #selector(AppController.backToPinned(_:)), nil, target: target),
       item("Clear Today's Tabs", #selector(AppController.clearToday(_:)), nil, target: target),
       .separator(),
-      item("Import from Arc…", #selector(AppController.importFromArc(_:)), nil, target: target),
+      item("Import from Browser…", #selector(AppController.importFromBrowser(_:)), nil, target: target),
       .separator(),
       // ⌘S is Toggle Sidebar unless Settings frees it; then it's Save Page As, as in Chrome (applyShortcutSettings).
       item("Save Page As…", #selector(AppController.savePage(_:)), nil, target: target),

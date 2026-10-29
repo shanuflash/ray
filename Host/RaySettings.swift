@@ -27,6 +27,9 @@ struct RaySettingsValues: Codable, Equatable {
   var zoomAdopted = false
   /// The Settings window's frame, as `NSStringFromRect`.
   var windowFrame: String?
+  /// The first run's welcome is done. A file from before it existed reads as done (that Ray was already set up); a
+  /// new data dir starts without it (see `init(directory:)`).
+  var onboarded = true
 
   init() {}
 
@@ -46,6 +49,7 @@ struct RaySettingsValues: Codable, Equatable {
       .filter { !$0.isEmpty && $0.count <= 255 }.prefix(RaySettings.maxZoomedHosts).map { $0 }
     zoomAdopted = (try? c.decodeIfPresent(Bool.self, forKey: .zoomAdopted)) ?? base.zoomAdopted
     windowFrame = try? c.decodeIfPresent(String.self, forKey: .windowFrame)
+    onboarded = (try? c.decodeIfPresent(Bool.self, forKey: .onboarded)) ?? base.onboarded
   }
 
   /// The settings that differ between two values.
@@ -91,6 +95,12 @@ final class RaySettings {
     url = directory.map { URL(fileURLWithPath: $0).appendingPathComponent("Settings.json") }
     let loaded = url.flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(RaySettingsValues.self, from: $0) }
     values = loaded ?? RaySettingsValues()
+    // A data dir with neither file is new: its first window shows the welcome. One with a Sidebar.json (Ray 0.1, or
+    // a Settings.json lost) was already in use, so an update never greets an existing user.
+    if loaded == nil, let url,
+       !FileManager.default.fileExists(atPath: url.deletingLastPathComponent().appendingPathComponent("Sidebar.json").path) {
+      values.onboarded = false
+    }
     zoomed = Set(values.zoomedHosts)
     ProfileColor.apply(hex: values.theme)
   }
@@ -180,6 +190,14 @@ final class RaySettings {
     }
   }
 
+  // MARK: Onboarding
+
+  /// The first run finished ("Start browsing"): it never shows again for this data dir.
+  func markOnboarded() {
+    update { $0.onboarded = true }
+    flush()
+  }
+
   // MARK: Saving
 
   /// The Settings window's frame, remembered without telling anyone.
@@ -221,7 +239,7 @@ final class RaySettings {
       "defaultZoom": values.defaultZoom, "newTabNextToActive": values.newTabNextToActive,
       "recentTabCycling": values.recentTabCycling, "copyLinkShortcut": values.copyLinkShortcut,
       "sidebarShortcut": values.sidebarShortcut, "zoomedHosts": values.zoomedHosts.sorted(),
-      "zoomAdopted": values.zoomAdopted,
+      "zoomAdopted": values.zoomAdopted, "onboarded": values.onboarded,
     ]
   }
 }

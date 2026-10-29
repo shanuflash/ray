@@ -472,6 +472,61 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     logState("import")
   }
 
+  // MARK: Onboarding
+
+  private(set) var onboarding: OnboardingView?
+
+  /// The first run's welcome, or File › Import from Browser…: an overlay over the whole window, above everything the
+  /// window shows (it lives in the host view, over the root). Panels close first; focus comes back to the page after.
+  func showOnboarding(_ mode: OnboardingMode) {
+    guard onboarding == nil, !isPrivate else { return }
+    closeCommandBar(focus: false)
+    closeSiteControls()
+    let host = coreWindow.hostView
+    let view = OnboardingView(mode: mode, browser: self)
+    view.frame = host.bounds
+    view.autoresizingMask = [.width, .height]
+    view.onChange = { [weak self] in self?.logState("onboarding") }
+    view.onClose = { [weak self, weak view] in
+      guard let self, self.onboarding === view else { return }
+      self.onboarding = nil
+      // An empty window after the welcome opens the command bar, as a new window does.
+      if let tab = self.activeTab { self.focusPage(tab) } else if !self.isPrivate { self.beginNewTab() }
+      self.logState("onboarding")
+    }
+    host.addSubview(view, positioned: .above, relativeTo: nil)
+    onboarding = view
+    view.present()
+    logState("onboarding")
+  }
+
+  /// For tests: the window with the onboarding over it, as PNGs (light and dark). Chrome's pages don't draw into a
+  /// snapshot, so the page card is empty in them.
+  func snapshotOnboarding(to path: String) -> Bool {
+    guard onboarding != nil else { return false }
+    let view = coreWindow.hostView
+    for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+      let old = window.appearance
+      window.appearance = NSAppearance(named: appearance)
+      defer { window.appearance = old }
+      view.layoutSubtreeIfNeeded()
+      view.displayIfNeeded()
+      guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return false }
+      view.cacheDisplay(in: view.bounds, to: rep)
+      let image = NSImage(size: view.bounds.size)
+      image.lockFocus()
+      view.effectiveAppearance.performAsCurrentDrawingAppearance { SidebarColors.background.setFill() }
+      NSRect(origin: .zero, size: view.bounds.size).fill()
+      rep.draw(in: NSRect(origin: .zero, size: view.bounds.size))
+      image.unlockFocus()
+      guard let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
+      else { return false }
+      guard (try? png.write(to: URL(fileURLWithPath: path.replacingOccurrences(of: ".png", with: "-\(name).png")))) != nil
+      else { return false }
+    }
+    return true
+  }
+
   // MARK: Permission prompts
 
   private(set) lazy var permissions: PermissionPrompts = {
@@ -1275,6 +1330,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   static let pasteboard = TestEnvironment["RAY_PASTEBOARD"].map { NSPasteboard(name: .init($0)) } ?? .general
 
   private func openCommandBar(_ mode: CommandBarMode, query: String) {
+    // Nothing opens under the onboarding's veil (⌘T there would type into a bar you can't see).
+    guard onboarding == nil else { return }
     commandBarMode = activeEntry == nil ? .newTab : mode
     let bar = commandBar ?? CommandBarView(frame: root.bounds)
     if commandBar == nil {
@@ -1845,6 +1902,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["settings"] = RaySettings.shared.debug
     state["settingsWindow"] = SettingsWindowController.shared.debug
     state["updater"] = Updater.shared.debug
+    state["onboarding"] = onboarding?.debug ?? NSNull()
     state["chromeCommand"] = lastChromeCommand.map { ["name": $0.name, "ran": $0.ran] as [String: Any] } ?? NSNull()
     state["safeStorage"] = ["mode": safeStorage.mode.rawValue, "note": safeStorage.note, "moved": safeStorage.moved]
     state["menuKeys"] = [
