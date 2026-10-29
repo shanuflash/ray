@@ -42,6 +42,8 @@ export const areas = {
   "Host/SidebarModel.swift#Names and saved fields": [...pages, ...drag, ...commandBar, "tab-rename", "folder-create",
     "folder-rename", "favorites", "pin-unload-restore", "tile-hover", "clear", "reopen-closed-tab", "arc-import",
     "import-browser", "private-window", "close-last-window"],
+  // When a pinned tab or favorite counts as away from its page.
+  "Host/SidebarModel.swift#Pinned page": ["pin-unload-restore", "reopen-closed-tab", "favorites"],
   "Host/EngineCalls.swift": "all",
   "Host/TestEnvironment.swift": "all",
   // Colours only: the checks that read a colour or draw with it.

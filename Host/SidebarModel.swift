@@ -82,19 +82,25 @@ final class SidebarEntry: Codable {
     return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
   }
 
-  var isAwayFromPinned: Bool {
-    guard let pinnedURL else { return false }
-    return Self.normalized(currentURL) != Self.normalized(pinnedURL)
-  }
-
   func remember() {
     guard let tab, !tab.closed else { return }
     if !tab.url.isEmpty { url = tab.url }
     if !tab.title.isEmpty { title = tab.title }
   }
 
-  private static func normalized(_ url: String) -> String {
+  // MARK: Pinned page
+
+  /// Whether a pinned tab or favorite shows another page than its own (the row's "/", Back to Pinned URL). Arc's
+  /// rule: the same address up to its path is the pinned page, whatever its query or fragment (`for-you?tab=assigned`
+  /// is still `for-you`).
+  var isAwayFromPinned: Bool {
+    guard let pinnedURL else { return false }
+    return Self.page(currentURL) != Self.page(pinnedURL)
+  }
+
+  private static func page(_ url: String) -> String {
     var components = URLComponents(string: url)
+    components?.query = nil
     components?.fragment = nil
     var text = components?.string ?? url
     if text.hasSuffix("/") { text.removeLast() }

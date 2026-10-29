@@ -935,6 +935,11 @@ const checks = {
     const pinned = await until("pinned", () => state().sidebar.pinned.find((e) => e.id === id));
     assert(pinned.pinnedURL === pinned.url, `pinned URL ${pinned.pinnedURL} vs ${pinned.url}`);
     const { sessionId } = await session(pinned.url);
+    // Arc's rule: another query on the same path is still the pinned page (no "/", no Back to Pinned URL).
+    const samePath = pinned.url.split(/[?#]/)[0] + "?tab=assigned";
+    await evaluate(sessionId, `location.href = ${JSON.stringify(samePath)}`);
+    const query = await until("same path, new query", () => state().sidebar.pinned.find((e) => e.id === id && e.url === samePath));
+    assert(!query.away, `another query counted as away from ${pinned.pinnedURL}`);
     await evaluate(sessionId, `location.href = ${JSON.stringify(origin + "/b#away")}`);
     await until("away from pinned", () => state().sidebar.pinned.find((e) => e.id === id)?.away);
     await command(`rowaction back ${id}`);

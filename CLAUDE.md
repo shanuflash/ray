@@ -278,7 +278,8 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
 - Known environment noise. Spring checks skip while the display sleeps (`needsFrames`). Some checks only run when the
   hidden test window happens to land on the visible desktop: `switch-back-latency` then fails (on older commits
   too) and leaves state that breaks `private-window`, `arc-import` and `close-last-window` after it. A subset run
-  can also fail from what earlier checks left behind. Before blaming a change, run the same command on the
+  can also fail from what earlier checks left behind: `pin-unload-restore` leaves its tab pinned, so `favorites` and
+  `reopen-closed-tab` fail right after it (on main too); run those alone. Before blaming a change, run the same command on the
   previous commit (`git stash -u`, build, run, `git stash pop`) and compare.
 
 ## Gotchas (learnt the hard way)
