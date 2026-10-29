@@ -563,6 +563,15 @@ const checks = {
     assert(bar.rows[0].kind === "search", `a partial name took the first row: ${JSON.stringify(bar.rows[0])}`);
     if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-actions.png")}`);
     await command("escape");
+    // Reopen Closed Tab (History's own target, not AppController) is offered too, with ⇧⌘T, once a tab was closed.
+    await goTo(`${origin}/c?closed-for-bar`, true);
+    await until("tab to close", async () => { await command("state"); return activeTabState()?.url.endsWith("/c?closed-for-bar"); });
+    await command("menu closeTab");
+    await until("closed", async () => { await command("state"); return !state().tabs.some((t) => t.url.endsWith("/c?closed-for-bar")); });
+    bar = await barFor("reopen");
+    at = actionRow(bar, "Reopen Closed Tab");
+    assert(at >= 0 && bar.rows[at].detail === "⇧⌘T", `reopen: ${JSON.stringify(actions(bar))}`);
+    await command("escape");
     // A short query offers two at most, a longer one three; and only word starts match ("ask" isn't Task Manager).
     bar = await barFor("re");
     assert(actions(bar).length > 0 && actions(bar).length <= 2, `"re" offered ${JSON.stringify(actions(bar))}`);

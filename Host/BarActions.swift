@@ -104,15 +104,14 @@ enum BarActions {
   /// The commands the bar can run now, validated as the menu would validate them.
   static func available() -> [BarAction] {
     guard let menu = NSApp.mainMenu else { return [] }
-    let controller = AppController.shared
     var seen = Set<Selector>()
     var out: [BarAction] = []
     for top in menu.items {
       for item in top.submenu?.items ?? [] {
-        guard let selector = item.action, item.target === controller, !item.isSeparatorItem, !item.isHidden,
+        guard let selector = item.action, isRayTarget(item.target), !item.isSeparatorItem, !item.isHidden,
               item.submenu == nil, item.representedObject == nil, item.tag == 0,
               !excluded.contains(selector), seen.insert(selector).inserted,
-              controller.validateMenuItem(item) else { continue }
+              validate(item) else { continue }
         let extra = extras[selector]
         let title = barTitle(item, extra)
         out.append(BarAction(
@@ -178,8 +177,18 @@ enum BarActions {
   /// enable it. Only the command bar's Enter or click calls this.
   @discardableResult
   static func run(_ action: BarAction) -> Bool {
-    guard let selector = action.item.action, AppController.shared.validateMenuItem(action.item) else { return false }
+    guard let selector = action.item.action, validate(action.item) else { return false }
     return NSApp.sendAction(selector, to: action.item.target, from: action.item)
+  }
+
+  /// Ray's own menu targets: AppController, and History's recently closed tabs (ClosedTabsMenu).
+  private static func isRayTarget(_ target: AnyObject?) -> Bool {
+    target === AppController.shared || target === ClosedTabsMenu.shared
+  }
+
+  /// Enabled as the menu would show it, asked of the item's own target.
+  private static func validate(_ item: NSMenuItem) -> Bool {
+    (item.target as? NSMenuItemValidation)?.validateMenuItem(item) ?? false
   }
 
   /// A menu item's key equivalent as the menu draws it: ⌃⌥⇧⌘ then the key.
