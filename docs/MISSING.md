@@ -19,18 +19,27 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 4. **Little Arc**: the small window for links opened from other apps (⌥⌘N).
 5. **Archive view**: Ray archives stale Today tabs but has no way to browse or restore them.
 
-**Smaller**
-6. Media controls in the sidebar (now playing, play/pause), and a sound icon and mute on tabs.
-7. Automatic picture-in-picture when you switch away from a playing video (`setAutoPictureInPicture`).
-8. Duplicate tab (`duplicateTab:profile:foreground:`).
-9. Boosts: per-site CSS/JS, zapping elements.
-10. Air Traffic Control: rules for which Space a link opens in (Cra's `LinkRouting`).
-11. Capture (Arc's screenshot tool).
-12. Easels, Notes, Library.
-13. Sidebar on the right.
-14. Sync between Macs.
+6. **Peek**: Arc's preview of a link in a floating card over the page (open it fully or dismiss). Ray dropped the
+   engine hook Ardia used (`chromium-temporary-tab-restore-hook.patch`, in `engine-ray/drop-patches.txt`): bringing
+   Peek back means restoring that patch, or building it on ordinary tabs. Open decision in PLAN.md.
+7. **Built-in content blocker**: ad and tracker blocking without installing an extension. The engine still has
+   Ardia's navigation hold for one (`holdNavigationsUntilRulesetsOf:`, idle; Ardia ran its own uBlock Origin,
+   `fajbdaomknpkicfjcpipdmcpoamdmilh`), and Helium's bundled uBlock Origin is compiled out
+   (`chromium-helium-ublock-off.patch`). Today the user installs uBlock Origin Lite from the Web Store. Open
+   decision in PLAN.md.
 
-**Left out on purpose:** Peek (project rule), Arc Max's AI features, a built-in content blocker.
+**Smaller**
+8. Media controls in the sidebar (now playing, play/pause), and a sound icon and mute on tabs.
+9. Automatic picture-in-picture when you switch away from a playing video (`setAutoPictureInPicture`).
+10. Duplicate tab (`duplicateTab:profile:foreground:`).
+11. Boosts: per-site CSS/JS, zapping elements.
+12. Air Traffic Control: rules for which Space a link opens in (Cra's `LinkRouting`).
+13. Capture (Arc's screenshot tool).
+14. Easels, Notes, Library.
+15. Sidebar on the right.
+16. Sync between Macs.
+
+**Left out on purpose:** Arc Max's AI features.
 
 ## Chrome features not wired in Ray
 

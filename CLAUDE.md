@@ -269,7 +269,8 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
   still needs a visual check.
 - UI hot paths (sidebar, tab rows, window chrome) are AppKit + Core Animation, never SwiftUI. Animations run on
   layers, not main-thread timers. A tab switch shows the page before any store update.
-- No Peek, no WebKit, no built-in content blocker, no Ardia performance messages in the page script.
+- No WebKit, no Ardia performance messages in the page script. Peek and a built-in content blocker are open
+  decisions (PLAN.md, "Open decisions"): don't build either until the owner decides.
 - Ray's keychain item is "Ray Safe Storage" (account "Ray"). Never let Ray read "Ardia Safe Storage" (the user's real
   Ardia) or any other browser's item, except as an explicit import the user asks for. Test builds stay on
   `--use-mock-keychain`.

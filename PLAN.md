@@ -52,6 +52,8 @@ Recorded for the owner to decide. Don't act on them until they do.
 | Topic | Question |
 |---|---|
 | Name | "Ray" is hard to search: it collides with ray-project/ray, Raycast and Spatie Ray. Keep it, or rename before launch? |
+| Peek | Reconsidering (2026-10-29): Arc's link preview may be needed for Arc's feel. Bring back Ardia's engine hook, or build it on plain tabs? Until decided, "No" below stands. |
+| Content blocker | Reconsidering (2026-10-29): a built-in blocker may be needed so switching from Arc needs no extension. Ardia's own uBlock Origin with its navigation hold (still in the engine, idle), or uBlock Origin Lite preinstalled? Until decided, "None built in" below stands. |
 
 ## Decisions so far
 
