@@ -195,7 +195,9 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     (`com.google.Chrome`, EQHXZ8M8AV), Arc, Island, Brave, Firefox, Edge, Amazon WorkSpaces. Anything else gets
     "Cannot validate parent process" for the token (its `info` call still answers). Ray is `dev.shanus.ray`, signed
     "Ray Code Signing" with no team, so it can never match; Chrome Dev/Beta/Canary (`com.google.Chrome.dev`…) fail
-    the same way. Nothing in Ray can fix it honestly (passing as another browser would defeat the company's device
+    the same way (the owner's Chrome is Chrome Dev 158). Stable Chrome passes. Not Local Network Access: the login
+    page's `http://localhost:1028` path is Android-only; on a Mac it talks only to the extension
+    (`externally_connectable`). Nothing in Ray can fix it honestly (passing as another browser would defeat the company's device
     check). Fix: Developer ID signing (roadmap step 4), settle the bundle id, then ask JumpCloud to add Ray's
     identifier and team to the host's list. Until then sign in to JumpCloud in Ray with password + MFA, if the org
     allows it. Found 2026-10-29.
