@@ -118,7 +118,8 @@ final class SidebarState: Codable {
   var sidebarHidden = false
   /// Whether the window was full screen, to reopen that way. Optional so older files still load.
   var fullScreen: Bool?
-  /// View › Show Address Bar on Page (on unless turned off).
+  /// Where View › Show Address Bar on Page used to live. It's `RaySettings.pageAddressBar` now; an older file's
+  /// value moves there once on load and is cleared.
   var pageToolbar: Bool?
   /// Where View › Show Full Address used to live. It's `RaySettings.minimalURL` now (minimal = !fullAddress); an
   /// older file's value moves there once on load and is cleared.

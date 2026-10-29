@@ -21,7 +21,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private let toolbar = PageToolbarView()
   /// For tests: frames laid out mid-way through the last sidebar toggle, with the address bar's buttons part way in.
   private var navigationSteps = 0
-  var toolbarShown: Bool { state.pageToolbar ?? true }
+  /// Settings › Show the address bar above the page (View › Show Address Bar on Page): one value for every window.
+  var toolbarShown: Bool { RaySettings.shared[.pageAddressBar] }
   private var commandBar: CommandBarView?
   private var commandBarMode = CommandBarMode.newTab
   private let history = HistoryCache()
@@ -1377,12 +1378,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     RaySettings.shared.set(.minimalURL, !RaySettings.shared[.minimalURL])
   }
 
-  /// View › Show Address Bar on Page.
+  /// View › Show Address Bar on Page: the same setting as Settings › Show the address bar above the page, so every
+  /// window follows (as Chrome's View menu flips its bookmarks bar and full URLs everywhere, and View › Show Full
+  /// Address does in Ray). The change comes back through `observeSettings`.
   func toggleToolbar() {
-    state.pageToolbar = !toolbarShown
-    layout()
-    store.save(state)
-    logState("toolbar")
+    RaySettings.shared.set(.pageAddressBar, !toolbarShown)
   }
 
   func toolbarToggleSidebar(_ toolbar: PageToolbarView) { toggleSidebar() }
@@ -1869,11 +1869,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   // MARK: Settings
 
-  /// An older Sidebar.json kept View › Show Full Address; it's Settings › Minimal URL in the address bar now.
+  /// An older Sidebar.json kept View › Show Full Address and View › Show Address Bar on Page; they're Settings ›
+  /// Minimal URL and Settings › Show the address bar above the page now. Moved once, then cleared.
   private func migrateLegacySettings() {
-    guard !isPrivate, let full = state.fullAddress else { return }
-    if !full { RaySettings.shared.set(.minimalURL, true) }
+    guard !isPrivate, state.fullAddress != nil || state.pageToolbar != nil else { return }
+    if state.fullAddress == false { RaySettings.shared.set(.minimalURL, true) }
+    if state.pageToolbar == false { RaySettings.shared.set(.pageAddressBar, false) }
     state.fullAddress = nil
+    state.pageToolbar = nil
     store.save(state)
   }
 
@@ -1889,10 +1892,26 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         self.updateToolbarLoading()
         if let tab = self.activeTab { self.pages.updateProgress(for: tab) }
       },
+      settings.observe(.pageAddressBar) { [weak self] _ in
+        guard let self else { return }
+        self.layout()
+        self.updateToolbar()
+        self.logState("toolbar")
+      },
+      settings.observe(.showSidebarButton) { [weak self] _ in self?.applySidebarButton() },
+      settings.observe(.fadeUnloadedTabs) { [weak self] _ in self?.reloadSidebar() },
       settings.observe(.defaultZoom) { [weak self] _ in self?.settleZoomOfAllTabs() },
       settings.observe(.recentTabCycling) { [weak self] _ in self?.endTabCycle() },
       settings.observe(AnySettingKey.all) { [weak self] in self?.logState("settings") },
     ]
+    applySidebarButton()
+  }
+
+  /// Settings › Show the sidebar button, in the sidebar's top row and the page's address bar.
+  private func applySidebarButton() {
+    let shown = RaySettings.shared[.showSidebarButton]
+    sidebar.showsToggle = shown
+    toolbar.showsSidebarButton = shown
   }
 
   /// The profile's colour changed: everything drawn with it takes the new one at once.
@@ -2181,6 +2200,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
       .sorted { $0.lastActive > $1.lastActive }.map(tabID)
     state["recentlyClosed"] = ClosedTabsMenu.shared.debug(for: self)
+    state["looks"] = AppLook.debug.merging([
+      "window": window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? "dark" : "light",
+    ]) { _, new in new }
+    state["undo"] = UndoCloseTab.shared.debug
+    state["hapticTicks"] = SidebarView.hapticTicks
     state["tabCycle"] = tabCycle.map { ["order": $0.order.map(tabID), "index": $0.index] as [String: Any] } ?? NSNull()
     guard let data = try? JSONSerialization.data(withJSONObject: state),
           let json = String(data: data, encoding: .utf8) else { return }

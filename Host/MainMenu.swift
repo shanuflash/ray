@@ -117,6 +117,7 @@ enum MainMenu {
     NSApp.windowsMenu = window.submenu
     applyShortcutSettings()
     shortcutSettings = RaySettings.shared.observe([.copyLinkShortcut, .sidebarShortcut]) { applyShortcutSettings() }
+    UndoCloseTab.shared.install()
   }
 
   private static var shortcutSettings: SettingsObservation?
@@ -142,6 +143,9 @@ enum MainMenu {
     }
     return nil
   }
+
+  /// The item for an action, wherever it is in the menu.
+  static func item(for action: Selector) -> NSMenuItem? { NSApp.mainMenu.flatMap { find(action, in: $0) } }
 
   /// For tests: the key a menu item answers to now ("" for none).
   static func keyEquivalent(of action: Selector) -> String? {

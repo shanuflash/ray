@@ -175,3 +175,106 @@ final class ClosedTabsMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     ]
   }
 }
+
+// MARK: Undo close tab
+
+/// Settings › Reopen closed tabs with ⌘Z (off; Arc's ⌘Z, and Ardia's "⌘Z reopens closed tabs"): while it's on, Edit ›
+/// Undo's target is this. Outside text it reopens the last closed tab as ⇧⌘T does (again: the one closed before);
+/// with a text field of Ray's or an editable element of the page focused it is Undo, sent on down the responder chain
+/// as if the item had no target. Keys reach the page first (CLAUDE.md, Key routing), so a page that takes ⌘Z for its
+/// own undo (an editor calling preventDefault) never gets here; Chrome's renderer leaves ⌘Z to the menu on the Mac.
+final class UndoCloseTab: NSObject, NSMenuItemValidation {
+  static let shared = UndoCloseTab()
+  static let undo = Selector(("undo:"))
+  private var observation: SettingsObservation?
+
+  func install() {
+    apply()
+    observation = RaySettings.shared.observe(.undoReopensClosedTab) { [weak self] _ in self?.apply() }
+  }
+
+  /// Edit › Undo points here while the setting is on, and at the responder chain (no target, AppKit's own) while off.
+  private func apply() {
+    guard let item = MainMenu.item(for: Self.undo) else { return }
+    item.target = RaySettings.shared[.undoReopensClosedTab] ? self : nil
+    item.title = "Undo"
+  }
+
+  /// The window ⌘Z is for: the key window, or with Ray in the background (no key window) the browser window used last.
+  private var window: NSWindow? { NSApp.keyWindow ?? AppController.shared.current?.window }
+
+  /// Whether ⌘Z reopens a tab now: the setting is on, the window is a browser window and what has its focus edits no
+  /// text.
+  var reopens: Bool {
+    guard RaySettings.shared[.undoReopensClosedTab], let window,
+          AppController.shared.windows.contains(where: { $0.window === window }) else { return false }
+    return !Self.editsText(window.firstResponder)
+  }
+
+  /// What takes undo: in the window's responder chain (the page, else the window's own undo manager), as AppKit finds
+  /// it for an item with no target.
+  private var undoTarget: NSResponder? {
+    var responder = window?.firstResponder
+    while let current = responder {
+      if current.responds(to: Self.undo) { return current }
+      responder = current.nextResponder
+    }
+    return nil
+  }
+
+  /// A text field or view of Ray's (its field editor), or the page with an editable element focused: Chrome's page
+  /// view reports the focused element's text input type (`textInputType`, 0 for none; text, password, search,
+  /// contenteditable and the rest are not 0), the same thing Ardia reads.
+  static func editsText(_ responder: NSResponder?) -> Bool {
+    guard let responder else { return false }
+    if responder is NSText { return true }
+    let selector = NSSelectorFromString("textInputType")
+    guard let page = NSClassFromString("RenderWidgetHostViewCocoa"), responder.isKind(of: page),
+          responder.responds(to: selector) else { return false }
+    typealias Getter = @convention(c) (AnyObject, Selector) -> Int32
+    return unsafeBitCast(responder.method(for: selector), to: Getter.self)(responder, selector) != 0
+  }
+
+  @objc(undo:) func undoOrReopen(_ sender: Any?) {
+    if reopens {
+      ClosedTabsMenu.shared.reopenClosedTab(sender)
+    } else if let target = undoTarget {
+      NSApp.sendAction(Self.undo, to: target, from: sender)
+    }
+  }
+
+  func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    let reopens = self.reopens
+    item.title = reopens ? "Undo Close Tab" : "Undo"
+    if reopens {
+      let probe = NSMenuItem(title: "", action: #selector(ClosedTabsMenu.reopenClosedTab(_:)), keyEquivalent: "")
+      return ClosedTabsMenu.shared.validateMenuItem(probe)
+    }
+    // Undo as AppKit would have it: enabled when whatever takes undo: in the responder chain says so.
+    guard let target = undoTarget else { return false }
+    typealias Validate = @convention(c) (AnyObject, Selector, NSMenuItem) -> ObjCBool
+    for name in ["validateMenuItem:", "validateUserInterfaceItem:"] {
+      let validate = NSSelectorFromString(name)
+      if target.responds(to: validate) {
+        return unsafeBitCast(target.method(for: validate), to: Validate.self)(target, validate, item).boolValue
+      }
+    }
+    return true
+  }
+
+  /// For the state log: whether Edit › Undo is Ray's now, what ⌘Z would do (and the item's title for it), and what
+  /// has the key window's focus.
+  var debug: [String: Any] {
+    let item = MainMenu.item(for: Self.undo)
+    let responder = window?.firstResponder
+    var title = item?.title ?? ""
+    if let item, item.target === self {
+      _ = validateMenuItem(item)
+      title = item.title
+    }
+    return [
+      "target": item?.target === self, "reopens": reopens, "title": title,
+      "focus": responder.map { String(describing: type(of: $0)) } ?? "", "editsText": Self.editsText(responder),
+    ]
+  }
+}

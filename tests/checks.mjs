@@ -307,7 +307,9 @@ async function closeSettingsWindow() {
 /** Each setting back to its default, so a check leaves nothing for the next. */
 async function resetSettings() {
   for (const [name, value] of [["minimalURL", "off"], ["loadingProgress", "on"], ["theme", "default"], ["defaultZoom", "1"],
-    ["newTabNextToActive", "off"], ["recentTabCycling", "on"], ["copyLinkShortcut", "on"], ["sidebarShortcut", "on"]])
+    ["newTabNextToActive", "off"], ["recentTabCycling", "on"], ["copyLinkShortcut", "on"], ["sidebarShortcut", "on"],
+    ["appearanceMode", "auto"], ["scrollBars", "system"], ["pageAddressBar", "on"], ["showSidebarButton", "on"],
+    ["fadeUnloadedTabs", "off"], ["tabReorderHaptics", "on"], ["undoReopensClosedTab", "off"]])
     await command(`setting ${name} ${value}`);
   await command("state");
 }
@@ -2650,7 +2652,7 @@ const checks = {
     const [, , width, height] = win().frame.match(/-?[\d.]+/g).map(Number);
     assert(width === 780 && height >= 560 && height < 620, `the window is ${width} x ${height}`);
     // The defaults, as the controls show them.
-    assert(c().minimalURL === false && c().loadingProgress === true && c().newTabNextToActive === false &&
+    assert(c().minimalURL === false && c().loadingProgress === true && c().newTabNextToActive === "At the top" &&
       c().recentTabCycling === true && c().copyLinkShortcut === true && c().sidebarShortcut === true, `switches ${JSON.stringify(c())}`);
     assert(c().defaultZoom === "100%" && c().defaultZoomOptions.length === 17 && c().defaultZoomOptions[0] === "25%" && c().defaultZoomOptions.at(-1) === "500%", `zoom ${c().defaultZoomOptions}`);
     assert(c().theme === "default" && c().themeSwatches === 9 && c().themeSelected === 0, `swatches ${c().theme} ${c().themeSwatches} ${c().themeSelected}`);
@@ -3065,7 +3067,7 @@ const checks = {
     assert(win().panes.join() === all.join() && win().sidebarPanes.join() === all.join(), `panes ${win().panes} / ${win().sidebarPanes}`);
     const rows = win().rows;
     assert(["theme", "appearanceMode", "minimalURL", "loadingProgress", "defaultZoom", "scrollBars"].every((id) => rows.appearance.includes(id)), `appearance rows ${rows.appearance}`);
-    assert(rows.tabs.join() === "newTabNextToActive,recentTabCycling" && rows.shortcuts.join() === "copyLinkShortcut,sidebarShortcut", `rows ${JSON.stringify(rows)}`);
+    assert(rows.tabs.join() === "newTabNextToActive,recentTabCycling,showSidebarButton,showClearButton,hideAddressBarWhileScrolling,fadeUnloadedTabs,tabReorderHaptics,sidebarMediaControls,autoPictureInPicture" && rows.shortcuts.join() === "copyLinkShortcut,sidebarShortcut,undoReopensClosedTab", `rows ${JSON.stringify(rows)}`);
     assert(rows.about.includes("about.version") && rows.general.includes("onQuit"), `rows ${JSON.stringify(rows)}`);
     assert((await commandResult("settings open nonsense")) === "no such pane", "a pane that isn't there opened");
     // The new controls: segmented (scroll bars, a rare row under "More") and picture choices (light or dark).
@@ -3119,7 +3121,8 @@ const checks = {
     assert(win().panes.join() === "general,tabs,appearance,search,privacy,passwords,autofill,extensions,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
     // Every pane has content of its own now, so none is hidden; Search opens as itself.
     assert(win().pane === "search", `Search opened as ${win().pane}`);
-    assert(!win().rows.appearance.includes("appearanceMode") && !win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
+    assert(!win().rows.appearance.includes("appIcon") && win().rows.appearance.includes("appearanceMode") && win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
+    assert(win().rows.tabs.join() === "newTabNextToActive,recentTabCycling,showSidebarButton,fadeUnloadedTabs,tabReorderHaptics", `Ray.app tabs rows ${win().rows.tabs}`);
     if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-as-app.png")}`);
     await command("settings asapp off");
     await command("state");
@@ -3167,9 +3170,9 @@ const checks = {
     await until("cleared", async () => { await command("state"); return search().query === "" && win().sidebarPanes.length === win().panes.length; });
     // Ray.app doesn't find rows it doesn't show.
     await command("settings asapp on");
-    await command("settings search scroll bars");
-    await until("searched", async () => { await command("state"); return search().query === "scroll bars"; });
-    assert(!search().results.some((r) => r.id === "scrollBars"), `Ray.app found an unbuilt row: ${JSON.stringify(search().results)}`);
+    await command("settings search app icon");
+    await until("searched", async () => { await command("state"); return search().query === "app icon"; });
+    assert(!search().results.some((r) => r.id === "appIcon"), `Ray.app found an unbuilt row: ${JSON.stringify(search().results)}`);
     await command("settings asapp off");
     await command("settings search");
     if (process.env.SNAP_DIR) {
@@ -3229,12 +3232,12 @@ const checks = {
     await command("escape");
     // Rows Ray.app doesn't show aren't offered.
     await command("settings asapp on");
-    bar = await barFor("scroll bars");
-    assert(!settingRows(bar).some((r) => r.title === "Settings: Show scroll bars"), `Ray.app offered an unbuilt row: ${JSON.stringify(bar.rows)}`);
+    bar = await barFor("app icon");
+    assert(!settingRows(bar).some((r) => r.title === "Settings: App icon"), `Ray.app offered an unbuilt row: ${JSON.stringify(bar.rows)}`);
     await command("escape");
     await command("settings asapp off");
-    bar = await barFor("scroll bars");
-    assert(settingRows(bar).some((r) => r.title === "Settings: Show scroll bars"), `a test build hid an unbuilt row: ${JSON.stringify(bar.rows)}`);
+    bar = await barFor("app icon");
+    assert(settingRows(bar).some((r) => r.title === "Settings: App icon"), `a test build hid an unbuilt row: ${JSON.stringify(bar.rows)}`);
     await command("escape");
   },
   async "settings-colours"() {
@@ -3310,6 +3313,260 @@ const checks = {
     await command("key s cmd");
     await until("⌘S toggles back", async () => { await command("state"); return state().sidebar.hidden === hidden; });
     await resetSettings();
+  },
+  async "settings-appearance-mode"() {
+    // Light, Dark or Automatic: NSApp's appearance, which the window (and every view of Ray's) takes, and which pages
+    // hear as prefers-color-scheme, as Chrome's do.
+    await resetSettings();
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active", () => state().active === tabFor("/a").id);
+    const { sessionId } = await session("/a");
+    const pageDark = () => evaluate(sessionId, `matchMedia("(prefers-color-scheme: dark)").matches`);
+    const looks = () => state().looks;
+    assert(looks().appearance === "auto", `the default isn't automatic: ${JSON.stringify(looks())}`);
+    for (const mode of ["dark", "light", "dark"]) {
+      await setSetting("appearanceMode", mode);
+      await until(`${mode} app`, async () => { await command("state"); return looks().appearance === mode && looks().effective === mode && looks().window === mode; });
+      await until(`${mode} page`, async () => (await pageDark()) === (mode === "dark"), 5000);
+    }
+    if (process.env.SNAP_DIR) await command(`toolbarsnap ${join(process.env.SNAP_DIR, "toolbar-forced-dark.png")}`);
+    await setSetting("appearanceMode", "auto");
+    await until("automatic", async () => { await command("state"); return looks().appearance === "auto" && looks().window === looks().effective; });
+    await resetSettings();
+  },
+  async "settings-scroll-bars"() {
+    // Always: classic scroll bars that take room in the page; When scrolling: overlay ones that take none. Open pages
+    // switch at once (Chromium reads NSScroller's preferred style and hears its change notice).
+    await resetSettings();
+    await goTo(`${origin}/long?scrollbars`, true);
+    await until("long page", async () => { await command("state"); return activeTabState()?.url.includes("/long?scrollbars"); });
+    const { sessionId } = await session("/long?scrollbars");
+    const room = () => evaluate(sessionId, `innerWidth - document.documentElement.clientWidth`);
+    await setSetting("scrollBars", "always");
+    await until("legacy scrollers", async () => { await command("state"); return state().looks.scrollers === "legacy"; });
+    await until("the page has a scroll bar", async () => (await room()) > 0, 5000);
+    await setSetting("scrollBars", "scrolling");
+    await until("overlay scrollers", async () => { await command("state"); return state().looks.scrollers === "overlay"; });
+    await until("the page's scroll bar takes no room", async () => (await room()) === 0, 5000);
+    await setSetting("scrollBars", "system");
+    await send("Target.closeTarget", { targetId: (await targets()).find((t) => t.url.includes("/long?scrollbars")).targetId });
+    await until("long page closed", async () => { await command("state"); return !tabFor("/long?scrollbars"); });
+    await resetSettings();
+  },
+  async "settings-page-address-bar"() {
+    // One setting for every window; View › Show Address Bar on Page flips it. An older Sidebar.json's choice moves in.
+    await resetSettings();
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active", async () => { await command("state"); return state().active === tabFor("/a").id && state().toolbar !== null; });
+    await setSetting("pageAddressBar", "off");
+    await until("bar off", async () => { await command("state"); return state().toolbar === null && state().sidebarAddressShown === true; });
+    await command("menu toggleToolbar");
+    await until("the menu turned the setting on", async () => { await command("state"); return state().settings.pageAddressBar === true && state().toolbar !== null; });
+    await command("menu toggleToolbar");
+    await until("and off", async () => { await command("state"); return state().settings.pageAddressBar === false && state().toolbar === null; });
+    await resetSettings();
+    await until("bar back", async () => { await command("state"); return state().toolbar !== null; });
+
+    const dir = mkdtempSync(join(tmpdir(), "ray-page-address-bar-"));
+    const sidebarFile = join(dir, "Sidebar.json");
+    writeFileSync(sidebarFile, JSON.stringify({ favorites: [], pinned: [], today: [], sidebarHidden: false, pageToolbar: false }));
+    let log = "";
+    const it = spawn(join(app, "Contents/MacOS/Ray"), [], {
+      env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_DATA_DIR: dir,
+        RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_START_URL: `${origin}/a`,
+        RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.pagebar` },
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    const exit = new Promise((r) => it.on("exit", (code, signal) => r(code ?? signal)));
+    it.stdin.on("error", () => {});
+    it.stderr.setEncoding("utf8");
+    it.stderr.on("data", (chunk) => { log += chunk; });
+    try {
+      const marker = "[ray-test] settings catalog -> ";
+      const from = log.length;
+      it.stdin.write("settings catalog\n");
+      const line = await until("catalog", () => { const at = log.indexOf(marker, from); return at >= 0 ? log.slice(at + marker.length).split("\n")[0] : null; }, 25000, 150);
+      const value = JSON.parse(line).find((k) => k.id === "pageAddressBar").value;
+      assert(value === "off", `an older Sidebar.json's address bar off became ${value}`);
+      await until("moved out of Sidebar.json", () => !("pageToolbar" in JSON.parse(readFileSync(sidebarFile, "utf8"))), 5000);
+      await until("saved in Settings.json", () => existsSync(join(dir, "Settings.json")) && JSON.parse(readFileSync(join(dir, "Settings.json"), "utf8")).pageAddressBar === false, 5000);
+    } finally {
+      it.kill("SIGTERM");
+      await Promise.race([exit, sleep(10000)]);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+  async "settings-sidebar-button"() {
+    // Off: no sidebar button in the sidebar's top row, nor in the address bar while the sidebar is hidden (back,
+    // forward and reload move up a place); ⌘S still toggles the sidebar.
+    await needsFrames();
+    await resetSettings();
+    await command(`row ${entryOfTab(tabFor("/a").id).id}`);
+    await until("/a active", async () => { await command("state"); return state().active === tabFor("/a").id && state().toolbar !== null; });
+    const field = () => state().toolbar.field;
+    const hiddenBar = async (shown) => {
+      await command("key s cmd keywin");
+      await until("sidebar hidden", async () => { await command("state"); return state().sidebar.hidden && state().toolbar.navigationProgress === 1; }, 4000, 50);
+      assert(field().sidebarButton === shown, `sidebar button ${field().sidebarButton}, wanted ${shown}`);
+      assert(Math.abs(field().backX - (shown ? 56 : 21)) <= 1 && field().addressX === (shown ? 145 : 110), `back at ${field().backX}, address at ${field().addressX}`);
+      await command("key s cmd keywin");
+      await until("sidebar back", async () => { await command("state"); return !state().sidebar.hidden && state().toolbar.navigationProgress === 0; }, 4000, 50);
+    };
+    assert(state().sidebarFrames.toggleShown === "1", "no sidebar button by default");
+    await hiddenBar(true);
+    await setSetting("showSidebarButton", "off");
+    await until("button gone", async () => { await command("state"); return state().sidebarFrames.toggleShown === "0"; });
+    await hiddenBar(false);
+    await setSetting("showSidebarButton", "on");
+    await until("button back", async () => { await command("state"); return state().sidebarFrames.toggleShown === "1"; });
+    await resetSettings();
+  },
+  async "settings-fade-unloaded"() {
+    // On: a tab whose page isn't loaded (here a pinned tab closed back to its row) shows its icon faded; off (the
+    // default, Arc's look), nothing is.
+    await resetSettings();
+    await send("Target.createTarget", { url: `${origin}/b?fade` });
+    const tab = await until("fade tab", () => tabFor("?fade"));
+    const entry = await until("fade row", () => entryOfTab(tab.id));
+    const pinnedEntry = () => state().sidebar.pinned.find((e) => e.id === entry.id);
+    const faded = () => (state().sidebarFrames.fadedIcons ?? "").split(",").filter(Boolean);
+    await command(`rowaction pin ${entry.id}`);
+    await until("pinned", () => pinnedEntry());
+    // Unloaded as when its page closes itself (the row's − would also put it in Recently Closed).
+    await send("Target.closeTarget", { targetId: (await targets()).find((t) => t.url.includes("?fade")).targetId });
+    await until("unloaded", async () => { await command("state"); return pinnedEntry()?.live === false; });
+    await settle();
+    assert(faded().length === 0, `icons faded with the setting off: ${faded()}`);
+    await setSetting("fadeUnloadedTabs", "on");
+    await until("faded", async () => { await command("state"); return faded().includes(entry.id); });
+    assert(faded().every((id) => !allEntries().find((e) => e.id === id)?.live), `a live tab faded: ${faded()}`);
+    await command(`row ${entry.id}`);
+    await until("loaded again, whole", async () => { await command("state"); return pinnedEntry()?.live && !faded().includes(entry.id); });
+    await command(`rowaction unpin ${entry.id}`);
+    await until("unpinned", () => !pinnedEntry());
+    await send("Target.closeTarget", { targetId: (await targets()).find((t) => t.url.includes("?fade")).targetId });
+    await until("closed", async () => { await command("state"); return !tabFor("?fade"); });
+    await resetSettings();
+  },
+  async "settings-reorder-haptics"() {
+    // On (the default): a tick each time a dragged tab moves to a new place; off: none.
+    try {
+      await resetSettings();
+      await todayTabs(3);
+      const dragFirstBelowThird = async () => {
+        const [first, , third] = state().sidebar.today;
+        const a = frameOf(first.id);
+        await command(`press ${a.cx} ${a.cy}`);
+        await command(`move ${a.cx} ${a.cy + 10}`);
+        await settle();
+        const c = frameOf(third.id);
+        await command(`move ${a.cx} ${c.cy + 4}`);
+        await command(`release ${a.cx} ${c.cy + 4}`);
+        await until("moved down", () => state().sidebar.today.findIndex((e) => e.id === first.id) > 0);
+        await settle();
+      };
+      const before = state().hapticTicks;
+      await dragFirstBelowThird();
+      assert(state().hapticTicks > before, `no tick while reordering (${before} -> ${state().hapticTicks})`);
+      await setSetting("tabReorderHaptics", "off");
+      const off = state().hapticTicks;
+      await dragFirstBelowThird();
+      assert(state().hapticTicks === off, `ticked with the setting off (${off} -> ${state().hapticTicks})`);
+      await resetSettings();
+    } catch (error) {
+      // Keys and clicks stop reaching a window the user's Space switch left behind (known noise, CLAUDE.md).
+      await resetSettings().catch(() => {});
+      if (state()?.windowOnActiveSpace === false) throw new Skip("the test window left the active Space mid-check");
+      throw error;
+    }
+  },
+  async "settings-undo-reopens"() {
+    // On: ⌘Z outside text reopens the last closed tab (again: the one before), through ⇧⌘T's list; in an editable
+    // element of the page it still undoes typing. Off (the default): Edit › Undo is AppKit's own.
+    try {
+      await resetSettings();
+      const undo = () => state().undo;
+      const open = async (tag) => {
+        await send("Target.createTarget", { url: `${origin}/b?${tag}` });
+        return until(tag, async () => { await command("state"); const t = tabFor(`?${tag}`); return t && entryOfTab(t.id) && t; });
+      };
+      const select = async (tag) => {
+        await command(`row ${entryOfTab(tabFor(`?${tag}`).id).id}`);
+        await until(`${tag} active`, async () => { await command("state"); return state().active === tabFor(`?${tag}`)?.id; });
+      };
+      const closeActive = async (tag) => {
+        await command("key w cmd keywin");
+        await until(`${tag} closed`, async () => { await command("state"); return !tabFor(`?${tag}`); }, 5000);
+      };
+      const cmdZ = () => command("key z cmd keywin");
+      const back = (tag) => until(`${tag} back`, async () => { await command("state"); return tabFor(`?${tag}`) && state().active === tabFor(`?${tag}`).id; }, 5000);
+      await command("state");
+      const closedBefore = state().recentlyClosed.items.length;
+      for (const tag of ["undoOne", "undoTwo", "undoStay"]) await open(tag);
+      await select("undoOne");
+      await closeActive("undoOne");
+      await select("undoStay");
+      assert(undo().target === false && undo().reopens === false && undo().title === "Undo", `off: ${JSON.stringify(undo())}`);
+      const tabs = state().tabs.length;
+      await cmdZ();
+      await sleep(600);
+      await command("state");
+      assert(state().tabs.length === tabs && !tabFor("?undoOne"), "⌘Z reopened a tab with the setting off");
+
+      await setSetting("undoReopensClosedTab", "on");
+      await until("Edit › Undo is Ray's", async () => { await command("state"); return undo().target && undo().reopens && undo().title === "Undo Close Tab"; });
+      await cmdZ();
+      await back("undoOne");
+      // Two closed: ⌘Z brings the last one back, ⌘Z again the one before.
+      await closeActive("undoOne");
+      await select("undoTwo");
+      await closeActive("undoTwo");
+      await select("undoStay");
+      await cmdZ();
+      await back("undoTwo");
+      await cmdZ();
+      await back("undoOne");
+
+      // Typing in the page: ⌘Z undoes it and reopens nothing.
+      await select("undoOne");
+      await closeActive("undoOne");
+      await select("undoStay");
+      const { sessionId } = await session("?undoStay");
+      assert(await evaluate(sessionId, `(() => { const f = document.createElement("input"); f.id = "undoField"; document.body.append(f); f.focus(); return document.activeElement === f; })()`), "the field didn't take focus");
+      await send("Input.insertText", { text: "typed" }, sessionId);
+      await until("typed", async () => (await evaluate(sessionId, `document.getElementById("undoField").value`)) === "typed");
+      await until("the page edits text", async () => { await command("state"); return undo().editsText === true && undo().reopens === false && undo().title === "Undo"; }, 5000);
+      await cmdZ();
+      await until("typing undone", async () => (await evaluate(sessionId, `document.getElementById("undoField").value`)) === "", 5000);
+      await command("state");
+      assert(!tabFor("?undoOne"), "⌘Z in a text field reopened a tab");
+      // Out of the field, ⌘Z reopens again.
+      await evaluate(sessionId, `document.getElementById("undoField").blur()`);
+      await until("no text focused", async () => { await command("state"); return undo().editsText === false && undo().reopens === true; }, 5000);
+      await cmdZ();
+      await back("undoOne");
+
+      // Ray's own text: in the command bar ⌘Z is the field's.
+      await command("menu focusAddress");
+      await until("command bar", async () => { await command("state"); return state().commandBar; });
+      assert(undo().editsText === true && undo().reopens === false, `the command bar: ${JSON.stringify(undo())}`);
+      await command("escape");
+      await setSetting("undoReopensClosedTab", "off");
+      await until("Edit › Undo is AppKit's again", async () => { await command("state"); return undo().target === false && undo().title === "Undo"; });
+      // Closed as a page closes itself, so Recently Closed (which reopen-closed-tab counts) gets nothing more.
+      for (const tag of ["undoOne", "undoTwo", "undoStay"]) {
+        const target = (await targets()).find((t) => t.url.includes(`?${tag}`));
+        if (target) await send("Target.closeTarget", { targetId: target.targetId });
+        await until(`${tag} closed`, async () => { await command("state"); return !tabFor(`?${tag}`); }, 5000);
+      }
+      assert(state().recentlyClosed.items.length === closedBefore, `the check left ${state().recentlyClosed.items.length - closedBefore} closed tabs behind`);
+      await resetSettings();
+    } catch (error) {
+      // Keys and clicks stop reaching a window the user's Space switch left behind (known noise, CLAUDE.md).
+      await resetSettings().catch(() => {});
+      if (state()?.windowOnActiveSpace === false) throw new Skip("the test window left the active Space mid-check");
+      throw error;
+    }
   },
   async "reopen-closed-tab"() {
     const today = () => state().sidebar.today;
@@ -4918,7 +5175,7 @@ const checks = {
     await command("settings open");
     await until("settings window after relaunch", async () => { await command("state"); return state().settingsWindow.open; });
     const shown = state().settingsWindow.controls;
-    assert(shown.minimalURL === true && shown.loadingProgress === false && shown.newTabNextToActive === true && shown.recentTabCycling === false &&
+    assert(shown.minimalURL === true && shown.loadingProgress === false && shown.newTabNextToActive === "Below current" && shown.recentTabCycling === false &&
       shown.copyLinkShortcut === false && shown.sidebarShortcut === false && shown.theme === "#E5589D" && shown.defaultZoom === "125%", `window after relaunch ${JSON.stringify(shown)}`);
     await closeSettingsWindow();
     }

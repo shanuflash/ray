@@ -45,6 +45,11 @@ final class PageToolbarView: NSView {
     }
   }
   var showsNavigation: Bool { navigation > 0.5 }
+  /// Settings › Show the sidebar button: off, back, forward and reload take the first three places and the address
+  /// starts one place sooner, as Ardia's toolbar does without its sidebar button.
+  var showsSidebarButton = true {
+    didSet { if oldValue != showsSidebarButton { needsLayout = true } }
+  }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -105,7 +110,8 @@ final class PageToolbarView: NSView {
   /// The profile's colour changed: the wash takes it up.
   func refreshAccent() { address.refreshAccent() }
   var addressDebug: [String: Any] {
-    address.debug.merging(["stopButton": isStopping]) { _, new in new }
+    address.debug.merging(["stopButton": isStopping, "sidebarButton": !sidebarButton.isHidden, "backX": backButton.frame.midX,
+                           "addressX": address.frame.minX]) { _, new in new }
   }
 
   /// For tests: the reload/stop button's own action (the button hides while the sidebar is docked).
@@ -150,13 +156,16 @@ final class PageToolbarView: NSView {
     super.layout()
     let size = Self.buttonSize, top = Self.buttonTop
     let progress = navigation
-    for (button, center) in zip([sidebarButton, backButton, forwardButton, reloadButton], Self.centers) {
+    let buttons = showsSidebarButton ? [sidebarButton, backButton, forwardButton, reloadButton] : [backButton, forwardButton, reloadButton]
+    sidebarButton.isHidden = !showsSidebarButton
+    for (button, center) in zip(buttons, Self.centers) {
       // They drift in from a little to the left as they fade, following the sidebar out.
       button.frame = NSRect(x: (center - size / 2 - 14 * (1 - progress)).rounded(), y: top, width: size, height: size)
       button.alphaValue = progress * progress
       button.isHidden = progress < 0.01
     }
-    let left = (8 + (145 - 8) * progress).rounded()
+    let shift = showsSidebarButton ? 0 : Self.centers[1] - Self.centers[0]
+    let left = (8 + (145 - shift - 8) * progress).rounded()
     siteButton.frame = NSRect(x: bounds.width - 8 - size, y: top, width: size, height: size)
     copyButton.frame = NSRect(x: siteButton.frame.minX - size + 2, y: top, width: size, height: size)
     let right = copyButton.isHidden ? bounds.width - 12 : copyButton.frame.minX - 4

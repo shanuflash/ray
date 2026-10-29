@@ -58,6 +58,8 @@ private final class SidebarDrag {
   var grab = NSPoint.zero
   var lifted = false
   var target: SidebarDropTarget?
+  /// Its first place (where it was lifted from) has been found.
+  var placed = false
 
   init(entry: SidebarEntry, view: NSView, press: NSPoint) {
     self.entry = entry
@@ -136,6 +138,13 @@ final class SidebarView: NSView {
   private let reloadButton = SidebarView.iconButton("arrow.clockwise")
   private let downloadsButton = SidebarView.iconButton("arrow.down.circle")
   private let privateBadge = PrivateBadge()
+  /// Settings › Show the sidebar button: off, the top row has none (⌘S still toggles the sidebar).
+  var showsToggle = true {
+    didSet {
+      toggleButton.isHidden = !showsToggle
+      needsLayout = true
+    }
+  }
   /// A private window: shows the Private badge next to the sidebar button.
   var isPrivate = false {
     didSet {
@@ -179,6 +188,14 @@ final class SidebarView: NSView {
   private static let scrollEdge: CGFloat = 28
 
   var isDragging: Bool { drag?.lifted == true }
+  /// Ticks played while dragging tabs, for the state log.
+  static var hapticTicks = 0
+
+  /// Settings › Fade icons of unloaded tabs: how a tab's icon is drawn while its page isn't loaded (Ardia's sleeping
+  /// opacity), and whole otherwise or with the setting off (Arc's look).
+  static func iconAlpha(for entry: SidebarEntry) -> CGFloat {
+    !entry.isFolder && !entry.isLive && RaySettings.shared[.fadeUnloadedTabs] ? 0.45 : 1
+  }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -354,7 +371,8 @@ final class SidebarView: NSView {
     windowLights.frame = NSRect(x: 14, y: rowCenter - 8, width: WindowLights.width, height: 16)
     toggleButton.frame = NSRect(x: reservesTrafficLights ? 88 : 13, y: rowCenter - 16, width: 32, height: 32)
     let badgeWidth = privateBadge.fittingSize.width
-    privateBadge.frame = NSRect(x: toggleButton.frame.maxX + 4, y: rowCenter - 11, width: badgeWidth, height: 22)
+    privateBadge.frame = NSRect(x: showsToggle ? toggleButton.frame.maxX + 4 : toggleButton.frame.minX + 4, y: rowCenter - 11,
+                                width: badgeWidth, height: 22)
     reloadButton.frame = NSRect(x: bounds.width - inset - 32 - 2, y: rowCenter - 16, width: 32, height: 32)
     forwardButton.frame = reloadButton.frame.offsetBy(dx: -34, dy: 0)
     backButton.frame = forwardButton.frame.offsetBy(dx: -34, dy: 0)
@@ -762,6 +780,13 @@ final class SidebarView: NSView {
   private func retarget(_ drag: SidebarDrag) {
     let target = dropTarget(for: drag)
     guard target != drag.target else { return }
+    // Settings › Haptic feedback when reordering tabs: a tick each time the tab finds a new place (not on lifting it,
+    // nor when it leaves every place), as Ardia's drag does.
+    if drag.placed, target != nil, RaySettings.shared[.tabReorderHaptics] {
+      NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+      Self.hapticTicks += 1
+    }
+    drag.placed = true
     drag.target = target
     needsLayout = true
     layoutSubtreeIfNeeded()
@@ -933,6 +958,10 @@ final class SidebarView: NSView {
     frames["reduceMotion"] = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? "1" : "0"
     frames["collapsing"] = zip(pinnedRows, pinned).filter { $0.0.collapsing }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["folding"] = foldLink == nil ? "0" : "1"
+    frames["toggleShown"] = toggleButton.isHidden ? "0" : "1"
+    frames["fadedIcons"] = shownViews.filter { view, _ in
+      (view as? SidebarRowView)?.iconFaded ?? (view as? FavoriteTileView)?.iconFaded ?? false
+    }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["faded"] = zip(pinnedRows, pinned).filter { $0.0.alphaValue < 1 && !$0.0.isHidden && !$0.0.collapsing }
       .map { $0.1.id.uuidString }.joined(separator: ",")
     frames["chevrons"] = zip(pinnedRows, pinned).filter { $0.1.isFolder }
@@ -1431,6 +1460,7 @@ final class FavoriteTileView: NSView, Liftable {
   var onClick: (() -> Void)?
   var onPointer: ((NSEvent) -> Void)?
   private let icon = NSImageView()
+  var iconFaded: Bool { icon.alphaValue < 1 }
   private var selected = false
   private var lifted = false
   private(set) var hovered = false
@@ -1528,6 +1558,7 @@ final class FavoriteTileView: NSView, Liftable {
     self.selected = selected
     icon.image = image ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
     icon.contentTintColor = image == nil ? .secondaryLabelColor : nil
+    icon.alphaValue = SidebarView.iconAlpha(for: entry)
     residency.show(entry, in: self)
     toolTip = entry.displayTitle
     needsDisplay = true
@@ -1565,6 +1596,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   }
   var onClose: (() -> Void)?
   private let icon = NSImageView()
+  var iconFaded: Bool { icon.alphaValue < 1 }
   private let slash = NSTextField(labelWithString: "/")
   private let title = NSTextField(labelWithString: "")
   private let subtitle = NSTextField(labelWithString: "")
@@ -1719,7 +1751,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     closable = entry.kind == .today || entry.isLive
     icon.image = image ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
     icon.contentTintColor = image == nil ? .secondaryLabelColor : nil
-    icon.alphaValue = entry.kind == .today && !entry.isLive ? 0.45 : 1
+    icon.alphaValue = SidebarView.iconAlpha(for: entry)
     residency.show(entry, in: self)
     slash.isHidden = !away
     title.stringValue = entry.displayTitle

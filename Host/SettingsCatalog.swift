@@ -19,6 +19,16 @@ extension AnySettingKey {
     warnBeforeQuitting, warnBeforeClosingWindow, onQuit,  // General (SettingsGeneral.swift)
     offerToSavePasswords, autofillAddresses, autofillCards,  // Passwords, Autofill (SettingsPasswords.swift, SettingsAutofill.swift)
     searchEngine, searchSuggestions, siteSearches,  // Search (SettingsSearchPane.swift)
+    pageAddressBar,
+    appIcon,
+    showSidebarButton,
+    showClearButton,
+    hideAddressBarWhileScrolling,
+    fadeUnloadedTabs,
+    tabReorderHaptics,
+    sidebarMediaControls,
+    autoPictureInPicture,
+    undoReopensClosedTab,
   ]
 
   /// Old ids that now load into a renamed setting: `"oldId": "newId"`. The old key stays in Settings.json as it was.
@@ -47,12 +57,12 @@ extension AnySettingKey {
       ]
     })
 
-  /// Light, dark, or as macOS is. Not built yet: its row shows only in test builds.
+  /// Light, dark, or as macOS is, for Ray's own windows (`AppLook`); pages are told the same, as Chrome tells them.
   static let appearanceMode = SettingKey<String>(
-    "appearanceMode", default: "auto", built: false,
+    "appearanceMode", default: "auto",
     ui: SettingUI(
       pane: .appearance, group: .theme, title: "Light or dark",
-      detail: "Automatic follows macOS.",
+      detail: "Ray's sidebar, toolbar, panels and Settings. Pages that have a dark look use it too. Automatic follows macOS.",
       keywords: ["dark mode", "light mode", "appearance", "night"],
       control: .picture(
         [SettingChoice(title: "Automatic", value: "auto"), SettingChoice(title: "Light", value: "light"),
@@ -85,12 +95,12 @@ extension AnySettingKey {
       keywords: ["zoom", "size", "scale", "default zoom"],
       control: .choice(RaySettings.zoomLevels.map { SettingChoice(title: "\(Int(($0 * 100).rounded()))%", value: $0.settingText) })))
 
-  /// When pages show their scroll bars. Not built yet: its row shows only in test builds.
+  /// When pages (and Ray's own lists) show their scroll bars (`AppLook`).
   static let scrollBars = SettingKey<String>(
-    "scrollBars", default: "system", built: false,
+    "scrollBars", default: "system",
     ui: SettingUI(
       pane: .appearance, group: .page, title: "Show scroll bars",
-      detail: "Automatic follows System Settings › Appearance.",
+      detail: "In pages and Ray's own lists. Automatic follows System Settings › Appearance.",
       keywords: ["scroll bars", "scrollbar", "scrolling"],
       control: .segmented([
         SettingChoice(title: "Automatic", value: "system"), SettingChoice(title: "When scrolling", value: "scrolling"),
@@ -98,14 +108,34 @@ extension AnySettingKey {
       ]),
       rare: true))
 
+  /// The address bar above the page; off, the sidebar has the address. View › Show Address Bar on Page is the same
+  /// setting, for every window.
+  static let pageAddressBar = SettingKey<Bool>(
+    "pageAddressBar", default: true,
+    ui: SettingUI(
+      pane: .appearance, group: .address, title: "Show the address bar above the page",
+      detail: "Off, the address sits at the top of the sidebar, as in Arc. Also in View › Show Address Bar on Page.",
+      keywords: ["toolbar", "url bar", "address bar", "arc", "dia", "top bar"], control: .toggle))
+
+  /// Ray's icon in the Dock. Not built yet (the other icons need designing): its row shows only in test builds.
+  static let appIcon = SettingKey<String>(
+    "appIcon", default: "default", built: false,
+    ui: SettingUI(
+      pane: .appearance, group: .theme, title: "App icon",
+      detail: "Shown in the Dock and the app switcher.",
+      keywords: ["dock icon", "logo", "icon"],
+      control: .choice([SettingChoice(title: "Default", value: "default")]), rare: true))
+
   // Tabs and sidebar
 
+  /// Where ⌘T puts a new tab: the top of Today (off, Arc's), or right below the tab you're on.
   static let newTabNextToActive = SettingKey<Bool>(
     "newTabNextToActive", default: false,
     ui: SettingUI(
-      pane: .tabs, group: .newTabs, title: "Open new tabs next to the current one",
-      detail: "A new tab goes right after the tab you're on, when it's in Today. Off: at the top of Today.",
-      keywords: ["new tab", "position", "order", "where"], control: .toggle))
+      pane: .tabs, group: .newTabs, title: "New tabs open",
+      detail: "Where ⌘T and New Tab put it. From a pinned tab, at the top.",
+      keywords: ["new tab", "position", "order", "where", "next to", "below", "top"],
+      control: .segmented([SettingChoice(title: "At the top", value: "off"), SettingChoice(title: "Below current", value: "on")])))
 
   static let recentTabCycling = SettingKey<Bool>(
     "recentTabCycling", default: true,
@@ -113,6 +143,62 @@ extension AnySettingKey {
       pane: .tabs, group: .switching, title: "Switch tabs in recently used order with ⌃Tab",
       detail: "Hold Control and press Tab again to go further back. Off: in the order of the sidebar.",
       keywords: ["control tab", "ctrl tab", "switch tabs", "recent", "cycle"], control: .toggle))
+
+  /// The sidebar button in the sidebar's top row and the page's address bar.
+  static let showSidebarButton = SettingKey<Bool>(
+    "showSidebarButton", default: true,
+    ui: SettingUI(
+      pane: .tabs, group: .sidebar, title: "Show the sidebar button",
+      detail: "⌘S and View › Toggle Sidebar still hide and show the sidebar.",
+      keywords: ["sidebar", "toggle", "button", "hide sidebar"], control: .toggle))
+
+  /// Arc's ↓ Clear between pinned tabs and Today. Not built yet: its row shows only in test builds.
+  static let showClearButton = SettingKey<Bool>(
+    "showClearButton", default: true, built: false,
+    ui: SettingUI(
+      pane: .tabs, group: .sidebar, title: "Show the Clear button",
+      detail: "Between your pinned tabs and Today. File › Clear Today's Tabs still clears them.",
+      keywords: ["clear", "close all tabs", "today", "arc", "divider"], control: .toggle))
+
+  /// The address bar above the page tucks away while you scroll down. Not built yet: its row shows only in test builds.
+  static let hideAddressBarWhileScrolling = SettingKey<Bool>(
+    "hideAddressBarWhileScrolling", default: false, built: false,
+    ui: SettingUI(
+      pane: .tabs, group: .sidebar, title: "Hide the address bar while scrolling",
+      detail: "Scrolling down tucks it into a thin strip with the site's name; scrolling up or a click brings it back.",
+      keywords: ["auto hide", "toolbar", "compact", "scroll"], control: .toggle))
+
+  /// A tab whose page isn't loaded shows its icon faded.
+  static let fadeUnloadedTabs = SettingKey<Bool>(
+    "fadeUnloadedTabs", default: false,
+    ui: SettingUI(
+      pane: .tabs, group: .sidebar, title: "Fade icons of unloaded tabs",
+      detail: "A tab whose page isn't loaded, like a pinned tab you haven't opened or one restored after a relaunch. Clicking it loads the page.",
+      keywords: ["unloaded", "asleep", "sleeping", "dim", "grey", "gray", "inactive", "pinned"], control: .toggle))
+
+  /// A trackpad tick each time a dragged tab finds a new place.
+  static let tabReorderHaptics = SettingKey<Bool>(
+    "tabReorderHaptics", default: true,
+    ui: SettingUI(
+      pane: .tabs, group: .sidebar, title: "Haptic feedback when reordering tabs",
+      detail: "The trackpad ticks each time a tab you're dragging moves to a new place.",
+      keywords: ["haptic", "trackpad", "vibration", "drag", "reorder", "force touch"], control: .toggle))
+
+  /// A player at the bottom of the sidebar for a tab playing out of sight. Not built yet: its row shows only in test builds.
+  static let sidebarMediaControls = SettingKey<Bool>(
+    "sidebarMediaControls", default: true, built: false,
+    ui: SettingUI(
+      pane: .tabs, group: .media, title: "Show media controls in the sidebar",
+      detail: "When a tab you're not looking at plays sound, a player appears at the bottom of the sidebar.",
+      keywords: ["music", "player", "audio", "now playing", "media"], control: .toggle))
+
+  /// A video pops out when you leave its tab. Not built yet: its row shows only in test builds.
+  static let autoPictureInPicture = SettingKey<Bool>(
+    "autoPictureInPicture", default: true, built: false,
+    ui: SettingUI(
+      pane: .tabs, group: .media, title: "Automatic Picture in Picture",
+      detail: "A video or call you're watching pops out when you switch tabs, and returns when you come back.",
+      keywords: ["pip", "video", "floating", "mini player", "picture in picture"], control: .toggle))
 
   // Shortcuts
 
@@ -129,6 +215,14 @@ extension AnySettingKey {
       pane: .shortcuts, group: .keys, title: "Show and hide the sidebar with ⌘S",
       detail: "Off: the key goes to the page (Save Page As).",
       keywords: ["sidebar", "save page", "shortcut", "keyboard", "toggle"], control: .toggle))
+
+  /// Edit › Undo reopens the last closed tab outside text (`UndoCloseTab`), as in Arc.
+  static let undoReopensClosedTab = SettingKey<Bool>(
+    "undoReopensClosedTab", default: false,
+    ui: SettingUI(
+      pane: .shortcuts, group: .keys, title: "Reopen closed tabs with ⌘Z",
+      detail: "Outside text fields, as in Arc; press it again for the tab closed before. In a text field ⌘Z still undoes typing.",
+      keywords: ["undo", "reopen", "closed tab", "restore tab", "cmd z", "arc"], control: .toggle))
 
   /// The setting with this id (or an old id from `aliases`).
   static func named(_ id: String) -> AnySettingKey? {
@@ -225,6 +319,8 @@ struct SettingGroup: Equatable {
   static let page = SettingGroup(id: "page", title: "Pages")
   static let newTabs = SettingGroup(id: "newTabs", title: "New tabs")
   static let switching = SettingGroup(id: "switching", title: "Switching tabs")
+  static let sidebar = SettingGroup(id: "sidebar", title: "Sidebar and address bar")
+  static let media = SettingGroup(id: "media", title: "Media")
   static let keys = SettingGroup(id: "keys", title: "Ray's keys")
 }
 

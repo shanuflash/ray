@@ -48,7 +48,7 @@ enum TestCommands {
   }
 
   private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53, "tab": 48, ",": 43, "=": 24, "-": 27,
-                                                     "0": 29, "p": 35, "u": 32, "y": 16]
+                                                     "0": 29, "p": 35, "u": 32, "y": 16, "z": 6]
 
   /// `appopen link <url> …`: each URL as another app sends a link, a GetURL Apple Event (to this process only, so no
   /// other app is involved and nothing asks for Automation access); AppKit's own handler hands it to

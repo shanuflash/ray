@@ -51,7 +51,9 @@ publicly or create accounts.
   engines as a list with Make Default, the suggestions switch, and the site searches with an editor in the list
   ("Add…" in the group header; no sheet or popover). Lists are `.custom` controls that adopt `SettingsWideControl`
   and sit under their row's text at full width.
-- `PageToolbar`: Dia's address bar above the page (View › Show Address Bar on Page). Geometry is Ardia's
+- `PageToolbar`: Dia's address bar above the page (Settings › Show the address bar above the page, `pageAddressBar`,
+  one value for every window; View › Show Address Bar on Page flips it; an older Sidebar.json's `pageToolbar` moves
+  in once). Without the sidebar button (`showSidebarButton` off) back/forward/reload take its place. Geometry is Ardia's
   (`third_party/ardia/apps/browser/src/components/ui/theme.ts` `layout`, `components/toolbar/Toolbar.tsx`): 41 pt,
   buttons centred at 21/56/92/127, address from 145; the host in medium weight, then path and query in grey
   (View › Show Full Address, the same setting as Settings › Minimal URL, inverted; minimal shows them on hover). The sidebar/back/forward/reload
@@ -78,8 +80,8 @@ publicly or create accounts.
   and sidebar section (top, "Your data", "More"); `isShown` hides a pane with no shown row and no content of its own,
   in Ray.app only. **Adding a setting:** one entry plus its name in `all`, then the feature reads
   `RaySettings.shared[.id]` (and `observe(.id)` if it follows changes); `settings-catalog` covers it with no check
-  code. `appearanceMode` and `scrollBars` are unbuilt (test builds only) and exercise the picture and segmented
-  controls.
+  code. Unbuilt rows today (test builds only): `appIcon`, `showClearButton`, `hideAddressBarWhileScrolling`,
+  `sidebarMediaControls`, `autoPictureInPicture`.
 - `RaySettings`: the settings' values. `shared[.key]` reads, `set(.key, value)` writes, `apply(key, text)` (`default`
   resets any setting) is the one call the window's controls and the test command `setting` both make, and
   `observe(.key) { value in … }` / `observe([keys]) { … }` follow changes (main thread, once per run-loop turn, for as
@@ -101,7 +103,7 @@ publicly or create accounts.
   `SettingsControls`: `RaySwitch`, `RaySegmentedControl`, `PictureChoiceControl` (2.5 pt ring and a check, in the
   profile's colour), `SwatchRow`, `SettingsCallToAction` (General's Make Default; a hidden one takes no room), `AccentButton`, `LinkButton`.
   `MiniRayWindow`: a tiny layer-drawn Ray window (sidebar rows, one active or new, the page with or without its
-  address bar, light or dark) for live pictures (`SettingsLivePicture`, beside the minimal URL and new-tab rows) and
+  address bar, light or dark) for live pictures (`SettingsLivePicture`, beside the minimal URL, address bar and new-tab rows) and
   picture choices. **Pane content:** `SettingsPanes.swift` defines `SettingsPaneContent` (sections placed top, after
   a group or bottom, with search entries; a call to action; header controls; `.custom` controls; row pictures) and
   the registry `SettingsPanes.make(_:)`. **Adding a pane's own UI:** one new file (`Host/SettingsPrivacy.swift`,
@@ -114,7 +116,14 @@ publicly or create accounts.
   Settings that act elsewhere: minimal URL and loading progress (`PageToolbar`, `PageContainerView.showsProgress`),
   new tab position (`insertToday`), ⌃Tab in recent order (`cycleTabWithControl`, settled by a `flagsChanged` monitor
   when Control is released), ⇧⌘C and ⌘S (`MainMenu.applyShortcutSettings` removes their key equivalents so the page
-  gets the keys), and page zoom.
+  gets the keys), page zoom, light or dark and scroll bars (`AppLook`), the sidebar button (`SidebarView.showsToggle`,
+  `PageToolbarView.showsSidebarButton`), faded unloaded tabs (`SidebarView.iconAlpha`), the reorder haptic
+  (`retarget` in the sidebar's drag) and ⌘Z (`UndoCloseTab`).
+- `AppLook`: Settings › Appearance's app-wide looks. Light or dark is `NSApp.appearance` (nil: macOS's), which every
+  view of Ray's takes as it takes a macOS switch, and which Chromium reads for pages' `prefers-color-scheme` too, as
+  Chrome's pages follow its mode; private windows stay dark. Scroll bars answer `+[NSScroller preferredScrollerStyle]`
+  (swapped once, the first time a style is forced) and post its change notice, which Chromium's OS settings provider
+  hears for every open page (Ardia's Thin scroll bars). Checks `settings-appearance-mode`, `settings-scroll-bars`.
 - `SettingsGeneral` (Settings › General): the "Make Ray your default browser" strip (`NSWorkspace.setDefaultApplication`
   for http then https, macOS's own confirmation; hidden while Ray is the default), Open Ray at login
   (`SMAppService.mainApp`, its real status, "approval" included), the catalog's quitting group (`warnBeforeQuitting`
@@ -217,7 +226,10 @@ publicly or create accounts.
 - `ClosedTabs`: ⇧⌘T and History › Recently Closed (`ClosedTabsMenu.shared` is their menu target, which `BarActions`
   also accepts). Records ⌘W / row Close / Clear Today, tags normal tabs with `ac_tab_restore_tag` so Chrome's tab
   restore keeps their history (`ac_tab_restore_take` + `coreWindow.restoreTab` put them back in their sidebar place);
-  private windows keep their own in-memory list. Check `reopen-closed-tab`.
+  private windows keep their own in-memory list. Check `reopen-closed-tab`. `UndoCloseTab` (`// MARK: Undo close
+  tab`): Settings › Reopen closed tabs with ⌘Z makes it Edit › Undo's target; outside text it reopens through
+  `ClosedTabsMenu`, and in Ray's text fields or an editable page element (the page view's `textInputType`, as
+  Ardia reads it) it sends `undo:` on down the responder chain. Check `settings-undo-reopens`.
 - Address display: `AddressInput.addressParts(for:)` (lead / host / trail, fragment kept, percent-encoded),
   `unwrapped`/`innerURL(of:)` for `view-source:`, `blob:`, `filesystem:` (one level, like Chrome; the security icon
   judges the inner URL); hosts shown as punycode until Ray has an IDN spoof checker (Ardia's `idn.ts`). Check
@@ -245,12 +257,14 @@ publicly or create accounts.
   panes and rows as Ray.app does: unbuilt rows and empty panes hidden), `searchpane state|default <id>|add|edit <kw>|
   remove <kw>|fill <json>|save|cancel` (Settings › Search's own controls), `tab` / `backspace` (in the field, as the
   keys), `zoom in|out|reset`, and
-  `key tab ctrl keywin` / `key ctrlup` for ⌃Tab walks. The command bar's state has its `scope` and each search
+  `key tab ctrl keywin` / `key ctrlup` for ⌃Tab walks, `key z cmd keywin` for ⌘Z. The command bar's state has its `scope` and each search
   row's `url`. `onscreen on|off` puts the hidden window on the shown Space
   (accessory policy, nearly transparent, click-through, not activated) for checks of what pages draw. The state log
   has `settings`, `settingsWindow` (pane, panes listed, rows per pane by id, search results, `flashing` /
   `lastFlash` / `flashVisible`, the selected row's colours and contrast, live pictures, open "More" lines),
-  `menuKeys`, `recentOrder`, `tabCycle`, each tab's `zoom` and `pages.switches`
+  `menuKeys`, `recentOrder`, `tabCycle`, `looks` (app and window appearance, scroller style), `undo` (Edit › Undo's
+  target, what ⌘Z would do, the focus), `hapticTicks`, `sidebarFrames.toggleShown` / `fadedIcons`, each tab's `zoom`
+  and `pages.switches`
   (per display frame of each tab switch: `o` old page, `n` new page drawn, `b` both, `-` blank; check
   `switch-no-blank`).
 - `engine/`: Ray's engine source (Phase B), generated: `tools/engine/sync-engine.sh` renames Ardia's `engine/`

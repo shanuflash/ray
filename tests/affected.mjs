@@ -20,10 +20,13 @@ const pageSurface = ["switch-back-latency", "switch-no-blank", "top-strip-click"
   "devtools-docked", "background-tab"];
 
 const otherApps = ["open-from-other-apps", "open-from-other-apps-launch"];
+// Tabs and sidebar, Appearance and Shortcuts rows with features of their own.
+const settingFeatures = ["settings-appearance-mode", "settings-scroll-bars", "settings-page-address-bar",
+  "settings-sidebar-button", "settings-fade-unloaded", "settings-reorder-haptics", "settings-undo-reopens"];
 const settings = ["settings-window", "settings-catalog", "settings-minimal-url", "settings-loading-progress", "settings-theme",
   "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling",
   "settings-shortcuts", "settings-routes", "settings-trimmed", "settings-persist", "settings-panes", "settings-search",
-  "settings-bar", "settings-colours",
+  "settings-bar", "settings-colours", ...settingFeatures,
   "search-engine", "search-suggestions-off", "site-search"];
 // Settings › General (SettingsGeneral.swift, CloseWarnings.swift): its pane, the two warnings and Start fresh.
 settings.push("settings-general", "warn-before-quitting", "warn-before-closing-window");
@@ -99,7 +102,7 @@ export const areas = {
   // A tab's own name: Rename…, the double click, the test command's `rename` (folders too).
   "Host/BrowserWindowController.swift#Tab names": ["tab-rename", "folder-rename"],
   "Host/BrowserWindowController.swift#Page toolbar": ["page-toolbar", "address-fragment", "page-loading", "load-sweep-once", "site-controls",
-    "sidebar-toggle"],
+    "sidebar-toggle", "settings-page-address-bar"],
   "Host/BrowserWindowController.swift#Sidebar visibility": [...sidebarMotion, "page-toolbar", "downloads"],
   "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Pages": pageSurface,
@@ -117,10 +120,12 @@ export const areas = {
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
   "Host/SidebarView.swift": [...drag, "folder-create", "folder-toggle", "folder-rename", "folder-animation",
     "folder-drag-in", "folder-drag-folder", "folder-out-and-delete", "tile-hover", "favorites", "pin-unload-restore",
-    "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment", "tab-rename"],
+    "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment", "tab-rename",
+    "settings-sidebar-button", "settings-fade-unloaded"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
   // Also the rows' menus and the test hooks for renaming (the field, its Done button).
-  "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder", "folder-rename", "tab-rename"],
+  "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder", "folder-rename", "tab-rename",
+    "settings-reorder-haptics"],
   "Host/SidebarView.swift#Downloads panel": ["downloads"],
 
   "Host/AddressInput.swift": [...commandBar, "page-toolbar", "site-controls", "settings-routes", "settings-trimmed",
@@ -146,7 +151,7 @@ export const areas = {
   "Host/SettingsWindow.swift": settings,
   "Host/SettingsPaneView.swift": settings,
   "Host/SettingsPanes.swift": settings,
-  "Host/SettingsAppearance.swift": ["settings-panes", "settings-window"],
+  "Host/SettingsAppearance.swift": ["settings-panes", "settings-window", "settings-page-address-bar"],
   "Host/SettingsTabs.swift": ["settings-panes", "settings-window"],
   "Host/SettingsAbout.swift": ["settings-panes", "settings-search"],
   "Host/SettingsGeneral.swift": ["settings-general", "settings-panes", "settings-search", "warn-before-quitting", "updater-config"],
@@ -183,7 +188,7 @@ export const areas = {
   // When a page that was just shown has drawn (the tab switch holds the page left until then).
   "Host/PageFrameWatch.swift": pageSurface,
   "Host/PageToolbar.swift": ["page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle",
-    "top-strip-click"],
+    "top-strip-click", "settings-sidebar-button"],
   // Which loads the address field sweeps for.
   "Host/LoadSweep.swift": ["page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar"],
   "Host/PermissionPrompt.swift": permissions,
@@ -193,13 +198,17 @@ export const areas = {
   "Host/Updater.swift": ["updater-config", "settings-general"],
   // ⇧⌘T and History › Recently Closed.
   "Host/ClosedTabs.swift": ["reopen-closed-tab", "tab-rename"],
+  // ⌘Z: Edit › Undo, or reopening a closed tab outside text.
+  "Host/ClosedTabs.swift#Undo close tab": ["settings-undo-reopens", "reopen-closed-tab", "settings-shortcuts"],
+  // Light or dark for Ray's windows, and the scroll bars pages are told to draw.
+  "Host/AppLook.swift": ["settings-appearance-mode", "settings-scroll-bars", "settings-panes", "settings-window"],
   "Host/SafeStorage.swift": ["safe-storage-migration"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
   "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
-    "warn-before-quitting", "warn-before-closing-window"],
+    "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],
