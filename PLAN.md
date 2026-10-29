@@ -435,7 +435,7 @@ those features exist. "All Chrome Settings…" stays as a link.
 
 **What goes in each pane, with defaults.** ✓ = built in Ray's Settings window; (menu) = also in a menu; the rest is
 still to build (numbers are `docs/MISSING.md`, "From Ardia's settings"). Defaults follow Arc where Arc has one.
-- **General** ✓ (`25f0e1e`): Make Default strip; open Ray at login, off; warn before ⌘Q, off, and before closing a
+- **General** ✓ (`25f0e1e`): Make Default strip, and a Default browser row that says whether Ray is; open Ray at login, off; warn before ⌘Q, off, and before closing a
   private window with 2+ tabs, on (a normal window keeps its tabs); on quit, keep tabs and windows or start fresh;
   downloads folder and ask where to save, off; updates: check and install automatically, on, version and Check Now;
   import from another browser. Still to do: the default-browser step in the onboarding (Chrome #17).

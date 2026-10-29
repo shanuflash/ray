@@ -5148,6 +5148,7 @@ const checks = {
     // Make Default asks macOS for http and https (a fake here); declined, the strip stays; accepted, it goes, and
     // comes back when the default changes elsewhere (System Settings), seen as Ray comes forward.
     assert(pane().stripShown === true && gen().isDefault === false, `strip ${JSON.stringify(gen())}`);
+    assert(pane().defaultDetail.includes("isn't your default"), `default row while not default ${pane().defaultDetail}`);
     await command("general accept no");
     await command("general cta");
     await seen("asked macOS", () => gen().defaultRequests.length === 2 && !gen().asking);
@@ -5155,9 +5156,11 @@ const checks = {
     await command("general accept yes");
     await command("general cta");
     await seen("strip gone", () => gen().isDefault && pane().stripShown === false);
+    // With the strip gone the row still says so, rather than the pane showing nothing about it.
+    await seen("default row says so", () => pane().defaultDetail.startsWith("Ray is your default browser"));
     assert((await commandResult("general cta")) === "no strip", "the strip's button still answers while it's hidden");
     await command("general default no");
-    await seen("strip back", () => pane().stripShown === true);
+    await seen("strip back", () => pane().stripShown === true && pane().defaultDetail.includes("isn't your default"));
 
     // Open at login: the switch shows SMAppService's status (a fake here), including "waiting for approval".
     assert(gen().loginStatus === "off" && pane().login === false, `login ${JSON.stringify(gen())}`);

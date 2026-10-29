@@ -126,7 +126,7 @@ publicly or create accounts.
   (swapped once, the first time a style is forced) and post its change notice, which Chromium's OS settings provider
   hears for every open page (Ardia's Thin scroll bars). Checks `settings-appearance-mode`, `settings-scroll-bars`.
 - `SettingsGeneral` (Settings › General): the "Make Ray your default browser" strip (`NSWorkspace.setDefaultApplication`
-  for http then https, macOS's own confirmation; hidden while Ray is the default), Open Ray at login
+  for http then https, macOS's own confirmation; hidden while Ray is the default; a "Default browser" row above Open at login always says which), Open Ray at login
   (`SMAppService.mainApp`, its real status, "approval" included), the catalog's quitting group (`warnBeforeQuitting`
   off, `warnBeforeClosingWindow` on, `onQuit` keep/fresh), Downloads (`ac_downloads_settings`/`_set_settings`: folder
   with Change…, ask where to save), Updates (Sparkle's `SPUUpdater` switches and Check Now via `Updater.updater`;

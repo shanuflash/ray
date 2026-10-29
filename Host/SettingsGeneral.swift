@@ -56,6 +56,7 @@ final class GeneralPaneContent: SettingsPaneContent {
 
   private let system = GeneralSystem.shared
   private weak var strip: SettingsCallToAction?
+  private var defaultRow: SettingsRowView?
   private var loginRow: SettingsRowView?
   private let loginSwitch = RaySwitch()
   private var folderRow: SettingsRowView?
@@ -100,16 +101,31 @@ final class GeneralPaneContent: SettingsPaneContent {
     return [loginSection(), downloadsSection(), updatesSection(), importSection()]
   }
 
+  /// The default browser row always shows what's true (Chrome's row does too); while Ray isn't the default, the strip
+  /// above is the button.
   private func loginSection() -> SettingsSection {
+    let defaultRow = SettingsRowView(title: "Default browser", detail: defaultDetail)
+    self.defaultRow = defaultRow
     loginSwitch.setAccessibilityLabel("Open Ray at login")
     loginSwitch.onChange = { [weak self] on in self?.system.setOpenAtLogin(on) }
     let row = SettingsRowView(title: "Open Ray at login", detail: "", control: loginSwitch)
     loginRow = row
     return SettingsSection(
-      id: "general.openAtLogin", title: "Opening Ray", place: .top, view: SettingsRowList(rows: [row]),
-      search: [SettingsSearchEntry(
-        title: "Open Ray at login", detail: "Ray opens when you log in to your Mac",
-        keywords: ["startup", "launch", "login items", "boot", "start"])])
+      id: "general.openAtLogin", title: "Opening Ray", place: .top, view: SettingsRowList(rows: [defaultRow, row]),
+      search: [
+        SettingsSearchEntry(
+          title: "Default browser", detail: "Whether links from other apps open in Ray",
+          keywords: ["default browser", "make default", "links", "other apps", "open links"]),
+        SettingsSearchEntry(
+          title: "Open Ray at login", detail: "Ray opens when you log in to your Mac",
+          keywords: ["startup", "launch", "login items", "boot", "start"]),
+      ])
+  }
+
+  private var defaultDetail: String {
+    system.isDefaultBrowser
+      ? "Ray is your default browser: links from other apps open here."
+      : "Ray isn't your default browser yet: links from other apps open somewhere else."
   }
 
   private func downloadsSection() -> SettingsSection {
@@ -201,6 +217,7 @@ final class GeneralPaneContent: SettingsPaneContent {
       strip.isHidden = system.isDefaultBrowser
       changed = true
     }
+    changed = set(defaultRow, defaultDetail) || changed
     let login = system.loginStatus
     loginSwitch.isOn = login == .enabled || login == .requiresApproval
     changed = set(loginRow, login == .requiresApproval
@@ -299,6 +316,7 @@ final class GeneralPaneContent: SettingsPaneContent {
   var debug: [String: Any] {
     [
       "stripShown": strip.map { !$0.isHidden && $0.superview != nil } ?? false,
+      "defaultDetail": defaultRow?.detail ?? "",
       "login": loginSwitch.isOn, "loginDetail": loginRow?.detail ?? "",
       "folder": folderRow?.detail ?? "", "folderEnabled": folderButton.isEnabled, "ask": askSwitch.isOn,
       "updateRows": (updateRows.content as? SettingsRowList)?.rows.compactMap { ($0 as? SettingsRowView)?.title } ?? [],
