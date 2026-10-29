@@ -54,6 +54,7 @@ Recorded for the owner to decide. Don't act on them until they do.
 | Name | "Ray" is hard to search: it collides with ray-project/ray, Raycast and Spatie Ray. Keep it, or rename before launch? |
 | Peek | Reconsidering (2026-10-29): Arc's link preview may be needed for Arc's feel. Bring back Ardia's engine hook, or build it on plain tabs? Until decided, "No" below stands. |
 | Content blocker | Reconsidering (2026-10-29): a built-in blocker may be needed so switching from Arc needs no extension. Ardia's own uBlock Origin with its navigation hold (still in the engine, idle), or uBlock Origin Lite preinstalled? Until decided, "None built in" below stands. |
+| Settings toolkit | The settings revamp (section 13) is planned in AppKit to reuse Ray's sidebar look and `RaySwitch`; "UI" below still allows SwiftUI for Settings. AppKit, or SwiftUI? |
 
 ## Decisions so far
 
@@ -370,3 +371,48 @@ Lessons for code we haven't written yet:
 - **Fullscreen:** the window slides under the menu bar with no grey bar (`ArdiaFullScreenReveal.mm`, new) (M3).
 - Not for us: the drag-freeze fix (`RCTTouchHandler+Pages.mm`) was a React Native touch-handler bug.
 - Later: Dia open/pinned tab import in `packages/import` (M4).
+
+---
+
+## 13. Settings revamp (planned 2026-10-29)
+
+Ray's Settings window has one pane (Appearance) and sends the rest to Chrome's page. Planned: a full Settings
+window modelled on Ardia 0.2.42's, with Ray's own twist. Gaps it gives a home to: `docs/MISSING.md`, "From Ardia's
+settings".
+
+**Shape (Ardia's):** a source list on the left with search and back/forward; on the right, a scrolling column of
+grouped inset cards, with picture choices where a setting is visual.
+
+**Ray's twist:**
+1. **The source list is Ray's sidebar.** The selected pane wears Ray's selected-tab look in the profile colour,
+   not a flat system-blue pill. Switches, rings and focus all use `ProfileColor`.
+2. **Live previews.** Picture choices (theme, address bar position, new tab position) are tiny Ray windows drawn
+   with Ray's real geometry and tinted with the profile colour, updating as you change them; not grey blocks.
+3. **Search shows you where.** A search result scrolls to its row and runs one `LoadSweep` glow across it.
+4. **Settings in the command bar.** "archive" in ⌘T offers "Settings: Archive tabs after…" and opens that row
+   (`BarActions` already does menu commands).
+5. **"Feel like Arc"** at the top of Tabs sets every Arc default in one click; rows matching an Arc setting carry a
+   small "Arc" tag.
+6. **No "Show advanced settings" switch.** Fewer rows; each group hides its rare rows behind a "More…" line.
+
+**Panes:** General · Tabs & Sidebar · Appearance · Search · Privacy & Security · Passwords · Autofill · Extensions ·
+Shortcuts · Advanced/About. Profiles and Spaces arrive with Spaces (Crest lists each Space in its settings
+sidebar). Live Folders and Calendar get panes only when those features exist. "All Chrome Settings…" stays as a
+link at the bottom of the list.
+
+**Toolkit:** AppKit, though "Decisions so far" allows SwiftUI for Settings: it reuses `RaySwitch` and the
+sidebar's look directly. Owner to confirm.
+
+**Order:**
+1. Shell: source list, search, back/forward, `ray://settings/<pane>` routing; today's eight settings move into
+   General, Tabs and Appearance; the `settings` test command learns `open <pane>`.
+2. Cheap Ray-owned settings: archive timing, new tab and New Tab button position, open at login, warn before quit
+   or closing a window, quit behaviour, Light/Dark/Automatic, update rows, address bar position, ⌘Z reopen, and
+   the default browser row once that lands.
+3. Search pane: engine choice, custom site searches, suggestions; `AddressInput`'s search URL and the `/search`
+   trim in `tools/trim-settings-pak.py` change with it.
+4. Data panes over the engine's `ac_*` calls: Privacy (site permissions, zoom levels, clear data), Passwords
+   (`ac_reauth` for Touch ID), Autofill, Extensions. Each Chrome settings page is trimmed as its native pane lands
+   (`trim-settings-pak.py`, `AddressInput.nativeSettingsPane`).
+5. Shortcut editor.
+6. Profiles and Spaces panes, with Spaces.

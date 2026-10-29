@@ -73,6 +73,50 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 
 **Already working through Chrome's defaults:** right-click menus, spell check, `chrome://` pages.
 
+## From Ardia's settings
+
+Gone through Ardia 0.2.42's Settings window pane by pane (2026-10-29); what it offers that Ray doesn't, beyond the
+items above. The revamp that gives these a home is PLAN.md section 13.
+
+**Big**
+1. **Choosing a search engine**: Ray searches a fixed Google. Missing the engine list with Make Default, custom site
+   searches (type a keyword, press Tab in the command bar) and a search suggestions switch. The engine has
+   `ac_search_engines`; `/search` is trimmed from Chrome's settings today.
+2. **Live Folders** (Arc had them): folders that refresh on their own, GitHub/Bitbucket pull requests,
+   Notion/Confluence/Google Drive documents.
+3. **Live Calendar** (Arc's calendar preview): hover a pinned calendar tab to see the day, a badge counting down to
+   the next meeting, an alert with a Join button.
+4. **Shortcut editor**: change any menu shortcut, search actions, Reset All.
+5. **Theme as a gradient** (Arc's Space themes): several colours, intensity, grain, direction. Ray has one accent
+   colour. Belongs with Spaces.
+6. **Native data screens**: every site's permissions, zoom levels and "apps allowed to open links" in one list with
+   Clear Site Data (Ray has only the per-site panel); passwords behind Touch ID with CSV import/export; addresses and
+   cards; an Extensions screen (toggles, details, site access, add from a store link, load unpacked). The engine
+   has `ac_site_settings`, `ac_passwords`, `ac_reauth`, `ac_autofill_edit`, `ac_extensions`, `ac_browsing_data`.
+
+**Smaller**
+7. When Today tabs archive: 12 h, 24 h, 7 days or 30 days, as in Arc (Ray has one fixed lifetime).
+8. Where new tabs go (top, bottom, next to current) and where the New Tab button sits (Ray has one switch).
+9. Open at login.
+10. Warn before quitting with ⌘Q, and before closing a window with several tabs.
+11. On quit: keep tabs and windows, or start fresh.
+12. Light, Dark or Automatic for Ray's own chrome (Ray follows macOS only).
+13. Alternate app icons.
+14. Hide the toolbar while scrolling.
+15. Show or hide the sidebar button and the Clear button.
+16. ⌘Z reopens a closed tab outside text fields, as in Arc.
+17. Share tabs across windows, as in Arc.
+18. Fade the icons of unloaded tabs.
+19. Haptic bump when reordering tabs.
+20. Thin scroll bars.
+21. Updates as Settings rows: check automatically, install automatically, Stable or Nightly, version, Check Now
+    (Ray has the menu item only).
+22. Downloads folder and "ask where to save" in Ray's Settings (only on Chrome's page today).
+23. Battery saver.
+
+**Left out on purpose:** WebKit engine and website rules (decided no), setup codes, the `ardia` command-line tool,
+tab groups and meeting groups (Arc has none), video upscaling, crash reports and usage stats.
+
 ## Known limitations and follow-ups
 
 Smaller gaps found while building the items above. Each says where the fix goes.
