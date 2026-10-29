@@ -100,7 +100,7 @@ enum SafeStorage {
   struct KeychainStatus: Error { var status: OSStatus }
 
   /// The keychain item's password; makes one (16 random bytes, base64, as the engine does) when there is none.
-  static func password(from keychain: SafeStorageKeychain) -> Result<Data, KeychainStatus> {
+  static func password(from keychain: SafeStorageStore) -> Result<Data, KeychainStatus> {
     switch keychain.find() {
     case .success(let password):
       return password.isEmpty ? .failure(KeychainStatus(status: errSecDecode)) : .success(password)
@@ -123,7 +123,7 @@ enum SafeStorage {
 
   // MARK: Migration
 
-  static func prepare(dataDirectory: String, keychain: SafeStorageKeychain, now: Date = Date()) -> Report {
+  static func prepare(dataDirectory: String, keychain: SafeStorageStore, now: Date = Date()) -> Report {
     let files = FileManager.default
     let marker = (dataDirectory as NSString).appendingPathComponent(markerName)
     let work = ((dataDirectory as NSString).deletingLastPathComponent as NSString).appendingPathComponent(workName)
@@ -345,7 +345,7 @@ enum SafeStorage {
   private static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 }
 
-protocol SafeStorageKeychain {
+protocol SafeStorageStore {
   /// The item's password; errSecItemNotFound when there is no item.
   func find() -> Result<Data, SafeStorage.KeychainStatus>
   /// Adds the item unless one is there (errSecDuplicateItem).
@@ -354,7 +354,7 @@ protocol SafeStorageKeychain {
 
 /// "Ray Safe Storage" in the login keychain, made the way the engine's KeychainV2 makes it (crypto/apple/
 /// keychain_v2.mm), so the engine finds it and the item's access list trusts this app.
-struct LoginKeychain: SafeStorageKeychain {
+struct LoginKeychain: SafeStorageStore {
   func find() -> Result<Data, SafeStorage.KeychainStatus> {
     let query: [CFString: Any] = [
       kSecClass: kSecClassGenericPassword, kSecAttrService: SafeStorage.service, kSecAttrAccount: SafeStorage.account,
@@ -378,7 +378,7 @@ struct LoginKeychain: SafeStorageKeychain {
 
 /// Test builds: the engine's file keychain (`--ray-test=keychain=file`, engine/raycore/src/ray/core/
 /// ac_safe_storage.mm), a file in the data dir, so checks never touch the user's keychain.
-struct FileKeychain: SafeStorageKeychain {
+struct FileKeychain: SafeStorageStore {
   let path: String
 
   func find() -> Result<Data, SafeStorage.KeychainStatus> {

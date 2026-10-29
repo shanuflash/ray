@@ -113,6 +113,9 @@ export const areas = {
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],
   "tests/SafeStorageTests.swift": [],
+  // The importer's own tests (swift test) cover it; app checks come with the onboarding that uses it.
+  "Importer/": [],
+  "Host/ImportSession.swift": [],
   "tests/affected.mjs": [],
   "tests/changed.mjs": [],
   "scripts/test.sh": [],

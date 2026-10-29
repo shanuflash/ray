@@ -1,0 +1,257 @@
+{
+  "background": {
+    "single": {
+      "_0": {
+        "style": {
+          "color": {
+            "_0": {
+              "blendedGradient": {
+                "_0": {
+                  "baseColors": [
+                    {
+                      "red": 0.23537377450980398,
+                      "green": 0.7010600490196077,
+                      "blue": 0.3885600490196079,
+                      "alpha": 1,
+                      "colorSpace": "extendedSRGB"
+                    },
+                    {
+                      "red": 0.7562071078431373,
+                      "green": 0.020912990196078528,
+                      "blue": 0.48659926470588233,
+                      "alpha": 1,
+                      "colorSpace": "extendedSRGB"
+                    }
+                  ],
+                  "overlayColors": [],
+                  "translucencyStyle": "light",
+                  "modifiers": {
+                    "noiseFactor": 0.45,
+                    "intensityFactor": 0.8,
+                    "overlay": "grain"
+                  },
+                  "wheel": {
+                    "complimentary": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "contentOverBackgroundAppearance": "light",
+        "isVibrant": true
+      }
+    }
+  },
+  "primaryColorPalette": {
+    "tintedLight": {
+      "red": 0.8431372549019608,
+      "green": 0.984313725490196,
+      "blue": 0.8705882352941177,
+      "alpha": 1,
+      "colorSpace": "extendedSRGB"
+    },
+    "midTone": {
+      "red": 0.12941176470588237,
+      "green": 0.6235294117647059,
+      "blue": 0.3176470588235294,
+      "alpha": 1,
+      "colorSpace": "extendedSRGB"
+    },
+    "shaded": {
+      "red": 0.0,
+      "green": 0.3058823529411765,
+      "blue": 0.07450980392156863,
+      "alpha": 1,
+      "colorSpace": "extendedSRGB"
+    },
+    "shadedDark": {
+      "red": 0.0,
+      "green": 0.09019607843137255,
+      "blue": 0.0,
+      "alpha": 1,
+      "colorSpace": "extendedSRGB"
+    }
+  },
+  "semanticColorPalette": {
+    "appearanceBased": {
+      "light": {
+        "foregroundPrimary": {
+          "red": 0.0,
+          "green": 0.09019607843137255,
+          "blue": 0.0,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "foregroundSecondary": {
+          "red": 0.12941176470588237,
+          "green": 0.6235294117647059,
+          "blue": 0.3176470588235294,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "foregroundTertiary": {
+          "red": 0.8431372549019608,
+          "green": 0.984313725490196,
+          "blue": 0.8705882352941177,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "maxContrastColor": {
+          "red": 0.0,
+          "green": 0.09019607843137255,
+          "blue": 0.0,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "minContrastColor": {
+          "red": 0.8431372549019608,
+          "green": 0.984313725490196,
+          "blue": 0.8705882352941177,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "backgroundExtra": {
+          "red": 0.9568627450980393,
+          "green": 0.9921568627450981,
+          "blue": 0.9647058823529412,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "background": {
+          "red": 0.8745098039215686,
+          "green": 0.9254901960784314,
+          "blue": 0.8823529411764706,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "focus": {
+          "red": 0.48627450980392156,
+          "green": 0.5411764705882353,
+          "blue": 0.4980392156862745,
+          "alpha": 0.6,
+          "colorSpace": "extendedSRGB"
+        },
+        "hover": {
+          "red": 0.7019607843137254,
+          "green": 0.7607843137254902,
+          "blue": 0.7137254901960784,
+          "alpha": 0.4,
+          "colorSpace": "extendedSRGB"
+        },
+        "cutoutColor": {
+          "red": 0.8431372549019608,
+          "green": 0.984313725490196,
+          "blue": 0.8705882352941177,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "title": {
+          "red": 0.01568627450980392,
+          "green": 0.06666666666666667,
+          "blue": 0.023529411764705882,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "subtitle": {
+          "red": 0.49411764705882355,
+          "green": 0.5411764705882353,
+          "blue": 0.5019607843137255,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        }
+      },
+      "dark": {
+        "foregroundPrimary": {
+          "red": 0.8431372549019608,
+          "green": 0.984313725490196,
+          "blue": 0.8705882352941177,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "foregroundSecondary": {
+          "red": 0.12941176470588237,
+          "green": 0.6235294117647059,
+          "blue": 0.3176470588235294,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "foregroundTertiary": {
+          "red": 0.0,
+          "green": 0.3058823529411765,
+          "blue": 0.07450980392156863,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "maxContrastColor": {
+          "red": 0.8431372549019608,
+          "green": 0.984313725490196,
+          "blue": 0.8705882352941177,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "minContrastColor": {
+          "red": 0.0,
+          "green": 0.3058823529411765,
+          "blue": 0.07450980392156863,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "backgroundExtra": {
+          "red": 0.0,
+          "green": 0.023529411764705882,
+          "blue": 0.0,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "background": {
+          "red": 0.0,
+          "green": 0.0784313725490196,
+          "blue": 0.00392156862745098,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "focus": {
+          "red": 0.26666666666666666,
+          "green": 0.43529411764705883,
+          "blue": 0.3058823529411765,
+          "alpha": 0.803921568627451,
+          "colorSpace": "extendedSRGB"
+        },
+        "hover": {
+          "red": 0.3333333333333333,
+          "green": 0.5019607843137255,
+          "blue": 0.37254901960784315,
+          "alpha": 0.47843137254901963,
+          "colorSpace": "extendedSRGB"
+        },
+        "cutoutColor": {
+          "red": 0.0,
+          "green": 0.3058823529411765,
+          "blue": 0.07450980392156863,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "title": {
+          "red": 0.8627450980392157,
+          "green": 0.9098039215686274,
+          "blue": 0.8705882352941177,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        },
+        "subtitle": {
+          "red": 0.40784313725490196,
+          "green": 0.4627450980392157,
+          "blue": 0.4196078431372549,
+          "alpha": 1,
+          "colorSpace": "extendedSRGB"
+        }
+      }
+    }
+  },
+  "windowAppearance": {
+    "single": {
+      "_0": "light"
+    }
+  }
+}

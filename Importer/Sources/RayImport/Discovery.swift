@@ -1,0 +1,345 @@
+import Foundation
+
+public struct BrowserDefinition: Sendable {
+  public enum Family: String, Codable, Sendable {
+    case chromium, firefox, safari, arc
+  }
+
+  public enum Sidebar: String, Codable, Sendable {
+    case arc, zen
+  }
+
+  public var id: String
+  public var name: String
+  public var family: Family
+  public var bundleIds: [String]
+  public var dataPath: String?
+  public var keychainService: String?
+  public var keychainAccount: String?
+  public var rootIsProfile = false
+  public var keychainFallbacks: [KeychainItem] = []
+  public var sidebar: Sidebar?
+
+  public struct KeychainItem: Equatable, Sendable {
+    public var service: String
+    public var account: String
+  }
+
+  public var keychainItems: [KeychainItem] {
+    guard let keychainService, let keychainAccount else { return [] }
+    return [KeychainItem(service: keychainService, account: keychainAccount)] + keychainFallbacks
+  }
+
+  public static let all: [BrowserDefinition] = [
+    chromium("chrome", "Google Chrome", ["com.google.Chrome"], "Google/Chrome", "Chrome"),
+    arc,
+    dia,
+    .init(id: "safari", name: "Safari", family: .safari, bundleIds: ["com.apple.Safari"]),
+    .init(id: "firefox", name: "Firefox", family: .firefox, bundleIds: ["org.mozilla.firefox"], dataPath: "Firefox"),
+    zen,
+    chromium("edge", "Microsoft Edge", ["com.microsoft.edgemac"], "Microsoft Edge", "Microsoft Edge"),
+    chromium("edgeBeta", "Microsoft Edge Beta", ["com.microsoft.edgemac.Beta"], "Microsoft Edge Beta", "Microsoft Edge"),
+    chromium("edgeDev", "Microsoft Edge Dev", ["com.microsoft.edgemac.Dev"], "Microsoft Edge Dev", "Microsoft Edge"),
+    chromium("edgeCanary", "Microsoft Edge Canary", ["com.microsoft.edgemac.Canary"], "Microsoft Edge Canary", "Microsoft Edge"),
+    chromium("brave", "Brave", ["com.brave.Browser"], "BraveSoftware/Brave-Browser", "Brave"),
+    chromium("braveBeta", "Brave Beta", ["com.brave.Browser.beta"], "BraveSoftware/Brave-Browser-Beta", "Brave"),
+    chromium("braveNightly", "Brave Nightly", ["com.brave.Browser.nightly"], "BraveSoftware/Brave-Browser-Nightly", "Brave"),
+    chromium("braveDev", "Brave Dev", ["com.brave.Browser.dev"], "BraveSoftware/Brave-Browser-Dev", "Brave"),
+    chromium("braveOrigin", "Brave Origin", ["com.brave.Browser.origin"], "BraveSoftware/Brave-Origin", "Brave"),
+    chromium("braveOriginBeta", "Brave Origin Beta", ["com.brave.Browser.origin.beta"], "BraveSoftware/Brave-Origin-Beta", "Brave"),
+    chromium("braveOriginNightly", "Brave Origin Nightly", ["com.brave.Browser.origin.nightly"],
+             "BraveSoftware/Brave-Origin-Nightly", "Brave"),
+    BrowserDefinition(id: "helium", name: "Helium", family: .chromium, bundleIds: ["net.imput.helium"],
+                      dataPath: "net.imput.helium", keychainService: "Helium Storage Key", keychainAccount: "Helium"),
+    chromium("opera", "Opera", ["com.operasoftware.Opera"], "com.operasoftware.Opera", "Opera", rootIsProfile: true),
+    chromium("operaGX", "Opera GX", ["com.operasoftware.OperaGX"], "com.operasoftware.OperaGX", "Opera", rootIsProfile: true),
+    chromium("vivaldi", "Vivaldi", ["com.vivaldi.Vivaldi"], "Vivaldi", "Vivaldi"),
+    chromium("vivaldiSnapshot", "Vivaldi Snapshot", ["com.vivaldi.Vivaldi.snapshot"], "Vivaldi Snapshot", "Vivaldi"),
+    chromium("island", "Island", ["io.island.Island", "com.island.Island"], "Island", "Island"),
+    chromium("chromeBeta", "Google Chrome Beta", ["com.google.Chrome.beta"], "Google/Chrome Beta", "Chrome"),
+    chromium("chromeDev", "Google Chrome Dev", ["com.google.Chrome.dev"], "Google/Chrome Dev", "Chrome"),
+    chromium("chromeCanary", "Google Chrome Canary", ["com.google.Chrome.canary"], "Google/Chrome Canary", "Chrome"),
+    chromium("chromium", "Chromium", ["org.chromium.Chromium"], "Chromium", "Chromium"),
+  ]
+
+  static let arc = BrowserDefinition(id: "arc", name: "Arc", family: .arc, bundleIds: ["company.thebrowser.Browser"],
+                                     dataPath: "Arc/User Data", keychainService: "Arc Safe Storage", keychainAccount: "Arc",
+                                     sidebar: .arc)
+
+  static let zen = BrowserDefinition(id: "zen", name: "Zen", family: .firefox, bundleIds: ["app.zen-browser.zen"],
+                                     dataPath: "zen", sidebar: .zen)
+
+  static let dia = BrowserDefinition(id: "dia", name: "Dia", family: .chromium, bundleIds: ["company.thebrowser.dia"],
+                                     dataPath: "Dia/User Data", keychainService: "Dia Safe Storage", keychainAccount: "Dia")
+
+  static func chromium(_ id: String, _ name: String, _ bundleIds: [String], _ path: String, _ keychain: String,
+                       rootIsProfile: Bool = false) -> BrowserDefinition {
+    BrowserDefinition(id: id, name: name, family: .chromium, bundleIds: bundleIds, dataPath: path,
+                      keychainService: "\(keychain) Safe Storage", keychainAccount: keychain, rootIsProfile: rootIsProfile,
+                      keychainFallbacks: name == keychain ? [] : [KeychainItem(service: "\(name) Safe Storage", account: name)])
+  }
+
+  public static func find(_ id: String) -> BrowserDefinition? { all.first { $0.id == id } }
+
+  public var isChromiumBased: Bool { family == .chromium || family == .arc }
+}
+
+public struct SpaceSummary: Codable, Equatable, Sendable {
+  public var id: String
+  public var name: String
+  public var color: String?
+  public var emoji: String?
+  public var icon: String?
+  public var pinnedCount: Int
+  public var tabCount: Int
+  public var theme: String?
+}
+
+public struct BrowserProfile: Codable, Equatable, Sendable {
+  public var id: String
+  public var name: String
+  public var path: String
+  public var email: String?
+  public var avatarPath: String?
+  public var color: String?
+  public var isDefault: Bool
+  public var available: [ImportKind]
+  public var spaces: [SpaceSummary]?
+  public var tabsNeedKey = false
+}
+
+public struct BrowserSource: Codable, Equatable, Sendable {
+  public var id: String
+  public var name: String
+  public var family: BrowserDefinition.Family
+  public var appPath: String?
+  public var iconPath: String?
+  public var requiresExport: Bool
+  public var needsKeychain: Bool
+  public var needsFullDiskAccess = false
+  public var keychainService: String?
+  public var profiles: [BrowserProfile]
+  public var sidebar: BrowserDefinition.Sidebar?
+  public var asksAppForTabs = false
+}
+
+public struct BrowserDiscovery {
+  public var applicationSupport: URL
+  public var diaApp: String
+  public var locateApp: ([String]) -> URL?
+  public var iconFor: (URL, String) -> String?
+
+  public init(applicationSupport: URL, diaApp: String = DiaAutomation.bundleIdentifier,
+              locateApp: @escaping ([String]) -> URL? = { _ in nil },
+              iconFor: @escaping (URL, String) -> String? = { _, _ in nil }) {
+    self.applicationSupport = applicationSupport
+    self.diaApp = diaApp
+    self.locateApp = locateApp
+    self.iconFor = iconFor
+  }
+
+  public func list() -> [BrowserSource] {
+    BrowserDefinition.all.compactMap(source)
+  }
+
+  func asksAppForTabs(_ def: BrowserDefinition) -> Bool {
+    def.id == BrowserDefinition.dia.id && locateApp([diaApp]) != nil
+  }
+
+  public func source(_ def: BrowserDefinition) -> BrowserSource? {
+    let app = locateApp(def.bundleIds)
+    var profiles: [BrowserProfile] = []
+    switch def.family {
+    case .safari:
+      guard app != nil else { return nil }
+    case .firefox:
+      profiles = firefoxProfiles(def)
+    case .chromium, .arc:
+      profiles = chromiumProfiles(def)
+      if def.family == .arc { attachArcSpaces(&profiles) }
+    }
+    let appTabs = asksAppForTabs(def)
+    if appTabs {
+      for i in profiles.indices {
+        profiles[i].available = profiles[i].available.filter { $0 != .tabs } + [.tabs, .pinnedTabs]
+        profiles[i].tabsNeedKey = false
+      }
+    }
+    let denied = def.family != .safari && profiles.isEmpty && dataDirectory(def).map { root in
+      Self.isAccessDenied(root) && ["Local State", "Default", "profiles.ini"].contains {
+        FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path)
+      }
+    } == true
+    guard def.family == .safari || !profiles.isEmpty || denied else { return nil }
+    return BrowserSource(
+      id: def.id, name: def.name, family: def.family, appPath: app?.path,
+      iconPath: app.flatMap { iconFor($0, def.id) },
+      requiresExport: def.family == .safari, needsKeychain: def.isChromiumBased,
+      needsFullDiskAccess: denied, keychainService: def.keychainService, profiles: profiles, sidebar: def.sidebar,
+      asksAppForTabs: appTabs
+    )
+  }
+
+  static func isAccessDenied(_ dir: URL) -> Bool {
+    guard FileManager.default.fileExists(atPath: dir.path) else { return false }
+    do {
+      _ = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+      return false
+    } catch let error as NSError {
+      if error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoPermissionError { return true }
+      let posix = (error.userInfo[NSUnderlyingErrorKey] as? NSError)
+      return posix?.domain == NSPOSIXErrorDomain && (posix?.code == Int(EPERM) || posix?.code == Int(EACCES))
+    }
+  }
+
+  public func dataDirectory(_ def: BrowserDefinition) -> URL? {
+    def.dataPath.map { applicationSupport.appendingPathComponent($0, isDirectory: true) }
+  }
+
+  public func profileDirectory(_ def: BrowserDefinition, _ profileId: String) throws -> URL {
+    guard let root = dataDirectory(def) else { throw ImportError.unsupported("\(def.name) has no profiles on disk") }
+    let dir = root.appendingPathComponent(profileId, isDirectory: true).standardizedFileURL
+    let rootPath = root.standardizedFileURL.path
+    guard dir.path == rootPath || dir.path.hasPrefix(rootPath + "/") else { throw ImportError.notFound("Unknown profile") }
+    guard FileManager.default.fileExists(atPath: dir.path) else { throw ImportError.notFound("Profile \(profileId) not found") }
+    return dir
+  }
+
+  public func profile(_ def: BrowserDefinition, _ profileId: String) -> BrowserProfile? {
+    switch def.family {
+    case .chromium, .arc:
+      return chromiumProfiles(def, only: profileId).first
+    case .firefox:
+      return firefoxProfiles(def).first { $0.id == profileId }
+    case .safari:
+      return nil
+    }
+  }
+
+  func chromiumProfiles(_ def: BrowserDefinition, only: String? = nil) -> [BrowserProfile] {
+    guard let root = dataDirectory(def) else { return [] }
+    let fm = FileManager.default
+    var infoCache: [String: [String: Any]] = [:]
+    var order: [String] = []
+    var lastUsed: String?
+    if let data = try? Data(contentsOf: root.appendingPathComponent("Local State")),
+       let top = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+       let profile = top["profile"] as? [String: Any] {
+      infoCache = profile["info_cache"] as? [String: [String: Any]] ?? [:]
+      order = profile["profiles_order"] as? [String] ?? []
+      lastUsed = profile["last_used"] as? String
+    }
+
+    var dirs: [String] = []
+    if def.rootIsProfile, isProfile(root) { dirs.append(".") }
+    for dir in order + infoCache.keys.sorted() where !dirs.contains(dir) { dirs.append(dir) }
+    for name in ((try? fm.contentsOfDirectory(atPath: root.path)) ?? []).sorted()
+    where (name == "Default" || name.hasPrefix("Profile ")) && !dirs.contains(name) {
+      dirs.append(name)
+    }
+    if def.rootIsProfile {
+      let side = root.appendingPathComponent("_side_profiles")
+      for name in ((try? fm.contentsOfDirectory(atPath: side.path)) ?? []).sorted() {
+        dirs.append("_side_profiles/\(name)")
+      }
+    }
+
+    var out: [BrowserProfile] = []
+    var fallbackIndex = 0
+    for dir in dirs {
+      let path = dir == "." ? root : root.appendingPathComponent(dir, isDirectory: true)
+      guard isProfile(path) else { continue }
+      let info = infoCache[dir] ?? (dir == "." ? infoCache["Default"] ?? infoCache[""] : nil) ?? [:]
+      fallbackIndex += 1
+      if let only, only != dir { continue }
+      var name = (info["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+      if name == nil {
+        name = dir == "Default" || dir == "." ? "Default" : "Profile \(fallbackIndex)"
+      }
+      let picture = path.appendingPathComponent("Google Profile Picture.png")
+      let color = (info["profile_highlight_color"] as? Int ?? info["default_avatar_fill_color"] as? Int)
+        .flatMap { UInt32(truncatingIfNeeded: $0) == 0xFF00_0000 ? nil : Hex.color(skColor: $0) }
+      out.append(BrowserProfile(
+        id: dir,
+        name: name!,
+        path: path.path,
+        email: (info["user_name"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+        avatarPath: fm.fileExists(atPath: picture.path) ? picture.path : nil,
+        color: color,
+        isDefault: dir == (lastUsed ?? "Default") || (dir == "." && lastUsed == nil),
+        available: chromiumKinds(path, arc: def.family == .arc),
+        spaces: nil,
+        tabsNeedKey: def.family != .arc && ChromiumSessions.needsKey(profile: path)
+      ))
+    }
+    return out
+  }
+
+  func isProfile(_ dir: URL) -> Bool {
+    let fm = FileManager.default
+    return ["Preferences", "Bookmarks", "History", "Login Data"].contains {
+      fm.fileExists(atPath: dir.appendingPathComponent($0).path)
+    }
+  }
+
+  func chromiumKinds(_ dir: URL, arc: Bool) -> [ImportKind] {
+    let fm = FileManager.default
+    func has(_ names: String...) -> Bool { names.contains { fm.fileExists(atPath: dir.appendingPathComponent($0).path) } }
+    var kinds: [ImportKind] = []
+    if has("Bookmarks", "AccountBookmarks") { kinds.append(.bookmarks) }
+    if has("History") { kinds.append(.history) }
+    if !arc, ChromiumSessions.latestFile(profile: dir) != nil { kinds.append(.tabs) }
+    if has("Login Data", "Login Data For Account") { kinds.append(.passwords) }
+    if has("Network/Cookies", "Cookies") { kinds.append(.cookies) }
+    if has("Web Data") { kinds.append(.autofill) }
+    return kinds
+  }
+
+  public func arcSidebarURL() -> URL {
+    applicationSupport.appendingPathComponent("Arc/StorableSidebar.json")
+  }
+
+  func attachArcSpaces(_ profiles: inout [BrowserProfile]) {
+    guard let data = try? Data(contentsOf: arcSidebarURL()), let sidebar = try? ArcSidebar.parse(data) else { return }
+    for i in profiles.indices {
+      let spaces = sidebar.spaces.filter { $0.profileId == profiles[i].id }
+      profiles[i].spaces = spaces.map {
+        SpaceSummary(id: $0.id, name: $0.name, color: $0.color, emoji: $0.emoji, icon: $0.icon,
+                     pinnedCount: $0.pinned.reduce(0) { $0 + $1.linkCount }, tabCount: $0.tabs.count, theme: $0.theme)
+      }
+      var kinds = profiles[i].available
+      if !spaces.isEmpty { kinds += [.spaces, .pinnedTabs, .tabs] }
+      if sidebar.favorites[profiles[i].id]?.isEmpty == false { kinds.append(.favorites) }
+      profiles[i].available = kinds
+    }
+  }
+
+  func firefoxProfiles(_ def: BrowserDefinition) -> [BrowserProfile] {
+    guard let root = dataDirectory(def),
+          let ini = try? String(contentsOf: root.appendingPathComponent("profiles.ini"), encoding: .utf8) else { return [] }
+    let fm = FileManager.default
+    return Firefox.profiles(ini: ini).compactMap { p in
+      guard !p.path.hasPrefix("/") else { return nil }
+      let dir = root.appendingPathComponent(p.path, isDirectory: true)
+      guard fm.fileExists(atPath: dir.path) else { return nil }
+      func has(_ name: String) -> Bool { fm.fileExists(atPath: dir.appendingPathComponent(name).path) }
+      var kinds: [ImportKind] = []
+      if has("places.sqlite") { kinds += [.bookmarks, .history] }
+      if Firefox.sessionFile(profile: dir) != nil { kinds.append(.tabs) }
+      if has("logins.json") || has("logins.db") { kinds.append(.passwords) }
+      if has("cookies.sqlite") { kinds.append(.cookies) }
+      var spaces: [SpaceSummary]?
+      if def.sidebar == .zen, let sidebar = try? ZenSidebar.load(profile: dir, profileId: p.path), !sidebar.spaces.isEmpty {
+        spaces = sidebar.spaces.map {
+          SpaceSummary(id: $0.id, name: $0.name, color: $0.color, emoji: $0.emoji, icon: $0.icon,
+                       pinnedCount: $0.pinned.reduce(0) { $0 + $1.linkCount }, tabCount: $0.tabs.count, theme: nil)
+        }
+        kinds += [.spaces, .pinnedTabs]
+        if !kinds.contains(.tabs) { kinds.append(.tabs) }
+        if !sidebar.essentials.isEmpty { kinds.append(.favorites) }
+      }
+      return BrowserProfile(id: p.path, name: p.name, path: dir.path, email: nil, avatarPath: nil, color: nil,
+                            isDefault: p.isDefault, available: kinds, spaces: spaces)
+    }
+  }
+}

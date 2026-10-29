@@ -30,7 +30,7 @@ struct Suggestion {
   }
 }
 
-struct HistoryEntry {
+struct HistoryItem {
   let url: String
   let title: String
   let visits: Int
@@ -38,7 +38,7 @@ struct HistoryEntry {
 }
 
 final class HistoryCache {
-  private(set) var entries: [HistoryEntry] = []
+  private(set) var entries: [HistoryItem] = []
   private var loading = false
 
   func refresh(profile: RayCoreProfile, then done: @escaping () -> Void) {
@@ -51,7 +51,7 @@ final class HistoryCache {
       self.entries = rows.compactMap { row in
         guard let url = row["u"] as? String else { return nil }
         let visits = (row["v"] as? [Double]) ?? []
-        return HistoryEntry(
+        return HistoryItem(
           url: url, title: row["t"] as? String ?? "", visits: row["n"] as? Int ?? 0, lastVisit: visits.last ?? 0)
       }
       done()
@@ -172,7 +172,7 @@ enum Suggestions {
   static let emptyQueryRows = 5
 
   static func build(
-    query raw: String, tabs: [RayCoreTab], active: RayCoreTab?, history: [HistoryEntry], searches: [String],
+    query raw: String, tabs: [RayCoreTab], active: RayCoreTab?, history: [HistoryItem], searches: [String],
     favicon: (String) -> NSImage? = { _ in nil }
   ) -> [Suggestion] {
     let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -260,7 +260,7 @@ enum Suggestions {
     return tokens.allSatisfy { haystack.contains($0) }
   }
 
-  private static func score(_ entry: HistoryEntry, query: String, now: Double) -> Double {
+  private static func score(_ entry: HistoryItem, query: String, now: Double) -> Double {
     let days = max(0, (now - entry.lastVisit) / 86_400_000)
     var score = log(Double(entry.visits) + 1) * 2 - days / 14
     if host(of: entry.url).hasPrefix(query) { score += 6 }

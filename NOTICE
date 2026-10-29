@@ -7,6 +7,8 @@ It includes and builds against third-party work:
   scripts, ArdiaCore and its Chrome layer), Copyright 2026 Mantra Patel, Apache License 2.0 (see
   LICENSE.Apache-2.0), renamed for Ray by tools/engine/rename-ardia.py, with Ray's own changes from engine-ray/.
   scripts/locked is Ardia's lock script (same copyright and licence).
+- Importer/ (Sources, Tests, fixtures): Ardia's packages/import, Copyright 2026 Mantra Patel, Apache License 2.0
+  (see LICENSE.Apache-2.0), renamed for Ray.
 - At build time, the engine built from engine/ (Chromium Framework.framework): Chromium (BSD-3-Clause and others),
   Helium (GPL-3.0, The Helium Authors), ungoogled-chromium (BSD-3-Clause) and the engine layer above. Its
   corresponding source is engine/ plus the Chromium and Helium versions it names.

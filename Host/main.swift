@@ -29,7 +29,7 @@ let safeStorage: SafeStorage.Report = {
   guard !TestEnvironment.isTestBuild || TestEnvironment["RAY_KEYCHAIN"] == "file" else {
     return SafeStorage.Report(mode: .mock, note: "test build")
   }
-  let keychain: SafeStorageKeychain = TestEnvironment.isTestBuild
+  let keychain: SafeStorageStore = TestEnvironment.isTestBuild
     ? FileKeychain(path: (dataDirectory as NSString).appendingPathComponent("Test Safe Storage Key"))
     : LoginKeychain()
   return SafeStorage.prepare(dataDirectory: dataDirectory, keychain: keychain)

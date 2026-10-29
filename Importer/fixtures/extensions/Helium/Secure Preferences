@@ -1,0 +1,6 @@
+{"extensions":{"settings":{
+  "eimadpbcbfnmbkopoojfekhnkhdbieeh":{"creation_flags":9,"from_webstore":true,"location":1,"path":"eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.110_0","state":1,"was_installed_by_default":false},
+  "blockjmkbacgjkknlgpkjjiijinjdanf":{"creation_flags":1,"from_webstore":false,"location":5,"manifest":{"name":"uBlock Origin"},"path":"/Applications/Helium.app/Contents/Frameworks/Helium Framework.framework/Resources/ublock"},
+  "ddkjiahejlhfcafbddmgiahcphecmpfh":{"creation_flags":9,"from_webstore":true,"location":1,"manifest":{"name":"uBlock Origin Lite"}},
+  "ahfgeienlihckogmohjhadlkjgocpleb":{"creation_flags":1,"from_webstore":false,"location":5,"manifest":{"name":"Web Store"}}
+}},"protection":{"macs":{}}}

@@ -5,3 +5,4 @@
 /third_party/crest/
 /.claude/worktrees/
 .metadata_never_index
+/third_party/cra/

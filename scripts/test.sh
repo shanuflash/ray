@@ -32,4 +32,8 @@ cp "$root/tests/SafeStorageTests.swift" "$root/build/tests/safe-storage/main.swi
 xcrun swiftc -target arm64-apple-macos14.0 -D RAY_TEST_HOOKS "$root/Host/SafeStorage.swift" \
   "$root/build/tests/safe-storage/main.swift" -o "$root/build/tests/safe-storage-tests"
 "$root/build/tests/safe-storage-tests"
+# The importer (Importer/, adapted from Ardia's packages/import): its own XCTest suite, against Importer/fixtures only.
+importer=$(swift test --package-path "$root/Importer" --scratch-path "$root/build/importer" 2>&1) || {
+  echo "$importer" | grep -E "error:" | head -20; echo "importer tests failed" >&2; exit 1; }
+echo "$importer" | grep -E "Executed [0-9]+ tests" | tail -1
 node "$root/tests/checks.mjs" "$@"

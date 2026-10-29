@@ -65,7 +65,7 @@ build() {
 
   xcrun swiftc -O -target arm64-apple-macos14.0 -swift-version 5 "$@" -F "$sparkle_dir" -framework Sparkle \
     -import-objc-header "$root/Host/Bridging.h" -Xcc -I"$root/engine/raycore/src/ray/core/public" \
-    "$root"/Host/*.swift \
+    "$root"/Host/*.swift "$root"/Importer/Sources/RayImport/*.swift \
     -Xlinker "$app/Contents/Frameworks/$fw_name.framework/Versions/$fw_version/$fw_name" \
     -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
     -o "$app/Contents/MacOS/Ray"

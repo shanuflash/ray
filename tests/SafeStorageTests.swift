@@ -157,7 +157,7 @@ _ = try! SafeStorage.stage(dataDirectory: second, work: secondWork, plan: plan, 
 // Swap only the first entry by hand, as if the app stopped there.
 try! files.moveItem(atPath: second + "/Default/Cookies", toPath: secondWork + "/moved-original")
 try! files.moveItem(atPath: secondWork + "/staged/0", toPath: second + "/Default/Cookies")
-struct BrokenKeychain: SafeStorageKeychain {
+struct BrokenKeychain: SafeStorageStore {
   func find() -> Result<Data, SafeStorage.KeychainStatus> { .failure(.init(status: errSecAuthFailed)) }
   func addIfAbsent(_ password: Data) -> OSStatus { errSecAuthFailed }
 }
