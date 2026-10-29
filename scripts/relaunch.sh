@@ -10,8 +10,9 @@ installed=${RAY_INSTALL_PATH:-/Applications/Ray.app}
 [ -x "$built/Contents/MacOS/Ray" ] || { echo "error: no $built; run scripts/build-app.sh first" >&2; exit 1; }
 codesign --verify --deep --strict "$built" || { echo "error: $built's signature is broken" >&2; exit 1; }
 
-# Any Ray with this bundle id: the installed copy, or an older build/Ray.app still running from the repo.
-running() { pgrep -f "/Ray.app/Contents/MacOS/Ray$" >/dev/null; }
+# Any Ray with this bundle id: the installed copy, or an older build/Ray.app still running from the repo. Matched on
+# the executable, not the command line: another session's swiftc ends its arguments with `-o …/Ray.app/Contents/MacOS/Ray`.
+running() { ps -axo comm= | grep -qE "/Ray.app/Contents/MacOS/Ray$"; }
 if running; then
   osascript -e "tell application id \"$bundle_id\" to quit" >/dev/null 2>&1 || true
   for _ in $(seq 1 40); do
