@@ -73,6 +73,9 @@ check=$(mktemp -d)
 trap 'rm -rf "$check"; [ "$finished" = 1 ] || printf "%s\n" "$original_version" > "$root/VERSION"' EXIT
 ditto -x -k "$out/$archive" "$check"
 codesign --verify --deep --strict "$check/Ray.app" || die "the unzipped app's signature is broken"
+# Friends' installs keep their Keychain and privacy permissions only while every release has the same identity.
+codesign -dr - "$check/Ray.app" 2>&1 | grep -q 'certificate root = H"57dd31c307844623c2a646a24fb7f19c27327a4f"' \
+  || die "the app isn't signed with \"Ray Code Signing\" (the self-signed certificate in your login keychain)"
 
 if [ -n "$notes" ]; then
   notes_file="$out/Ray-$version.${notes##*.}"

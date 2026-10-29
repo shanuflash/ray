@@ -335,8 +335,9 @@ Targets, measured with `xbench.mjs` against Chrome, Helium and our previous rele
 2. **One compositor per tab** (inherited): 1–2 refreshes on first show; prewarm hides it on clicks, keyboard switches
    pay ~8 ms. A real fix needs Phase B.
 3. **Upstream pace:** Ardia has one maintainer. If it stalls, Phase B becomes urgent.
-4. **Signing:** Ray is ad-hoc signed, so every update changes its code signature and macOS asks once to let it use
-   "Ray Safe Storage". A stable identity (Developer ID, or one self-signed certificate until then) ends that.
+4. **Signing:** since 2026-10-29 builds are signed with the self-signed "Ray Code Signing" certificate, so macOS
+   keeps "Always Allow" for "Ray Safe Storage" across builds and updates (one last prompt on the first such build).
+   Gatekeeper still treats Ray as unidentified until Developer ID and notarization.
    (The prebuilt engine's limits and the mock keychain ended with Phase B in 0.2.0; 0.1 data is migrated.)
 5. **No Widevine:** streaming sites with DRM won't play.
 6. **Build hardware** for Phase B: fine on this Mac (M3 Pro, 36 GB). A first build takes about 3 h and 44 GB;

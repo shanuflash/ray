@@ -23,6 +23,12 @@ if [[ "$sparkle_key" == REPLACE_* ]]; then
   echo "warning: Branding/sparkle-public-key.txt is still the placeholder; this build can't update itself" >&2
   echo "         (run Sparkle's generate_keys once, see CLAUDE.md \"Shipping to friends\")" >&2
 fi
+# One stable identity for every build: macOS remembers "Always Allow" for "Ray Safe Storage" (and camera, microphone,
+# location) per designated requirement, which for an ad-hoc signature changes every build. "Ray Code Signing" is a
+# self-signed certificate in the owner's login keychain (CLAUDE.md, Shipping to friends); without it, ad-hoc.
+if [ -z "${RAY_SIGN_IDENTITY:-}" ] && security find-identity -p codesigning 2>/dev/null | grep -q '"Ray Code Signing"'; then
+  RAY_SIGN_IDENTITY="Ray Code Signing"
+fi
 identity=${RAY_SIGN_IDENTITY:--}
 sign() { codesign --force --timestamp=none --sign "$identity" "$@" 2>/dev/null; }
 

@@ -53,11 +53,11 @@ with real accounts:
 - **Engine updates**: Ray builds its own engine from `engine/` (Chromium 156); it's only as patched as that build.
 - **Saved passwords and cookies** are encrypted with "Ray Safe Storage" in your login keychain. Ray 0.1 used
   Chromium's stand-in keychain (a public key); the first launch of a newer Ray moves that data to the real key.
-  macOS asks once after each update to let Ray use the item, until Ray has a stable signing identity.
+  Builds share one self-signed identity, so macOS asks only once to let Ray use the item.
 - **Importing** reads another browser's saved logins only when you choose passwords, cookies or cards, after macOS
   asks for your password for that browser's own key; nothing is sent anywhere.
 - **No Safe Browsing**: Helium compiles it out.
-- **Ad-hoc signed**, no hardened runtime, not notarized.
+- **Self-signed** ("Ray Code Signing"), no hardened runtime, not notarized.
 
 ## License
 

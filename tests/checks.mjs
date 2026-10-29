@@ -1212,6 +1212,13 @@ const checks = {
     assert(!existsSync(join(framework, "Versions/B/XPCServices")), "Sparkle's XPC services (sandbox only) are embedded");
     execFileSync("codesign", ["--verify", "--deep", "--strict", framework]);
     execFileSync("codesign", ["--verify", "--deep", "--strict", app]);
+    // One signing identity across builds when the owner's "Ray Code Signing" certificate is installed, so macOS keeps
+    // "Always Allow" for "Ray Safe Storage" (and privacy permissions) from build to build.
+    if (execFileSync("security", ["find-identity", "-p", "codesigning"], { encoding: "utf8" }).includes('"Ray Code Signing"')) {
+      const requirement = spawnSync("codesign", ["-dr", "-", app], { encoding: "utf8" });
+      assert(/certificate root = H"57dd31c307844623c2a646a24fb7f19c27327a4f"/.test(requirement.stdout + requirement.stderr),
+        `the app isn't signed with Ray Code Signing: ${(requirement.stdout + requirement.stderr).trim().split("\n").at(-1)}`);
+    }
     assert(execFileSync("otool", ["-L", join(app, "Contents/MacOS/Ray")], { encoding: "utf8" }).includes("@rpath/Sparkle.framework/"), "Ray isn't linked against Sparkle");
     await command("state");
     assert(state().updater?.started === false && state().updater?.reason === "test build", `the test build started the updater: ${JSON.stringify(state().updater)}`);

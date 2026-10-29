@@ -161,8 +161,15 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   macOS 15+ try to open it once and use System Settings › Privacy & Security › Open Anyway. Updates after that
   install without the prompt. Each update changes the ad-hoc signature, so macOS may ask again for camera, microphone
   and location.
-- From the Phase B engine on, cookies and passwords are under "Ray Safe Storage" in the login keychain. An ad-hoc
-  signature changes every build, so macOS asks once after each update to let Ray use that item ("Always Allow").
+- From the Phase B engine on, cookies and passwords are under "Ray Safe Storage" in the login keychain.
+- **Signing identity:** builds are signed with "Ray Code Signing", a self-signed code-signing certificate (10 years,
+  created 2026-10-29) whose private key is in the owner's login keychain, usable by `/usr/bin/codesign` only.
+  `build-app.sh` picks it when present (else ad-hoc, `RAY_SIGN_IDENTITY` overrides); `release.sh` refuses a build
+  without it; `updater-config` checks it. Its stable designated requirement (`certificate root =
+  H"57dd31c307844623c2a646a24fb7f19c27327a4f"`) is what lets macOS keep "Always Allow" for "Ray Safe Storage" and
+  privacy permissions across builds and updates. Sparkle accepts the change from ad-hoc because the EdDSA key is
+  unchanged. Never export the key into the repo; back it up only into a password manager (Keychain Access ›
+  "Ray Code Signing" › Export). If it's lost, a new certificate costs friends one more keychain prompt.
 
 ## Testing
 - Per change: `scripts/build-app.sh && scripts/test.sh --changed`. It runs the unit tests, then only the checks the
