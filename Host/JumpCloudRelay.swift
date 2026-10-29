@@ -49,6 +49,12 @@ enum JumpCloudLogin {
   }
 
   /// The relay page reached the signed-in user console.
+  /// The tab's page moved on to JumpCloud's user console by itself (its script, no new document): signed in.
+  static func reachedConsole(_ url: String) -> Bool {
+    let path = URLComponents(string: url)?.path.lowercased() ?? ""
+    return path.hasPrefix("/userconsole") && !path.contains("login")
+  }
+
   static func isSignedIn(_ url: String, consoleHost: String) -> Bool {
     guard let parts = URLComponents(string: url), parts.scheme == "https", parts.host?.lowercased() == consoleHost
     else { return false }
@@ -483,12 +489,12 @@ final class JumpCloudRelay {
   /// A normal tab's main frame committed a new document (BrowserWindowController.tabDidCommitDocument).
   func documentCommitted(_ tab: RayCoreTab, in controller: BrowserWindowController) {
     guard RaySettings.shared[.jumpCloudRelay], !controller.isPrivate, tab.profile?.offTheRecord != true,
-          JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) != nil else { return }
-    // Give the page a moment: signed in already, JumpCloud's script moves the tab on to the console by itself.
-    let address = tab.url
+          let match = JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) else { return }
+    // Give the page a moment: signed in already, JumpCloud's script moves the tab on to the console by itself. Signed
+    // out, the page may still rewrite its own address (a step, a query), so only reaching the console counts.
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleDelay) { [weak self, weak tab, weak controller] in
-      guard let self, let tab, let controller, !tab.closed, tab.url == address,
-            let match = JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) else { return }
+      guard let self, let tab, let controller, !tab.closed, tab.committedOrigin == match.origin,
+            !JumpCloudLogin.reachedConsole(tab.url) else { return }
       self.trigger(match, tab: tab, controller: controller)
     }
   }
@@ -517,6 +523,8 @@ final class JumpCloudRelay {
     relays[tab.tabId, default: []].append(ProcessInfo.processInfo.systemUptime)
     let relay = Relay(match: match, tab: tab, controller: controller)
     self.relay = relay
+    // Headless Chrome shows nothing: say it's happening until the relay ends (its result replaces this note).
+    controller.showToast("Signing in with JumpCloud Go…", symbol: "key.fill", duration: signInDeadline)
     let deadline = DispatchWorkItem { [weak self, weak relay] in
       guard let self, let relay, self.relay === relay, !relay.importing else { return }
       self.fail(relay, "timedOut", note: "JumpCloud sign-in didn't finish")
@@ -814,7 +822,7 @@ final class JumpCloudRelay {
        JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) != nil {
       tab.userReload()
     }
-    finish("signedIn", note: "Signed in with JumpCloud Go", in: relay.controller)
+    finish("signedIn", note: "Signed in with JumpCloud Go", symbol: "checkmark.circle.fill", duration: 4, in: relay.controller)
   }
 
   private func fail(_ relay: Relay, _ result: String, note: String) {
@@ -827,12 +835,12 @@ final class JumpCloudRelay {
     finish(result, note: note, in: relay.controller)
   }
 
-  private func finish(_ result: String, note: String, symbol: String? = nil, in controller: BrowserWindowController?,
-                      action: (() -> Void)? = nil) {
+  private func finish(_ result: String, note: String, symbol: String? = nil, duration: TimeInterval? = nil,
+                      in controller: BrowserWindowController?, action: (() -> Void)? = nil) {
     lastResult = result
     // Never logs addresses or cookies, in any build.
     NSLog("[ray] JumpCloud relay: %@", result)
-    (controller ?? AppController.shared.current)?.showToast(note, symbol: symbol, action: action)
+    (controller ?? AppController.shared.current)?.showToast(note, symbol: symbol, duration: duration, action: action)
     changed()
   }
 

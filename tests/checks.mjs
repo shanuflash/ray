@@ -3349,8 +3349,11 @@ const checks = {
         // without a new document; `stay` keeps it on the login page (a session JumpCloud doesn't take).
         const signedIn = /jcsession=relay-session/.test(req.headers.cookie ?? "") && !url.searchParams.has("stay");
         res.writeHead(200, { "content-type": "text/html" });
-        return res.end("<title>JumpCloud</title><p>login</p>" +
-          (signedIn ? `<script>history.replaceState(null, "", "/userconsole/")</script>` : ""));
+        // Signed out, the page still rewrites its own address once (as JumpCloud's login does with its step); that
+        // mustn't stop the relay.
+        return res.end("<title>JumpCloud</title><p>login</p>" + (signedIn
+          ? `<script>history.replaceState(null, "", "/userconsole/")</script>`
+          : `<script>history.replaceState(null, "", location.pathname + location.search + "&step=email")</script>`));
       }
       res.writeHead(404);
       res.end("not found");
@@ -3467,7 +3470,7 @@ const checks = {
       await until("relay Chrome gone (and reaped)", () => !alive(launch.pid), 8000);
       assert(!lines("cdp.jsonl").some((c) => c.pid === launch.pid && c.signal), "the relay Chrome had to be killed after Browser.close");
       const reloads = await until("tab reloaded", () => {
-        const seen = requests.filter((r) => r.path === "/login?n=1");
+        const seen = requests.filter((r) => r.path.startsWith("/login?n=1"));
         return seen.length >= 2 && seen;
       }, 8000);
       const sent = reloads.at(-1).cookie;
@@ -3515,6 +3518,8 @@ const checks = {
       let before = lines("launches.jsonl").length;
       await signOut();
       await goTo("/login?n=fb", true);
+      // Headless shows no window, so Ray says it is signing in until the relay ends.
+      await until("signing-in note", async () => (await now()).toast.includes("Signing in with JumpCloud Go"), 6000, 50);
       await until("fallback note", async () => (await now()).toast.includes("Finish signing in to JumpCloud in Chrome"), 8000, 50);
       state = latest().jumpCloudRelay;
       assert(state.fallbacks === 1 && state.mode === "window" && state.activations === 0 && state.launches === before + 2,

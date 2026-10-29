@@ -240,8 +240,8 @@ publicly or create accounts.
   subdomains (`isJumpCloudDomain`, dot boundary), `ac_site_data_clear` on jumpcloud.com (the import keeps cookies Ray
   has) then `ac_cookies_import` through `callWithSecret`, and the tab reloads if still on that login page. Ray comes
   back to the front only after a relay that brought Chrome forward. Deadlines: 15 s for each Chrome's first answer (a
-  policy may forbid the pipe), 120 s to sign in overall; one relay at a time. A login page relays only if the tab is
-  still on it 1.5 s after it commits (signed in, JumpCloud's script moves on by itself); a tab that relayed twice in
+  policy may forbid the pipe), 120 s to sign in overall; one relay at a time. While it runs, a Toast says "Signing in with JumpCloud Go…" (its result replaces it). A login page relays unless the tab has
+  reached the console (`/userconsole`) 1.5 s after it commits (signed in, JumpCloud's script moves on by itself); a tab that relayed twice in
   60 s gets a Toast on its next login page, not another relay (a retry relays, a page that keeps coming back stops).
   Set Up… (Passwords' own row,
   `SettingsJumpCloud.swift`) opens a visible Chrome on JumpCloud Go's Web Store page (a relay while it's open uses a
