@@ -35,20 +35,17 @@ enum ImportRowState: Equatable {
 
 // MARK: Data source
 
-/// Where the screens read browsers from: the importer, or (test builds with RAY_IMPORT_FAKE=1) a small fake, so the
-/// UI can be driven without any browser on the machine.
-protocol ImportBackend: AnyObject {
-  func sources() -> [ImportSource]
-  func preview(_ source: ImportSource, profile: ImportProfile, completion: @escaping (ImportPreview) -> Void)
-  func run(_ source: ImportSource, profile: ImportProfile, items: Set<ImportItem>, into controller: BrowserWindowController,
-           event: @escaping (ImportEvent) -> Void, completion: @escaping (ImportSummary) -> Void)
-}
-
-/// The importer's `ImportSession`, kept alive until each call has answered.
-private final class SessionImportBackend: ImportBackend {
+/// The importer's `ImportSession`, kept alive until each call has answered. Finding the browsers does real work
+/// (each one's Local State, Arc's whole sidebar file, app icons), so it runs off the main thread.
+private final class ImportBackend {
   private var live: [ObjectIdentifier: ImportSession] = [:]
 
-  func sources() -> [ImportSource] { ImportSession.sources() }
+  func sources(completion: @escaping ([ImportSource]) -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let found = ImportSession.sources()
+      DispatchQueue.main.async { completion(found) }
+    }
+  }
 
   func preview(_ source: ImportSource, profile: ImportProfile, completion: @escaping (ImportPreview) -> Void) {
     let session = ImportSession()
@@ -72,92 +69,12 @@ private final class SessionImportBackend: ImportBackend {
   }
 }
 
-enum ImportBackends {
-  static func make() -> ImportBackend {
-    #if RAY_TEST_HOOKS
-    if TestEnvironment["RAY_IMPORT_FAKE"] == "1" { return FakeImportBackend() }
-    #endif
-    return SessionImportBackend()
-  }
+extension ImportItem {
+  /// The row's title in these screens: extensions come across as a list only for now (none get installed).
+  var onboardingTitle: String { self == .extensions ? "Extensions (list only, installing comes later)" : title }
+  /// Ticked by default: everything that really comes across.
+  var onByDefault: Bool { self != .extensions }
 }
-
-#if RAY_TEST_HOOKS
-/// Test builds only (RAY_IMPORT_FAKE=1): Arc with three profiles, Chrome, and Safari behind Full Disk Access, with
-/// made-up counts, and an import that lands one item every fraction of a second (cards always fail, to show a
-/// failure). Never reads a real browser: the icons are the apps' own, when installed.
-private final class FakeImportBackend: ImportBackend {
-  private static func icon(_ bundle: String) -> NSImage? {
-    NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle).map { NSWorkspace.shared.icon(forFile: $0.path) }
-  }
-
-  func sources() -> [ImportSource] {
-    [
-      ImportSource(id: "arc", name: "Arc", icon: Self.icon("company.thebrowser.Browser"),
-                   profiles: [ImportProfile(id: "Default", name: "Personal"), ImportProfile(id: "Profile 1", name: "Work"),
-                              ImportProfile(id: "Profile 2", name: "Side project")],
-                   recommended: true, note: nil,
-                   items: [.pinnedTabs, .favorites, .openTabs, .history, .passwords, .cookies, .autofill, .extensions]),
-      ImportSource(id: "chrome", name: "Google Chrome", icon: Self.icon("com.google.Chrome"),
-                   profiles: [ImportProfile(id: "Default", name: "Person 1")], recommended: false, note: nil,
-                   items: [.openTabs, .history, .bookmarks, .passwords, .cookies, .autofill, .extensions]),
-      ImportSource(id: "safari", name: "Safari", icon: Self.icon("com.apple.Safari"),
-                   profiles: [ImportProfile(id: "Default", name: "Safari")], recommended: false,
-                   note: "Needs Full Disk Access", items: [.openTabs, .history, .bookmarks]),
-    ]
-  }
-
-  private static func counts(_ source: String, _ profile: String) -> [ImportItem: Int] {
-    switch (source, profile) {
-    case ("arc", "Default"):
-      [.pinnedTabs: 42, .favorites: 8, .openTabs: 17, .history: 12408, .extensions: 6]
-    case ("arc", "Profile 1"):
-      [.pinnedTabs: 23, .favorites: 5, .openTabs: 9, .history: 3170, .extensions: 4]
-    case ("arc", _):
-      [.pinnedTabs: 7, .favorites: 2, .openTabs: 3, .history: 412, .extensions: 1]
-    case ("chrome", _):
-      [.openTabs: 5, .history: 8211, .bookmarks: 1204, .extensions: 6]
-    default:
-      [.openTabs: 4, .history: 950, .bookmarks: 88]
-    }
-  }
-
-  func preview(_ source: ImportSource, profile: ImportProfile, completion: @escaping (ImportPreview) -> Void) {
-    let counts = Self.counts(source.id, profile.id)
-    let summary: String
-    switch source.id {
-    case "arc": summary = "2 spaces, \(counts[.pinnedTabs] ?? 0) pinned tabs, 3 profiles"
-    case "chrome": summary = "1,204 bookmarks, 6 extensions"
-    default: summary = ""
-    }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-      completion(ImportPreview(counts: counts, summary: summary))
-    }
-  }
-
-  func run(_ source: ImportSource, profile: ImportProfile, items: Set<ImportItem>, into controller: BrowserWindowController,
-           event: @escaping (ImportEvent) -> Void, completion: @escaping (ImportSummary) -> Void) {
-    let order = ImportItem.allCases.filter(items.contains)
-    let counts = Self.counts(source.id, profile.id)
-    var summary = ImportSummary()
-    let beat = 0.22
-    for (index, item) in order.enumerated() {
-      let start = Double(index) * beat * 2
-      DispatchQueue.main.asyncAfter(deadline: .now() + start + 0.15) { event(.started(item)) }
-      DispatchQueue.main.asyncAfter(deadline: .now() + start + 0.15 + beat) {
-        if item == .autofill {
-          summary.failed[item] = "macOS kept the key locked"
-          event(.failed(item, reason: "macOS kept the key locked"))
-        } else {
-          let count = counts[item] ?? (item.needsUnlock ? 37 : 3)
-          summary.imported[item] = count
-          event(.finished(item, count: count))
-        }
-      }
-    }
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(order.count) * beat * 2 + 0.2) { completion(summary) }
-  }
-}
-#endif
 
 // MARK: Overlay
 
@@ -179,7 +96,7 @@ final class OnboardingView: NSView {
   /// Called on every change, for the state log.
   var onChange: (() -> Void)?
   private weak var browser: BrowserWindowController?
-  private let backend: ImportBackend
+  private let backend = ImportBackend()
 
   private let veil = NSVisualEffectView()
   private let wash = VeilWash()
@@ -194,6 +111,8 @@ final class OnboardingView: NSView {
 
   // The import's state.
   private(set) var sources: [ImportSource] = []
+  /// The browsers on this Mac have been looked for (it takes a moment).
+  private(set) var sourcesLoaded = false
   private(set) var selectedID: String?
   private var profileChoice: [String: String] = [:]
   private var previews: [String: ImportPreview] = [:]
@@ -208,7 +127,6 @@ final class OnboardingView: NSView {
   init(mode: OnboardingMode, browser: BrowserWindowController) {
     self.mode = mode
     self.browser = browser
-    backend = ImportBackends.make()
     step = mode.steps[0]
     super.init(frame: .zero)
     wantsLayer = true
@@ -222,11 +140,7 @@ final class OnboardingView: NSView {
     addSubview(card)
     card.primary.onClick = { [weak self] in self?.primaryPressed() }
     card.back.onClick = { [weak self] in self?.backPressed() }
-    sources = backend.sources().enumerated().sorted {
-      $0.element.recommended != $1.element.recommended ? $0.element.recommended : $0.offset < $1.offset
-    }.map(\.element)
-    selectedID = sources.first?.id
-    for source in sources { requestPreview(source) }
+    backend.sources { [weak self] found in self?.sourcesArrived(found) }
     let center = NotificationCenter.default
     center.addObserver(self, selector: #selector(accentChanged), name: ProfileColor.didChange, object: nil)
     center.addObserver(self, selector: #selector(settingsChanged), name: RaySettings.didChange, object: nil)
@@ -419,7 +333,7 @@ final class OnboardingView: NSView {
 
   private var primaryEnabled: Bool {
     switch step {
-    case .source: selectedSource != nil
+    case .source: sourcesLoaded && selectedSource != nil
     case .items: !checked.isEmpty
     case .importing: imported
     default: true
@@ -451,7 +365,7 @@ final class OnboardingView: NSView {
     case .welcome: go(to: .source)
     case .source:
       if let source = selectedSource, checkedSource != source.id {
-        checked = source.items
+        checked = source.items.filter(\.onByDefault)
         checkedSource = source.id
       }
       go(to: .items)
@@ -569,6 +483,17 @@ final class OnboardingView: NSView {
       self.previews[Self.key(source, profile)] = preview
       if self.step == .source || self.step == .items { self.refresh() } else { self.changed() }
     }
+  }
+
+  private func sourcesArrived(_ found: [ImportSource]) {
+    // Recommended (Arc) first, then as the importer listed them.
+    sources = found.enumerated().sorted {
+      $0.element.recommended != $1.element.recommended ? $0.element.recommended : $0.offset < $1.offset
+    }.map(\.element)
+    sourcesLoaded = true
+    if selectedID == nil || !sources.contains(where: { $0.id == selectedID }) { selectedID = sources.first?.id }
+    for source in sources { requestPreview(source) }
+    refresh()
   }
 
   fileprivate func choose(_ id: String) {
@@ -693,7 +618,7 @@ final class OnboardingView: NSView {
         ["id": source.id, "name": source.name, "recommended": source.recommended, "note": source.note ?? NSNull(),
          "summary": preview(of: source)?.summary ?? NSNull(), "profiles": source.profiles.map(\.id)]
       },
-      "source": selectedID ?? NSNull(),
+      "sourcesLoaded": sourcesLoaded, "source": selectedID ?? NSNull(),
       "profile": source.flatMap { profile(of: $0)?.id } ?? NSNull(),
       "profilePicker": (stepView as? SourceStepView)?.profilePickerShown ?? false,
       "freshLink": (stepView as? SourceStepView)?.freshLinkShown ?? false,
@@ -1147,7 +1072,7 @@ fileprivate final class WelcomeStepView: OnboardingStepView {
 
 fileprivate final class SourceStepView: OnboardingStepView {
   private var rows: [SourceRowView] = []
-  private let empty = wrapping("No other browsers were found on this Mac. You can import later from File › Import from Browser…", size: 13)
+  private let empty = wrapping("", size: 13)
   private let profileLabel = oneLine("Profile", size: 12, weight: .medium, color: .secondaryLabelColor)
   private let profiles = NSPopUpButton(frame: .zero, pullsDown: false)
   private let fresh = OnboardingLink(title: "Start fresh instead")
@@ -1156,12 +1081,6 @@ fileprivate final class SourceStepView: OnboardingStepView {
     super.init(flow: flow)
     titleLabel.stringValue = "Where are you coming from?"
     subtitleLabel.stringValue = "Browsers found on this Mac."
-    for source in flow.sources {
-      let row = SourceRowView(source: source)
-      row.onClick = { [weak flow] in flow?.choose(source.id) }
-      rows.append(row)
-      addSubview(row)
-    }
     addSubview(empty)
     profiles.controlSize = .small
     profiles.font = .systemFont(ofSize: 12)
@@ -1201,7 +1120,20 @@ fileprivate final class SourceStepView: OnboardingStepView {
     flow.chooseProfile(id)
   }
 
+  /// One row per browser found, in the flow's order (they arrive a moment after the step shows).
+  private func syncRows() {
+    guard rows.map(\.sourceID) != flow.sources.map(\.id) else { return }
+    rows.forEach { $0.removeFromSuperview() }
+    rows = flow.sources.map { source in
+      let row = SourceRowView(source: source)
+      row.onClick = { [weak flow] in flow?.choose(source.id) }
+      addSubview(row)
+      return row
+    }
+  }
+
   override func refresh() {
+    syncRows()
     let selected = flow.selectedSource
     for row in rows {
       guard let source = flow.sources.first(where: { $0.id == row.sourceID }) else { continue }
@@ -1209,6 +1141,9 @@ fileprivate final class SourceStepView: OnboardingStepView {
       row.detail = source.note ?? flow.preview(of: source)?.summary ?? ""
       row.dimmed = source.note != nil
     }
+    empty.stringValue = flow.sourcesLoaded
+      ? "No other browsers were found on this Mac. You can import later from File › Import from Browser…"
+      : "Looking for browsers on this Mac…"
     empty.isHidden = !rows.isEmpty
     let many = (selected?.profiles.count ?? 0) > 1
     profiles.isHidden = !many
@@ -1528,7 +1463,7 @@ fileprivate final class CheckRowView: NSView {
 
   init(item: ImportItem) {
     self.item = item
-    title = oneLine(item.title, size: 13)
+    title = oneLine(item.onboardingTitle, size: 13)
     super.init(frame: .zero)
     wantsLayer = true
     layer?.cornerRadius = 8
@@ -1540,7 +1475,7 @@ fileprivate final class CheckRowView: NSView {
     countLabel.alignment = .right
     for view in [box, icon, title, countLabel] as [NSView] { addSubview(view) }
     setAccessibilityRole(.checkBox)
-    setAccessibilityLabel(item.title)
+    setAccessibilityLabel(item.onboardingTitle)
     addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
 
@@ -1717,7 +1652,7 @@ fileprivate final class ProgressRowView: NSView {
   private var state = ImportRowState.waiting
 
   init(item: ImportItem) {
-    title = oneLine(item.title, size: 13)
+    title = oneLine(item.onboardingTitle, size: 13)
     super.init(frame: .zero)
     icon.image = NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)
     icon.symbolConfiguration = .init(pointSize: 13, weight: .regular)

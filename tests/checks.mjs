@@ -2275,12 +2275,14 @@ const checks = {
     assert(state().sidebar.pinned.length + state().sidebar.favorites.length === count, "importing twice added duplicates");
   },
   async onboarding() {
-    // The first run's welcome and File › Import from Browser…, on the fake importer (RAY_IMPORT_FAKE), in instances
-    // of their own on a new data dir (RAY_ONBOARDING: test builds otherwise never show it, so this main instance
-    // starts plain). SNAP_DIR=<dir> also saves each step, light and dark.
+    // The first run's welcome and File › Import from Browser…, on the real ImportSession over the importer's fixtures
+    // (RAY_IMPORT_SOURCE_DIR; no RAY_IMPORT_SECRET, so the key-locked items fail as a denied Keychain prompt would,
+    // and nothing touches the Keychain), in instances of their own on a new data dir (RAY_ONBOARDING: test builds
+    // otherwise never show it, so this main instance starts plain). SNAP_DIR=<dir> also saves each step, light and dark.
     await command("state");
     assert(state().onboarding === null, "a test instance showed the onboarding without RAY_ONBOARDING");
     const dir = mkdtempSync(join(tmpdir(), "ray-onboarding-"));
+    const support = join(root, "Importer/fixtures/home/Library/Application Support");
     const shots = process.env.SNAP_DIR;
     if (shots) mkdirSync(shots, { recursive: true });
     const running = [];
@@ -2289,7 +2291,7 @@ const checks = {
       let partial = "";
       it.proc = spawn(join(app, "Contents/MacOS/Ray"), [], {
         env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_ONBOARDING: "1",
-          RAY_IMPORT_FAKE: "1", RAY_DATA_DIR: dir, RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_START_URL: `${origin}/a`,
+          RAY_IMPORT_SOURCE_DIR: support, RAY_DATA_DIR: dir, RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_START_URL: `${origin}/a`,
           RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.onboarding` },
         stdio: ["pipe", "ignore", "pipe"],
       });
@@ -2345,49 +2347,64 @@ const checks = {
       const afterKeys = await probe(first);
       assert(afterKeys.onboarding?.step === "welcome" && !afterKeys.onboarding.closing, "Escape dismissed the first run");
       assert(afterKeys.commandBar === null, "the command bar opened under the onboarding");
-      // 2. Where from: Arc first, recommended and chosen, its profiles in a picker; Safari says what's in the way.
+      // 2. Where from: the browsers found (off the main thread), Arc first, recommended and chosen, its profiles in a picker.
       await run(first, "onboarding next");
-      o = await reach(first, "source step", (o) => o.step === "source" && o.sources.every((s) => s.note || s.summary));
-      assert(o.sources.map((s) => s.id).join() === "arc,chrome,safari" && o.sources[0].recommended && o.source === "arc", `sources ${JSON.stringify(o.sources)}`);
-      assert(o.profilePicker && o.profile === "Default" && o.freshLink && o.back === "Back" && o.dot === 1, `source step ${JSON.stringify(o)}`);
-      assert(o.sources[2].note === "Needs Full Disk Access", "Safari's note is missing");
+      o = await reach(first, "source step", (o) => o.step === "source" && o.sourcesLoaded && o.sources[0]?.summary, 15000);
+      assert(o.sources[0].id === "arc" && o.sources[0].recommended && o.source === "arc" && o.sources.filter((s) => s.recommended).length === 1,
+        `sources ${JSON.stringify(o.sources)}`);
+      assert(o.sources[0].summary === "2 spaces, 6 pinned tabs, 2 profiles", `Arc's summary ${o.sources[0].summary}`);
+      const arcProfiles = o.sources[0].profiles;
+      assert(arcProfiles.length === 2 && o.profilePicker && o.profile === arcProfiles[0] && o.freshLink && o.back === "Back" && o.dot === 1,
+        `source step ${JSON.stringify(o)}`);
       await snap(first, "2-source");
-      await run(first, "onboarding choose chrome");
-      o = await reach(first, "chrome chosen", (o) => o.source === "chrome");
-      assert(!o.profilePicker, "a one-profile browser shows a profile picker");
-      await run(first, "onboarding choose arc");
-      await run(first, "onboarding profile Profile 1");
-      o = await reach(first, "work profile", (o) => o.profile === "Profile 1" && /23 pinned tabs/.test(o.sources[0].summary ?? ""));
-      await run(first, "onboarding profile Default");
-      // 3. What to bring: all Arc gives, all ticked, counts where the preview has them; the unlock note follows the ticks.
+      const single = o.sources.find((s) => s.profiles.length === 1);
+      if (single) {
+        await run(first, `onboarding choose ${single.id}`);
+        o = await reach(first, `${single.id} chosen`, (o) => o.source === single.id);
+        assert(!o.profilePicker, "a one-profile browser shows a profile picker");
+        await run(first, "onboarding choose arc");
+      }
+      await run(first, `onboarding profile ${arcProfiles[1]}`);
+      await reach(first, "Arc's other profile", (o) => o.source === "arc" && o.profile === arcProfiles[1]);
+      await run(first, `onboarding profile ${arcProfiles[0]}`);
+      // 3. What to bring: all Arc gives, ticked but extensions (a list only for now), counts where the preview has them;
+      // the unlock note follows the key-locked ticks.
       await run(first, "onboarding next");
-      o = await reach(first, "items step", (o) => o.step === "items");
-      assert(o.title === "Bring from Arc" && o.items.length === 8 && o.checked.join() === o.items.join() && o.unlockNote && o.primary === "Import",
-        `items step ${JSON.stringify(o)}`);
-      assert(o.counts.pinnedTabs === 42 && o.counts.passwords === undefined, `counts ${JSON.stringify(o.counts)}`);
+      o = await reach(first, "items step", (o) => o.step === "items" && o.profile === arcProfiles[0]);
+      assert(o.title === "Bring from Arc" && o.items.length === 9 && o.checked.join() === o.items.filter((i) => i !== "extensions").join()
+        && o.unlockNote && o.primary === "Import", `items step ${JSON.stringify(o)}`);
+      assert(o.counts.pinnedTabs === 6 && o.counts.favorites === 3 && o.counts.autofill === undefined, `counts ${JSON.stringify(o.counts)}`);
       await snap(first, "3-items");
       for (const item of ["passwords", "cookies", "autofill"]) await run(first, `onboarding toggle ${item}`);
       o = await flow(first);
       assert(!o.unlockNote && !o.checked.includes("passwords"), `unlock note without locked items ${JSON.stringify(o)}`);
-      for (const item of ["passwords", "cookies", "autofill", "extensions"]) await run(first, `onboarding toggle ${item}`);
+      for (const item of ["passwords", "cookies", "autofill", "extensions", "history"]) await run(first, `onboarding toggle ${item}`);
       o = await flow(first);
-      assert(o.unlockNote && o.checked.length === 7 && !o.checked.includes("extensions"), `ticks ${JSON.stringify(o.checked)}`);
+      assert(o.unlockNote && o.checked.length === 8 && o.checked.includes("extensions") && !o.checked.includes("history"), `ticks ${JSON.stringify(o.checked)}`);
+      await run(first, "onboarding toggle extensions");
       // Back and forth keeps the choice.
       await run(first, "onboarding back");
       await reach(first, "back to source", (o) => o.step === "source");
       await run(first, "onboarding next");
       o = await reach(first, "items again", (o) => o.step === "items");
-      assert(o.checked.length === 7, `ticks after going back ${JSON.stringify(o.checked)}`);
-      // 4. Moving in: each row ends done with its count, or (the fake's cards) quietly failed; then Continue.
+      const chosen = o.checked;
+      assert(chosen.length === 7 && !chosen.includes("history") && !chosen.includes("extensions"), `ticks after going back ${JSON.stringify(chosen)}`);
+      // 4. Moving in: Arc's sidebar lands in the window's sidebar; the key-locked items fail quietly (no key); then Continue.
+      const favoritesBefore = (await probe(first)).sidebar.favorites.length;
       await run(first, "onboarding import");
       o = await reach(first, "importing", (o) => o.step === "importing");
-      assert(o.back === null && !o.primaryEnabled && o.running, `while importing ${JSON.stringify(o)}`);
+      assert(o.back === null && o.rows.map((r) => r.item).join() === chosen.join(), `while importing ${JSON.stringify(o)}`);
       await snap(first, "4-moving-in");
-      o = await reach(first, "import done", (o) => o.imported, 15000);
+      o = await reach(first, "import done", (o) => o.imported, 60000);
       assert(o.rows.length === 7 && o.progress === 1 && o.primaryEnabled && o.primary === "Continue", `after import ${JSON.stringify(o)}`);
-      for (const row of o.rows) {
-        assert(row.item === "autofill" ? row.state === "failed" && row.reason : row.state === "done" && row.count > 0, `row ${JSON.stringify(row)}`);
-      }
+      const row = (item) => o.rows.find((r) => r.item === item);
+      assert(row("pinnedTabs").state === "done" && row("pinnedTabs").count === 6 && row("favorites").state === "done" && row("favorites").count === 3,
+        `rows ${JSON.stringify(o.rows)}`);
+      assert(o.rows.every((r) => r.state === "done" || (r.state === "failed" && r.reason)), `rows ${JSON.stringify(o.rows)}`);
+      assert(["passwords", "cookies"].every((item) => row(item).state === "failed"), `key-locked rows without the key ${JSON.stringify(o.rows)}`);
+      const imported = await probe(first);
+      assert(imported.sidebar.favorites.length === favoritesBefore + 3 && imported.sidebar.pinned.some((e) => e.kind === "folder" && e.title === "Personal"),
+        `the sidebar after the import ${JSON.stringify(imported.sidebar)}`);
       await snap(first, "5-moved-in");
       // 5. Colour: a swatch goes through Settings › Theme's own call, so the profile's colour follows.
       await run(first, "onboarding next");
@@ -2413,7 +2430,7 @@ const checks = {
       await sleep(1000);
       assert((await probe(second)).onboarding === null, "the welcome showed again on the same data dir");
       await run(second, "menu importFromBrowser");
-      o = await reach(second, "import from browser", (o) => o.step === "source");
+      o = await reach(second, "import from browser", (o) => o.step === "source" && o.sourcesLoaded, 15000);
       assert(o.mode === "importOnly" && o.dots === 3 && o.dot === 0 && !o.freshLink && o.back === "Cancel" && o.source === "arc",
         `import from browser ${JSON.stringify(o)}`);
       await snap(second, "8-import-from-browser");
