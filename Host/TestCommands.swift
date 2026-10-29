@@ -47,7 +47,8 @@ enum TestCommands {
     return "ok"
   }
 
-  private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53, "tab": 48, ",": 43, "=": 24]
+  private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53, "tab": 48, ",": 43, "=": 24, "-": 27,
+                                                     "0": 29, "p": 35, "u": 32, "y": 16]
 
   /// `key ctrlup`: Control let go, as a real keyboard reports it (through the event queue, where local monitors see it).
   private static func releaseControl(in window: NSWindow?) -> String {

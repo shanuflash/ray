@@ -1390,6 +1390,70 @@ const checks = {
     assert(state().toastTruncated === false, "the toast cut its message short");
     await until("toast gone", async () => { await command("state"); return state().toast === ""; }, 5000);
   },
+  async "page-commands"() {
+    // The basics from Chrome's menus: zoom keys, View Source, History, Clear Browsing Data, Save Page As, Print.
+    await resetSettings();
+    await goTo(`${origin}/b?commands`, true);
+    await until("page", async () => { await command("state"); return activeTabState()?.url.endsWith("/b?commands") && activeTabState()?.title === "Page B"; });
+    const page = state().active;
+    // ⌘= and ⌘− step once each (the menu's, never the engine's as well), ⌘0 goes back to the default.
+    const zoomTo = async (keys, want, what) => {
+      await command(`key ${keys} keywin`);
+      await until(what, async () => { await command("state"); return near(activeZoom(), want); }, 4000);
+      await sleep(300);
+      await command("state");
+      assert(near(activeZoom(), want), `${what}: zoom ${activeZoom()}, wanted ${want}`);
+    };
+    await zoomTo("= cmd", 1.1, "⌘=");
+    await zoomTo("- cmd", 1, "⌘−");
+    await zoomTo("= cmd", 1.1, "⌘= again");
+    await zoomTo("= cmd", 1.25, "⌘= twice");
+    await zoomTo("0 cmd", 1, "⌘0");
+    // View Source (⌥⌘U): the page's source in a new tab, not for Chrome's own pages.
+    await command("key u cmd opt keywin");
+    await until("source tab", async () => { await command("state"); return activeTabState()?.url === `view-source:${origin}/b?commands`; });
+    await command("menu closeTab");
+    await until("back on the page", async () => { await command("state"); return state().active === page; });
+    // Show Full History (⌘Y): Chrome's history page; again, the same tab rather than another.
+    await command("key y cmd keywin");
+    await until("history", async () => { await command("state"); return activeTabState()?.url.startsWith("chrome://history"); });
+    const history = state().active;
+    const tabs = state().tabs.length;
+    await command(`row ${entryOfTab(page).id}`);
+    await until("page again", async () => { await command("state"); return state().active === page; });
+    await command("key y cmd keywin");
+    await until("history again", async () => { await command("state"); return state().active === history; });
+    assert(state().tabs.length === tabs, `⌘Y opened a second history tab (${state().tabs.length} tabs, was ${tabs})`);
+    await command("menu viewSource");
+    await sleep(300);
+    await command("state");
+    assert(state().active === history && state().tabs.length === tabs, "View Source opened Chrome's own page's source");
+    await command("menu closeTab");
+    // Clear Browsing Data (⇧⌘⌫): Chrome's dialog over its settings page.
+    await command("menu clearBrowsingData");
+    await until("clear data", async () => { await command("state"); return activeTabState()?.url === "chrome://settings/clearBrowserData"; });
+    await command("menu closeTab");
+    // Save Page As takes ⌘S only when Settings gives ⌘S back from the sidebar.
+    await command("state");
+    assert(state().menuKeys.savePage === "" && state().menuKeys.toggleSidebar === "s", `⌘S: ${JSON.stringify(state().menuKeys)}`);
+    await setSetting("sidebarShortcut", "off");
+    assert(state().menuKeys.savePage === "s" && state().menuKeys.toggleSidebar === "", `⌘S freed: ${JSON.stringify(state().menuKeys)}`);
+    await setSetting("sidebarShortcut", "on");
+    // Print (⌘P): Chrome's print preview over the page; Escape closes it.
+    await command(`row ${entryOfTab(page).id}`);
+    await until("page for printing", async () => { await command("state"); return state().active === page; });
+    await command("key p cmd keywin");
+    await until("print command", async () => { await command("state"); return state().chromeCommand?.name === "print"; });
+    assert(state().chromeCommand.ran === true, "the engine didn't take Print");
+    await until("print preview", async () => (await targets()).some((t) => t.url.startsWith("chrome://print")), 8000);
+    // Its Cancel button closes it (a real click on the dialog's own control).
+    const preview = await session("chrome://print");
+    const deepFind = `const deep = (root, sel, out = []) => { for (const el of root.querySelectorAll("*")) if (el.shadowRoot) deep(el.shadowRoot, sel, out); root.querySelectorAll(sel).forEach((e) => out.push(e)); return out; };`;
+    await until("cancel button", async () => (await evaluate(preview.sessionId, `(() => { ${deepFind} return deep(document, "cr-button.cancel-button").length; })()`)) > 0, 8000);
+    await evaluate(preview.sessionId, `(() => { ${deepFind} deep(document, "cr-button.cancel-button")[0].click(); })()`);
+    await until("print preview closed", async () => !(await targets()).some((t) => t.url.startsWith("chrome://print")), 8000);
+    await command("menu closeTab");
+  },
   // Settings window and the settings behind it. Each check puts every setting back to its default.
   async "settings-window"() {
     await resetSettings();

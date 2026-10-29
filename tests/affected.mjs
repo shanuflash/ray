@@ -70,6 +70,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#RayCoreTabDelegate": [...pages, ...permissions, "page-toolbar", "page-loading",
     "site-controls", "find-in-page", "settings-zoom", "settings-routes", "settings-trimmed"],
   "Host/BrowserWindowController.swift#Settings": [...settings, "page-toolbar", "page-loading"],
+  "Host/BrowserWindowController.swift#Page commands": ["page-commands"],
   "Host/BrowserWindowController.swift#Page zoom": ["settings-zoom", "settings-private-zoom", "settings-window", "site-controls"],
   "Host/BrowserWindowController.swift#State log": [],
 

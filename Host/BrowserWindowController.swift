@@ -1630,6 +1630,55 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     return true
   }
 
+  // MARK: Page commands
+
+  /// Chrome's own commands Ray's menus run (chrome/app/chrome_command_ids.h), as Chrome's menus do.
+  enum ChromeCommand: Int32 {
+    case print = 35003, savePage = 35004, systemPrint = 35007, taskManager = 40006
+  }
+
+  /// For tests: the last command run and whether the engine took it.
+  private(set) var lastChromeCommand: (name: String, ran: Bool)?
+
+  func runChromeCommand(_ command: ChromeCommand) {
+    // Print and Save Page As act on the page; Task Manager only needs the window's profile.
+    let ran: Bool
+    if let tab = activeTab {
+      ran = tab.executeChromeCommand(command.rawValue)
+    } else if command == .taskManager {
+      ran = coreWindow.executeChromeCommand(command.rawValue, profile: profile)
+    } else {
+      return
+    }
+    lastChromeCommand = ("\(command)", ran)
+    logState("chromeCommand")
+  }
+
+  /// View Source's address for the active page: `view-source:` before a web or file page's own, as in Chrome.
+  var viewSourceURL: String? {
+    guard let entry = activeEntry, entry.isLive, let scheme = URLComponents(string: entry.currentURL)?.scheme?.lowercased(),
+          ["http", "https", "file"].contains(scheme) else { return nil }
+    return "view-source:" + entry.currentURL
+  }
+
+  /// View › View Source (⌥⌘U): the source in a new tab after the page, as Chrome and Ardia open it.
+  func viewSource() {
+    guard let url = viewSourceURL else { return }
+    openToday(url, after: activeEntry, foreground: true)
+  }
+
+  /// An engine page (History, Clear Browsing Data): the tab already showing it, else a new one after the active tab.
+  func showPage(_ url: String) {
+    let wanted = url.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+    if let open = state.allEntries.first(where: {
+      $0.isLive && $0.currentURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased() == wanted
+    }) {
+      select(open)
+    } else {
+      openToday(url, after: activeEntry, foreground: true)
+    }
+  }
+
   // MARK: State log
 
   func logState(_ event: String) {
@@ -1721,11 +1770,13 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["settings"] = RaySettings.shared.debug
     state["settingsWindow"] = SettingsWindowController.shared.debug
     state["updater"] = Updater.shared.debug
+    state["chromeCommand"] = lastChromeCommand.map { ["name": $0.name, "ran": $0.ran] as [String: Any] } ?? NSNull()
     state["safeStorage"] = ["mode": safeStorage.mode.rawValue, "note": safeStorage.note, "moved": safeStorage.moved]
     state["menuKeys"] = [
       "copyURL": MainMenu.keyEquivalent(of: #selector(AppController.copyURL(_:))) ?? NSNull(),
       "toggleSidebar": MainMenu.keyEquivalent(of: #selector(AppController.toggleSidebar(_:))) ?? NSNull(),
       "settings": MainMenu.keyEquivalent(of: #selector(AppController.showSettings(_:))) ?? NSNull(),
+      "savePage": MainMenu.keyEquivalent(of: #selector(AppController.savePage(_:))) ?? NSNull(),
     ] as [String: Any]
     state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
       .sorted { $0.lastActive > $1.lastActive }.map(tabID)

@@ -256,6 +256,23 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
   @objc func goBack(_ sender: Any?) { current?.activeTab?.goBack() }
   @objc func goForward(_ sender: Any?) { current?.activeTab?.goForward() }
   @objc func toggleDevTools(_ sender: Any?) { current?.toggleDevTools() }
+  @objc func printPage(_ sender: Any?) { current?.runChromeCommand(.print) }
+  @objc func printWithSystemDialog(_ sender: Any?) { current?.runChromeCommand(.systemPrint) }
+  @objc func savePage(_ sender: Any?) { current?.runChromeCommand(.savePage) }
+  @objc func viewSource(_ sender: Any?) { current?.viewSource() }
+  @objc func zoomIn(_ sender: Any?) { _ = current?.zoomCommand("in") }
+  @objc func zoomOut(_ sender: Any?) { _ = current?.zoomCommand("out") }
+  @objc func actualSize(_ sender: Any?) { _ = current?.zoomCommand("reset") }
+  @objc func showHistory(_ sender: Any?) { openPage("ray://history") }
+  @objc func clearBrowsingData(_ sender: Any?) { openPage("ray://settings/clearBrowserData") }
+  @objc func taskManager(_ sender: Any?) { current?.runChromeCommand(.taskManager) }
+
+  /// One of Chrome's own pages, in the window you were in: switched to when it's already open, else a new tab.
+  func openPage(_ address: String) {
+    guard let controller = current ?? openMainWindow(), let url = AddressInput.url(for: address) else { return }
+    controller.showPage(url)
+    if !launchedInBackground { controller.window.makeKeyAndOrderFront(nil) }
+  }
   @objc func nextTab(_ sender: Any?) { current?.cycleTab(by: 1) }
   @objc func previousTab(_ sender: Any?) { current?.cycleTab(by: -1) }
   // ⌃Tab and ⌃⇧Tab both land on one of these (AppKit may match the ⌃Tab item for either), so the direction comes
@@ -286,8 +303,14 @@ extension AppController: NSMenuItemValidation {
       // With no tab open, ⌘W closes the window, as in Chrome and Arc.
       item.title = current?.activeEntry == nil || SettingsWindowController.shared.isKey ? "Close Window" : "Close Tab"
       return current != nil || SettingsWindowController.shared.isKey
-    case #selector(reload(_:)), #selector(reloadIgnoringCache(_:)), #selector(toggleDevTools(_:)):
+    case #selector(reload(_:)), #selector(reloadIgnoringCache(_:)), #selector(toggleDevTools(_:)), #selector(printPage(_:)),
+         #selector(printWithSystemDialog(_:)), #selector(savePage(_:)), #selector(zoomIn(_:)), #selector(zoomOut(_:)),
+         #selector(actualSize(_:)):
       return current?.activeTab != nil
+    case #selector(viewSource(_:)):
+      return current?.viewSourceURL != nil
+    case #selector(taskManager(_:)):
+      return current != nil
     default: return true
     }
   }

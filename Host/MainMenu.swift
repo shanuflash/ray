@@ -9,6 +9,7 @@ enum MainMenu {
       item("Check for Updates…", #selector(AppController.checkForUpdates(_:)), nil, target: target),
       .separator(),
       item("Settings…", #selector(AppController.showSettings(_:)), ",", target: target),
+      item("Clear Browsing Data…", #selector(AppController.clearBrowsingData(_:)), backspace, [.command, .shift], target: target),
       .separator(),
       item("Hide Ray", #selector(NSApplication.hide(_:)), "h", target: NSApp),
       item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option], target: NSApp),
@@ -31,6 +32,11 @@ enum MainMenu {
       item("Clear Today's Tabs", #selector(AppController.clearToday(_:)), nil, target: target),
       .separator(),
       item("Import from Arc…", #selector(AppController.importFromArc(_:)), nil, target: target),
+      .separator(),
+      // ⌘S is Toggle Sidebar unless Settings frees it; then it's Save Page As, as in Chrome (applyShortcutSettings).
+      item("Save Page As…", #selector(AppController.savePage(_:)), nil, target: target),
+      item("Print…", #selector(AppController.printPage(_:)), "p", target: target),
+      item("Print Using System Dialog…", #selector(AppController.printWithSystemDialog(_:)), "p", [.command, .option], target: target),
     ]))
 
     main.addItem(submenu("Edit", [
@@ -59,8 +65,15 @@ enum MainMenu {
       item("Reload Page", #selector(AppController.reload(_:)), "r", target: target),
       item("Force Reload Page", #selector(AppController.reloadIgnoringCache(_:)), "r", [.command, .shift], target: target),
       .separator(),
+      item("Actual Size", #selector(AppController.actualSize(_:)), "0", target: target),
+      item("Zoom In", #selector(AppController.zoomIn(_:)), "+", target: target),
+      // ⌘= is the unshifted ⌘+ on most keyboards, as Chrome takes it.
+      item("Zoom In", #selector(AppController.zoomIn(_:)), "=", target: target, alternate: true),
+      item("Zoom Out", #selector(AppController.zoomOut(_:)), "-", target: target),
+      .separator(),
       item("Downloads", #selector(AppController.showDownloads(_:)), "l", [.command, .option], target: target),
       item("Developer Tools", #selector(AppController.toggleDevTools(_:)), "i", [.command, .option], target: target),
+      item("View Source", #selector(AppController.viewSource(_:)), "u", [.command, .option], target: target),
       .separator(),
       item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
     ]))
@@ -68,11 +81,15 @@ enum MainMenu {
     main.addItem(submenu("History", [
       item("Back", #selector(AppController.goBack(_:)), "[", target: target),
       item("Forward", #selector(AppController.goForward(_:)), "]", target: target),
+      .separator(),
+      item("Show Full History", #selector(AppController.showHistory(_:)), "y", target: target),
     ]))
 
     var tabItems: [NSMenuItem] = [
       item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
       item("Zoom", #selector(NSWindow.performZoom(_:)), nil),
+      .separator(),
+      item("Task Manager", #selector(AppController.taskManager(_:)), nil, target: target),
       .separator(),
       item("Show Next Tab", #selector(AppController.nextTab(_:)), "]", [.command, .shift], target: target),
       item("Show Previous Tab", #selector(AppController.previousTab(_:)), "[", [.command, .shift], target: target),
@@ -99,6 +116,7 @@ enum MainMenu {
     let values = RaySettings.shared.values
     setKey(#selector(AppController.copyURL(_:)), on: values.copyLinkShortcut, key: "C", modifiers: [.command, .shift])
     setKey(#selector(AppController.toggleSidebar(_:)), on: values.sidebarShortcut, key: "s", modifiers: [.command])
+    setKey(#selector(AppController.savePage(_:)), on: !values.sidebarShortcut, key: "s", modifiers: [.command])
   }
 
   private static func setKey(_ action: Selector, on: Bool, key: String, modifiers: NSEvent.ModifierFlags) {
@@ -119,6 +137,9 @@ enum MainMenu {
   static func keyEquivalent(of action: Selector) -> String? {
     NSApp.mainMenu.flatMap { find(action, in: $0) }?.keyEquivalent
   }
+
+  /// ⌫ as a key equivalent (Clear Browsing Data is ⇧⌘⌫ in Chrome).
+  private static let backspace = String(UnicodeScalar(UInt8(NSBackspaceCharacter)))
 
   private static func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
     let menu = NSMenu(title: title)
