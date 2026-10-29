@@ -1,8 +1,9 @@
 import AppKit
 
 /// Ray's own Settings window (⌘, from the Ray menu; `ray://settings/appearance` opens it too). One pane for now,
-/// Appearance, as grouped rounded rows: a title and a grey description on the left, the control on the right. Every
-/// control goes through `RaySettings.apply`, the same call the test command `setting` makes.
+/// Appearance, as grouped rounded rows: a title and a grey description on the left, the control on the right. The rows
+/// come from the settings catalog (`SettingsCatalog.swift`); every control goes through `RaySettings.apply`, the same
+/// call the test command `setting` makes.
 final class SettingsWindowController: NSObject, NSWindowDelegate {
   static let shared = SettingsWindowController()
 
@@ -55,7 +56,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     pane.frame = NSRect(origin: .zero, size: scroll.contentSize)
     window.contentView = scroll
     self.pane = pane
-    if let text = RaySettings.shared.values.windowFrame {
+    if let text = RaySettings.shared.windowFrame {
       let frame = NSRectFromString(text)
       // Only where it still lands on a screen, and never smaller than the window's minimum.
       if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }), frame.width >= 520, frame.height >= 400 {
@@ -167,24 +168,28 @@ enum SettingsColors {
 
 // MARK: Pane
 
-/// Settings › Appearance.
+/// Settings › Appearance. Its rows come from the catalog (`SettingsCatalog.swift`): every shown setting of the pane,
+/// in groups, each with the control its entry names.
 private final class AppearancePaneView: NSView {
   private static let margin: CGFloat = 28
   private static let maxWidth: CGFloat = 640
+
+  /// A setting's row and its control, as the window built it.
+  private enum Control {
+    case toggle(RaySwitch)
+    case choice(NSPopUpButton)
+    case colour(SwatchRow)
+  }
 
   private let heading = NSTextField(labelWithString: "Appearance")
   private var sections: [(header: NSTextField?, group: SettingsGroupView)] = []
   private let allSettings = LinkButton(title: "All Settings…")
   private let allSettingsNote = NSTextField(wrappingLabelWithString: "Chrome's other pages: privacy, passwords, extensions and more.")
 
-  private let minimalURL = RaySwitch()
-  private let loadingProgress = RaySwitch()
-  private let swatches = SwatchRow()
-  private let zoom = NSPopUpButton(frame: .zero, pullsDown: false)
-  private let newTabs = RaySwitch()
-  private let recentTabs = RaySwitch()
-  private let copyLink = RaySwitch()
-  private let sidebarKey = RaySwitch()
+  private var controls: [(key: AnySettingKey, control: Control)] = []
+  private var settingsObservation: SettingsObservation?
+  /// The setting the colour panel is choosing for.
+  private var colourKey: AnySettingKey?
 
   override var isFlipped: Bool { true }
 
@@ -193,59 +198,17 @@ private final class AppearancePaneView: NSView {
     heading.font = .systemFont(ofSize: 22, weight: .semibold)
     addSubview(heading)
 
-    func toggle(_ control: RaySwitch, _ key: RaySetting, _ label: String) {
-      control.setAccessibilityLabel(label)
-      control.onChange = { on in RaySettings.shared.apply(key, on ? "on" : "off") }
+    var group: SettingGroup?
+    var rows: [SettingRowView] = []
+    for key in AnySettingKey.all where key.ui.pane == .appearance && key.shown {
+      if let current = group, current != key.ui.group {
+        addSection(current.title, rows)
+        rows = []
+      }
+      group = key.ui.group
+      rows.append(row(for: key))
     }
-    toggle(minimalURL, .minimalURL, "Minimal URL in the address bar")
-    toggle(loadingProgress, .loadingProgress, "Show loading progress in the address bar")
-    toggle(newTabs, .newTabNextToActive, "Open new tabs next to the active tab")
-    toggle(recentTabs, .recentTabCycling, "Cycle through tabs in most recently used order with Ctrl+Tab")
-    toggle(copyLink, .copyLinkShortcut, "Enable quick page link copying with ⌘+Shift+C")
-    toggle(sidebarKey, .sidebarShortcut, "Use ⌘+S to toggle vertical tabs in Vertical layout")
-
-    swatches.onChoose = { hex in RaySettings.shared.apply(.theme, hex ?? "default") }
-    swatches.onCustom = { [weak self] in self?.openColorPanel() }
-
-    for level in RaySettings.zoomLevels {
-      zoom.addItem(withTitle: "\(Int((level * 100).rounded()))%")
-      zoom.lastItem?.representedObject = level
-    }
-    zoom.target = self
-    zoom.action = #selector(zoomChosen)
-    zoom.setAccessibilityLabel("Default page zoom")
-
-    addSection(nil, [
-      SettingRowView(title: "Minimal URL in the address bar",
-                     detail: "Show only the site in the address bar. The rest of the address appears when you hover it.",
-                     control: minimalURL),
-      SettingRowView(title: "Show loading progress in the address bar",
-                     detail: "A wash fills the address bar, and a thin line runs along the page, while a page loads.",
-                     control: loadingProgress),
-    ])
-    addSection(nil, [
-      SettingRowView(title: "Theme", detail: "The colour of Ray's highlights: loading, selection, drop targets and switches.",
-                     accessory: swatches),
-    ])
-    addSection("Page", [
-      SettingRowView(title: "Page zoom", detail: "For sites you haven't zoomed yourself. Zooming a site with ⌘+ or ⌘− keeps its own level.",
-                     control: zoom),
-    ])
-    addSection("Tabs", [
-      SettingRowView(title: "Open new tabs next to the active tab",
-                     detail: "A new tab goes right after the tab you're on, when it's in Today. Off: at the top of Today.",
-                     control: newTabs),
-      SettingRowView(title: "Cycle through tabs in most recently used order with Ctrl+Tab",
-                     detail: "Hold Control and press Tab again to go further back. Off: in the order of the sidebar.",
-                     control: recentTabs),
-    ])
-    addSection("Shortcuts", [
-      SettingRowView(title: "Enable quick page link copying with ⌘+Shift+C",
-                     detail: "Copies the page's address. Off: the key goes to the page.", control: copyLink),
-      SettingRowView(title: "Use ⌘+S to toggle vertical tabs in Vertical layout",
-                     detail: "In Ray, ⌘S shows and hides the sidebar. Off: the key goes to the page (Save Page As).",
-                     control: sidebarKey),
-    ])
+    if let group { addSection(group.title, rows) }
 
     allSettings.onClick = { [weak self] in self?.openAllSettings() }
     allSettingsNote.font = .systemFont(ofSize: 12)
@@ -253,7 +216,7 @@ private final class AppearancePaneView: NSView {
     addSubview(allSettings)
     addSubview(allSettingsNote)
 
-    NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged), name: RaySettings.didChange, object: nil)
+    settingsObservation = RaySettings.shared.observe(AnySettingKey.all) { [weak self] in self?.refresh() }
     NotificationCenter.default.addObserver(self, selector: #selector(accentChanged), name: ProfileColor.didChange, object: nil)
     refresh()
   }
@@ -261,6 +224,40 @@ private final class AppearancePaneView: NSView {
   required init?(coder: NSCoder) { fatalError() }
 
   deinit { NotificationCenter.default.removeObserver(self) }
+
+  /// A setting's row: a switch or a pop-up beside its text, or the colour swatches under it. Every control sets the
+  /// setting through `RaySettings.apply`, as the test command `setting` does.
+  private func row(for key: AnySettingKey) -> SettingRowView {
+    let ui = key.ui
+    switch ui.control {
+    case .toggle:
+      let control = RaySwitch()
+      control.setAccessibilityLabel(ui.title)
+      control.onChange = { on in RaySettings.shared.apply(key, on ? "on" : "off") }
+      controls.append((key, .toggle(control)))
+      return SettingRowView(title: ui.title, detail: ui.detail, control: control)
+    case .choice(let options):
+      let control = NSPopUpButton(frame: .zero, pullsDown: false)
+      for option in options {
+        control.addItem(withTitle: option.title)
+        control.lastItem?.representedObject = option.value
+      }
+      control.target = self
+      control.action = #selector(choiceChosen(_:))
+      control.setAccessibilityLabel(ui.title)
+      controls.append((key, .choice(control)))
+      return SettingRowView(title: ui.title, detail: ui.detail, control: control)
+    case .colour:
+      let swatches = SwatchRow()
+      swatches.onChoose = { hex in RaySettings.shared.apply(key, hex ?? "default") }
+      swatches.onCustom = { [weak self] in self?.openColorPanel(for: key) }
+      controls.append((key, .colour(swatches)))
+      return SettingRowView(title: ui.title, detail: ui.detail, accessory: swatches)
+    case .custom:
+      // No setting has a view of its own yet; one that does builds it here.
+      return SettingRowView(title: ui.title, detail: ui.detail)
+    }
+  }
 
   private func addSection(_ title: String?, _ rows: [SettingRowView]) {
     let header = title.map { text -> NSTextField in
@@ -277,47 +274,45 @@ private final class AppearancePaneView: NSView {
 
   /// Shows the settings as they are now.
   func refresh() {
-    let values = RaySettings.shared.values
-    minimalURL.isOn = values.minimalURL
-    loadingProgress.isOn = values.loadingProgress
-    newTabs.isOn = values.newTabNextToActive
-    recentTabs.isOn = values.recentTabCycling
-    copyLink.isOn = values.copyLinkShortcut
-    sidebarKey.isOn = values.sidebarShortcut
-    swatches.selection = values.theme
-    if let index = RaySettings.zoomLevels.firstIndex(of: values.defaultZoom) { zoom.selectItem(at: index) }
+    let settings = RaySettings.shared
+    for (key, control) in controls {
+      let text = settings.text(of: key)
+      switch control {
+      case .toggle(let toggle): toggle.isOn = text == "on"
+      case .choice(let popup):
+        if let index = popup.itemArray.firstIndex(where: { $0.representedObject as? String == text }) { popup.selectItem(at: index) }
+      case .colour(let swatches): swatches.selection = text == "default" ? nil : text
+      }
+    }
   }
-
-  @objc private func settingsChanged() { refresh() }
 
   @objc private func accentChanged() { setNeedsDisplayRecursively() }
 
-  @objc private func zoomChosen() {
-    guard let level = zoom.selectedItem?.representedObject as? Double else { return }
-    RaySettings.shared.apply(.defaultZoom, String(level))
+  @objc private func choiceChosen(_ popup: NSPopUpButton) {
+    guard let entry = controls.first(where: { if case .choice(let control) = $0.control { return control === popup } else { return false } }),
+          let value = popup.selectedItem?.representedObject as? String else { return }
+    RaySettings.shared.apply(entry.key, value)
   }
 
   func openAllSettings() { AppController.shared.openChromeSettings() }
 
+  /// For tests: `<id>` presses a switch, `<id> <n>` picks a pop-up's item or a colour's swatch.
   func press(_ words: [String]) -> Bool {
-    let switches: [String: RaySwitch] = [
-      "minimalURL": minimalURL, "loadingProgress": loadingProgress, "newTabNextToActive": newTabs,
-      "recentTabCycling": recentTabs, "copyLinkShortcut": copyLink, "sidebarShortcut": sidebarKey,
-    ]
-    guard let name = words.first else { return false }
-    if let control = switches[name] {
-      control.press()
+    guard let id = words.first, let entry = controls.first(where: { $0.key.id == id }) else { return false }
+    let index = words.count == 2 ? Int(words[1]) : nil
+    switch entry.control {
+    case .toggle(let toggle):
+      guard words.count == 1 else { return false }
+      toggle.press()
       return true
-    }
-    guard words.count == 2, let index = Int(words[1]) else { return false }
-    switch name {
-    case "swatch": return swatches.press(index: index)
-    case "zoom":
-      guard index >= 0, index < zoom.numberOfItems else { return false }
-      zoom.selectItem(at: index)
-      zoomChosen()
+    case .choice(let popup):
+      guard let index, index >= 0, index < popup.numberOfItems else { return false }
+      popup.selectItem(at: index)
+      choiceChosen(popup)
       return true
-    default: return false
+    case .colour(let swatches):
+      guard let index else { return false }
+      return swatches.press(index: index)
     }
   }
 
@@ -326,9 +321,10 @@ private final class AppearancePaneView: NSView {
   /// The shared colour panel is also what a page's colour input uses: only close it if Settings opened it.
   private var ownsColorPanel = false
 
-  private func openColorPanel() {
+  private func openColorPanel(for key: AnySettingKey) {
     let panel = NSColorPanel.shared
     ownsColorPanel = true
+    colourKey = key
     panel.showsAlpha = false
     panel.setTarget(self)
     panel.setAction(#selector(colorPanelChanged(_:)))
@@ -339,9 +335,9 @@ private final class AppearancePaneView: NSView {
   }
 
   @objc private func colorPanelChanged(_ panel: NSColorPanel) {
-    guard let rgb = panel.color.usingColorSpace(.sRGB) else { return }
+    guard let key = colourKey, let rgb = panel.color.usingColorSpace(.sRGB) else { return }
     func byte(_ v: CGFloat) -> Int { Int((min(1, max(0, v)) * 255).rounded()) }
-    RaySettings.shared.apply(.theme, String(format: "#%02X%02X%02X", byte(rgb.redComponent), byte(rgb.greenComponent), byte(rgb.blueComponent)))
+    RaySettings.shared.apply(key, String(format: "#%02X%02X%02X", byte(rgb.redComponent), byte(rgb.greenComponent), byte(rgb.blueComponent)))
   }
 
   func closeColorPanel() {
@@ -386,14 +382,23 @@ private final class AppearancePaneView: NSView {
 
   // MARK: State log
 
+  /// Each control by its setting's id: a switch's state, a pop-up's title (`<id>Options`: all of them), a colour's
+  /// selection (`<id>Swatches`, `<id>Selected`: how many, and which).
   var debug: [String: Any] {
-    [
-      "minimalURL": minimalURL.isOn, "loadingProgress": loadingProgress.isOn, "newTabNextToActive": newTabs.isOn,
-      "recentTabCycling": recentTabs.isOn, "copyLinkShortcut": copyLink.isOn, "sidebarShortcut": sidebarKey.isOn,
-      "swatch": swatches.selection ?? "default", "swatches": swatches.count, "swatchSelected": swatches.selectedIndex,
-      "zoom": zoom.titleOfSelectedItem ?? "", "zoomLevels": zoom.itemTitles,
-      "allSettingsLink": allSettings.title,
-    ]
+    var out: [String: Any] = ["allSettingsLink": allSettings.title]
+    for (key, control) in controls {
+      switch control {
+      case .toggle(let toggle): out[key.id] = toggle.isOn
+      case .choice(let popup):
+        out[key.id] = popup.titleOfSelectedItem ?? ""
+        out["\(key.id)Options"] = popup.itemTitles
+      case .colour(let swatches):
+        out[key.id] = swatches.selection ?? "default"
+        out["\(key.id)Swatches"] = swatches.count
+        out["\(key.id)Selected"] = swatches.selectedIndex
+      }
+    }
+    return out
   }
 }
 

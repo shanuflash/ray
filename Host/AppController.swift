@@ -30,8 +30,6 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     }
     NSApp.delegate = self
     MainMenu.install(target: self)
-    NotificationCenter.default.addObserver(
-      forName: RaySettings.didChange, object: nil, queue: .main) { _ in MainMenu.applyShortcutSettings() }
     installReservedKeyRouting()
     TestCommands.start()
     Updater.shared.start()

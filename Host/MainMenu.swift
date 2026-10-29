@@ -116,14 +116,17 @@ enum MainMenu {
     NSApp.mainMenu = main
     NSApp.windowsMenu = window.submenu
     applyShortcutSettings()
+    shortcutSettings = RaySettings.shared.observe([.copyLinkShortcut, .sidebarShortcut]) { applyShortcutSettings() }
   }
+
+  private static var shortcutSettings: SettingsObservation?
 
   /// Settings can take ⇧⌘C and ⌘S away from the menu, so the page gets those keys. Run at launch and on every change.
   static func applyShortcutSettings() {
-    let values = RaySettings.shared.values
-    setKey(#selector(AppController.copyURL(_:)), on: values.copyLinkShortcut, key: "C", modifiers: [.command, .shift])
-    setKey(#selector(AppController.toggleSidebar(_:)), on: values.sidebarShortcut, key: "s", modifiers: [.command])
-    setKey(#selector(AppController.savePage(_:)), on: !values.sidebarShortcut, key: "s", modifiers: [.command])
+    let settings = RaySettings.shared
+    setKey(#selector(AppController.copyURL(_:)), on: settings[.copyLinkShortcut], key: "C", modifiers: [.command, .shift])
+    setKey(#selector(AppController.toggleSidebar(_:)), on: settings[.sidebarShortcut], key: "s", modifiers: [.command])
+    setKey(#selector(AppController.savePage(_:)), on: !settings[.sidebarShortcut], key: "s", modifiers: [.command])
   }
 
   private static func setKey(_ action: Selector, on: Bool, key: String, modifiers: NSEvent.ModifierFlags) {

@@ -19,9 +19,13 @@ const pageSurface = ["switch-back-latency", "switch-no-blank", "top-strip-click"
   "devtools-docked", "background-tab"];
 
 const otherApps = ["open-from-other-apps", "open-from-other-apps-launch"];
-const settings = ["settings-window", "settings-minimal-url", "settings-loading-progress", "settings-theme",
+const settings = ["settings-window", "settings-catalog", "settings-minimal-url", "settings-loading-progress", "settings-theme",
   "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling",
   "settings-shortcuts", "settings-routes", "settings-trimmed", "settings-persist"];
+// What a setting's value or its change notice reaches: the settings checks, the welcome (theme, keys), and the
+// features they drive (address bar, loading, site controls' zoom reset, ⇧⌘C, ⌘S, menu keys in the command bar).
+const settingReaders = [...settings, "onboarding", "page-toolbar", "page-loading", "load-sweep-once", "address-fragment",
+  "site-controls", "copy-url", "sidebar-toggle", "page-commands", "bar-actions"];
 
 export const areas = {
   // Central: windows, menus, key routing, saved state, the engine bridge.
@@ -112,7 +116,9 @@ export const areas = {
   // Links and files from other apps (and the one that launched Ray), and where they open.
   "Host/LinksFromApps.swift": otherApps,
   "Host/BrowserWindowController.swift#Links from other apps": otherApps,
-  "Host/RaySettings.swift": "all",
+  // The settings: storage and observers, and the catalog of what they are (each entry's window row and test command).
+  "Host/RaySettings.swift": settingReaders,
+  "Host/SettingsCatalog.swift": settingReaders,
   "Host/SettingsWindow.swift": [...settings, "onboarding"],
   "Host/ArcImport.swift": ["arc-import"],
   // The first run's welcome and File › Import from Browser… (on the fake importer).
@@ -144,6 +150,7 @@ export const areas = {
   "Host/SafeStorage.swift": ["safe-storage-migration"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
+  "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
   "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank"],
 

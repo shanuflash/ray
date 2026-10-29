@@ -122,7 +122,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     layout()
     installPointerMonitors()
     let center = NotificationCenter.default
-    center.addObserver(self, selector: #selector(settingsChanged(_:)), name: RaySettings.didChange, object: nil)
+    observeSettings()
     center.addObserver(self, selector: #selector(profileColorChanged), name: ProfileColor.didChange, object: nil)
     center.addObserver(self, selector: #selector(windowResignedKey), name: NSWindow.didResignKeyNotification, object: window)
     // Zoom levels the engine already holds are the user's own; the default zoom only touches the rest.
@@ -201,10 +201,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     toolbar.isHidden = !toolbarShown
     sidebar.showsAddress = !toolbarShown || sidebar.superview === floating
     toolbar.showsFullAddress = fullAddressShown
-    toolbar.showsLoadingWash = RaySettings.shared.values.loadingProgress
+    toolbar.showsLoadingWash = RaySettings.shared[.loadingProgress]
     // One load indicator: the page's own line only when the address bar above it is off, and neither when Settings
     // turns progress off.
-    pages.showsProgress = !toolbarShown && RaySettings.shared.values.loadingProgress
+    pages.showsProgress = !toolbarShown && RaySettings.shared[.loadingProgress]
     if toolbarShown {
       // The address bar sits above the card, at the window's top edge, across the card's width.
       let height = PageToolbarView.height
@@ -681,7 +681,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let isInternal = URLComponents(string: AddressInput.innerURL(of: tab.url))?.scheme.map { ["chrome", AddressInput.internalScheme].contains($0) } ?? false
     let panel = SiteControlsView(
       origin: tab.committedOrigin, url: tab.url, profile: profile, security: level, isInternal: isInternal, extensions: items,
-      zoom: tab.zoomFactor, defaultZoom: RaySettings.shared.values.defaultZoom,
+      zoom: tab.zoomFactor, defaultZoom: RaySettings.shared[.defaultZoom],
       resetZoom: { [weak self, weak tab] in if let tab { self?.resetZoom(of: tab) } })
     panel.onAction = { [weak self, weak tab] action in
       guard let self, let tab, !tab.closed else { return }
@@ -901,7 +901,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     var opener = opener
     // Settings › Open new tabs next to the active tab: one with no opener goes right after the active one (when
     // that is in Today; otherwise at the top as usual).
-    if opener == nil, RaySettings.shared.values.newTabNextToActive, let active = activeEntry, active.kind == .today {
+    if opener == nil, RaySettings.shared[.newTabNextToActive], let active = activeEntry, active.kind == .today {
       opener = active
     }
     if let opener, opener.kind == .today, let index = state.today.firstIndex(where: { $0 === opener }) {
@@ -1160,7 +1160,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// holding Control keeps one walk going, and releasing it (`endTabCycle`) makes the tab it reached the most
   /// recently used. Off, it's the sidebar's order, like ⇧⌘] and ⇧⌘[.
   func cycleTabWithControl(by step: Int) {
-    guard RaySettings.shared.values.recentTabCycling else { return cycleTab(by: step) }
+    guard RaySettings.shared[.recentTabCycling] else { return cycleTab(by: step) }
     var cycle: TabCycle
     if let running = tabCycle {
       cycle = running
@@ -1320,12 +1320,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   /// Settings › Minimal URL in the address bar, the other way round.
-  var fullAddressShown: Bool { !RaySettings.shared.values.minimalURL }
+  var fullAddressShown: Bool { !RaySettings.shared[.minimalURL] }
 
   /// View › Show Full Address: the same setting as Settings › Minimal URL in the address bar. Its change comes back
-  /// through `settingsChanged`, in every window.
+  /// through `observeSettings`, in every window.
   func toggleFullAddress() {
-    RaySettings.shared.update { $0.minimalURL.toggle() }
+    RaySettings.shared.set(.minimalURL, !RaySettings.shared[.minimalURL])
   }
 
   /// View › Show Address Bar on Page.
@@ -1810,22 +1810,27 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// An older Sidebar.json kept View › Show Full Address; it's Settings › Minimal URL in the address bar now.
   private func migrateLegacySettings() {
     guard !isPrivate, let full = state.fullAddress else { return }
-    if !full { RaySettings.shared.update { $0.minimalURL = true } }
+    if !full { RaySettings.shared.set(.minimalURL, true) }
     state.fullAddress = nil
     store.save(state)
   }
 
+  private var settingObservations: [SettingsObservation] = []
+
   /// Every window follows the one set of settings.
-  @objc private func settingsChanged(_ note: Notification) {
-    let keys = note.userInfo?["keys"] as? [RaySetting] ?? []
-    if keys.contains(.minimalURL) || keys.contains(.loadingProgress) {
-      layout()
-      updateToolbarLoading()
-      if let tab = activeTab { pages.updateProgress(for: tab) }
-    }
-    if keys.contains(.defaultZoom) { settleZoomOfAllTabs() }
-    if keys.contains(.recentTabCycling) { endTabCycle() }
-    logState("settings")
+  private func observeSettings() {
+    let settings = RaySettings.shared
+    settingObservations = [
+      settings.observe([.minimalURL, .loadingProgress]) { [weak self] in
+        guard let self else { return }
+        self.layout()
+        self.updateToolbarLoading()
+        if let tab = self.activeTab { self.pages.updateProgress(for: tab) }
+      },
+      settings.observe(.defaultZoom) { [weak self] _ in self?.settleZoomOfAllTabs() },
+      settings.observe(.recentTabCycling) { [weak self] _ in self?.endTabCycle() },
+      settings.observe(AnySettingKey.all) { [weak self] in self?.logState("settings") },
+    ]
   }
 
   /// The profile's colour changed: everything drawn with it takes the new one at once.
@@ -1888,7 +1893,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       return
     }
     zoomHosts[tab.tabId] = host
-    if !isUserZoomed(host) { setZoom(tab, to: RaySettings.shared.values.defaultZoom) }
+    if !isUserZoomed(host) { setZoom(tab, to: RaySettings.shared[.defaultZoom]) }
   }
 
   private func settleZoomOfAllTabs() { tabs.forEach(settleZoom(of:)) }
@@ -1897,7 +1902,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// isn't the one Ray last settled), that's not the user; anything else on a host that isn't marked yet is.
   private func noteZoomChanged(_ tab: RayCoreTab) {
     guard !applyingZoom, !closing, let host = zoomHost(of: tab), zoomHosts[tab.tabId] == host, !isUserZoomed(host),
-          abs(tab.zoomFactor - RaySettings.shared.values.defaultZoom) > 0.002 else { return }
+          abs(tab.zoomFactor - RaySettings.shared[.defaultZoom]) > 0.002 else { return }
     if isPrivate { privateZoomed.insert(host) } else { RaySettings.shared.markZoomed(host) }
     logState("zoom")
   }
@@ -1909,7 +1914,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       return
     }
     if isPrivate { privateZoomed.remove(host) } else { RaySettings.shared.unmarkZoomed(host) }
-    setZoom(tab, to: RaySettings.shared.values.defaultZoom)
+    setZoom(tab, to: RaySettings.shared[.defaultZoom])
     logState("zoom")
   }
 

@@ -43,14 +43,25 @@ publicly or create accounts.
   posts `didChange`, and each window redraws its views and re-tints the wash, page line and downloads ring).
   `foreground(on:)` is the white or black with the higher WCAG contrast on a fill: use it for any text or icon on an
   accent fill. Never use `NSColor.controlAccentColor` (`scripts/test.sh` fails on it).
-- `RaySettings`: the app-wide settings, `Settings.json` in the data dir next to `Sidebar.json` (Codable, saved 0.2 s
-  after a change and on quit, `didChange` carries the changed `RaySetting` keys). `apply(key, text)` is the one call
-  the window's controls and the test command `setting` both make. Private windows read it, never write to it (their
-  zoomed hosts stay in memory). Also holds the hosts the user zoomed (see Page zoom below) and the Settings
-  window's frame.
+- `SettingsCatalog`: every setting as one typed entry, `SettingKey<Value>` (a `static let` on `AnySettingKey`, named
+  in its `all` list): id (also its Settings.json key and the test command's name; a rename goes through `aliases`),
+  default, `validate` (clamp or refuse), scope (app; profile and Space later), `built` (an unbuilt one's row shows only
+  in test builds), and its UI: pane, group, title, detail, search keywords, control (toggle, choice with options,
+  colour, custom) and `rare` (under "More…"). Values are `SettingValue`s: Bool, Double, Int, String, String?. The
+  window's rows, `setting <id> <value>`, `settings catalog` and the state log's `settings` dump are generated from
+  it. **Adding a setting:** one entry plus its name in `all`, then the feature reads `RaySettings.shared[.id]` (and
+  `observe(.id)` if it follows changes); `settings-catalog` covers it with no check code.
+- `RaySettings`: the settings' values. `shared[.key]` reads, `set(.key, value)` writes, `apply(key, text)` (`default`
+  resets any setting) is the one call the window's controls and the test command `setting` both make, and
+  `observe(.key) { value in … }` / `observe([keys]) { … }` follow changes (main thread, once per run-loop turn, for as
+  long as the returned `SettingsObservation` is kept). `Settings.json` in the data dir next to `Sidebar.json` is a
+  dictionary (saved 0.2 s after a change and on quit, sorted keys): a missing or invalid value loads as its default,
+  and keys this build doesn't know are written back as they were. Also holds Ray's own state there as typed fields,
+  not settings: the hosts the user zoomed (see Page zoom below), `zoomAdopted`, the Settings window's frame and
+  `onboarded`. Private windows read it, never write to it (their zoomed hosts stay in memory).
 - `SettingsWindow`: Ray's own Settings window (⌘, in the Ray menu, `ray://settings/appearance`; one pane, Appearance:
-  grouped rows, `RaySwitch` in the profile's colour, swatches plus a custom colour via NSColorPanel, a zoom popup, an
-  "All Settings…" link to `ray://settings`). `AddressInput.nativeSettingsPane(for:)` recognises the Appearance
+  grouped rows built from the catalog, `RaySwitch` in the profile's colour, swatches plus a custom colour via
+  NSColorPanel, a zoom popup, an "All Settings…" link to `ray://settings`). `AddressInput.nativeSettingsPane(for:)` recognises the Appearance
   address: typed or chosen ones open the window and never load; Chrome's page navigating itself there goes back.
   Settings that act elsewhere: minimal URL and loading progress (`PageToolbar`, `PageContainerView.showsProgress`),
   new tab position (`insertToday`), ⌃Tab in recent order (`cycleTabWithControl`, settled by a `flagsChanged` monitor
@@ -122,8 +133,9 @@ publicly or create accounts.
   `affected.mjs` (which checks each file or `// MARK:` section can affect) and `changed.mjs` (diff → checks).
 - `Host/TestCommands.swift`: with `RAY_TEST_COMMANDS=1`, stdin lines drive the real UI (`menu <action>`,
   `type <text>`, `enter`, `escape`) through the same code paths as the keyboard. DevTools can't reach native UI, so
-  checks for the sidebar and address field go through this. Settings: `setting <name> <value>` (same call as the
-  window's controls), `settings open|close|link|press <control> [n]|snap <path>`, `zoom in|out|reset`, and
+  checks for the sidebar and address field go through this. Settings: `setting <id> <value>` (any catalog id, parsed
+  by its type; same call as the window's controls), `settings open|close|link|press <id> [n]|snap <path>|catalog`
+  (the window's controls are named by setting id in `settingsWindow.controls`), `zoom in|out|reset`, and
   `key tab ctrl keywin` / `key ctrlup` for ⌃Tab walks. `onscreen on|off` puts the hidden window on the shown Space
   (accessory policy, nearly transparent, click-through, not activated) for checks of what pages draw. The state log
   has `settings`, `settingsWindow`, `menuKeys`, `recentOrder`, `tabCycle`, each tab's `zoom` and `pages.switches`
@@ -236,6 +248,9 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
 - A test window on another app's full-screen Space isn't on screen: Chrome draws nothing and display links don't
   tick. Checks of frames use `onscreen on` (only an accessory app's window can join that Space); `isOnActiveSpace`
   stays false for a window on all Spaces, so go by `occlusionState`.
+- Setting observers run on the next turn of the run loop, not inside `set`: code that changes a setting and needs the
+  result at once reads `RaySettings.shared[.key]` itself. An `observe` whose `SettingsObservation` isn't kept stops at
+  once.
 - The settings-page trim (`tools/trim-settings-pak.py`) edits minified code of one engine version, matched by exact
   patterns, and the build stops with a message naming the pattern when one moves. On an engine bump, run the build, and
   if it stops, re-read `shared.rollup.js` (the resource that holds `function createPageVisibility()`; decompress it

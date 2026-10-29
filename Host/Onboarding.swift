@@ -85,7 +85,7 @@ final class OnboardingView: NSView {
   /// Whether the first run shows at launch: once per new data dir (`RaySettings`' `onboarded`); test builds only
   /// when a check asks for it (RAY_ONBOARDING=1), so every other check starts on a plain window.
   static var showsAtLaunch: Bool {
-    !RaySettings.shared.values.onboarded && (!TestEnvironment.isTestBuild || TestEnvironment["RAY_ONBOARDING"] == "1")
+    !RaySettings.shared.onboarded && (!TestEnvironment.isTestBuild || TestEnvironment["RAY_ONBOARDING"] == "1")
   }
 
   static let cardWidth: CGFloat = 460
@@ -106,6 +106,7 @@ final class OnboardingView: NSView {
   private(set) var step: OnboardingStep
   private var trail: [OnboardingStep] = []
   private var closing = false
+  private var settingsObservation: SettingsObservation?
   private lazy var heightSpring = Spring(value: Self.minCardHeight, response: 0.34, dampingRatio: 0.9) {
     [weak self] _ in self?.layoutCard()
   }
@@ -144,7 +145,7 @@ final class OnboardingView: NSView {
     backend.sources { [weak self] found in self?.sourcesArrived(found) }
     let center = NotificationCenter.default
     center.addObserver(self, selector: #selector(accentChanged), name: ProfileColor.didChange, object: nil)
-    center.addObserver(self, selector: #selector(settingsChanged), name: RaySettings.didChange, object: nil)
+    settingsObservation = RaySettings.shared.observe(AnySettingKey.all) { [weak self] in self?.settingsChanged() }
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -477,7 +478,7 @@ final class OnboardingView: NSView {
     stepView?.refresh()
   }
 
-  @objc private func settingsChanged() {
+  private func settingsChanged() {
     stepView?.refresh()
     changed()
   }
@@ -1892,7 +1893,7 @@ fileprivate final class ThemeStepView: OnboardingStepView {
   func pressSwatch(_ index: Int) -> Bool { swatches.press(index: index) }
 
   override func refresh() {
-    swatches.selection = RaySettings.shared.values.theme
+    swatches.selection = RaySettings.shared[.theme]
     preview.setNeedsDisplayRecursively()
   }
 
@@ -2020,14 +2021,14 @@ fileprivate final class KeysStepView: OnboardingStepView {
 
   /// The keys as they work now: one whose shortcut Settings turned off isn't offered.
   private func rebuild() {
-    let values = RaySettings.shared.values
+    let settings = RaySettings.shared
     var list: [(caps: [String], title: String, detail: String)] = [
       (["⌘", "T"], "Command bar", "Open a site, search, or jump to a tab you have open."),
     ]
-    if values.sidebarShortcut {
+    if settings[.sidebarShortcut] {
       list.append((["⌘", "S"], "Show or hide the sidebar", "Hidden, it peeks out at the window's left edge."))
     }
-    if values.copyLinkShortcut {
+    if settings[.copyLinkShortcut] {
       list.append((["⇧", "⌘", "C"], "Copy this page's link", "The address, ready to paste anywhere."))
     }
     let now = list.map { $0.caps.joined() }

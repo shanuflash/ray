@@ -2222,18 +2222,18 @@ const checks = {
     // The defaults, as the controls show them.
     assert(c().minimalURL === false && c().loadingProgress === true && c().newTabNextToActive === false &&
       c().recentTabCycling === true && c().copyLinkShortcut === true && c().sidebarShortcut === true, `switches ${JSON.stringify(c())}`);
-    assert(c().zoom === "100%" && c().zoomLevels.length === 17 && c().zoomLevels[0] === "25%" && c().zoomLevels.at(-1) === "500%", `zoom ${c().zoomLevels}`);
-    assert(c().swatch === "default" && c().swatches === 9 && c().swatchSelected === 0, `swatches ${c().swatch} ${c().swatches} ${c().swatchSelected}`);
+    assert(c().defaultZoom === "100%" && c().defaultZoomOptions.length === 17 && c().defaultZoomOptions[0] === "25%" && c().defaultZoomOptions.at(-1) === "500%", `zoom ${c().defaultZoomOptions}`);
+    assert(c().theme === "default" && c().themeSwatches === 9 && c().themeSelected === 0, `swatches ${c().theme} ${c().themeSwatches} ${c().themeSelected}`);
     assert(c().allSettingsLink === "All Settings…", `link ${c().allSettingsLink}`);
     // A control changes the setting, and a setting changed anywhere else shows in the control.
     await command("settings press minimalURL");
     await until("switch changed the setting", async () => { await command("state"); return state().settings.minimalURL === true; });
     await setSetting("minimalURL", "off");
     await until("control follows the setting", async () => { await command("state"); return c().minimalURL === false; });
-    await command("settings press swatch 3");
-    await until("swatch chose Green", async () => { await command("state"); return state().settings.theme.setting === "#3EA64A" && c().swatchSelected === 3; });
-    await command("settings press zoom 9");
-    await until("popup chose 125%", async () => { await command("state"); return state().settings.defaultZoom === 1.25 && c().zoom === "125%"; });
+    await command("settings press theme 3");
+    await until("swatch chose Green", async () => { await command("state"); return state().settings.theme.setting === "#3EA64A" && c().themeSelected === 3; });
+    await command("settings press defaultZoom 9");
+    await until("popup chose 125%", async () => { await command("state"); return state().settings.defaultZoom === 1.25 && c().defaultZoom === "125%"; });
     await setSetting("defaultZoom", "1");
     await resetSettings();
     // Only one window, however it's opened.
@@ -2246,6 +2246,96 @@ const checks = {
     // Its frame is remembered, in Settings.json next to Sidebar.json.
     const file = join(dataDir, "Settings.json");
     await until("frame saved", () => existsSync(file) && JSON.parse(readFileSync(file, "utf8")).windowFrame, 4000);
+  },
+  async "settings-catalog"() {
+    // Every setting in the catalog (Host/SettingsCatalog.swift), with nothing per setting here: `setting <id> <value>`
+    // round-trips its samples, refuses bad values and takes `default`; the state log shows it; and an instance of its
+    // own on a Settings.json full of garbage falls back to every default, keeping the keys it doesn't know.
+    await resetSettings();
+    const catalog = async () => JSON.parse(await commandResult("settings catalog"));
+    const keys = await catalog();
+    assert(new Set(keys.map((k) => k.id)).size === keys.length, `ids repeat: ${keys.map((k) => k.id)}`);
+    for (const id of ["minimalURL", "loadingProgress", "theme", "defaultZoom", "newTabNextToActive", "recentTabCycling",
+      "copyLinkShortcut", "sidebarShortcut"]) assert(keys.some((k) => k.id === id), `${id} isn't in the catalog`);
+    await command("state");
+    for (const key of keys) {
+      assert(key.value === key.default, `${key.id} isn't at its default: ${key.value} vs ${key.default}`);
+      assert(key.id in state().settings, `${key.id} isn't in the state log's settings`);
+      assert(key.title && key.pane && key.group && key.control && key.scope, `${key.id} lacks a part: ${JSON.stringify(key)}`);
+      assert(key.samples.length > 0 || key.control.startsWith("custom"), `${key.id} has no samples`);
+      const value = async () => (await catalog()).find((k) => k.id === key.id).value;
+      for (const sample of key.samples) {
+        await command(`setting ${key.id} ${sample}`);
+        const now = await value();
+        assert(now === sample, `${key.id}: set ${sample}, reads ${now}`);
+      }
+      const before = await value();
+      for (const bad of key.rejects) {
+        const result = await commandResult(`setting ${key.id} ${bad}`);
+        assert(result.startsWith("usage"), `setting ${key.id} ${bad} -> ${result}`);
+        assert((await value()) === before, `${key.id} changed on a refused ${bad}`);
+      }
+      await command(`setting ${key.id} default`);
+      assert((await value()) === key.default, `${key.id}: default reads ${await value()}`);
+    }
+    const unknown = await commandResult("setting noSuchSetting on");
+    assert(unknown.startsWith("usage"), `an unknown setting -> ${unknown}`);
+    await resetSettings();
+
+    // Garbage of every kind for every setting, plus keys this build doesn't know and Ray's own state.
+    const dir = mkdtempSync(join(tmpdir(), "ray-settings-catalog-"));
+    const file = join(dir, "Settings.json");
+    const junk = ["garbage", { nested: true }, 12345.678, [1, 2], null];
+    const future = { nested: [1, "two", { three: 3 }], flag: false };
+    writeFileSync(file, JSON.stringify({
+      ...Object.fromEntries(keys.map((k, i) => [k.id, junk[i % junk.length]])),
+      fromTheFuture: future, oldSetting: "kept", zoomedHosts: ["kept.example"], onboarded: true,
+    }));
+    let log = "";
+    const it = spawn(join(app, "Contents/MacOS/Ray"), [], {
+      env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_DATA_DIR: dir,
+        RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_START_URL: `${origin}/a`,
+        RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.settings` },
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    const exit = new Promise((r) => it.on("exit", (code, signal) => r(code ?? signal)));
+    it.stdin.on("error", () => {});
+    it.stderr.setEncoding("utf8");
+    it.stderr.on("data", (chunk) => { log += chunk; });
+    const run = async (line) => {
+      const marker = `[ray-test] ${line} -> `;
+      const from = log.length;
+      it.stdin.write(line + "\n");
+      return until(`command ${line}`, () => {
+        const at = log.indexOf(marker, from);
+        return at >= 0 ? log.slice(at + marker.length).split("\n")[0] : null;
+      }, 25000, 150);
+    };
+    try {
+      const loaded = JSON.parse(await run("settings catalog"));
+      for (const key of loaded) assert(key.value === key.default, `${key.id} from garbage: ${key.value}, not ${key.default}`);
+      // A change saves the file: every setting valid again, the unknown keys and Ray's state as they were.
+      const flag = loaded.find((k) => k.control === "toggle");
+      const other = flag.default === "on" ? "off" : "on";
+      assert((await run(`setting ${flag.id} ${other}`)) === "ok", `setting ${flag.id} ${other}`);
+      const saved = await until("saved", () => {
+        const json = JSON.parse(readFileSync(file, "utf8"));
+        return json[flag.id] === (other === "on") ? json : null;
+      }, 4000);
+      // (Same content; the file's keys are written sorted, nested ones too.)
+      const canon = (o) => JSON.stringify(o, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort()) : v));
+      assert(canon(saved.fromTheFuture) === canon(future) && saved.oldSetting === "kept",
+        `unknown keys after a save: ${JSON.stringify(saved)}`);
+      assert(saved.zoomedHosts?.join() === "kept.example" && saved.onboarded === true, `Ray's state after a save: ${JSON.stringify(saved)}`);
+      for (const key of loaded.filter((k) => k.id !== flag.id)) {
+        assert(!junk.slice(0, 4).some((j) => JSON.stringify(j) === JSON.stringify(saved[key.id])), `${key.id} kept its garbage: ${JSON.stringify(saved[key.id])}`);
+      }
+      it.stdin.write("menu quit\n");
+      assert((await Promise.race([exit, sleep(15000).then(() => "timeout")])) !== "timeout", "the instance didn't quit within 15 s");
+    } finally {
+      if (it.exitCode === null && it.signalCode === null) it.kill("SIGKILL");
+      rmSync(dir, { recursive: true, force: true });
+    }
   },
   async "settings-minimal-url"() {
     await resetSettings();
@@ -2377,9 +2467,9 @@ const checks = {
     // The window shows it: a colour that is no swatch is the custom one; a preset's own swatch is selected.
     await command("settings open");
     await until("window open", async () => { await command("state"); return state().settingsWindow.open; });
-    assert(state().settingsWindow.controls.swatch === "#14146E" && state().settingsWindow.controls.swatchSelected === 8, `custom ${JSON.stringify(state().settingsWindow.controls)}`);
+    assert(state().settingsWindow.controls.theme === "#14146E" && state().settingsWindow.controls.themeSelected === 8, `custom ${JSON.stringify(state().settingsWindow.controls)}`);
     await setSetting("theme", "#12A594");
-    await until("preset selected", async () => { await command("state"); return state().settingsWindow.controls.swatchSelected === 2; });
+    await until("preset selected", async () => { await command("state"); return state().settingsWindow.controls.themeSelected === 2; });
     await closeSettingsWindow();
     // A value that isn't a colour is refused.
     const refused = await commandResult("setting theme red");
@@ -3360,7 +3450,7 @@ const checks = {
     await until("settings window after relaunch", async () => { await command("state"); return state().settingsWindow.open; });
     const shown = state().settingsWindow.controls;
     assert(shown.minimalURL === true && shown.loadingProgress === false && shown.newTabNextToActive === true && shown.recentTabCycling === false &&
-      shown.copyLinkShortcut === false && shown.sidebarShortcut === false && shown.swatch === "#E5589D" && shown.zoom === "125%", `window after relaunch ${JSON.stringify(shown)}`);
+      shown.copyLinkShortcut === false && shown.sidebarShortcut === false && shown.theme === "#E5589D" && shown.defaultZoom === "125%", `window after relaunch ${JSON.stringify(shown)}`);
     await closeSettingsWindow();
     }
     const after = state().sidebar;

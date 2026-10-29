@@ -128,12 +128,15 @@ enum TestCommands {
     return "ok"
   }
 
-  /// `setting <name> <value>`: a setting changed through `RaySettings.apply`, the call the Settings window's own
-  /// controls make. `settings open|close|link|snap <path>` drive the window itself.
+  // MARK: Settings
+
+  /// `setting <id> <value>`: any setting in the catalog, its value parsed by its type, through `RaySettings.apply`
+  /// (the call the Settings window's own controls make); `default` for its default. A value it refuses is a usage
+  /// error. `settings open|close|link|press|snap|catalog` drive the window itself, or list the catalog.
   private static func setting(_ argument: String) -> String {
     let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
-    guard words.count == 2, let key = RaySetting(rawValue: words[0]), RaySettings.shared.apply(key, words[1]) else {
-      return "usage: setting <\(RaySetting.allCases.map(\.rawValue).joined(separator: "|"))> <value>"
+    guard words.count == 2, RaySettings.shared.apply(id: words[0], words[1]) else {
+      return "usage: setting <\(AnySettingKey.all.map(\.id).joined(separator: "|"))> <value>"
     }
     return "ok"
   }
@@ -150,10 +153,17 @@ enum TestCommands {
       }
     case "snap":
       guard words.count == 2, SettingsWindowController.shared.snapshot(to: words[1]) else { return "no window" }
-    default: return "usage: settings open|close|link|snap <path>"
+    case "catalog":
+      // One line of JSON: every setting, what it is, and its value now (as text).
+      guard let data = try? JSONSerialization.data(withJSONObject: AnySettingKey.catalogDebug(RaySettings.shared), options: [.sortedKeys]),
+            let text = String(data: data, encoding: .utf8) else { return "no catalog" }
+      return text
+    default: return "usage: settings open|close|link|press|snap|catalog"
     }
     return "ok"
   }
+
+  // MARK: Mouse
 
   /// `press x y`, `move x y`, `release x y`: one mouse drag in steps, so checks can look at it mid-way.
   private static func mouse(_ type: NSEvent.EventType, _ argument: String, in window: NSWindow?) -> String {
