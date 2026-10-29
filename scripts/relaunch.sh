@@ -12,7 +12,8 @@ codesign --verify --deep --strict "$built" || { echo "error: $built's signature 
 
 # Any Ray with this bundle id: the installed copy, or an older build/Ray.app still running from the repo. Matched on
 # the executable, not the command line: another session's swiftc ends its arguments with `-o …/Ray.app/Contents/MacOS/Ray`.
-running() { ps -axo comm= | grep -qE "/Ray.app/Contents/MacOS/Ray$"; }
+# No `grep -q`: it exits at the first match, ps then dies of SIGPIPE and pipefail reports "not running".
+running() { ps -axo comm= | grep -E "/Ray.app/Contents/MacOS/Ray$" >/dev/null; }
 if running; then
   osascript -e "tell application id \"$bundle_id\" to quit" >/dev/null 2>&1 || true
   for _ in $(seq 1 40); do
