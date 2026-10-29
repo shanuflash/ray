@@ -337,6 +337,8 @@ enum TestCommands {
       if AppController.shared.current?.snapshotSiteControls(to: argument) != true { result = "no panel" }
     case "toolbarsnap":
       if AppController.shared.current?.snapshotToolbar(to: argument) != true { result = "no toolbar" }
+    case "barsnap":
+      if AppController.shared.current?.snapshotCommandBar(to: argument) != true { result = "no command bar" }
     case "toolbarreload":
       // The toolbar's reload button, which is a stop button while the page loads.
       AppController.shared.current?.pressToolbarReload()

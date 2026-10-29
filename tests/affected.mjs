@@ -10,7 +10,7 @@ const pages = ["page-channel", "navigate", "target-blank", "window-open", "backg
   "activate-target", "page-closes-itself", "close-target"];
 const permissions = ["permission", "permission-allow"];
 const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-switch-to-tab", "bar-history",
-  "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions", "bar-search-google"];
+  "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions", "bar-search-google", "bar-actions"];
 const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];
 const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still"];
@@ -25,6 +25,9 @@ export const areas = {
   // Central: windows, menus, key routing, saved state, the engine bridge.
   "Host/AppController.swift": "all",
   "Host/AppController.swift#Welcome again": ["onboarding"],
+  // Which menu commands are enabled: the menu's keys and the command bar's action rows.
+  "Host/AppController.swift#Menu validation": [...commandBar, "page-commands", "copy-url", "find-in-page", "site-controls",
+    "settings-shortcuts", "clear", "folder-create", "pin-unload-restore"],
   "Host/MainMenu.swift": "all",
   "Host/Shortcuts.swift": "all",
   "Host/SidebarModel.swift": "all",
@@ -61,7 +64,7 @@ export const areas = {
     "find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Extensions and downloads": ["extensions", "extension-prompt", "downloads",
     "download-insecure-blocked", "site-controls"],
-  "Host/BrowserWindowController.swift#Test snapshots": ["folder-rename", "tile-hover"],
+  "Host/BrowserWindowController.swift#Test snapshots": ["folder-rename", "tile-hover", "bar-actions"],
   "Host/BrowserWindowController.swift#Arc import": ["arc-import", "import-browser"],
   "Host/BrowserWindowController.swift#Browser import": ["import-browser", "arc-import", "onboarding"],
   "Host/BrowserWindowController.swift#Onboarding": ["onboarding"],
@@ -103,6 +106,8 @@ export const areas = {
   "Host/RaySettings.swift#State log": [...settings, "onboarding"],
   "Host/CommandBarView.swift": commandBar,
   "Host/Suggestions.swift": commandBar,
+  // The command bar's action rows: menu commands by name (they run through the menu's own validation and selectors).
+  "Host/BarActions.swift": [...commandBar, "page-commands", "copy-url"],
   "Host/Downloads.swift": ["downloads", "download-insecure-blocked"],
   "Host/Extensions.swift": ["extensions", "extension-prompt", "site-controls"],
   "Host/FindBar.swift": ["find-in-page"],
@@ -116,7 +121,7 @@ export const areas = {
   "Host/SafeStorage.swift": ["safe-storage-migration"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
-  "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser", "onboarding"],
+  "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

@@ -309,6 +309,9 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
 }
 
 extension AppController: NSMenuItemValidation {
+  // MARK: Menu validation
+
+  /// The menu's, and the command bar's too: the bar offers a command only while this enables it (BarActions).
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
     case #selector(goBack(_:)): return current?.activeTab?.canGoBack ?? false
@@ -332,6 +335,17 @@ extension AppController: NSMenuItemValidation {
       return current?.viewSourceURL != nil
     case #selector(taskManager(_:)):
       return current != nil
+    case #selector(togglePin(_:)):
+      item.title = current?.activeEntry.map { $0.kind != .today } == true ? "Unpin Tab" : "Pin Tab"
+      return current?.activeEntry != nil
+    case #selector(backToPinned(_:)):
+      return current?.activeEntry?.isAwayFromPinned == true
+    case #selector(clearToday(_:)):
+      return current?.state.today.isEmpty == false
+    case #selector(copyURL(_:)):
+      return current?.activeEntry.map { !$0.currentURL.isEmpty } ?? false
+    case #selector(find(_:)), #selector(toggleSiteControls(_:)):
+      return current?.activeTab != nil
     default: return true
     }
   }

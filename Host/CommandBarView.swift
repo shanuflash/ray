@@ -27,6 +27,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   private(set) var suggestions: [Suggestion] = []
 
   var selectedIndex: Int { tableView.selectedRow }
+  /// For test snapshots: where the panel sits in the bar.
+  var panelFrame: NSRect { panel.frame }
 
   var rowsFullyVisible: Bool {
     layoutSubtreeIfNeeded()
@@ -263,10 +265,12 @@ private final class SuggestionCell: NSTableCellView {
   private let iconBox = NSView()
   private let icon = NSImageView()
   private let label = NSTextField(labelWithString: "")
+  /// On the right: "Switch to Tab" on a tab, an action's keyboard shortcut (Ardia's hint) on an action.
   private let action = NSTextField(labelWithString: "Switch to Tab")
   private let arrowBox = NSView()
   private let arrow = NSImageView()
   private var isTab = false
+  private var shortcut = ""
   private var suggestion: Suggestion?
 
   var selected = false {
@@ -304,9 +308,14 @@ private final class SuggestionCell: NSTableCellView {
     icon.frame = iconBox.bounds.insetBy(dx: 4, dy: 4)
     arrowBox.frame = NSRect(x: bounds.width - 22 - 24, y: mid - 12, width: 24, height: 24)
     arrow.frame = arrowBox.bounds.insetBy(dx: 4, dy: 4)
-    let actionWidth = isTab ? ceil(action.intrinsicContentSize.width) : 0
-    action.frame = NSRect(x: arrowBox.frame.minX - 9 - actionWidth, y: mid - 10, width: actionWidth, height: 20)
-    let right = (isTab ? action.frame.minX : arrowBox.frame.minX) - 16
+    let hasAccessory = isTab || !shortcut.isEmpty
+    let actionWidth = hasAccessory ? ceil(action.intrinsicContentSize.width) : 0
+    // The shortcut's frame is one line tall and centred (a label draws from its top); "Switch to Tab" keeps its own.
+    let actionHeight = isTab ? 20 : ceil(action.intrinsicContentSize.height)
+    action.frame = NSRect(
+      x: arrowBox.frame.minX - 9 - actionWidth, y: isTab ? mid - 10 : (mid - actionHeight / 2).rounded(),
+      width: actionWidth, height: actionHeight)
+    let right = (hasAccessory ? action.frame.minX : arrowBox.frame.minX) - 16
     // Row text lines up with the typed text above it, as in Arc.
     let textX = CommandBarView.contentInset - 3
     label.frame = NSRect(x: textX, y: mid - 9, width: max(0, right - textX), height: 18)
@@ -321,6 +330,9 @@ private final class SuggestionCell: NSTableCellView {
     self.suggestion = suggestion
     icon.image = suggestion.icon
     if case .tab = suggestion.kind { isTab = true } else { isTab = false }
+    if case .action = suggestion.kind { shortcut = suggestion.detail } else { shortcut = "" }
+    action.stringValue = isTab ? "Switch to Tab" : shortcut
+    action.font = isTab ? .systemFont(ofSize: 13, weight: .medium) : .systemFont(ofSize: 12)
     let text = NSMutableAttributedString(
       string: suggestion.title,
       attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.labelColor])
@@ -329,6 +341,7 @@ private final class SuggestionCell: NSTableCellView {
     case .tab: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
     case .search: detail = suggestion.detail
     case .url, .history: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
+    case .action: detail = ""
     }
     if !detail.isEmpty {
       text.append(NSAttributedString(
@@ -341,10 +354,10 @@ private final class SuggestionCell: NSTableCellView {
   }
 
   private func updateAccessory() {
-    action.isHidden = !isTab
+    action.isHidden = !isTab && shortcut.isEmpty
     arrowBox.isHidden = !(isTab || selected)
     effectiveAppearance.performAsCurrentDrawingAppearance {
-      action.textColor = selected ? .labelColor : .tertiaryLabelColor
+      action.textColor = selected ? (isTab ? .labelColor : .secondaryLabelColor) : .tertiaryLabelColor
       arrowBox.layer?.backgroundColor = (selected ? NSColor.labelColor : NSColor.labelColor.withAlphaComponent(0.08)).cgColor
       arrow.contentTintColor = selected ? .windowBackgroundColor : .tertiaryLabelColor
       let symbol = icon.image?.isTemplate ?? false

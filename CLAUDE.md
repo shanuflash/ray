@@ -13,7 +13,9 @@ publicly or create accounts.
   window's tabs; `SidebarView` is the address field and tab list; `PageContainerView` shows one page at a time
   (others stay attached but hidden, with `noteShown(byHost:)`); `MainMenu` + `Shortcuts` do key routing.
 - `CommandBarView` + `Suggestions`: the Arc-style command bar (⌘T new tab, ⌘L / clicking the sidebar address =
-  current tab). Rows: autocompleted host match, typed URL or search, open tabs ("Switch to Tab"), history.
+  current tab). Rows: autocompleted host match, typed URL or search, open tabs ("Switch to Tab"), history, and
+  `BarActions`: menu commands read from the main menu (Ray's own items, validated as the menu does), matched by word
+  starts of their title or synonyms, with the live key equivalent; an exact name leads unless a host autocompletes.
 - `PageToolbar`: Dia's address bar above the page (View › Show Address Bar on Page). Geometry is Ardia's
   (`third_party/ardia/apps/browser/src/components/ui/theme.ts` `layout`, `components/toolbar/Toolbar.tsx`): 41 pt,
   buttons centred at 21/56/92/127, address from 145; the host in medium weight, then path and query in grey

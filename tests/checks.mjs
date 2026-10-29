@@ -526,6 +526,112 @@ const checks = {
     await command(`rowaction close ${entryOfTab(tab.id).id}`);
     await until("search tab closed", () => state().tabs.length === before);
   },
+  async "bar-actions"() {
+    // Arc's command bar is also a control centre: menu commands by name, with their current shortcut, run as the menu
+    // runs them, and only while the menu would enable them.
+    await resetSettings();
+    const barFor = async (text) => {
+      await command("menu newTab");
+      await until("bar open", async () => { await command("state"); return state().commandBar; });
+      await command(`type ${text}`);
+      return until(`rows for ${text}`, async () => { await command("state"); return state().commandBar?.query === text && state().commandBar; });
+    };
+    const actions = (bar) => bar.rows.filter((r) => r.kind === "action");
+    const actionRow = (bar, title) => bar.rows.findIndex((r) => r.kind === "action" && r.title === title);
+    const choose = async (index) => {
+      for (let i = 0; i < index; i++) await command("down");
+      await command("enter");
+      await until("bar closed", () => state().commandBar === null);
+    };
+    await goTo(`${origin}/b?actions`, true);
+    await until("page", async () => { await command("state"); return activeTabState()?.url.endsWith("/b?actions") && activeTabState()?.title === "Page B"; });
+    const page = state().active;
+    // "task": Task Manager, which has no shortcut, below what you typed (a partial name never takes Enter).
+    let bar = await barFor("task");
+    let at = actionRow(bar, "Task Manager");
+    assert(at > 0 && bar.rows[at].detail === "", `task: ${JSON.stringify(bar.rows)}`);
+    assert(bar.rows[0].kind === "search", `a partial name took the first row: ${JSON.stringify(bar.rows[0])}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-actions.png")}`);
+    await command("escape");
+    // A short query offers two at most, a longer one three; and only word starts match ("ask" isn't Task Manager).
+    bar = await barFor("re");
+    assert(actions(bar).length > 0 && actions(bar).length <= 2, `"re" offered ${JSON.stringify(actions(bar))}`);
+    await command("escape");
+    bar = await barFor("page");
+    assert(actions(bar).length <= 3, `"page" offered ${JSON.stringify(actions(bar))}`);
+    await command("escape");
+    bar = await barFor("ask");
+    assert(actionRow(bar, "Task Manager") < 0, `"ask" matched mid-word: ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+    // An exact name leads, so Enter runs it: "zoom in" shows ⌘+ and zooms the page, as ⌘+ would.
+    bar = await barFor("zoom in");
+    assert(bar.rows[0].kind === "action" && bar.rows[0].title === "Zoom In" && bar.rows[0].detail === "⌘+",
+      `zoom in: ${JSON.stringify(bar.rows)}`);
+    await command("enter");
+    await until("zoomed", async () => { await command("state"); return state().commandBar === null && near(activeZoom(), 1.1); }, 4000);
+    assert(state().active === page, "Zoom In changed the tab");
+    await command("zoom reset");
+    await until("zoom back", async () => { await command("state"); return near(activeZoom(), 1); }, 4000);
+    // "copy": Copy URL with ⇧⌘C, and with no shortcut once Settings gives ⇧⌘C to the page; it still copies.
+    bar = await barFor("copy");
+    at = actionRow(bar, "Copy URL");
+    assert(at > 0 && bar.rows[at].detail === "⇧⌘C", `copy: ${JSON.stringify(bar.rows)}`);
+    if (process.env.SNAP_DIR) {
+      await command("down");
+      await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-copy.png")}`);
+    }
+    await command("escape");
+    await setSetting("copyLinkShortcut", "off");
+    bar = await barFor("copy");
+    at = actionRow(bar, "Copy URL");
+    assert(at > 0 && bar.rows[at].detail === "", `copy without its shortcut: ${JSON.stringify(bar.rows)}`);
+    await choose(at);
+    await until("copied", async () => { await command("state"); return state().pasteboard === `${origin}/b?actions`; });
+    await setSetting("copyLinkShortcut", "on");
+    // An exact host match stays first: with chrome://history open, "history" autocompletes to its tab, and the
+    // History command (an exact synonym) waits below it. With no host to complete, an exact name leads.
+    await command("menu showHistory");
+    await until("history tab", async () => { await command("state"); return activeTabState()?.url.startsWith("chrome://history"); });
+    bar = await barFor("history");
+    assert(bar.rows[0].kind === "tab", `"history" first row: ${JSON.stringify(bar.rows[0])}`);
+    assert(actionRow(bar, "Show Full History") > 0, `"history" didn't offer History: ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+    await command("menu closeTab");
+    await until("back on the page", async () => { await command("state"); return state().active === page; });
+    bar = await barFor("task manager");
+    assert(bar.rows[0].kind === "action" && bar.rows[0].title === "Task Manager", `task manager: ${JSON.stringify(bar.rows[0])}`);
+    await command("escape");
+    // An address that begins like an action word is an address: no action rows, and Enter goes there (a *.localhost
+    // host, so nothing leaves the machine).
+    bar = await barFor("printer.com");
+    assert(bar.rows[0].kind === "url" && actions(bar).length === 0, `printer.com: ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+    const commandsRun = states.filter((s) => s.event === "chromeCommand").length;
+    const tabs = state().tabs.length;
+    const printer = origin.replace("http://127.0.0.1", "printer.localhost") + "/b?printer";
+    bar = await barFor(printer);
+    assert(bar.rows[0].kind === "url" && actions(bar).length === 0, `${printer}: ${JSON.stringify(bar.rows)}`);
+    await command("enter");
+    const opened = await until("printer tab", async () => { await command("state"); return state().tabs.length === tabs + 1 && tabFor("printer.localhost"); });
+    assert(states.filter((s) => s.event === "chromeCommand").length === commandsRun, "the address ran a command");
+    await command(`rowaction close ${entryOfTab(opened.id).id}`);
+    await until("printer tab closed", async () => { await command("state"); return state().tabs.length === tabs; });
+    // Print is there with a page, and not without one: a new private window has no tab.
+    bar = await barFor("print");
+    assert(actionRow(bar, "Print") >= 0, `print with a page: ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+    await command("menu newPrivateWindow");
+    await until("private window", async () => { await command("state"); return state().private === true && state().commandBar; });
+    await command("type print");
+    bar = await until("private rows", async () => { await command("state"); return state().private && state().commandBar?.query === "print" && state().commandBar; });
+    assert(actionRow(bar, "Print") < 0, `Print offered with no page: ${JSON.stringify(bar.rows)}`);
+    await command("escape");
+    await command("key w cmd keywin");
+    await until("back to the normal window", async () => { await command("state"); return state().private === false; }, 5000);
+    await command(`rowaction close ${entryOfTab(page).id}`);
+    await until("page closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === page); });
+    await resetSettings();
+  },
   async "devtools-docked"() {
     await command("menu toggleDevTools");
     const pages = await until("devtools docked", () => state().pages?.devToolsFrame && state().pages);

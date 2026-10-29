@@ -6,6 +6,7 @@ struct Suggestion {
     case url(String)
     case search(String)
     case history(String)
+    case action(BarAction)
   }
 
   let kind: Kind
@@ -17,6 +18,7 @@ struct Suggestion {
     switch kind {
     case .tab(let tab): return "tab:\(tab.tabId)"
     case .url(let url), .search(let url), .history(let url): return "\(kindName):\(url)"
+    case .action(let action): return "action:\(action.id)"
     }
   }
 
@@ -26,6 +28,7 @@ struct Suggestion {
     case .url: return "url"
     case .search: return "search"
     case .history: return "history"
+    case .action: return "action"
     }
   }
 }
@@ -167,13 +170,14 @@ enum Suggestions {
   private static let globe = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
   private static let clock = NSImage(systemSymbolName: "clock", accessibilityDescription: nil)
   private static let magnifier = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+  private static let command = NSImage(systemSymbolName: "command", accessibilityDescription: nil)
 
   static let maxSearchSuggestions = 4
   static let emptyQueryRows = 5
 
   static func build(
     query raw: String, tabs: [RayCoreTab], active: RayCoreTab?, history: [HistoryItem], searches: [String],
-    favicon: (String) -> NSImage? = { _ in nil }
+    actions: () -> [BarAction] = { [] }, favicon: (String) -> NSImage? = { _ in nil }
   ) -> [Suggestion] {
     let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     if query.isEmpty {
@@ -215,8 +219,20 @@ enum Suggestions {
     let autocomplete = (matchingTabs + matchingHistory).first { candidate in
       AddressInput.autocompletes(candidateHost: host(of: candidate) ?? "", typedHost: typedHost, query: lower)
     }
+    // Menu commands right after what you typed (Ardia: after the first row and the search). An exact name ("zoom in")
+    // leads, so Enter runs it, but never over a host the field autocompletes, and an address never matches one.
+    var actionRows: [Suggestion] = []
+    var leading: Suggestion?
+    if typedHost == nil {
+      for (index, match) in BarActions.matches(query, in: actions()).enumerated() {
+        let row = actionSuggestion(match.action)
+        if index == 0, match.exact, match.action.leads, autocomplete == nil { leading = row } else { actionRows.append(row) }
+      }
+    }
     if let autocomplete { rows.append(autocomplete) }
+    if let leading { rows.append(leading) }
     if let typed { rows.append(typed) }
+    rows += actionRows
     let searchRows = searches
       .filter { $0.lowercased() != query.lowercased() }
       .prefix(maxSearchSuggestions)
@@ -234,6 +250,12 @@ enum Suggestions {
       return Suggestion(kind: .search(url), title: query, detail: "Search Google", icon: magnifier)
     }
     return Suggestion(kind: .url(url), title: AddressInput.display(for: url), detail: "Open", icon: globe)
+  }
+
+  private static func actionSuggestion(_ action: BarAction) -> Suggestion {
+    Suggestion(
+      kind: .action(action), title: action.title, detail: action.shortcut,
+      icon: NSImage(systemSymbolName: action.symbol, accessibilityDescription: nil) ?? command)
   }
 
   private static func searchSuggestion(_ text: String) -> Suggestion? {

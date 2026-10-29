@@ -307,6 +307,28 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     return (try? png.write(to: URL(fileURLWithPath: path))) != nil
   }
 
+  /// For tests: draws the open command bar's panel into a PNG (light appearance, on a grey page), to look at its design.
+  func snapshotCommandBar(to path: String) -> Bool {
+    guard let bar = commandBar else { return false }
+    let old = bar.appearance
+    bar.appearance = NSAppearance(named: .aqua)
+    defer { bar.appearance = old }
+    bar.layoutSubtreeIfNeeded()
+    bar.displayIfNeeded()
+    let rect = bar.panelFrame.insetBy(dx: -16, dy: -16).intersection(bar.bounds)
+    guard !rect.isEmpty, let rep = bar.bitmapImageRepForCachingDisplay(in: rect) else { return false }
+    bar.cacheDisplay(in: rect, to: rep)
+    let image = NSImage(size: rect.size)
+    image.lockFocus()
+    NSColor(white: 0.9, alpha: 1).setFill()
+    NSRect(origin: .zero, size: rect.size).fill()
+    rep.draw(in: NSRect(origin: .zero, size: rect.size))
+    image.unlockFocus()
+    guard let tiff = image.tiffRepresentation,
+          let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return false }
+    return (try? png.write(to: URL(fileURLWithPath: path))) != nil
+  }
+
   /// For tests: draws the open downloads list into a PNG, to look at its design.
   func snapshotDownloads(to path: String) -> Bool {
     guard let panel = sidebar.downloadsPanel else { return false }
@@ -1362,7 +1384,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     let rows = Suggestions.build(
       query: query, tabs: tabs, active: activeTab, history: history.entries,
-      searches: wantsSearches ? searches.current(for: trimmed) : [], favicon: favicons.image(for:))
+      searches: wantsSearches ? searches.current(for: trimmed) : [], actions: BarActions.available,
+      favicon: favicons.image(for:))
     bar.show(rows)
     let pages = rows.compactMap { row -> String? in
       if case .history(let url) = row.kind { return url }
@@ -1400,6 +1423,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     switch suggestion.kind {
     case .tab(let tab):
       if let entry = state.entry(for: tab) { select(entry) }
+      return
+    case .action(let action):
+      // The menu command, in this window: the bar closed first, so what it opens (Find, a panel) takes the focus.
+      if let tab = activeTab { focusPage(tab) }
+      AppController.shared.noteFocused(self)
+      BarActions.run(action)
       return
     case .url(let target), .search(let target), .history(let target):
       url = target
