@@ -7,6 +7,14 @@ Built from Ray's code and the engine's API (`engine/raycore/src/ray/core/public/
 Arc has that Ray doesn't, and what Chromium offers that Ray never wired up. Items marked (?) depend on what the
 engine does when Ray has no UI of its own for them, and haven't been tried by hand.
 
+## Top priority (owner)
+
+1. **Rename tabs** (owner, 2026-10-29): give any tab its own name, as Arc does (right-click › Rename, or double-click
+   the title; the name sticks for pinned tabs and favorites across relaunches and page changes, and an empty name
+   goes back to the page's title). Today only folders can be renamed (`SidebarView.beginRename`, the `.renameFolder`
+   action, `BrowserWindowController.rename(_:to:)`); `SidebarEntry` needs a custom title that `displayTitle` prefers,
+   saved in Sidebar.json, and Arc import should keep Arc's custom titles (the importer already reads them).
+
 ## Arc features Ray doesn't have
 
 **Big**
