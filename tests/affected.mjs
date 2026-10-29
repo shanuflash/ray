@@ -73,6 +73,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Site controls": ["site-controls", "extensions", "copy-url", "find-in-page"],
   "Host/BrowserWindowController.swift#Entries": "all",
+  "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab"],
   "Host/BrowserWindowController.swift#Page toolbar": ["page-toolbar", "page-loading", "load-sweep-once", "site-controls",
     "sidebar-toggle"],
   "Host/BrowserWindowController.swift#Sidebar visibility": [...sidebarMotion, "page-toolbar", "downloads"],
@@ -122,10 +123,13 @@ export const areas = {
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/Toast.swift": ["copy-url", "page-commands"],
   "Host/Updater.swift": ["updater-config"],
+  // ⇧⌘T and History › Recently Closed.
+  "Host/ClosedTabs.swift": ["reopen-closed-tab"],
   "Host/SafeStorage.swift": ["safe-storage-migration"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
-  "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once"],
+  "Host/TestCommands.swift": ["folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
+    "reopen-closed-tab", "close-last-window"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

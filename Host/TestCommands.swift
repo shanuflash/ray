@@ -264,7 +264,10 @@ enum TestCommands {
     var result = "ok"
     switch command {
     case "menu":
-      if !NSApp.sendAction(Selector(argument + ":"), to: AppController.shared, from: nil) { result = "no action" }
+      // History's Reopen Closed Tab and Recently Closed answer from their own target.
+      let action = Selector(argument + ":")
+      let target: AnyObject = ClosedTabsMenu.shared.responds(to: action) ? ClosedTabsMenu.shared : AppController.shared
+      if !NSApp.sendAction(action, to: target, from: nil) { result = "no action" }
     case "type":
       if let editor { editor.insertText(argument, replacementRange: editor.selectedRange()) } else { result = "no editor" }
     case "enter":
@@ -313,8 +316,30 @@ enum TestCommands {
       // Answered later, on the engine's reply.
       guard let answer = importCheck(line, argument) else { return }
       result = answer
+    case "closed":
+      // `closed <n>`: History › Recently Closed's n-th item (0 is the newest), clicked.
+      if !ClosedTabsMenu.shared.pressRecentlyClosed(Int(argument) ?? -1) { result = "no item" }
+    case "historydelete":
+      // `historydelete <url>`: that page out of history, as History's own Remove does.
+      if let profile = AppController.shared.current?.profile {
+        EngineCalls.call("ac_history_delete_urls", profile: profile, args: ["urls": [argument]]) { _ in }
+      } else {
+        result = "no window"
+      }
+    case "windows":
+      // How many browser windows are open (a closed one is gone once its close has finished).
+      result = "\(AppController.shared.windows.count)"
     case "closewindow":
-      AppController.shared.current?.window.performClose(nil)
+      // A sheet left open (Save Page As from an earlier check's ⌘S) keeps a window from closing: cancel it first, as
+      // you would before closing the window.
+      if let window = AppController.shared.current?.window {
+        if let sheet = window.attachedSheet {
+          window.endSheet(sheet, returnCode: .cancel)
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { window.performClose(nil) }
+        } else {
+          window.performClose(nil)
+        }
+      }
     case "reopen":
       _ = AppController.shared.applicationShouldHandleReopen(NSApp, hasVisibleWindows: false)
     case "perm":

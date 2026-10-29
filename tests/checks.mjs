@@ -2140,6 +2140,154 @@ const checks = {
     await until("⌘S toggles back", async () => { await command("state"); return state().sidebar.hidden === hidden; });
     await resetSettings();
   },
+  async "reopen-closed-tab"() {
+    const today = () => state().sidebar.today;
+    const indexOf = (urlPart) => today().findIndex((e) => e.url.includes(urlPart));
+    const closed = () => state().recentlyClosed;
+    const shiftCmdT = () => command("key t cmd shift keywin");
+    const closeActive = async (urlPart) => {
+      const before = state().tabs.length;
+      await command("key w cmd keywin");
+      await until(`${urlPart} closed`, async () => { await command("state"); return state().tabs.length === before - 1 && indexOf(urlPart) < 0; }, 5000);
+    };
+    const select = async (urlPart) => {
+      const entry = today().find((e) => e.url.includes(urlPart));
+      await command(`row ${entry.id}`);
+      await until(`${urlPart} active`, () => state().activeEntry === entry.id && state().active !== null);
+    };
+    // Back in the sidebar (at this index, when given), live, active and the one page showing.
+    const reopened = (urlPart, index) => until(`${urlPart} back at ${index}`, async () => {
+      await command("state");
+      const at = indexOf(urlPart);
+      const entry = today()[at];
+      return at >= 0 && (index === undefined || at === index) && entry.live && state().activeEntry === entry.id && oneVisibleActive() && entry;
+    }, 8000);
+
+    // Two Today tabs, X and then Y; X has back history (/h, then /b).
+    await send("Target.createTarget", { url: `${origin}/h?reopenX` });
+    await until("X", () => tabFor("?reopenX"));
+    const x = await session("?reopenX");
+    await evaluate(x.sessionId, `location.href = ${JSON.stringify(origin + "/b?reopenX")}`);
+    await until("X has history", async () => { await command("state"); return tabFor("/b?reopenX")?.canGoBack; });
+    await send("Target.createTarget", { url: `${origin}/c?reopenY` });
+    await until("Y", () => tabFor("?reopenY") && indexOf("?reopenY") >= 0);
+    await select("?reopenX");
+    const atX = indexOf("?reopenX");
+    const atY = indexOf("?reopenY");
+    assert(atX >= 0 && atY >= 0 && today().length > 2, `X at ${atX}, Y at ${atY}`);
+
+    // ⌘W, then ⇧⌘T: back in its place, active, with its history.
+    await closeActive("?reopenX");
+    assert(closed().reopenEnabled === true, "Reopen Closed Tab is off with a tab to reopen");
+    const listed = closed().items[0];
+    assert(listed?.title === "Page B" && listed.tooltip === "127.0.0.1", `Recently Closed lists ${JSON.stringify(listed)}`);
+    await shiftCmdT();
+    await reopened("?reopenX", atX);
+    await until("history restored", async () => { await command("state"); return activeTabState()?.canGoBack; });
+    await command("menu goBack");
+    await until("back to /h", async () => { await command("state"); return activeTabState()?.url.includes("/h?reopenX"); });
+    await command("menu goForward");
+    await until("forward to /b", async () => { await command("state"); return activeTabState()?.url.includes("/b?reopenX"); });
+
+    // Close X, then Y: ⇧⌘T brings Y back first, then X, and both are where they were.
+    await closeActive("?reopenX");
+    await select("?reopenY");
+    await closeActive("?reopenY");
+    assert(JSON.stringify(closed().items.slice(0, 2).map((i) => i.title)) === JSON.stringify(["Page C", "Page B"]),
+      `Recently Closed ${JSON.stringify(closed().items)}`);
+    await shiftCmdT();
+    await reopened("?reopenY");
+    await shiftCmdT();
+    await reopened("?reopenX", atX);
+    assert(indexOf("?reopenY") === atY, `Y at ${indexOf("?reopenY")}, was ${atY}`);
+
+    // From History › Recently Closed: X, the older of the two, comes back before Y.
+    await closeActive("?reopenX");
+    await select("?reopenY");
+    await closeActive("?reopenY");
+    await command("closed 1");
+    await reopened("?reopenX", atX);
+    assert(closed().items[0]?.title === "Page C", `Recently Closed after reopening X ${JSON.stringify(closed().items)}`);
+    await command("closed 0");
+    const yEntry = await reopened("?reopenY");
+
+    // A pinned tab: closing unloads its row; ⇧⌘T brings that same row back on the page it was on.
+    const pinnedId = yEntry.id;
+    await command(`rowaction pin ${pinnedId}`);
+    await until("pinned", () => state().sidebar.pinned.find((e) => e.id === pinnedId));
+    const y = await session("?reopenY");
+    await evaluate(y.sessionId, `location.href = ${JSON.stringify(origin + "/a?reopenAway")}`);
+    await until("pinned tab away", () => state().sidebar.pinned.find((e) => e.id === pinnedId)?.away);
+    await command(`rowaction unload ${pinnedId}`);
+    await until("pinned row unloaded", () => state().sidebar.pinned.find((e) => e.id === pinnedId)?.live === false);
+    await shiftCmdT();
+    await until("pinned row back on its page", async () => {
+      await command("state");
+      const e = state().sidebar.pinned.find((e) => e.id === pinnedId);
+      return e?.live && e.url.includes("?reopenAway") && state().activeEntry === pinnedId && activeTabState()?.canGoBack;
+    });
+    await command(`rowaction unpin ${pinnedId}`);
+    await until("unpinned", () => !state().sidebar.pinned.some((e) => e.id === pinnedId));
+
+    // With the window closed, ⇧⌘T brings it back (with its tabs), then the tabs closed before it.
+    await select("?reopenX");
+    await closeActive("?reopenX");
+    await command("closewindow");
+    await until("window closed", async () => (await commandResult("windows")) === "0", 10000);
+    // (With no window, `state` logs nothing; the reopened window's first log is new.)
+    await sleep(300);
+    const count = states.length;
+    await command("menu reopenClosedTab");
+    await until("window back", async () => { await command("state"); return states.length > count && state().sidebar; }, 8000);
+    assert(!today().some((e) => e.url.includes("?reopenX")), "reopening the window reopened a closed tab too");
+    await shiftCmdT();
+    await until("X back after the window", async () => {
+      await command("state");
+      const e = today().find((e) => e.url.includes("?reopenX"));
+      return e?.live && state().activeEntry === e.id;
+    });
+
+    // Deleting a page from history takes its closed tab out of Recently Closed too.
+    await closeActive("?reopenX");
+    const listedBefore = closed().items.length;
+    assert(closed().items[0]?.title === "Page B", `Recently Closed ${JSON.stringify(closed().items)}`);
+    await command(`historydelete ${origin}/b?reopenX`);
+    await until("closed tab gone with its history", async () => { await command("state"); return closed().items.length === listedBefore - 1; }, 5000);
+
+    // A private window: its own list, empty to begin with; what it closes never reaches the normal window's.
+    const listedNow = () => JSON.stringify(closed().items.map((i) => [i.title, i.tooltip, i.icon]));
+    const normalItems = listedNow();
+    await command("menu newPrivateWindow");
+    await until("private window", async () => { await command("state"); return state().private === true && state().commandBar; });
+    assert(closed().reopenEnabled === false && closed().items.length === 0, `a new private window has closed tabs ${JSON.stringify(closed())}`);
+    await command(`type ${origin}/b?privateReopen`);
+    await command("enter");
+    await until("private page", async () => { await command("state"); return state().private === true && tabFor("?privateReopen"); });
+    await command("key w cmd");
+    await until("private tab closed", async () => { await command("state"); return state().private === true && state().active === null; }, 5000);
+    assert(closed().reopenEnabled === true && closed().items[0]?.title === "Page B", `private Recently Closed ${JSON.stringify(closed())}`);
+    // ⇧⌘T in a window with no tab left.
+    await shiftCmdT();
+    await until("private tab back", async () => {
+      await command("state");
+      return state().private === true && tabFor("?privateReopen") && state().active === tabFor("?privateReopen").id;
+    });
+    assert(closed().reopenEnabled === false, "Reopen Closed Tab is on with nothing left to reopen");
+    const tabs = state().tabs.length;
+    await shiftCmdT();
+    await sleep(500);
+    await command("state");
+    assert(state().tabs.length === tabs, "⇧⌘T with nothing to reopen opened a tab");
+    await command("key w cmd");
+    await until("private tab closed again", async () => { await command("state"); return state().private === true && state().active === null; }, 5000);
+    await command("key w cmd keywin");
+    await until("back to the normal window", async () => { await command("state"); return state().private === false; }, 5000);
+    assert(listedNow() === normalItems,
+      `a private tab reached the normal window's Recently Closed: ${JSON.stringify(closed().items)} vs ${normalItems}`);
+    await sleep(800);
+    const saved = existsSync(join(dataDir, "Sidebar.json")) ? readFileSync(join(dataDir, "Sidebar.json"), "utf8") : "";
+    assert(!saved.includes("privateReopen"), "a closed private tab was written to Sidebar.json");
+  },
   async "settings-routes"() {
     await resetSettings();
     await command(`row ${entryOfTab(tabFor("/a").id).id}`);

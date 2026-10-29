@@ -84,6 +84,11 @@ enum MainMenu {
       item("Back", #selector(AppController.goBack(_:)), "[", target: target),
       item("Forward", #selector(AppController.goForward(_:)), "]", target: target),
       .separator(),
+      // As Safari's History menu has them; Chrome's lists the same tabs inline under a Recently Closed header.
+      item("Reopen Closed Tab", #selector(ClosedTabsMenu.reopenClosedTab(_:)), "t", [.command, .shift],
+           target: ClosedTabsMenu.shared),
+      ClosedTabsMenu.shared.recentlyClosedItem(),
+      .separator(),
       item("Show Full History", #selector(AppController.showHistory(_:)), "y", target: target),
     ]))
 

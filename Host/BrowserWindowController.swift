@@ -81,11 +81,17 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// The normal profile behind this window: itself, or for a private window the profile it's the private side of.
   let mainProfile: RayCoreProfile
   var isPrivate: Bool { profile.offTheRecord }
+  /// What ⇧⌘T walks back through: the normal window's list outlives the window; a private window's is its own.
+  let closedTabs: ClosedTabs
+  /// Tabs the user is closing (⌘W, the row's close button, Clear), by entry: they're remembered once the engine has
+  /// removed them, with the key their history went to the engine's tab restore service under.
+  private var userClosing: [UUID: (key: String?, favicon: NSImage?)] = [:]
 
   init(profile: RayCoreProfile, mainProfile: RayCoreProfile, store: SidebarStore) {
     self.profile = profile
     self.mainProfile = mainProfile
     self.store = store
+    closedTabs = profile.offTheRecord ? ClosedTabs() : ClosedTabs.main
     state = store.load() ?? SidebarState()
     state.archiveStaleToday()
     coreWindow = RayCoreWindow(contentRect: NSRect(x: 0, y: 0, width: 1360, height: 860))
@@ -121,6 +127,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     center.addObserver(self, selector: #selector(windowResignedKey), name: NSWindow.didResignKeyNotification, object: window)
     // Zoom levels the engine already holds are the user's own; the default zoom only touches the rest.
     RaySettings.shared.adoptExistingZoom(profile: mainProfile) { [weak self] in self?.settleZoomOfAllTabs() }
+    closedTabs.watchHistory(profile: profile)
   }
 
   deinit {
@@ -906,6 +913,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   private func load(_ entry: SidebarEntry, foreground: Bool) {
     guard !entry.isLive else { return }
+    if entry.kind != .today { closedTabs.forget(entry: entry.id) }
     loadingEntry = entry
     let tab = coreWindow.openTab(entry.url, profile: profile, foreground: foreground)
     loadingEntry = nil
@@ -967,8 +975,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       return
     }
     if entry.isLive {
-      entry.tab?.close()
+      closeByUser(entry)
     } else if entry.kind == .today {
+      rememberClosed(entry, key: nil, favicon: nil)
       state.remove(entry)
       changed("remove")
     }
@@ -977,9 +986,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func perform(_ action: SidebarRowAction, on entry: SidebarEntry) {
     switch action {
     case .close, .unload:
+      // Both are the row's Close Tab (a pinned or favorite row stays, unloaded): either can be reopened with ⇧⌘T.
       if entry.isLive {
-        entry.tab?.close()
+        closeByUser(entry)
       } else if entry.kind == .today {
+        rememberClosed(entry, key: nil, favicon: nil)
         state.remove(entry)
         changed("remove")
       }
@@ -1127,7 +1138,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   func clearToday() {
     for entry in state.today {
-      if entry.isLive { entry.tab?.close() } else { state.remove(entry) }
+      if entry.isLive {
+        closeByUser(entry)
+      } else {
+        rememberClosed(entry, key: nil, favicon: nil)
+        state.remove(entry)
+      }
     }
     changed("clear")
   }
@@ -1193,6 +1209,96 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let entries = state.allEntries.filter { !$0.isFolder }
     guard !entries.isEmpty else { return }
     select(number >= 9 ? entries[entries.count - 1] : entries[min(number, entries.count) - 1])
+  }
+
+  // MARK: Recently closed
+
+  /// The user closes a live tab. In a normal window its back/forward list goes to the engine's tab restore service
+  /// (as Chrome's own closes do) under a key of its own, so ⇧⌘T can ask for exactly that tab back; it's remembered
+  /// once the engine has removed it (`window(_:didRemove:)`), at the place it had then.
+  private func closeByUser(_ entry: SidebarEntry) {
+    guard let tab = entry.tab, !tab.closed else { return }
+    var key: String?
+    if !isPrivate, Self.isReopenable(entry.currentURL) {
+      let tag = "ray-closed-" + UUID().uuidString
+      EngineCalls.call("ac_tab_restore_tag", profile: profile, args: ["tab": Int(tab.tabId), "key": tag]) { _ in }
+      key = tag
+    }
+    userClosing[entry.id] = (key, tab.favicon)
+    tab.close()
+  }
+
+  /// A blank tab leaves nothing to reopen (Chrome keeps no entry for one either). The address is the engine's own
+  /// for the tab (never one a page reported); `javascript:` can't be one, and is never loaded anyway.
+  private static func isReopenable(_ url: String) -> Bool {
+    !url.isEmpty && url != "about:blank" && !url.lowercased().hasPrefix("javascript:")
+  }
+
+  /// Remembers a closed entry with its place in its section, before it leaves the sidebar (Today) or goes back to its
+  /// pinned address (pinned and favorites).
+  private func rememberClosed(_ entry: SidebarEntry, key: String?, favicon: NSImage?) {
+    let url = entry.currentURL
+    let section = entry.kind == .today ? state.today : entry.kind == .favorite ? state.favorites : state.pinned
+    guard Self.isReopenable(url), !entry.isFolder, let index = section.firstIndex(where: { $0 === entry }) else { return }
+    closedTabs.add(ClosedTab(
+      entryID: entry.id, kind: entry.kind, index: index, parentID: entry.parentID, pinnedURL: entry.pinnedURL,
+      url: url, title: entry.title, favicon: favicon ?? favicons.image(for: url), restoreKey: key))
+  }
+
+  /// ⇧⌘T, or a History › Recently Closed item: the newest closed tab (or that one) back where it was, with its
+  /// back/forward list, and active. A pinned or favorite row that's open again by now has nothing to bring back, so
+  /// ⇧⌘T goes on to the tab closed before it.
+  func reopenClosedTab(_ id: UUID? = nil) {
+    while let closed = closedTabs.take(id) {
+      if reopen(closed) || id != nil { return }
+    }
+  }
+
+  private func reopen(_ closed: ClosedTab) -> Bool {
+    let entry: SidebarEntry
+    if let existing = state.entry(id: closed.entryID) {
+      // A pinned or favorite row (closing only unloaded it): the same row comes back to life.
+      guard !existing.isLive, !existing.isFolder else { return false }
+      entry = existing
+    } else {
+      // A Today tab, or a row deleted since: a new entry in the same place.
+      entry = SidebarEntry(kind: closed.kind, url: closed.url, title: closed.title)
+      switch closed.kind {
+      case .today:
+        state.today.insert(entry, at: min(closed.index, state.today.count))
+      case .favorite:
+        entry.pinnedURL = closed.pinnedURL ?? closed.url
+        state.favorites.insert(entry, at: min(closed.index, state.favorites.count))
+      case .pinned:
+        entry.pinnedURL = closed.pinnedURL ?? closed.url
+        entry.parentID = closed.parentID
+        state.pinned.insert(entry, at: min(closed.index, state.pinned.count))
+        state.normalizePinned()
+      case .folder:
+        return false
+      }
+    }
+    entry.url = closed.url
+    if !closed.title.isEmpty { entry.title = closed.title }
+    guard let key = closed.restoreKey else {
+      select(entry)
+      changed("reopen")
+      return true
+    }
+    changed("reopen")
+    EngineCalls.call("ac_tab_restore_take", profile: profile, args: ["key": key]) { [weak self] reply in
+      guard let self, !self.closing, self.state.entry(id: entry.id) === entry, !entry.isLive else { return }
+      if let saved = reply?["state"] as? String, !saved.isEmpty {
+        self.loadingEntry = entry
+        let tab = self.coreWindow.restoreTab(saved, profile: self.profile, foreground: true)
+        self.loadingEntry = nil
+        if let tab, entry.tab !== tab { self.bind(entry, tab) }
+      }
+      // Without its history (the engine no longer had it), the tab opens on the page it was on.
+      self.select(entry)
+      self.logState("reopen")
+    }
+    return true
   }
 
   // MARK: Page toolbar
@@ -1560,6 +1666,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if tab.delegate === self { tab.delegate = nil }
     entry.remember()
     entry.tab = nil
+    if let closing = userClosing.removeValue(forKey: entry.id) {
+      rememberClosed(entry, key: closing.key, favicon: closing.favicon)
+    }
     let wasActive = state.activeEntryID == entry.id
     if entry.kind == .today {
       state.remove(entry)
@@ -1956,7 +2065,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "tabs": tabs.map { tab in
         [
           "id": Int(tab.tabId), "url": tab.url, "title": tab.title,
-          "visible": !tab.view.isHidden && tab.view.superview != nil, "zoom": tab.zoomFactor,
+          "visible": !tab.view.isHidden && tab.view.superview != nil, "zoom": tab.zoomFactor, "canGoBack": tab.canGoBack,
         ] as [String: Any]
       },
     ]
@@ -1977,6 +2086,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["welcomeAgainItem"] = MainMenu.alternateInfo(of: #selector(AppController.showWelcomeAgain(_:))) ?? NSNull()
     state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
       .sorted { $0.lastActive > $1.lastActive }.map(tabID)
+    state["recentlyClosed"] = ClosedTabsMenu.shared.debug(for: self)
     state["tabCycle"] = tabCycle.map { ["order": $0.order.map(tabID), "index": $0.index] as [String: Any] } ?? NSNull()
     guard let data = try? JSONSerialization.data(withJSONObject: state),
           let json = String(data: data, encoding: .utf8) else { return }
