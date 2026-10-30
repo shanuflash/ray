@@ -279,6 +279,8 @@ enum TestCommands {
       "back": .backToPinned, "close": .close, "unload": .unload, "newfolder": .newFolder,
       "nestfolder": .newNestedFolder, "togglefolder": .toggleFolder, "outfolder": .removeFromFolder,
       "deletefolder": .deleteFolder, "renamefolder": .renameFolder, "rename": .renameFolder,
+      "editfolder": .editFolder, "pinfolder": .pinFolder, "unpinfolder": .unpinFolder, "newtabin": .newTabInFolder,
+      "closetabs": .closeFolderTabs,
     ]
     guard parts.count >= 2, let id = UUID(uuidString: parts[1]),
           let controller = AppController.shared.current, let entry = controller.state.entry(id: id) else {
@@ -286,10 +288,32 @@ enum TestCommands {
     }
     if parts[0] == "infolder", parts.count == 3, let folder = UUID(uuidString: parts[2]) {
       controller.perform(.moveToFolder(folder), on: entry)
+    } else if parts[0] == "color", parts.count == 3 {
+      controller.perform(.setColor(parts[2] == "none" ? nil : parts[2]), on: entry)
     } else if let action = actions[parts[0]], parts.count == 2 {
       controller.perform(action, on: entry)
     } else {
       return "usage: rowaction <action> <id> [folder id]"
+    }
+    return "ok"
+  }
+
+  /// `folderedit state|name <text>|color <name|none>|icon <sf:name|emoji|none>|tab symbols|emoji|search <text>|
+  /// enter|escape`: the open Edit Folder panel, pressed as a click or key would. `state` answers with its JSON.
+  private static func folderEdit(_ argument: String) -> String {
+    guard let editor = AppController.shared.current?.folderEditorView else { return "no editor" }
+    let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+    let value = parts.count > 1 ? parts[1] : ""
+    switch parts.first {
+    case "state": return json(editor.debug)
+    case "name": editor.setTitle(value)
+    case "color": editor.press(color: value == "none" ? nil : value)
+    case "icon": editor.press(icon: value == "none" ? nil : value)
+    case "tab": editor.show(tab: value)
+    case "search": editor.search(value)
+    case "enter": editor.pressReturn()
+    case "escape": editor.pressEscape()
+    default: return "usage: folderedit state|name|color|icon|tab|search|enter|escape"
     }
     return "ok"
   }
@@ -451,6 +475,8 @@ enum TestCommands {
       result = rename(argument)
     case "rowmenu":
       result = rowMenu(argument)
+    case "folderedit":
+      result = folderEdit(argument)
     case "extinstall":
       AppController.shared.current?.extensions.installUnpacked(argument) { id in
         FileHandle.standardError.write("[ray-test] installed \(id ?? "nothing")\n".data(using: .utf8)!)
@@ -532,6 +558,8 @@ enum TestCommands {
       if AppController.shared.current?.snapshotSiteControls(to: argument) != true { result = "no panel" }
     case "toolbarsnap":
       if AppController.shared.current?.snapshotToolbar(to: argument) != true { result = "no toolbar" }
+    case "sidebarsnap":
+      if AppController.shared.current?.snapshotSidebar(to: argument) != true { result = "no sidebar" }
     case "barsnap":
       if AppController.shared.current?.snapshotCommandBar(to: argument) != true { result = "no command bar" }
     case "fieldburst":

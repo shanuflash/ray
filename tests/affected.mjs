@@ -15,6 +15,9 @@ const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-
   "search-engine", "search-suggestions-off", "site-search"];
 const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];
+// Folders in Pinned and Today (Today's are Chrome tab groups), their icon and Edit Folder.
+const folders = ["folders", "folders-relaunch", "folder-create", "folder-toggle", "folder-rename", "folder-animation",
+  "folder-drag-in", "folder-drag-folder", "folder-out-and-delete"];
 const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still"];
 const pageSurface = ["switch-back-latency", "switch-no-blank", "top-strip-click", "toggle-keeps-page-still", "activate-target",
   "devtools-docked", "background-tab"];
@@ -63,6 +66,11 @@ export const areas = {
     "import-browser", "private-window", "close-last-window"],
   // When a pinned tab or favorite counts as away from its page.
   "Host/SidebarModel.swift#Pinned page": ["pin-unload-restore", "reopen-closed-tab", "favorites"],
+  // Today folders as Chrome tab groups (the engine's tab strip events, `ac_tabs_group`).
+  "Host/TabGroups.swift": [...folders, "extensions", "clear", "reopen-closed-tab"],
+  // The folder icon's layers and Edit Folder's panel.
+  "Host/FolderIcon.swift": [...folders, ...drag],
+  "Host/FolderEditor.swift": folders,
   "Host/EngineCalls.swift": "all",
   "Host/TestEnvironment.swift": "all",
   // Colours only: the checks that read a colour or draw with it.
@@ -128,11 +136,11 @@ export const areas = {
   "Host/BrowserWindowController.swift#State log": [],
 
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
-  "Host/SidebarView.swift": [...drag, "folder-create", "folder-toggle", "folder-rename", "folder-animation",
-    "folder-drag-in", "folder-drag-folder", "folder-out-and-delete", "tile-hover", "favorites", "pin-unload-restore",
+  "Host/SidebarView.swift": [...drag, ...folders, "tile-hover", "favorites", "pin-unload-restore",
     "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment", "tab-rename",
     "settings-sidebar-button", "settings-fade-unloaded"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
+  "Host/SidebarView.swift#Edit Folder": folders,
   // Also the rows' menus and the test hooks for renaming (the field, its Done button).
   "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder", "folder-rename", "tab-rename",
     "settings-reorder-haptics"],

@@ -70,6 +70,7 @@ Recorded for the owner to decide. Don't act on them until they do.
 | DRM sites → WebKit | **No.** Chromium only; Netflix-type sites won't play (no Widevine) |
 | Content blocker | **None built in.** The user installs uBlock Origin Lite from the Web Store (Basic mode is cheapest) |
 | Page script | **Our own, minimal.** No Peek, DRM or performance messages |
+| Tab groups | **Folders** (owner 2026-10-31): one idea in Pinned and Today; Today folders are Chrome tab groups so extensions (Claude's) work; pinning a folder ends its group. Mocks in `docs/mocks/` |
 | Launch flags | Required + recommended set (section 4); `--no-memory-reducer` decided by measurement |
 | Who builds it | Claude (Opus 5.5, high) orchestrating subagents; owner directs and dogfoods (section 8) |
 

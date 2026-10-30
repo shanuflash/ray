@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Folders</title>
+<style>
+  :root { --page: #f4f4f5; --ink: #1d1d1f; --muted: #6e6e73; --card: #fff; --accent: #9F8CF2; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px 80px; background: var(--page); color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  h2 { font-size: 17px; margin: 44px 0 4px; }
+  h3 { font-size: 14px; margin: 0 0 2px; }
+  p { margin: 0 0 8px; max-width: 780px; }
+  .muted { color: var(--muted); }
+  .grid { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  .flow { background: var(--card); border-radius: 14px; padding: 16px; margin-top: 16px;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,.08); }
+  .flow > p { font-size: 13px; color: var(--muted); }
+  .pair { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
+  .step { font-size: 11px; font-weight: 600; color: var(--muted); margin: 0 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+
+  /* A cropped Ray sidebar with a strip of page. */
+  .win { width: 330px; border-radius: 12px; overflow: hidden; display: flex; position: relative;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,.25), 0 8px 24px rgba(0,0,0,.14); }
+  .win.tall { min-height: 640px; }
+  .win.wide { width: 470px; }
+  .sb { width: 267px; flex: none; padding: 6px 8px 10px; position: relative; }
+  .pg { flex: 1; margin: 8px 8px 8px 0; border-radius: 8px; }
+  .light .sb { background: #e6e6e6; --label: #1d1d1f; --sec: rgba(0,0,0,.5); --ter: rgba(0,0,0,.3);
+    --sel: rgba(255,255,255,.85); --fill: rgba(0,0,0,.06); --hair: rgba(0,0,0,.1); --gap: rgba(0,0,0,.05); }
+  .light .pg { background: #fff; }
+  .dark .sb { background: #131313; --label: #f2f2f2; --sec: rgba(255,255,255,.55); --ter: rgba(255,255,255,.32);
+    --sel: rgba(255,255,255,.14); --fill: rgba(255,255,255,.08); --hair: rgba(255,255,255,.1); --gap: rgba(255,255,255,.06); }
+  .dark .pg { background: #232325; }
+  .lights { height: 38px; display: flex; align-items: center; gap: 8px; padding-left: 8px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; background: var(--ter); }
+  .addr { height: 34px; border-radius: 10px; background: var(--fill); color: var(--sec); font-size: 13px;
+    display: flex; align-items: center; padding: 0 12px; margin-bottom: 10px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px; }
+  .tiles i { height: 46px; border-radius: 10px; background: var(--fill); }
+  .sep { height: 1px; background: var(--hair); margin: 12px 14px 12px; }
+  .cut { color: var(--ter); font-size: 11px; text-align: center; letter-spacing: .2em; height: 14px; }
+
+  .row { height: 41px; display: flex; align-items: center; position: relative; color: var(--label); }
+  .row .bg { position: absolute; inset: 3px 0; border-radius: 8px; }
+  .row.sel .bg { background: var(--sel); box-shadow: 0 0.5px 1.5px rgba(0,0,0,.12); }
+  .row.hov .bg { background: var(--fill); }
+  .row.lift .bg { background: var(--sel); box-shadow: 0 6px 16px rgba(0,0,0,.25); }
+  .row.lift { transform: translate(10px, -4px); z-index: 3; }
+  .row.gap { height: 41px; }
+  .row.gap .bg { background: var(--gap); border: 1px dashed var(--ter); }
+  .row .ic { width: 16px; height: 16px; border-radius: 4px; margin: 0 10px 0 12px; flex: none; position: relative;
+    display: grid; place-items: center; font: 600 9px/1 -apple-system, sans-serif; color: #fff; }
+  .row svg.ic { border-radius: 0; }
+  .row .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; padding-right: 8px; }
+  .row .x { color: var(--sec); font-size: 12px; margin-right: 12px; position: relative; }
+  .row .n { color: var(--sec); font-size: 12px; margin-right: 4px; position: relative; }
+  .row .chev { width: 10px; margin-right: 12px; position: relative; color: var(--ter); font-size: 13px; font-weight: 600;
+    display: grid; place-items: center; }
+  .row .chev.open { transform: rotate(90deg); }
+  .newtab { color: var(--sec); }
+  .newtab .ic { color: var(--sec); font-size: 17px; font-weight: 300; }
+  .field { flex: 1; height: 26px; border-radius: 6px; margin-right: 10px; position: relative; padding: 0 8px;
+    display: flex; align-items: center; background: var(--sel); box-shadow: 0 0 0 2px var(--accent); }
+  .field .caret { width: 1px; height: 15px; background: var(--label); margin-left: 1px; }
+  .field .ph { color: var(--ter); }
+  .swatches { display: flex; gap: 8px; padding: 2px 0 10px 38px; }
+  .swatches i { width: 16px; height: 16px; border-radius: 50%; position: relative; }
+  .swatches i.none { box-shadow: inset 0 0 0 1.5px var(--ter); }
+  .swatches i.none::after { content: ""; position: absolute; left: 7px; top: 1px; width: 1.5px; height: 14px;
+    background: var(--ter); transform: rotate(45deg); }
+  .swatches i.on { box-shadow: 0 0 0 2px var(--sb-bg, transparent), 0 0 0 3.5px var(--label); }
+
+  .menu { position: absolute; z-index: 5; min-width: 196px; padding: 5px; border-radius: 10px; font-size: 13px;
+    backdrop-filter: blur(20px); }
+  .light .menu { background: rgba(246,246,246,.92); color: #1d1d1f; box-shadow: 0 0 0 0.5px rgba(0,0,0,.2), 0 10px 30px rgba(0,0,0,.2); }
+  .dark .menu { background: rgba(40,40,42,.94); color: #eee; box-shadow: 0 0 0 0.5px rgba(255,255,255,.15), 0 10px 30px rgba(0,0,0,.5); }
+  .menu div { padding: 3px 10px; border-radius: 5px; display: flex; justify-content: space-between; gap: 18px; white-space: nowrap; }
+  .menu div.on { background: var(--accent); color: #fff; }
+  .menu div.head { color: #8e8e93; font-size: 11px; font-weight: 600; padding-top: 4px; }
+  .menu div.in { padding-left: 24px; }
+  .menu hr { border: 0; height: 1px; margin: 4px 8px; }
+  .light .menu hr { background: rgba(0,0,0,.1); } .dark .menu hr { background: rgba(255,255,255,.1); }
+  .menu .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; }
+
+  .label { position: absolute; z-index: 4; right: 8px; font-size: 10px; font-weight: 700; letter-spacing: .05em;
+    text-transform: uppercase; color: var(--sec); }
+
+  table { border-collapse: collapse; margin-top: 10px; font-size: 13px; max-width: 980px; }
+  td, th { padding: 6px 16px 6px 0; vertical-align: top; text-align: left; border-top: 1px solid rgba(127,127,127,.18); }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; border-top: 0; }
+  td:first-child { color: var(--muted); white-space: nowrap; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin: 0 3px 0 8px; }
+  .sw:first-child { margin-left: 0; }
+  .ask { background: #fef9c3; color: #713f12; border-radius: 10px; padding: 10px 14px; margin-top: 14px; max-width: 780px; font-size: 13px; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --page: #18181b; --ink: #f4f4f5; --muted: #a1a1aa; --card: #222226; }
+    :root:not([data-theme="light"]) .ask { background: #422006; color: #fde68a; }
+  }
+  :root[data-theme="dark"] { --page: #18181b; --ink: #f4f4f5; --muted: #a1a1aa; --card: #222226; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Folders in Pinned and Today</h1>
+  <p>One idea, “Folder”, in both sections. Pinned folders are the ones Ray has now. Today folders are new: each is a
+  Chrome tab group underneath, so Chrome's tab group API sees and drives them. An extension's group (Claude's)
+  shows up as a Today folder.</p>
+  <p class="muted">Engine check (hidden test instance): an extension's group, rename, colour, collapse and ungroup
+  all work today, with no engine rebuild. Only Ray's sidebar is missing.</p>
+
+  <h2>The look</h2>
+  <p class="muted">Same row in both sections: folder icon in the folder's colour (grey with none), name, chevron.
+  Tabs step in 16 pt. A closed folder keeps the active tab in sight and shows how many tabs it holds.</p>
+  <div class="grid">
+    <div class="win tall light" id="look-light"></div>
+    <div class="win tall dark" id="look-dark"></div>
+  </div>
+
+  <h2>Flows</h2>
+  <div id="flows"></div>
+
+  <h2>Rules</h2>
+  <table>
+    <tr><th></th><th>Pinned folder</th><th>Today folder</th></tr>
+    <tr><td>Underneath</td><td>Ray's own (Sidebar.json), as now</td><td>A Chrome tab group, also saved in Sidebar.json so it comes back after a quit</td></tr>
+    <tr><td>Nesting</td><td>Nests, as now</td><td>One level (Chrome groups don't nest). Nothing drops into a Today folder but tabs</td></tr>
+    <tr><td>Colours</td><td colspan="2">Same ten for both: none, then Chrome's eight
+      <span class="sw" style="background:#4C8DF6"></span>blue <span class="sw" style="background:#E5534B"></span>red
+      <span class="sw" style="background:#E3B341"></span>yellow <span class="sw" style="background:#3FB06C"></span>green
+      <span class="sw" style="background:#DB61A2"></span>pink <span class="sw" style="background:#9B6CF0"></span>purple
+      <span class="sw" style="background:#35B8C6"></span>cyan <span class="sw" style="background:#EE8434"></span>orange.
+      None is Chrome's grey.</td></tr>
+    <tr><td>Menu</td><td>Rename…, Colour ▸, New Nested Folder, Unpin Folder, Delete Folder</td>
+      <td>Rename…, Colour ▸, New Tab in Folder, Pin Folder, Delete Folder, Close Tabs</td></tr>
+    <tr><td>Delete Folder</td><td colspan="2">Keeps its tabs, one level up (Today: Chrome's Ungroup). Close Tabs closes them (Chrome's Close group)</td></tr>
+    <tr><td>New tabs</td><td>As now</td><td>A link opened from a tab in the folder joins it (Chrome's rule). ⌘T doesn't</td></tr>
+    <tr><td>Last tab goes</td><td>Folder stays (as now)</td><td>Folder goes (Chrome's rule)</td></tr>
+    <tr><td>Pin Folder</td><td colspan="2">Its tabs become pinned tabs in a pinned folder, and it stops being a Chrome group.
+      Why: Chrome never lets a pinned tab sit in a group, and a pinned folder holds unloaded tabs that aren't Chrome
+      tabs at all, so an extension would see a group whose tabs come and go. An extension that still wants its tabs
+      grouped makes a new group, which shows up as a new Today folder</td></tr>
+    <tr><td>Unpin Folder</td><td colspan="2">Comes back to Today as one folder and one Chrome group with its open tabs.
+      Folders nested inside it fold into it (Chrome is one level)</td></tr>
+    <tr><td>Words</td><td colspan="2">“Folder” everywhere in Ray. “Tab group” only on Chrome's own pages and in its API</td></tr>
+  </table>
+  <div class="ask">Your call: A Today folder's tabs are Today tabs, so Clear Today closes them and the folder with
+  them. Arc's Today works the same way, and the mock assumes it.</div>
+</main>
+<script>
+  const C = { blue: "#4C8DF6", red: "#E5534B", yellow: "#E3B341", green: "#3FB06C", pink: "#DB61A2",
+    purple: "#9B6CF0", cyan: "#35B8C6", orange: "#EE8434" };
+  const fav = (bg, ch) => `<span class="ic" style="background:${bg}">${ch}</span>`;
+  const folderIcon = (color, open) => `<svg class="ic" viewBox="0 0 16 16" width="16" height="16">` +
+    `<path d="M1.75 4.25a1.25 1.25 0 0 1 1.25-1.25h3.1l1.4 1.4h5.5a1.25 1.25 0 0 1 1.25 1.25v6.1a1.25 1.25 0 0 1-1.25 1.25H3a1.25 1.25 0 0 1-1.25-1.25z" ` +
+    (open ? `fill="none" stroke="${color}" stroke-width="1.4"` : `fill="${color}"`) + `/></svg>`;
+  const pad = (depth) => `style="padding-left:${16 * (depth || 0)}px"`;
+  const tab = (icon, title, o = {}) => {
+    const cls = ["row", o.sel && "sel", o.hov && "hov", o.lift && "lift"].filter(Boolean).join(" ");
+    return `<div class="${cls}" ${pad(o.depth)}><span class="bg" style="left:${16 * (o.depth || 0)}px"></span>${icon}` +
+      `<span class="t">${title}</span>${o.sel ? '<span class="x">✕</span>' : ""}</div>`;
+  };
+  const folder = (color, title, o = {}) => {
+    const tint = color ? C[color] : "var(--sec)";
+    const cls = ["row", o.hov && "hov", o.lift && "lift"].filter(Boolean).join(" ");
+    const name = o.edit ? `<span class="field">${o.edit === true ? '<span class="ph">Folder name</span>' : o.edit}<span class="caret"></span></span>`
+      : `<span class="t">${title}</span>${o.open === false && o.count ? `<span class="n">${o.count}</span>` : ""}<span class="chev${o.open === false ? "" : " open"}">›</span>`;
+    return `<div class="${cls}" ${pad(o.depth)}><span class="bg" style="left:${16 * (o.depth || 0)}px"></span>${folderIcon(tint, o.open !== false)}${name}</div>`;
+  };
+  const gap = (depth) => `<div class="row gap" ${pad(depth)}><span class="bg" style="left:${16 * (depth || 0)}px"></span></div>`;
+  const swatches = (on) => `<div class="swatches">` + [null, ...Object.keys(C)].map((k) =>
+    `<i class="${k ? "" : "none"}${k === on ? " on" : ""}" style="${k ? `background:${C[k]}` : ""}"></i>`).join("") + `</div>`;
+  const menu = (top, left, items) => `<div class="menu" style="top:${top}px;left:${left}px">` + items.map((i) =>
+    i === "-" ? "<hr>" : typeof i === "string" ? `<div>${i}</div>` :
+    `<div class="${[i.on && "on", i.head && "head", i.in && "in"].filter(Boolean).join(" ")}">` +
+    `<span>${i.dot ? `<span class="dot" style="background:${i.dot}"></span>` : ""}${i.t}</span>${i.sub ? "<span>›</span>" : ""}</div>`).join("") + `</div>`;
+  const newTab = `<div class="row newtab"><span class="bg"></span><span class="ic">+</span><span class="t">New Tab</span></div>`;
+  const sep = `<div class="sep"></div>`;
+  const chrome = `<div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div><div class="tiles"><i></i><i></i><i></i><i></i></div>`;
+  const label = (top, text) => `<span class="label" style="top:${top}px">${text}</span>`;
+
+  const T = {
+    linear: (o) => tab(fav("#9B6CF0", "L"), "Linear – Inbox", o),
+    figma: (o) => tab(fav("#E5534B", "F"), "Figma – Ray icons", o),
+    docs: (o) => tab(fav("#4C8DF6", "D"), "Docs – Roadmap", o),
+    hn: (o) => tab(fav("#EE8434", "H"), "Hacker News", o),
+    claude: (o) => tab(fav("#D97757", "C"), "Claude", o),
+    gh: (o) => tab(fav("#24292f", "G"), "Pull requests · shanuflash/ray", o),
+    api: (o) => tab(fav("#4C8DF6", "D"), "chrome.tabGroups – Chrome for Developers", o),
+    maps: (o) => tab(fav("#35B8C6", "M"), "Google Maps", o),
+    wiki: (o) => tab(fav("#3FB06C", "W"), "Tab – Wikipedia", o),
+    yt: (o) => tab(fav("#E5534B", "Y"), "YouTube", o),
+  };
+
+  const look = () => chrome +
+    label(146, "Pinned") +
+    T.linear() + folder("blue", "Work") + T.figma({ depth: 1 }) + folder(null, "Specs", { depth: 1 }) + T.docs({ depth: 2 }) +
+    folder(null, "Reading", { open: false, count: 6 }) +
+    sep + newTab + T.hn() +
+    folder("orange", "Claude") + T.claude({ depth: 1 }) + T.gh({ depth: 1, sel: true }) + T.api({ depth: 1 }) +
+    T.maps() + folder("green", "Trip", { open: false, count: 3 }) + T.yt();
+
+  const flows = [
+    { title: "1. Make a folder in Today", text: "Right-click a tab › Add to Folder › New Folder. The tab moves into a new folder whose name field is already open, with the colours under it, in the sidebar (no popover). Return keeps it; Escape keeps it unnamed. Pinned folders are still listed: choosing one pins the tab there, as now.",
+      steps: [
+        { h: "Right-click a tab", wide: 1, body: () => newTab + T.hn() + T.maps({ hov: true }) + T.yt() + `<div style="height:150px"></div>` +
+          menu(112, 60, ["Rename…", "-", "Pin Tab", "Add to Favorites", { t: "Add to Folder", sub: 1, on: 1 }, "-", "Close Tab"]) +
+          menu(150, 252, [{ t: "New Folder", on: 1 }, "-", { t: "Today", head: 1 }, { t: "Claude", dot: C.orange }, { t: "Pinned", head: 1 }, { t: "Work", dot: C.blue }, { t: "Specs", in: 1 }]) },
+        { h: "Name it, pick a colour", body: () => newTab + T.hn() + folder("purple", "", { edit: "Trip" }) + swatches("purple") + T.maps({ depth: 1, sel: true }) + T.yt() },
+        { h: "Done", body: () => newTab + T.hn() + folder("purple", "Trip") + T.maps({ depth: 1, sel: true }) + T.yt() },
+      ] },
+    { title: "2. Rename and colour", text: "Right-click the folder › Rename… opens the same name field and colours; Colour ▸ changes it directly. A double click on the name renames too, as tabs do. The same menu in both sections; only the items that differ change.",
+      steps: [
+        { h: "Today folder menu", wide: 1, body: () => newTab + folder("orange", "Claude", { hov: true }) + T.claude({ depth: 1 }) + T.gh({ depth: 1, sel: true }) + `<div style="height:150px"></div>` +
+          menu(70, 60, ["Rename…", { t: "Colour", sub: 1, on: 1 }, "-", "New Tab in Folder", "Pin Folder", "-", "Delete Folder", "Close Tabs"]) +
+          menu(70, 252, [{ t: "None", dot: "#8E8E93" }, ...Object.entries(C).map(([k, v]) => ({ t: k[0].toUpperCase() + k.slice(1), dot: v, on: k === "orange" }))]) },
+        { h: "Pinned folder menu", wide: 1, body: () => folder("blue", "Work", { hov: true }) + T.figma({ depth: 1 }) + folder(null, "Specs", { depth: 1 }) + `<div style="height:150px"></div>` +
+          menu(30, 60, ["Rename…", { t: "Colour", sub: 1 }, "-", "New Nested Folder", "Unpin Folder", "-", "Delete Folder"]) },
+      ] },
+    { title: "3. Open and close", text: "Click the folder. Closed, it shows its tab count and keeps the tab you're on in sight. An extension closing a folder looks the same.",
+      steps: [
+        { h: "Open", body: () => newTab + folder("orange", "Claude") + T.claude({ depth: 1 }) + T.gh({ depth: 1, sel: true }) + T.api({ depth: 1 }) + T.maps() },
+        { h: "Closed", body: () => newTab + folder("orange", "Claude", { open: false, count: 3 }) + T.gh({ depth: 1, sel: true }) + T.maps() + `<div style="height:82px"></div>` },
+      ] },
+    { title: "4. Drag tabs in and out", text: "Drag a tab between a folder's tabs, or onto the folder, and it joins. Drag it above the folder or below its last tab and it leaves. Folders don't drop into Today folders.",
+      steps: [
+        { h: "Drag in", body: () => newTab + T.hn() + folder("orange", "Claude") + T.claude({ depth: 1 }) + gap(1) + T.api({ depth: 1 }) + T.maps({ lift: true, depth: 1 }) },
+        { h: "Drag out", body: () => newTab + T.hn() + folder("orange", "Claude") + T.claude({ depth: 1 }) + T.api({ depth: 1 }) + gap(0) + T.gh({ lift: true }) + T.maps() },
+      ] },
+    { title: "5. An extension makes a folder", text: "Claude groups the tabs it drives. It shows up as a Today folder named and coloured by Claude. You can rename, recolour, close it or drag tabs in and out, and Claude sees each change. When Claude ungroups the last tab, the folder goes.",
+      steps: [
+        { h: "Before", body: () => newTab + T.hn() + T.claude() + T.gh({ sel: true }) + T.api() + T.maps() },
+        { h: "Claude groups its tabs", body: () => newTab + T.hn() + folder("orange", "Claude") + T.claude({ depth: 1 }) + T.gh({ depth: 1, sel: true }) + T.api({ depth: 1 }) + T.maps() },
+      ] },
+    { title: "6. Pin and unpin a folder", text: "Drag a Today folder into Pinned, or Pin Folder: it becomes a pinned folder with pinned tabs, and stops being a Chrome group (see Rules). Unpin Folder, or drag it into Today: it's one Today folder again, folders inside it folded in.",
+      steps: [
+        { h: "Today folder", body: () => label(4, "Pinned") + T.linear() + sep + newTab + folder("purple", "Trip") + T.maps({ depth: 1, sel: true }) + T.wiki({ depth: 1 }) + T.yt() },
+        { h: "Pinned", body: () => label(4, "Pinned") + T.linear() + folder("purple", "Trip") + T.maps({ depth: 1, sel: true }) + T.wiki({ depth: 1 }) + sep + newTab + T.yt() },
+        { h: "Unpin a nested folder", body: () => label(4, "Today") + newTab + folder("blue", "Work") + T.figma({ depth: 1 }) + T.docs({ depth: 1, sel: true }) + T.yt() + `<div class="cut">Specs' tabs folded into Work</div>` },
+      ] },
+  ];
+
+  document.getElementById("look-light").innerHTML = `<div class="sb">${look()}</div><div class="pg"></div>`;
+  document.getElementById("look-dark").innerHTML = `<div class="sb">${look()}</div><div class="pg"></div>`;
+  document.getElementById("flows").innerHTML = flows.map((f) =>
+    `<section class="flow"><h3>${f.title}</h3><p>${f.text}</p><div class="pair">` +
+    f.steps.map((s) => ["light", "dark"].map((m) =>
+      `<div><div class="step">${s.h} · ${m}</div><div class="win ${m}${s.wide ? " wide" : ""}"><div class="sb">${s.body()}</div><div class="pg"></div></div></div>`).join("")).join("") +
+    `</div></section>`).join("");
+</script>
+</body>
+</html>

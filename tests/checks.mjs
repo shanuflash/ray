@@ -1173,11 +1173,13 @@ const checks = {
     assert(folder.title === "New Folder", `folder named ${folder.title}`);
     const order = state().sidebar.pinned.map((e) => e.id);
     assert(order.indexOf(a.id) === order.indexOf(folder.id) + 1, "the tab isn't right after its folder");
-    await until("renaming the new folder", async () => { await command("state"); return state().sidebarFrames.renaming === folder.id; }, 3000);
+    // A new folder opens Edit Folder in its row's place, ready to name.
+    await until("editing the new folder", async () => { await command("state"); return state().sidebar.folderEditor?.title === "New Folder"; }, 3000);
+    await command("folderedit name Work");
+    await command("folderedit enter");
+    await until("renamed", () => state().sidebar.pinned.find((e) => e.id === folder.id)?.title === "Work" && !state().sidebar.folderEditor);
     await settle();
     assert(frameOf(a.id).x === frameOf(folder.id).x + 16, `indent ${frameOf(folder.id).x} -> ${frameOf(a.id).x}`);
-    await command(`rename ${folder.id} Work`);
-    await until("renamed", () => state().sidebar.pinned.find((e) => e.id === folder.id)?.title === "Work");
     folderIDs = { folder: folder.id, a: a.id, b: b.id };
   },
   async "folder-toggle"() {
@@ -1348,6 +1350,175 @@ const checks = {
     assert(pinned.find((e) => e.id === nested.id).parent === null, "the deleted folder's folder didn't move up");
     await command(`rowaction infolder ${b} ${nested.id}`);
     await until("kept a folder for restore", () => state().sidebar.pinned.find((e) => e.id === b)?.parent === nested.id);
+  },
+  async folders() {
+    // Folders in Today are Chrome tab groups: an extension (like Claude's, which groups the tabs it drives) and the
+    // sidebar see and change the same groups. A local unpacked extension stands in; nothing comes from the Web Store.
+    const dir = join(dataDir, "group-extension");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "manifest.json"), JSON.stringify({
+      manifest_version: 3, name: "Ray Groups", version: "1.0", permissions: ["tabs", "tabGroups"],
+      background: { service_worker: "sw.js" },
+    }));
+    writeFileSync(join(dir, "sw.js"), "self.ready = true;");
+    const from = stderr.length;
+    await command(`extinstall ${dir}`);
+    const id = await until("installed", () => stderr.slice(from).match(/\[ray-test\] installed ([a-p]{32})/)?.[1], 15000);
+    const sw = await until("worker", async () => (await send("Target.getTargets")).targetInfos.find((t) => t.url.startsWith(`chrome-extension://${id}/`)), 10000);
+    const { sessionId } = await send("Target.attachToTarget", { targetId: sw.targetId, flatten: true });
+    const run = async (js) => {
+      const r = await send("Runtime.evaluate", { expression: `(async () => { ${js} })()`, awaitPromise: true, returnByValue: true }, sessionId);
+      if (r.exceptionDetails) throw new Error(`extension: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
+      return r.result?.value;
+    };
+    const chromeGroups = () => run(`return Promise.all((await chrome.tabGroups.query({})).map(async (g) => ({ ...g, tabs: (await chrome.tabs.query({ groupId: g.id })).map((t) => t.id) })))`);
+    const today = () => state().sidebar.today;
+    const byId = (eid) => [...state().sidebar.pinned, ...today()].find((e) => e.id === eid);
+    const folderTitled = (title) => [...state().sidebar.pinned, ...today()].find((e) => e.kind === "folder" && e.title === title);
+    const live = async () => { await command("state"); return state(); };
+
+    await todayTabs(state().sidebar.today.length + 3);
+    const tabs = today().filter((e) => e.live && e.url.includes("/c?n=")).slice(0, 3).map((e) => e.tab);
+    assert(tabs.length === 3, `fixture tabs ${JSON.stringify(today())}`);
+
+    // The extension groups two tabs and names it: a Today folder appears over them, in its colour, with its name.
+    const group = await run(`const g = await chrome.tabs.group({ tabIds: [${tabs[0]}, ${tabs[1]}] });
+      await chrome.tabGroups.update(g, { title: "Claude", color: "orange" }); return g;`);
+    const claude = await until("extension's group as a Today folder", async () => {
+      const s = await live();
+      const f = s.sidebar.today.find((e) => e.kind === "folder" && e.title === "Claude");
+      return f && f.color === "orange" && tabs.slice(0, 2).every((t) => entryOfTab(t)?.parent === f.id) ? f : null;
+    });
+    assert(entryOfTab(tabs[2]).parent === null, "an ungrouped tab went into the folder");
+    let rows = today().map((e) => e.id);
+    assert(rows.indexOf(claude.id) + 1 === rows.indexOf(entryOfTab(tabs[0]).id) || rows.indexOf(claude.id) + 1 === rows.indexOf(entryOfTab(tabs[1]).id),
+      `the folder isn't over its tabs: ${JSON.stringify(today().map((e) => [e.kind, e.title, e.parent]))}`);
+    assert(state().sidebar.folderIcons.rows[claude.id]?.color === "orange", `folder icon ${JSON.stringify(state().sidebar.folderIcons.rows[claude.id])}`);
+
+    // Ray's changes reach Chrome: colour, name, closing it.
+    await command(`rowaction color ${claude.id} blue`);
+    await command(`rename ${claude.id} Agents`);
+    await until("Chrome sees the new look", async () => (await chromeGroups()).some((g) => g.id === group && g.color === "blue" && g.title === "Agents"));
+    const springs = (await live()).sidebar.folderIcons.springs;
+    await command(`rowaction togglefolder ${claude.id}`);
+    await until("Chrome sees it collapsed", async () => (await chromeGroups()).some((g) => g.id === group && g.collapsed));
+    if (state().sidebarFrames.reduceMotion !== "1") {
+      await until("the flap closed on a spring", async () => (await live()).sidebar.folderIcons.springs > springs, 3000);
+    }
+    assert((await live()).sidebar.folderIcons.rows[claude.id].open === false, "the icon still shows the folder open");
+    // And Chrome's reach Ray: the extension opens it again and adds a tab it made.
+    await run(`await chrome.tabGroups.update(${group}, { collapsed: false });
+      const t = await chrome.tabs.create({ url: "${origin}/c?n=made", active: false }); await chrome.tabs.group({ groupId: ${group}, tabIds: [t.id] });`);
+    const made = await until("the extension's new tab in the folder", async () => {
+      const s = await live();
+      const e = s.sidebar.today.find((x) => x.url.includes("n=made"));
+      return e && e.parent === claude.id && byId(claude.id).open === true ? e : null;
+    });
+
+    // A tab taken out of the folder leaves the group.
+    await command(`rowaction outfolder ${made.id}`);
+    await until("out of the group", async () => (await run(`return (await chrome.tabs.get(${made.tab})).groupId`)) === -1);
+    assert(byId(made.id).parent === null, "the tab stayed in the folder");
+
+    // The user makes one: New Folder from a tab's menu opens Edit Folder; name, colour and icon go to Chrome.
+    const third = entryOfTab(tabs[2]);
+    const menu = JSON.parse(await commandResult(`rowmenu ${third.id}`));
+    assert(menu.some((t) => t.startsWith("Add to Folder > New Folder") && t.includes("Agents")), `tab menu ${menu}`);
+    await command(`rowaction newfolder ${third.id}`);
+    await until("Edit Folder open", async () => (await live()).sidebar.folderEditor);
+    await command("folderedit name Mine");
+    await command("folderedit color green");
+    await command("folderedit tab symbols");
+    await command("folderedit icon sf:star");
+    await command("folderedit enter");
+    const mine = await until("the user's folder", async () => {
+      const s = await live();
+      const f = s.sidebar.today.find((e) => e.kind === "folder" && e.title === "Mine");
+      return f && !s.sidebar.folderEditor && f.color === "green" && f.icon === "sf:star" && entryOfTab(tabs[2]).parent === f.id ? f : null;
+    });
+    await until("Chrome has the user's folder", async () => (await chromeGroups()).some((g) => g.title === "Mine" && g.color === "green" && g.tabs.includes(tabs[2])));
+    const folderMenu = JSON.parse(await commandResult(`rowmenu ${mine.id}`));
+    for (const item of ["Edit Folder…", "New Tab in Folder", "Pin Folder", "Delete Folder", "Close Tabs"]) {
+      assert(folderMenu.some((t) => t === item || t.startsWith(item)), `folder menu lacks ${item}: ${folderMenu}`);
+    }
+    assert(folderMenu.some((t) => t.startsWith("Colour > None|Blue")), `colour menu ${folderMenu}`);
+    // Escape puts back what a colour pick changed while editing.
+    await command(`rowaction editfolder ${mine.id}`);
+    await until("Edit Folder open again", async () => (await live()).sidebar.folderEditor);
+    await command("folderedit color red");
+    await until("the colour applies at once", async () => byId(mine.id)?.color === "red" && (await live()) && byId(mine.id).color === "red");
+    await command("folderedit escape");
+    await until("Escape put it back", async () => { const s = await live(); return !s.sidebar.folderEditor && byId(mine.id).color === "green"; });
+
+    // Dragging a tab onto a folder's row puts it in that folder (and its group).
+    await command("state");
+    const target = frameOf(mine.id), moving = frameOf(made.id);
+    await command(`drag ${moving.cx} ${moving.cy} ${target.cx - moving.cx} ${target.cy - moving.cy}`);
+    await until("dragged into the folder", async () => (await live()) && byId(made.id)?.parent === mine.id);
+    await until("and into its group", async () => (await chromeGroups()).some((g) => g.title === "Mine" && g.tabs.includes(made.tab)));
+
+    // Pinning a folder: pinned tabs in a pinned folder, no longer a Chrome group. Unpinning makes it one again.
+    await command(`rowaction pinfolder ${mine.id}`);
+    await until("pinned folder", async () => {
+      const s = await live();
+      const f = s.sidebar.pinned.find((e) => e.id === mine.id);
+      return f && s.sidebar.pinned.filter((e) => e.parent === mine.id).every((e) => e.kind === "pinned") && entryOfTab(tabs[2])?.kind === "pinned";
+    });
+    await until("its group gone", async () => !(await chromeGroups()).some((g) => g.title === "Mine"));
+    assert((await run(`return (await chrome.tabs.get(${tabs[2]})).groupId`)) === -1, "a pinned tab is still in a group");
+    assert(JSON.parse(await commandResult(`rowmenu ${mine.id}`)).includes("Unpin Folder"), "no Unpin Folder on a pinned folder");
+    await command(`rowaction unpinfolder ${mine.id}`);
+    await until("back in Today, a group again", async () => {
+      const s = await live();
+      return s.sidebar.today.some((e) => e.id === mine.id) && (await chromeGroups()).some((g) => g.title === "Mine" && g.tabs.includes(tabs[2]) && g.color === "green");
+    });
+
+    // Delete Folder keeps its tabs (ungrouped); Close Tabs closes them and the folder goes.
+    await command(`rowaction deletefolder ${claude.id}`);
+    await until("deleted, tabs kept and ungrouped", async () => {
+      const s = await live();
+      return !byId(claude.id) && tabs.slice(0, 2).every((t) => entryOfTab(t)?.parent === null) && !(await chromeGroups()).some((g) => g.id === group);
+    });
+    await command(`rowaction closetabs ${mine.id}`);
+    await until("closed with its tabs", async () => {
+      const s = await live();
+      return !byId(mine.id) && !entryOfTab(tabs[2]) && !(await chromeGroups()).some((g) => g.title === "Mine");
+    });
+    assert(!today().some((e) => e.kind === "folder"), `folders left: ${JSON.stringify(today())}`);
+    await send("Target.detachFromTarget", { sessionId });
+  },
+  async "folders-relaunch"() {
+    // A Today folder (name, colour, icon, its tabs) comes back after a relaunch, and is a Chrome group again once one
+    // of its tabs is open. Its own instance, relaunched on the same data dir.
+    const dir = mkdtempSync(join(tmpdir(), "ray-folders-relaunch-"));
+    try {
+      let it = ownInstance("folders-relaunch", { RAY_DATA_DIR: dir });
+      let s = await it.until("started", (x) => x?.sidebar?.today.some((e) => e.live));
+      const tab = s.sidebar.today.find((e) => e.live);
+      await it.ok(`rowaction newfolder ${tab.id}`);
+      await it.until("Edit Folder", (x) => x.sidebar.folderEditor);
+      await it.ok("folderedit name Trip");
+      await it.ok("folderedit color purple");
+      await it.ok("folderedit tab emoji");
+      await it.ok("folderedit icon ✈️");
+      await it.ok("folderedit enter");
+      s = await it.until("folder made", (x) => x.sidebar.today.some((e) => e.kind === "folder" && e.title === "Trip" && e.icon === "✈️")
+        && x.sidebar.tabGroups.some((g) => g.title === "Trip" && g.color === "purple"));
+      const folder = s.sidebar.today.find((e) => e.kind === "folder");
+      await it.stop().catch(() => {});
+      it = ownInstance("folders-relaunch-2", { RAY_DATA_DIR: dir });
+      try {
+        s = await it.until("relaunched with the folder", (x) => x?.sidebar?.today.some((e) => e.id === folder.id));
+        const back = s.sidebar.today.find((e) => e.id === folder.id);
+        assert(back.title === "Trip" && back.color === "purple" && back.icon === "✈️", `folder after relaunch ${JSON.stringify(back)}`);
+        assert(s.sidebar.today.find((e) => e.id === tab.id)?.parent === folder.id, "its tab left it over the relaunch");
+        await it.until("a group again with its open tab", (x) => x.sidebar.tabGroups.some((g) => g.title === "Trip" && g.color === "purple" && g.tabs.length === 1));
+      } finally {
+        await it.stop().catch(() => {});
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   },
   async extensions() {
     // A local unpacked extension with a toolbar popup; nothing is fetched from the Web Store.

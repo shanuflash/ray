@@ -191,8 +191,27 @@ publicly or create accounts.
 - `EngineCalls`: calls the engine's exported `ac_*` C functions (`dlsym`, JSON in, JSON reply), e.g.
   `ac_history_query`. Their arguments are in `third_party/ardia/engine/chromium/src/chrome/browser/ardia/ac_*.cc`.
   `EngineEvents` is the one engine event sink (`downloads.changed`, …), handed out by topic.
-- Pinned folders are `SidebarEntry`s of kind `.folder` inside `state.pinned`, kept in tree order with `parentID`
-  links; `SidebarState.normalizePinned()` rebuilds a valid tree after every change and on load.
+- Folders are `SidebarEntry`s of kind `.folder` in `state.pinned` (nested) or `state.today` (one level), kept in tree
+  order with `parentID` links; `normalizePinned()` / `normalizeToday()` rebuild a valid tree after every change and on
+  load (a Today folder with no tab goes, as Chrome's group does). Each has `color` (`FolderLook.colors`, Chrome's
+  eight; nil is none, Chrome's grey) and `icon` ("sf:<symbol>" or an emoji), saved in Sidebar.json.
+  `TabGroupSync` (`Host/TabGroups.swift`) makes Today folders Chrome tab groups, so `chrome.tabGroups` and extensions
+  (Claude's) drive the same groups: `ac_tabs_watch` starts the engine's `tabs.strip` events (each window's tabs with
+  their group, and each group's title/colour/collapsed), merged three ways against the last one seen (only Chrome's
+  own changes are adopted, so a stale event never undoes Ray's), then `push()` sends what still differs through
+  `ac_tabs_group` after every `changed()`. Group ids live per run (`groupToken`, never saved); a folder's group holds
+  its open tabs and is made when one opens. Pin Folder ends the group (`release`; Chrome never groups a pinned tab),
+  Unpin Folder makes one again (nested folders fold in). A tab opened from a tab in a Today folder joins it.
+  `FolderIconView` (`Host/FolderIcon.swift`): the folder icon in layers (back with its tab, two sheets, a front flap
+  carrying the glyph) whose sheets rise and flap leans on springs when it opens, hover and drop-target states.
+  `FolderEditorView` (`Host/FolderEditor.swift`): Edit Folder (menu, and every new folder), standing in for the
+  folder's row: name, colour, Symbols / Emoji (Ardia's lists) with search; picks apply live, Escape puts them back.
+  Menus: Edit Folder…, Colour ▸, New Tab in Folder / New Nested Folder, Pin / Unpin Folder, Delete Folder (tabs move
+  up, ungrouped), Close Tabs (Today). Test commands `rowaction editfolder|pinfolder|unpinfolder|newtabin|closetabs
+  <id>`, `rowaction color <id> <name|none>`, `folderedit state|name|color|icon|tab|search|enter|escape`; state log
+  `sidebar.tabGroups` (Chrome's groups as last seen), `sidebar.folderIcons`, `sidebar.folderEditor`, and
+  `color`/`icon`/`group` per entry.
+  Checks `folders` (an unpacked extension's service worker drives `chrome.tabGroups`), `folders-relaunch`.
 - Tab names (Arc's Rename): `SidebarEntry.customTitle` (Sidebar.json `customTitle`, optional; `name(from:)` makes
   it one plain line of at most 200 characters), which `displayTitle` prefers over `pageTitle`; page title updates
   only ever write `title`. Rows' menus (tiles too) have Rename… (the `.renameFolder` action, for tabs as well) and,

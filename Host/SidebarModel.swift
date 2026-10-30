@@ -5,7 +5,8 @@ final class SidebarEntry: Codable {
     case favorite
     case pinned
     case today
-    /// A folder in the pinned section: no page of its own, a title, and the pinned items whose `parentID` is its id.
+    /// A folder: no page of its own, a title, and the items whose `parentID` is its id. In `pinned` it nests; in
+    /// `today` it's one level and is a Chrome tab group underneath (`TabGroupSync`).
     case folder
   }
 
@@ -16,15 +17,21 @@ final class SidebarEntry: Codable {
   var title: String
   var lastActive: Date
   var tab: RayCoreTab?
-  /// The pinned folder this item sits in; nil at the top level (and for favorites and today's tabs).
+  /// The folder this item sits in (in its own section); nil at the top level and for favorites.
   var parentID: UUID?
   /// For folders: whether its items show. Optional so older files still load.
   var isOpen: Bool?
+  /// For folders: one of `FolderLook.colors`, nil for none.
+  var color: String?
+  /// For folders: "sf:<symbol>" or an emoji shown on the folder's flap, nil for none.
+  var icon: String?
+  /// For Today folders: the Chrome tab group they are now (its id this run), never saved.
+  var groupToken: String?
 
   // MARK: Names and saved fields
 
   private enum CodingKeys: String, CodingKey {
-    case id, kind, pinnedURL, url, title, customTitle, lastActive, parentID, isOpen
+    case id, kind, pinnedURL, url, title, customTitle, lastActive, parentID, isOpen, color, icon
   }
 
   /// The tab's own name, from the user's Rename… (or Arc's, on import), shown in place of the page's title. Never
@@ -144,11 +151,23 @@ final class SidebarState: Codable {
 
   // MARK: Pinned folders
 
-  /// `pinned` holds folders and tabs in tree order: each folder is followed by everything inside it.
+  /// `pinned` holds folders and tabs in tree order: each folder is followed by everything inside it. `today` does too,
+  /// one level deep.
+  func section(of entry: SidebarEntry) -> [SidebarEntry] {
+    today.contains { $0 === entry } ? today : pinned
+  }
+
+  func isTodayFolder(_ entry: SidebarEntry) -> Bool {
+    entry.isFolder && today.contains { $0 === entry }
+  }
+
+  var todayFolders: [SidebarEntry] { today.filter(\.isFolder) }
+
   func depth(of entry: SidebarEntry) -> Int {
+    let list = section(of: entry)
     var depth = 0
     var parent = entry.parentID
-    while let id = parent, let folder = pinned.first(where: { $0.id == id }), depth < 64 {
+    while let id = parent, let folder = list.first(where: { $0.id == id }), depth < 64 {
       depth += 1
       parent = folder.parentID
     }
@@ -156,11 +175,12 @@ final class SidebarState: Codable {
   }
 
   func isInside(_ entry: SidebarEntry, _ folder: SidebarEntry) -> Bool {
+    let list = section(of: folder)
     var parent = entry.parentID
     var steps = 0
     while let id = parent, steps < 64 {
       if id == folder.id { return true }
-      parent = pinned.first { $0.id == id }?.parentID
+      parent = list.first { $0.id == id }?.parentID
       steps += 1
     }
     return false
@@ -169,7 +189,7 @@ final class SidebarState: Codable {
   /// The entry and, for a folder, everything inside it.
   func block(of entry: SidebarEntry) -> [SidebarEntry] {
     guard entry.isFolder else { return [entry] }
-    return [entry] + pinned.filter { isInside($0, entry) }
+    return [entry] + section(of: entry).filter { isInside($0, entry) }
   }
 
   /// Rebuilds a valid tree from parent links, keeping the order items appear in: drops links to missing folders or
@@ -204,8 +224,33 @@ final class SidebarState: Codable {
     pinned = ordered
   }
 
+  /// Today's folders keep Chrome's rules: one level, each followed by its tabs, and gone once it holds no tab. A tab
+  /// whose folder is missing (or isn't a Today folder) moves to the top level.
+  func normalizeToday() {
+    let folders = Set(today.filter(\.isFolder).map(\.id))
+    for entry in today {
+      if entry.isFolder || entry.parentID.map({ !folders.contains($0) }) == true { entry.parentID = nil }
+      if !entry.isFolder { entry.kind = .today }
+    }
+    let filled = Set(today.compactMap(\.parentID))
+    var ordered: [SidebarEntry] = []
+    for entry in today where entry.parentID == nil {
+      if entry.isFolder {
+        guard filled.contains(entry.id) else { continue }
+        ordered.append(entry)
+        ordered += today.filter { $0.parentID == entry.id }
+      } else {
+        ordered.append(entry)
+      }
+    }
+    today = ordered
+  }
+
   func archiveStaleToday(now: Date = Date()) {
-    today.removeAll { !$0.isLive && $0.id != activeEntryID && now.timeIntervalSince($0.lastActive) > Self.todayLifetime }
+    today.removeAll {
+      !$0.isFolder && !$0.isLive && $0.id != activeEntryID && now.timeIntervalSince($0.lastActive) > Self.todayLifetime
+    }
+    normalizeToday()
   }
 }
 
@@ -223,6 +268,7 @@ final class SidebarStore {
     guard let url, let data = try? Data(contentsOf: url),
           let state = try? JSONDecoder().decode(SidebarState.self, from: data) else { return nil }
     state.normalizePinned()
+    state.normalizeToday()
     return state
   }
 

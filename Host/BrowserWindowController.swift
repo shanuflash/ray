@@ -30,6 +30,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private let favicons = FaviconCache()
   private let store: SidebarStore
   private(set) var state: SidebarState
+  /// Today folders as Chrome tab groups.
+  private(set) var groups: TabGroupSync!
+  /// A Today folder's New Tab in Folder: the next tab the command bar opens goes into it.
+  private var newTabFolder: UUID?
   private var loadingEntry: SidebarEntry?
   private var peeking = false
   private var peekEndWork: DispatchWorkItem?
@@ -97,6 +101,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state.archiveStaleToday()
     coreWindow = RayCoreWindow(contentRect: NSRect(x: 0, y: 0, width: 1360, height: 860))
     super.init()
+    groups = TabGroupSync(
+      profile: profile, windowID: { [weak self] in self.map { $0.coreWindow.chromeWindowId(for: $0.profile) } ?? -1 },
+      state: { [weak self] in self?.state ?? SidebarState() })
+    groups.onAdopt = { [weak self] event in self?.changed(event) }
     coreWindow.delegate = self
     coreWindow.activeProfile = profile
     configureWindow()
@@ -301,6 +309,38 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   // MARK: Test snapshots
+
+  /// For tests: the sidebar drawn from its layers (folder icons are layer-only) into `<path>-light.png` and
+  /// `<path>-dark.png` at 2×, to look at rows, folders and Edit Folder.
+  func snapshotSidebar(to path: String) -> Bool {
+    for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+      let old = sidebar.appearance
+      sidebar.appearance = NSAppearance(named: appearance)
+      defer { sidebar.appearance = old }
+      sidebar.layoutSubtreeIfNeeded()
+      sidebar.displayIfNeeded()
+      CATransaction.flush()
+      guard let layer = sidebar.layer else { return false }
+      let size = sidebar.bounds.size
+      guard let context = CGContext(data: nil, width: Int(size.width * 2), height: Int(size.height * 2), bitsPerComponent: 8,
+                                    bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+      context.scaleBy(x: 2, y: 2)
+      sidebar.effectiveAppearance.performAsCurrentDrawingAppearance {
+        context.setFillColor(SidebarColors.background.cgColor)
+      }
+      context.fill(CGRect(origin: .zero, size: size))
+      if sidebar.isFlipped {
+        context.translateBy(x: 0, y: size.height)
+        context.scaleBy(x: 1, y: -1)
+      }
+      layer.render(in: context)
+      guard let image = context.makeImage(),
+            let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]),
+            (try? png.write(to: URL(fileURLWithPath: "\(path)-\(name).png"))) != nil else { return false }
+    }
+    return true
+  }
 
   /// For tests: draws the page toolbar into a PNG (light appearance), to look at its design.
   func snapshotToolbar(to path: String) -> Bool {
@@ -892,6 +932,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   private func changed(_ event: String) {
     guard !closing else { return }
+    state.normalizeToday()
+    groups.push()
     updateForcedPeek()
     reloadSidebar()
     store.save(state)
@@ -908,11 +950,21 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   private func insertToday(_ entry: SidebarEntry, after opener: SidebarEntry?) {
+    // A tab opened from a tab in a Today folder joins that folder, as Chrome's tab groups do. New Tab in Folder's tab
+    // joins its folder.
+    if let opener, opener.kind == .today, let parent = opener.parentID {
+      entry.parentID = parent
+    } else if opener == nil, let folder = newTabFolder.flatMap({ id in state.todayFolders.first { $0.id == id } }) {
+      newTabFolder = nil
+      entry.parentID = folder.id
+      state.today.insert(entry, at: (state.today.firstIndex { $0 === folder } ?? 0) + state.block(of: folder).count)
+      return
+    }
     var opener = opener
     // Settings › Open new tabs next to the active tab: one with no opener goes right after the active one (when
-    // that is in Today; otherwise at the top as usual).
+    // that is in Today; otherwise at the top as usual). Not into its folder: past the folder's tabs instead.
     if opener == nil, RaySettings.shared[.newTabNextToActive], let active = activeEntry, active.kind == .today {
-      opener = active
+      opener = active.parentID.flatMap { id in state.today.filter { $0.parentID == id }.last } ?? active
     }
     if let opener, opener.kind == .today, let index = state.today.firstIndex(where: { $0 === opener }) {
       state.today.insert(entry, at: index + 1)
@@ -1018,45 +1070,98 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       return
     case .unpin:
       guard entry.kind == .pinned else { return }
-      move(entry, to: .today(0))
+      move(entry, to: .today(0, parent: nil))
+      return
+    case .pinFolder:
+      guard state.isTodayFolder(entry) else { return }
+      move(entry, to: .pinned(state.pinned.count, parent: nil))
+      return
+    case .unpinFolder:
+      guard entry.isFolder, !state.isTodayFolder(entry) else { return }
+      move(entry, to: .today(0, parent: nil))
       return
     case .renameFolder:
       sidebar.beginRename(entry)
       return
+    case .editFolder:
+      guard entry.isFolder else { return }
+      sidebar.beginEditFolder(entry)
+      return
+    case .setColor(let color):
+      guard entry.isFolder else { return }
+      entry.color = color.flatMap { FolderLook.colors.contains($0) ? $0 : nil }
     case .toggleFolder:
       guard entry.isFolder else { return }
       entry.isOpen = !(entry.isOpen ?? true)
     case .newFolder:
-      // Around this tab: a new folder where it is, with the tab inside, named and ready to rename.
+      // Around this tab: a new folder where it is, with the tab inside, ready to name. In Today it's a Chrome tab
+      // group too, and takes the colour Chrome would give a new group.
+      if entry.kind == .today {
+        let folder = SidebarEntry.folder("New Folder", in: nil)
+        folder.color = FolderLook.nextColor(avoiding: state.todayFolders.map(\.color))
+        state.today.insert(folder, at: state.today.firstIndex { $0 === entry } ?? 0)
+        move(entry, to: .folder(folder.id))
+        sidebar.beginEditFolder(folder)
+        return
+      }
       let folder = SidebarEntry.folder("New Folder", in: entry.kind == .pinned ? entry.parentID : nil)
       let at = entry.kind == .pinned ? state.pinned.firstIndex { $0 === entry } ?? state.pinned.count : state.pinned.count
       state.pinned.insert(folder, at: at)
       move(entry, to: .folder(folder.id))
-      sidebar.beginRename(folder)
+      sidebar.beginEditFolder(folder)
       return
     case .newNestedFolder:
-      guard entry.isFolder else { return }
+      guard entry.isFolder, !state.isTodayFolder(entry) else { return }
       let folder = SidebarEntry.folder("New Folder", in: entry.id)
       entry.isOpen = true
       state.pinned.append(folder)
       state.normalizePinned()
       changed("sidebar")
-      sidebar.beginRename(folder)
+      sidebar.beginEditFolder(folder)
       return
+    case .newTabInFolder:
+      guard state.isTodayFolder(entry) else { return }
+      entry.isOpen = true
+      beginNewTab()
+      newTabFolder = entry.id
+      return
+    case .closeFolderTabs:
+      guard state.isTodayFolder(entry) else { return }
+      let tabs = state.today.filter { $0.parentID == entry.id }
+      for tab in tabs.reversed() {
+        if tab.isLive {
+          closeByUser(tab)
+        } else {
+          rememberClosed(tab, key: nil, favicon: nil)
+          state.remove(tab)
+        }
+      }
     case .moveToFolder(let id):
       move(entry, to: .folder(id))
       return
     case .removeFromFolder:
       guard let parentID = entry.parentID, let parent = state.entry(id: parentID) else { return }
+      if state.isTodayFolder(parent) {
+        let end = (state.today.firstIndex { $0 === parent } ?? 0) + state.block(of: parent).count
+        let at = end - (state.today.firstIndex { $0 === entry }.map { $0 < end ? 1 : 0 } ?? 0)
+        move(entry, to: .today(at, parent: nil))
+        return
+      }
       let end = (state.pinned.firstIndex { $0 === parent } ?? 0) + state.block(of: parent).count
       move(entry, to: .pinned(end, parent: parent.parentID))
       return
     case .deleteFolder:
-      // As in Crest: the folder goes, what was inside moves up a level.
+      // As in Crest: the folder goes, what was inside moves up a level. A Today folder's group is taken apart.
       guard entry.isFolder else { return }
-      for child in state.pinned where child.parentID == entry.id { child.parentID = entry.parentID }
-      state.pinned.removeAll { $0 === entry }
-      state.normalizePinned()
+      if state.isTodayFolder(entry) {
+        groups.release(entry)
+        for child in state.today where child.parentID == entry.id { child.parentID = nil }
+        state.today.removeAll { $0 === entry }
+      } else {
+        for child in state.pinned where child.parentID == entry.id { child.parentID = entry.parentID }
+        state.pinned.removeAll { $0 === entry }
+        state.normalizePinned()
+      }
     case .addToFavorites:
       guard entry.kind != .favorite else { return }
       move(entry, to: .favorites(state.favorites.count))
@@ -1076,22 +1181,37 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   /// Moves an entry to a section and place; pinning keeps the page it's on as its pinned URL. A folder moves with
-  /// everything inside it, and only within the pinned section.
+  /// everything inside it. Today folders are one level: nothing but tabs goes into one, and a pinned folder that
+  /// comes to Today brings the tabs of the folders inside it into itself. A Today folder that's pinned stops being a
+  /// Chrome tab group (Chrome never lets a pinned tab be in one).
   func move(_ entry: SidebarEntry, to target: SidebarDropTarget) {
     guard state.entry(id: entry.id) === entry else { return }
-    let block = entry.kind == .pinned || entry.isFolder ? state.block(of: entry) : [entry]
+    let fromToday = state.today.contains { $0 === entry }
+    let block = entry.isFolder || entry.kind == .pinned ? state.block(of: entry) : [entry]
     var parent: UUID?
     switch target {
-    case .pinned(_, let id): parent = id
+    case .pinned(_, let id), .today(_, let id): parent = id
     case .folder(let id): parent = id
-    case .favorites, .today:
-      if entry.isFolder { return }
+    case .favorites: if entry.isFolder { return }
     }
     if let parent, parent == entry.id || block.contains(where: { $0.id == parent }) { return }
-    if let parent, state.pinned.first(where: { $0.id == parent })?.isFolder != true { return }
+    let todayFolder = parent.flatMap { id in state.todayFolders.first { $0.id == id } }
+    if let parent, todayFolder == nil, state.pinned.first(where: { $0.id == parent })?.isFolder != true { return }
+    switch target {
+    case .today: if parent != nil && (todayFolder == nil || entry.isFolder) { return }
+    case .pinned: if todayFolder != nil { return }
+    case .folder: if todayFolder != nil && entry.isFolder { return }
+    case .favorites: break
+    }
+    let leavesToday: Bool = {
+      if case .today = target { return false }
+      if case .folder = target, todayFolder != nil { return false }
+      return true
+    }()
+    if entry.isFolder, fromToday, leavesToday { groups.release(entry) }
     state.favorites.removeAll { $0 === entry }
     state.pinned.removeAll { item in block.contains { $0 === item } }
-    state.today.removeAll { $0 === entry }
+    state.today.removeAll { item in block.contains { $0 === item } }
     entry.parentID = nil
     switch target {
     case .favorites(let index):
@@ -1101,23 +1221,42 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     case .pinned(let index, let parent):
       pin(block, at: index, in: parent)
     case .folder(let id):
-      let folder = state.pinned.first { $0.id == id }!
-      folder.isOpen = true
-      pin(block, at: (state.pinned.firstIndex { $0 === folder } ?? 0) + state.block(of: folder).count, in: id)
-    case .today(let index):
-      entry.kind = .today
-      entry.pinnedURL = nil
-      state.today.insert(entry, at: min(index, state.today.count))
+      if let folder = todayFolder {
+        folder.isOpen = true
+        entry.kind = .today
+        entry.pinnedURL = nil
+        entry.parentID = id
+        state.today.insert(entry, at: (state.today.firstIndex { $0 === folder } ?? 0) + state.block(of: folder).count)
+      } else {
+        let folder = state.pinned.first { $0.id == id }!
+        folder.isOpen = true
+        pin(block, at: (state.pinned.firstIndex { $0 === folder } ?? 0) + state.block(of: folder).count, in: id)
+      }
+    case .today(let index, let parent):
+      var items = [entry]
+      if entry.isFolder {
+        // Its tabs, and the tabs of the folders inside it, straight inside it.
+        items += block.filter { !$0.isFolder && $0 !== entry }
+        for tab in items.dropFirst() { tab.parentID = entry.id }
+      } else {
+        entry.parentID = parent
+      }
+      for item in items where !item.isFolder {
+        item.kind = .today
+        item.pinnedURL = nil
+      }
+      state.today.insert(contentsOf: items, at: min(index, state.today.count))
     }
     changed("sidebar")
   }
 
   private func pin(_ block: [SidebarEntry], at index: Int, in parent: UUID?) {
     guard let entry = block.first else { return }
-    if !entry.isFolder {
-      if entry.pinnedURL == nil { entry.pinnedURL = entry.currentURL }
-      entry.kind = .pinned
+    for item in block where !item.isFolder && item.kind != .pinned {
+      if item.pinnedURL == nil { item.pinnedURL = item.currentURL }
+      item.kind = .pinned
     }
+    for item in block where item.isFolder { item.groupToken = nil }
     entry.parentID = parent
     state.pinned.insert(contentsOf: block, at: min(index, state.pinned.count))
     state.normalizePinned()
@@ -1128,7 +1267,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let folder = SidebarEntry.folder("New Folder", in: nil)
     state.pinned.append(folder)
     changed("sidebar")
-    sidebar.beginRename(folder)
+    sidebar.beginEditFolder(folder)
   }
 
   func rename(_ entry: SidebarEntry, to title: String) {
@@ -1149,7 +1288,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func clearToday() {
-    for entry in state.today {
+    for entry in state.today where !entry.isFolder {
       if entry.isLive {
         closeByUser(entry)
       } else {
@@ -1262,11 +1401,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// close as if closed by hand (⇧⌘T and History › Recently Closed bring them back, on their last page), pinned tabs
   /// and favorites stay, and nothing is active. Ardia's "Start fresh" keeps them in Recently Closed too.
   func startFresh() {
-    let closing = state.today
+    let closing = state.today.filter { !$0.isFolder }
     guard !closing.isEmpty || state.activeEntryID != nil else { return }
     // The last Today tab first, so ⇧⌘T brings back the top one first, each to its old place.
     for entry in closing.reversed() { rememberClosed(entry, key: nil, favicon: nil) }
     for entry in closing { state.remove(entry) }
+    state.normalizeToday()
     state.activeEntryID = nil
     store.saveNow(state)
   }
@@ -1351,6 +1491,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   /// For tests: an entry's context menu, as its titles.
   func menuTitles(for entry: SidebarEntry) -> [String] { sidebar.debugMenuTitles(for: entry) }
+  var folderEditorView: FolderEditorView? { sidebar.folderEditor?.view }
 
   // MARK: Page toolbar
 
@@ -1594,6 +1735,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     commandBar = nil
     bar.removeFromSuperview()
     sidebar.setNewTabActive(false)
+    newTabFolder = nil
     if focus, let tab = activeTab { focusPage(tab) }
     logState("commandBar")
   }
@@ -1607,7 +1749,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     // "Search Wikipedia" scopes the bar (as Tab does) and keeps it open.
     if case .scope(let scope) = suggestion.kind { return bar.enter(scope) }
     let mode = commandBarMode
+    let folder = newTabFolder
     closeCommandBar(focus: false)
+    // New Tab in Folder: the tab this opens goes into the folder; anything else forgets it.
+    newTabFolder = mode == .newTab ? folder : nil
+    defer { newTabFolder = nil }
     let url: String
     switch suggestion.kind {
     case .tab(let tab):
@@ -1686,6 +1832,19 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   func sidebar(_ sidebar: SidebarView, rename entry: SidebarEntry, to title: String) {
     rename(entry, to: title)
+  }
+
+  func sidebar(_ sidebar: SidebarView, edit folder: SidebarEntry, title: String?, color: String?, icon: String?) {
+    editFolder(folder, title: title, color: color, icon: icon)
+  }
+
+  /// Edit Folder's choices: a colour or icon as it's picked, the name when it closes (an empty name keeps the old one).
+  func editFolder(_ folder: SidebarEntry, title: String?, color: String?, icon: String?) {
+    guard folder.isFolder, state.entry(id: folder.id) === folder else { return }
+    if let title, let name = SidebarEntry.name(from: title) { folder.title = name }
+    folder.color = color.flatMap { FolderLook.colors.contains($0) ? $0 : nil }
+    folder.icon = FolderLook.isValidIcon(icon) ? icon : nil
+    changed("sidebar")
   }
 
   func sidebarExtensions(_ sidebar: SidebarView, anchor: NSView) {
@@ -2095,6 +2254,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         "url": entry.currentURL, "pinnedURL": entry.pinnedURL ?? NSNull(), "live": entry.isLive,
         "away": entry.isAwayFromPinned, "tab": entry.isLive ? Int(entry.tab!.tabId) : NSNull(),
         "parent": entry.parentID?.uuidString ?? NSNull(), "open": entry.isOpen ?? NSNull(),
+        "color": entry.color ?? NSNull(), "icon": entry.icon ?? NSNull(), "group": entry.groupToken ?? NSNull(),
       ]
     }
     var state: [String: Any] = [
@@ -2157,6 +2317,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         "favorites": self.state.favorites.map(describe),
         "pinned": self.state.pinned.map(describe),
         "today": self.state.today.map(describe),
+        "tabGroups": groups.debug,
+        "folderIcons": sidebar.debugFolderIcons,
+        "folderEditor": sidebar.folderEditor?.view.debug ?? NSNull(),
         "hidden": self.state.sidebarHidden,
         "peeking": peeking,
       ] as [String: Any],

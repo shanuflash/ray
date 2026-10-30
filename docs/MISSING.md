@@ -9,11 +9,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 
 ## Top priority (owner)
 
-1. **Tab groups for extensions** (owner, 2026-10-29): the Claude browser extension (and others) put the tabs they
-   drive into a Chrome tab group (`chrome.tabGroups`); Arc has no tab groups, so Claude's browser use fails there.
-   Check whether Ray's engine (Chrome's tab strip underneath, Ardia's layer) supports groups end to end, make the
-   API work, and show a group in Ray's sidebar (its colour and name over its tabs). Test with the Claude extension.
-2. **Select several tabs** (owner, 2026-10-29): ⌘-click adds or removes a tab, ⇧-click selects a range, as in Arc.
+1. **Select several tabs** (owner, 2026-10-29): ⌘-click adds or removes a tab, ⇧-click selects a range, as in Arc.
    On a selection: ⇧⌘C copies all their links (one per line), right-click › Duplicate (needs Duplicate tab, item
    10 below), New Folder with them, drag them together; Split View with them once it exists. Waiting for the owner's
    go (other sessions first).
@@ -120,7 +116,7 @@ items above. The revamp that gives these a home is PLAN.md section 13.
     fills a maximized window (Ardia 0.2.43-nightly.1).
 
 **Left out on purpose:** WebKit engine and website rules (decided no), setup codes, the `ardia` command-line tool,
-tab groups and meeting groups (Arc has none), video upscaling, crash reports and usage stats; a choice of when
+meeting groups (Arc has none; tab groups are Today folders now, owner 2026-10-31), video upscaling, crash reports and usage stats; a choice of when
 Today tabs archive (Ray keeps Arc's 12 h, owner 2026-10-29); sharing tabs across windows (for now).
 
 ## Known limitations and follow-ups
@@ -253,6 +249,20 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     private profile unless it is marked `kAllow`, rejects empty args for sensitive calls, and zeroes decrypted
     passwords (two new patches). Fix: take that engine (`docs/ARDIA-WATCH.md` item 2). Found 2026-10-30.
 
+30. **Folders: what's left.** (Found building Today folders, 2026-10-31.)
+   - A Today tab reopened with ⇧⌘T comes back outside its folder: `ClosedTab` keeps `parentID` but `reopen` only
+     uses it for pinned tabs. Fix in `BrowserWindowController.reopen` (Today: back into the folder if it's still there).
+   - File › New Folder and the command bar still make a pinned folder only; a Today folder comes from a tab's menu
+     (Add to Folder › New Folder) or an extension. Grouping several tabs at once waits for Select several tabs.
+   - An extension that groups a pinned tab or favorite sees it taken out again (Chrome never groups a pinned tab;
+     Ray's pinned tabs aren't Chrome-pinned underneath, `placeTab` is unused, so `tab.pinned` reads false for them).
+   - Chrome's saved tab groups service (`TabGroupSyncService`) still runs: a moment after launch it writes back the
+     look it saved when a group was made. `TabGroupSync` pushes Ray's look over it for 5 s after making a group; turning
+     the service off in the engine would remove the race.
+   - Close Tabs has no undo toast yet (⇧⌘T and History › Recently Closed bring tabs back); use the revamped Toast.
+   - The folder icon has no accessibility label; Edit Folder's grid has no arrow-key navigation.
+   - Not yet tried with the real Claude extension (needs the owner's sign-in in their own Ray).
+
 ## Done
 
 | What | When |
@@ -280,3 +290,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | JumpCloud Go sign-in relayed through Google Chrome (Settings › Passwords; known limitation #15) | 2026-10-29, `0b6fb3f` |
 | Settings: Light, Dark or Automatic (pages follow); scroll bars Automatic / When scrolling / Always (pages follow live); one address-bar-on-page setting for every window; show or hide the sidebar button; fade unloaded tabs; reorder haptic; ⌘Z reopens a closed tab outside text | 2026-10-29, `d2c6ed0` |
 | Settings › Shortcuts: an editor for every menu command (record, conflicts with Replace, none, reset; macOS's keys refused; Quit and Settings locked); the command bar and reserved keys follow | 2026-10-29, `7f3b29d` |
+| Folders in Today as Chrome tab groups (extensions like Claude's drive them; ungrouping, renaming, colours, collapse both ways), Edit Folder (name, colour, symbol or emoji), an animated folder icon, Pin / Unpin Folder, Close Tabs; kept over relaunch | 2026-10-31, `claude/folders` |

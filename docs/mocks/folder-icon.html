@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Folder Icon</title>
+<style>
+  :root { --page: #f4f4f5; --ink: #1d1d1f; --muted: #6e6e73; --card: #fff; --accent: #9F8CF2; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px 80px; background: var(--page); color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  h2 { font-size: 17px; margin: 40px 0 4px; }
+  p { margin: 0 0 8px; max-width: 760px; }
+  .muted { color: var(--muted); }
+  .card { background: var(--card); border-radius: 14px; padding: 18px; margin-top: 14px; box-shadow: 0 0 0 0.5px rgba(0,0,0,.08); }
+  .grid { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  button.pill { font: 600 12px -apple-system, sans-serif; border: 0; border-radius: 14px; padding: 5px 12px; cursor: pointer;
+    background: rgba(127,127,127,.16); color: var(--ink); }
+  button.pill.on { background: var(--accent); color: #fff; }
+
+  /* ---------- The folder icon. All layers; the front flap hinges at its bottom edge. ---------- */
+  .fi { --c: #8E8E93; width: 18px; height: 16px; position: relative; flex: none; }
+  .fi .back { position: absolute; inset: 0; }
+  .fi .back svg { width: 100%; height: 100%; display: block; }
+  .fi .paper { position: absolute; left: 3px; right: 3px; top: 4.5px; height: 9px; border-radius: 1.5px;
+    background: #fff; box-shadow: 0 0 0 0.4px rgba(0,0,0,.18); transform: translateY(2px);
+    transition: transform .36s cubic-bezier(.3,1.5,.5,1); }
+  .fi .paper.p2 { left: 4.5px; right: 2px; background: #f1f1f4; transition-delay: .03s; }
+  .fi .front { position: absolute; left: 0; right: 0; bottom: 0; height: 11px; border-radius: 2.2px 2.2px 2.6px 2.6px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--c) 78%, #fff) 0%, var(--c) 100%);
+    box-shadow: inset 0 0.5px 0 rgba(255,255,255,.55), 0 -0.5px 1px rgba(0,0,0,.12);
+    transform-origin: 50% 100%; transform: none;
+    transition: transform .34s cubic-bezier(.3,1.45,.5,1), filter .2s;
+    display: grid; place-items: center; }
+  .fi .glyph { font: 600 7.5px/1 -apple-system, sans-serif; color: #fff; transform: translateY(.3px); }
+  .fi .glyph svg { width: 7.5px; height: 7.5px; display: block; }
+  .fi .glyph.emoji { font-size: 8px; filter: saturate(1.05); }
+  /* States */
+  .fi.hover .front, .row:hover .fi:not(.open) .front { transform: skewX(-5deg); }
+  .fi.hover .paper, .row:hover .fi:not(.open) .paper { transform: translateY(0.5px); }
+  .fi.open .front { transform: translateX(1px) skewX(-13deg); }
+  .fi.open .paper { transform: translateY(-3.5px) rotate(-5deg); }
+  .fi.open .paper.p2 { transform: translateY(-2.5px) rotate(7deg); }
+  .fi.drop .front { transform: translateX(1.5px) skewX(-18deg); }
+  .fi.drop .paper { transform: translateY(-5px) rotate(-8deg); }
+  .fi.drop .paper.p2 { transform: translateY(-4px) rotate(10deg); }
+  .fi.drop { animation: nudge .5s cubic-bezier(.3,1.6,.5,1) infinite alternate; }
+  @keyframes nudge { from { scale: 1; } to { scale: 1.08; } }
+  @media (prefers-reduced-motion: reduce) { .fi .front, .fi .paper { transition: none; } .fi.drop { animation: none; } }
+
+  .big .fi { transform: scale(4); margin: 34px 46px; }
+  .states { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+  .state { text-align: center; font-size: 12px; color: var(--muted); width: 128px; }
+  .stage { height: 130px; display: grid; place-items: center; border-radius: 12px; }
+  .stage.light { background: #e6e6e6; } .stage.dark { background: #131313; }
+
+  /* ---------- Sidebar ---------- */
+  .win { width: 330px; border-radius: 12px; overflow: hidden; display: flex; position: relative;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,.25), 0 8px 24px rgba(0,0,0,.14); }
+  .sb { width: 267px; flex: none; padding: 8px 8px 12px; position: relative; }
+  .pg { flex: 1; margin: 8px 8px 8px 0; border-radius: 8px; }
+  .light .sb { background: #e6e6e6; --label: #1d1d1f; --sec: rgba(0,0,0,.5); --ter: rgba(0,0,0,.3);
+    --sel: rgba(255,255,255,.85); --fill: rgba(0,0,0,.06); --hair: rgba(0,0,0,.1); }
+  .light .pg { background: #fff; }
+  .dark .sb { background: #131313; --label: #f2f2f2; --sec: rgba(255,255,255,.55); --ter: rgba(255,255,255,.32);
+    --sel: rgba(255,255,255,.14); --fill: rgba(255,255,255,.08); --hair: rgba(255,255,255,.1); }
+  .dark .pg { background: #232325; }
+  .row { height: 41px; display: flex; align-items: center; position: relative; color: var(--label); cursor: default; user-select: none; }
+  .row .bg { position: absolute; inset: 3px 0; border-radius: 8px; transition: background .12s; }
+  .row:hover .bg { background: var(--fill); }
+  .row.sel .bg { background: var(--sel); box-shadow: 0 0.5px 1.5px rgba(0,0,0,.12); }
+  .row .ic { width: 16px; height: 16px; border-radius: 4px; margin: 0 10px 0 12px; flex: none; position: relative;
+    display: grid; place-items: center; font: 600 9px/1 -apple-system, sans-serif; color: #fff; }
+  .row .fi { margin: 0 9px 0 11px; }
+  .row .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; padding-right: 8px; }
+  .row .n { color: var(--sec); font-size: 12px; margin-right: 4px; position: relative; opacity: 0; transition: opacity .2s; }
+  .folder:not(.is-open) .n { opacity: 1; }
+  .row .chev { width: 10px; margin-right: 12px; position: relative; color: var(--ter); font-size: 13px; font-weight: 600;
+    display: grid; place-items: center; transition: transform .2s cubic-bezier(.2,.8,.2,1); }
+  .folder.is-open .chev { transform: rotate(90deg); }
+  .kids { overflow: hidden; transition: height .26s cubic-bezier(.2,.8,.2,1); }
+  .kids .row { padding-left: 16px; } .kids .row .bg { left: 16px; }
+  .sep { height: 1px; background: var(--hair); margin: 10px 14px; }
+  .label { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--sec); padding: 4px 12px 2px; }
+
+  /* Edit Folder, in the sidebar under its row. */
+  .editor { margin: 2px 0 8px; padding: 10px; border-radius: 12px; background: var(--fill); }
+  .editor .name { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+  .editor .field { flex: 1; height: 28px; border-radius: 7px; padding: 0 8px; display: flex; align-items: center;
+    background: var(--sel); box-shadow: 0 0 0 2px var(--accent); color: var(--label); }
+  .swatches { display: flex; gap: 7px; margin-bottom: 10px; }
+  .swatches i { width: 18px; height: 18px; border-radius: 50%; position: relative; cursor: pointer; }
+  .swatches i.none { box-shadow: inset 0 0 0 1.5px var(--ter); }
+  .swatches i.none::after { content: ""; position: absolute; left: 8px; top: 2px; width: 1.5px; height: 14px; background: var(--ter); transform: rotate(45deg); }
+  .swatches i.on { outline: 2px solid var(--label); outline-offset: 2px; }
+  .seg { display: flex; background: var(--fill); border-radius: 7px; padding: 2px; margin-bottom: 8px; }
+  .seg span { flex: 1; text-align: center; font-size: 12px; padding: 3px 0; border-radius: 5px; color: var(--sec); cursor: pointer; }
+  .seg span.on { background: var(--sel); color: var(--label); box-shadow: 0 0.5px 1px rgba(0,0,0,.15); }
+  .search { height: 26px; border-radius: 7px; background: var(--sel); color: var(--ter); font-size: 12px; display: flex; align-items: center; padding: 0 8px; margin-bottom: 6px; }
+  .glyphs { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+  .glyphs span { height: 27px; display: grid; place-items: center; border-radius: 6px; color: var(--label); cursor: pointer; font-size: 15px; }
+  .glyphs span svg { width: 14px; height: 14px; }
+  .glyphs span:hover { background: var(--fill); }
+  .glyphs span.on { background: var(--accent); color: #fff; }
+  .menu { position: absolute; z-index: 5; min-width: 180px; padding: 5px; border-radius: 10px; font-size: 13px; }
+  .light .menu { background: rgba(246,246,246,.96); color: #1d1d1f; box-shadow: 0 0 0 0.5px rgba(0,0,0,.2), 0 10px 30px rgba(0,0,0,.2); }
+  .dark .menu { background: rgba(40,40,42,.96); color: #eee; box-shadow: 0 0 0 0.5px rgba(255,255,255,.15), 0 10px 30px rgba(0,0,0,.5); }
+  .menu div { padding: 3px 10px; border-radius: 5px; display: flex; justify-content: space-between; }
+  .menu div.on { background: var(--accent); color: #fff; }
+  .menu hr { border: 0; height: 1px; margin: 4px 8px; background: rgba(127,127,127,.25); }
+  .win.wide { width: 470px; }
+
+  table { border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  td { padding: 6px 18px 6px 0; vertical-align: top; border-top: 1px solid rgba(127,127,127,.18); }
+  td:first-child { color: var(--muted); white-space: nowrap; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --page: #18181b; --ink: #f4f4f5; --muted: #a1a1aa; --card: #222226; }
+  }
+  :root[data-theme="dark"] { --page: #18181b; --ink: #f4f4f5; --muted: #a1a1aa; --card: #222226; }
+</style>
+</head>
+<body>
+<main>
+  <h1>A better folder icon</h1>
+  <p>Today Ray uses macOS's plain folder glyph, an outline when open and filled when closed, the way Arc draws it.
+  The new one is drawn in layers: a back panel with a tab, two sheets of paper and a front flap. Opening, the sheets
+  rise up out of it on a spring, and it takes the folder's colour plus an optional symbol or emoji on its front. Same icon in Pinned
+  and Today.</p>
+  <p class="muted">References: Arc and Ray now draw macOS's glyph, with no picker. Ardia lets a group take an emoji
+  or an SF Symbol from a picker panel. Cra only picks a white or black glyph. Crest offers colour only.</p>
+
+  <h2>States (4× here, 18 × 16 pt in the sidebar)</h2>
+  <div class="card">
+    <div class="states" id="states"></div>
+    <p class="muted" style="margin-top:12px">Opening: two sheets rise up out of the folder, fanning apart, and the flap leans back,
+    in 0.36 s with a little overshoot. Hover lifts the sheets a touch. While a tab is dragged over the folder it opens wider and pulses.
+    With Reduce Motion it switches without moving.</p>
+  </div>
+
+  <h2>Customise</h2>
+  <div class="card">
+    <p class="muted">Colour: none plus Chrome's eight, as in the folders mock. Icon: none, a symbol (white on the
+    flap, black on yellow so it stays legible) or an emoji. Pick one below to see it on the folder.</p>
+    <div class="grid" id="looks" style="margin-top:12px"></div>
+  </div>
+
+  <h2>In the sidebar (click the folders)</h2>
+  <div class="card">
+    <div style="margin-bottom:12px; display:flex; gap:8px; flex-wrap:wrap">
+      <button class="pill" id="drag">Drag a tab over Work</button>
+    </div>
+    <div class="grid">
+      <div class="win light" id="sb-light"></div>
+      <div class="win dark" id="sb-dark"></div>
+    </div>
+  </div>
+
+  <h2>Edit Folder (in the sidebar, no popover)</h2>
+  <div class="card">
+    <p class="muted">Right-click a folder › Edit Folder… (or New Folder) opens this under its row: name, colour,
+    and icon with Symbols and Emoji (Ardia's lists, searchable). Return or a click elsewhere keeps it, Escape
+    undoes it. Colour ▸ stays in the menu as a shortcut.</p>
+    <div class="grid" style="margin-top:12px">
+      <div class="win wide light" id="menu-light"></div>
+      <div class="win light" id="ed-light"></div>
+      <div class="win dark" id="ed-dark"></div>
+    </div>
+  </div>
+
+  <h2>Notes for the build</h2>
+  <table>
+    <tr><td>Drawing</td><td>CALayers: a back shape layer, two paper layers and a front layer with its anchor at the bottom edge,
+      The sheets' rise and the flap's lean run on CASpringAnimations. Nothing runs on a main-thread timer.</td></tr>
+    <tr><td>Colour</td><td>The flap is the colour with a light top edge; the back is a shade darker. With no colour it's
+      a neutral grey that suits both light and dark.</td></tr>
+    <tr><td>Glyph</td><td>SF Symbol at 7.5 pt semibold, in the white or black that reads better on the colour
+      (<code>ProfileColor.foreground(on:)</code>); or an emoji. Saved with the folder in Sidebar.json.</td></tr>
+    <tr><td>Today folders</td><td>Chrome's group has only a title and colour: the icon is Ray's own, kept in Sidebar.json.</td></tr>
+    <tr><td>Menu</td><td>Rename… becomes Edit Folder… (name, colour and icon in one place); Colour ▸ stays.</td></tr>
+  </table>
+</main>
+<script>
+  const C = { none: "#9A9AA1", blue: "#4C8DF6", red: "#E5534B", yellow: "#E3B341", green: "#3FB06C", pink: "#DB61A2",
+    purple: "#9B6CF0", cyan: "#35B8C6", orange: "#EE8434" };
+  // A few symbols drawn inline (SF Symbols in the app).
+  const SYM = {
+    star: '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 1.2l2.1 4.3 4.7.7-3.4 3.3.8 4.7L8 12l-4.2 2.2.8-4.7L1.2 6.2l4.7-.7z"/></svg>',
+    bolt: '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M9.5 1L3 9h4.2L6.3 15 13 7H8.8z"/></svg>',
+    heart: '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 14.2L2.2 8.6A3.6 3.6 0 0 1 8 3.9a3.6 3.6 0 0 1 5.8 4.7z"/></svg>',
+    briefcase: '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M6 2h4a1 1 0 0 1 1 1v1.5h2.5A1.5 1.5 0 0 1 15 6v6.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5V6a1.5 1.5 0 0 1 1.5-1.5H5V3a1 1 0 0 1 1-1zm.5 1.5v1h3v-1z"/></svg>',
+    code: '<svg viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 4L1.5 8 5 12M11 4l3.5 4L11 12"/></svg>',
+    book: '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M2 2.5h4.5A2 2 0 0 1 8 3.3a2 2 0 0 1 1.5-.8H14v10.5H9.6a1.6 1.6 0 0 0-1.6 1.2 1.6 1.6 0 0 0-1.6-1.2H2z"/></svg>',
+    cart: '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M1 1.5h2.2l.5 2H15l-1.6 6.5H5.2l.3 1.5H13v1.5H4.3L2.1 3H1zM5.5 13.5a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4zm6.5 0a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z"/></svg>',
+    sparkles: '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M6 1l1.4 4.1L11.5 6.5 7.4 7.9 6 12 4.6 7.9.5 6.5l4.1-1.4zM12.5 9l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7z"/></svg>',
+    flag: '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M3 1.5h1.5V15H3zM5 2h8l-2 3.5L13 9H5z"/></svg>',
+    globe: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path fill="none" stroke="currentColor" stroke-width="1.3" d="M1.8 8h12.4M8 1.8c-3 3.5-3 8.9 0 12.4M8 1.8c3 3.5 3 8.9 0 12.4"/></svg>',
+    gamecontroller: '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M4.5 4h7a3.5 3.5 0 0 1 3.4 4.4l-.8 3a1.8 1.8 0 0 1-3 .8L9.6 10.6H6.4L4.9 12.2a1.8 1.8 0 0 1-3-.8l-.8-3A3.5 3.5 0 0 1 4.5 4z"/></svg>',
+    airplane: '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M7.2 1.5c.4-.6 1.2-.6 1.6 0 .2.3.2.7.2 1V6l5.5 3.2v1.4L9 9v3.2l1.6 1.2V15L8 14.2 5.4 15v-1.6L7 12.2V9l-5.5 1.6V9.2L7 6V2.5c0-.3 0-.7.2-1z"/></svg>',
+  };
+  const EMOJI = ["⭐️", "🔥", "🚀", "💡", "📚", "💼", "🏠", "🛒", "✈️", "🎮", "🎨", "🤖", "🧪", "🐛", "🧩", "🎯"];
+  const ink = (color) => (color === "yellow" ? "#1d1d1f" : "#fff");
+  function icon({ color = "none", glyph = null, cls = "" } = {}) {
+    const c = C[color];
+    const back = `color-mix(in srgb, ${c} 72%, #000)`;
+    const g = !glyph ? "" : glyph.length <= 3 && !SYM[glyph]
+      ? `<span class="glyph emoji">${glyph}</span>`
+      : `<span class="glyph" style="color:${ink(color)}">${SYM[glyph]}</span>`;
+    return `<span class="fi ${cls}" style="--c:${c}"><span class="back"><svg viewBox="0 0 18 16">` +
+      `<path fill="${back}" d="M1 3.2A1.7 1.7 0 0 1 2.7 1.5h4l1.6 1.7h7a1.7 1.7 0 0 1 1.7 1.7v9.4a1.7 1.7 0 0 1-1.7 1.7H2.7A1.7 1.7 0 0 1 1 14.3z"/></svg></span>` +
+      `<span class="paper p2"></span><span class="paper"></span><span class="front">${g}</span></span>`;
+  }
+
+  // States
+  const states = [["Closed", ""], ["Hover", "hover"], ["Open", "open"], ["Tab dragged over", "drop"]];
+  document.getElementById("states").innerHTML = ["light", "dark"].map((m) => states.map(([name, cls]) =>
+    `<div class="state"><div class="stage big ${m}">${icon({ color: "blue", glyph: "briefcase", cls })}</div>${name} · ${m}</div>`).join("")).join("");
+
+  // Looks
+  const looks = [["none", null, "No colour"], ["blue", "briefcase", "Symbol"], ["orange", "sparkles", "Claude"], ["green", "airplane", "Trip"],
+    ["yellow", "star", "Black on yellow"], ["purple", "🎮", "Emoji"], ["pink", "heart", ""], ["red", "🐛", ""], ["cyan", "code", ""]];
+  document.getElementById("looks").innerHTML = ["light", "dark"].map((m) =>
+    `<div class="stage ${m}" style="height:auto;padding:18px 22px;display:flex;flex-wrap:wrap;gap:22px;width:520px">` +
+    looks.map(([c, g, l]) => `<div style="text-align:center;width:40px;font-size:10px;color:${m === "dark" ? "#aaa" : "#666"}">` +
+      `<div style="transform:scale(2);height:34px;display:grid;place-items:center">${icon({ color: c, glyph: g })}</div>${l}</div>`).join("") + `</div>`).join("");
+
+  // Sidebar
+  const fav = (bg, ch) => `<span class="ic" style="background:${bg}">${ch}</span>`;
+  const tab = (icon, t, sel) => `<div class="row${sel ? " sel" : ""}"><span class="bg"></span>${icon}<span class="t">${t}</span></div>`;
+  const folder = (id, color, glyph, title, kids, open = true) =>
+    `<div class="folder${open ? " is-open" : ""}" data-id="${id}"><div class="row frow"><span class="bg"></span>${icon({ color, glyph, cls: open ? "open" : "" })}` +
+    `<span class="t">${title}</span><span class="n">${kids.length}</span><span class="chev">›</span></div>` +
+    `<div class="kids">${kids.join("")}</div></div>`;
+  function sidebar() {
+    return `<div class="sb"><div class="label">Pinned</div>` +
+      tab(fav("#9B6CF0", "L"), "Linear – Inbox") +
+      folder("work", "blue", "briefcase", "Work", [tab(fav("#E5534B", "F"), "Figma – Ray icons"), tab(fav("#4C8DF6", "D"), "Docs – Roadmap")]) +
+      folder("read", "none", null, "Reading", [tab(fav("#24292f", "A"), "Arc's design notes"), tab(fav("#3FB06C", "W"), "Wikipedia")], false) +
+      `<div class="sep"></div><div class="label">Today</div>` +
+      folder("claude", "orange", "sparkles", "Claude", [tab(fav("#D97757", "C"), "Claude"), tab(fav("#24292f", "G"), "Pull requests · ray", true)]) +
+      folder("trip", "green", "airplane", "Trip", [tab(fav("#35B8C6", "M"), "Google Maps"), tab(fav("#E5534B", "Y"), "YouTube")], false) +
+      tab(fav("#EE8434", "H"), "Hacker News") + `</div><div class="pg"></div>`;
+  }
+  for (const id of ["sb-light", "sb-dark"]) {
+    const el = document.getElementById(id);
+    el.innerHTML = sidebar();
+    el.querySelectorAll(".folder").forEach((f) => {
+      const kids = f.querySelector(".kids");
+      kids.style.height = f.classList.contains("is-open") ? kids.scrollHeight + "px" : "0px";
+      f.querySelector(".frow").addEventListener("click", () => toggle(f));
+    });
+  }
+  function toggle(f, force) {
+    const open = force ?? !f.classList.contains("is-open");
+    const kids = f.querySelector(".kids");
+    f.classList.toggle("is-open", open);
+    f.querySelector(".fi").classList.toggle("open", open);
+    kids.style.height = open ? kids.scrollHeight + "px" : "0px";
+  }
+  document.getElementById("drag").addEventListener("click", (e) => {
+    const on = e.target.classList.toggle("on");
+    document.querySelectorAll('.folder[data-id="work"] .fi').forEach((fi) => fi.classList.toggle("drop", on));
+    e.target.textContent = on ? "Drop" : "Drag a tab over Work";
+  });
+
+  // Edit Folder
+  let pick = { color: "orange", glyph: "sparkles", tab: "sym" };
+  function editor() {
+    const names = Object.keys(C);
+    const grid = pick.tab === "sym"
+      ? ["none", ...Object.keys(SYM)].map((k) => `<span data-g="${k}" class="${(pick.glyph ?? "none") === k ? "on" : ""}">${k === "none" ? "–" : SYM[k]}</span>`).join("")
+      : EMOJI.map((e) => `<span data-g="${e}" class="${pick.glyph === e ? "on" : ""}">${e}</span>`).join("");
+    return `<div class="sb"><div class="label">Today</div>` +
+      `<div class="editor"><div class="name">${icon({ color: pick.color, glyph: pick.glyph, cls: "open" })}<span class="field">Claude</span></div>` +
+      `<div class="swatches">${names.map((n) => `<i data-c="${n}" class="${n === "none" ? "none" : ""}${pick.color === n ? " on" : ""}" style="${n === "none" ? "" : `background:${C[n]}`}"></i>`).join("")}</div>` +
+      `<div class="seg"><span data-t="sym" class="${pick.tab === "sym" ? "on" : ""}">Symbols</span><span data-t="emoji" class="${pick.tab === "emoji" ? "on" : ""}">Emoji</span></div>` +
+      `<div class="search">Search</div><div class="glyphs">${grid}</div></div>` +
+      tab(fav("#D97757", "C"), "Claude") + tab(fav("#24292f", "G"), "Pull requests · ray", true) + `</div><div class="pg"></div>`;
+  }
+  function renderEditors() {
+    for (const id of ["ed-light", "ed-dark"]) {
+      const el = document.getElementById(id);
+      el.innerHTML = editor();
+      el.querySelectorAll("[data-c]").forEach((n) => n.onclick = () => { pick.color = n.dataset.c; renderEditors(); });
+      el.querySelectorAll("[data-t]").forEach((n) => n.onclick = () => { pick.tab = n.dataset.t; renderEditors(); });
+      el.querySelectorAll("[data-g]").forEach((n) => n.onclick = () => { pick.glyph = n.dataset.g === "none" ? null : n.dataset.g; renderEditors(); });
+    }
+  }
+  renderEditors();
+  document.getElementById("menu-light").innerHTML = `<div class="sb"><div class="label">Today</div>` +
+    folder("m", "orange", "sparkles", "Claude", [tab(fav("#D97757", "C"), "Claude"), tab(fav("#24292f", "G"), "Pull requests · ray", true)]) +
+    `<div style="height:150px"></div><div class="menu" style="top:60px;left:70px">` +
+    `<div class="on">Edit Folder…</div><div>Colour <span>›</span></div><hr><div>New Tab in Folder</div><div>Pin Folder</div><hr><div>Delete Folder</div><div>Close Tabs</div></div></div><div class="pg"></div>`;
+  document.querySelectorAll("#menu-light .kids").forEach((k) => k.style.height = k.scrollHeight + "px");
+</script>
+</body>
+</html>
