@@ -244,6 +244,14 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     only sets the default now); no "Changed" or "Conflicts" filter (Ardia has them); the Settings search doesn't find
     single commands; moving Close Tab off ⌘W also stops ⌘W closing the Settings window, without a warning; recording
     by real keyboard and non-US layouts aren't tried by hand.
+28. **⌘W on the last Today tab with only pinned tabs or favorites left: not tried.** Ardia closed the whole window
+    there (unloaded pinned tiles counted as asleep) and fixed it to keep the window, as Arc does (0.2.43-nightly.5,
+    `d8e1098b`). Ray's `close-last-window` check covers closing the window, not this. Fix if it closes: keep the
+    window while anything is pinned; add a check. Found 2026-10-30.
+29. **Private-window guard lives in Host only.** Ray's engine (Ardia 0.2.42) lets most `ac_*` calls run with
+    `offTheRecord` unchecked and relies on Host to refuse; Ardia's engine-4d8c64033b08 refuses every call for a
+    private profile unless it is marked `kAllow`, rejects empty args for sensitive calls, and zeroes decrypted
+    passwords (two new patches). Fix: take that engine (`docs/ARDIA-WATCH.md` item 2). Found 2026-10-30.
 
 ## Done
 

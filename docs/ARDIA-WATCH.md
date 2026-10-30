@@ -4,7 +4,7 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.43-nightly.4 (engine-2f172eb50b89), 2026-10-29
+Last reviewed: v0.2.43-nightly.6 (engine-4d8c64033b08), 2026-10-30
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac on
 chromiumdash, checked 2026-10-29: 156.0.8078.74 / .75 and 157.0.8103.26. None of the releases below bumps
@@ -18,8 +18,10 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    156 (.47 against .75), and 157 is out; Chrome's stable security fixes land in those builds. Ardia hasn't bumped
    either. Ray's Chromium is pinned to Helium's (`engine/patches/build/helium-pins.ini`), and Helium 0.20.2.1
    (helium-macos, 2026-10-28) is on 156.0.8078.73: bump the pins to it ourselves (PLAN.md section 6: "every 4
-   weeks") and take Ardia's engine changes below (engine-2f172eb50b89) in the same rebuild.
-2. **Take engine-2f172eb50b89** through `sync-engine.sh` (no conflict with `engine-ray/`'s fixups, see below), then
+   weeks") and take Ardia's engine changes below (now engine-4d8c64033b08) in the same rebuild.
+2. **Take engine-4d8c64033b08** (it includes engine-2f172eb50b89) through `sync-engine.sh`, then
+   re-check `engine-ray/`'s fixups against the reorganised `ac_*.cc` files (4d8c64 rewrites every call's prelude
+   and drops 15 export headers; see its section), then
    implement the one new delegate method, `engine:extensionInstallFailed:tab:` (renamed to `RayCoreEngine`), or a
    failed .crx drop says nothing. Brings: install by dropping a .crx, bookmarks export (`ac_bookmarks_export_html`),
    the "Allow User Scripts" switch (`ac_extensions_configure` `userScripts`), Memory Saver calls
@@ -53,6 +55,68 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
     page's render widget shows new content (at most 250 ms), and on ⌘W hands the closing tab's page view to the one
     replacing it so Chrome never hides it before the next tab draws (`ArdiaWebView+Painting.mm`,
     `ArdiaWebView+StandIn.mm`, commits `d18f3414`, `277c8256`). Measured: 0 blank frames in 1,730.
+11. **Closing the last tab keeps the window while anything is pinned** (Ardia 0.2.43-nightly.5, `d8e1098b`, as
+    Arc): unloaded pinned tiles counted as "asleep" made ⌘W on the last Today tab close the whole window. Ray's
+    `close-last-window` covers closing the window, not ⌘W on the last tab: try it by hand with only pinned tabs
+    and favorites left (MISSING known limitation 28).
+12. **Look:** Ardia tried one liquid glass everywhere (nightly.5) and backed out a day later to Dia's flat fills and
+    one-pixel outlines on macOS 26 (nightly.6, "measured against Dia itself"). Ray is already flat AppKit and avoids
+    popovers; keep it that way, no glass.
+
+## v0.2.43-nightly.6 (2026-10-30)
+
+No engine change (still engine-4d8c64033b08).
+
+**App:** every surface on macOS 26 (pinned tiles, buttons, address field, command bar, hover cards, popovers,
+Downloads, Peek, New Tab cards, onboarding) drops liquid glass for Dia's faint fills and one-pixel outlines
+(`17b469a6`); PiP controls lose their glass plates; "Highlight pinned tabs in their icon's colors" is gone from
+Settings (the selected Top App always gets the ring in its icon's colours, as Dia). Ray: item 12; Ray has no such
+setting or ring (its favorites are tiles with no icon-colour ring: worth a look against Dia when tiles are next
+touched).
+
+## v0.2.43-nightly.5 (2026-10-29), engine-4d8c64033b08
+
+**Engine** (tree `4d8c6403`, from `2f172eb5`; no Chromium bump, still 156.0.8078.47):
+- **Security hardening:**
+  - `chromium-os-crypt-decrypt-erase.patch` and `chromium-password-string-erase.patch` (new, in `series`):
+    os_crypt's decrypt paths zero their plaintext temporaries before freeing them, and a `PasswordString` zeroes its
+    password on destruction (`b0d62beb`, `f64e9bb6`). Defence in depth against secrets lingering in freed memory;
+    Ray gets them through the rename map.
+  - Private windows: the engine alone decides which calls serve an off-the-record profile (`de37bffe`,
+    `0581835b`). One argument parser (`ardia::ArgsCall`, optional size cap for sensitive calls) refuses
+    `offTheRecord` unless the call says `kAllow` (site settings, site data, zoom); every other call, including
+    profile-less and sensitive ones that used to skip the flag, answers "no engine data for a private profile".
+    `ac_extensions_watch_actions` is refused for private profiles again; sensitive calls reject a null or empty
+    argument string instead of reading it as `{}`. Ray's app passes `offTheRecord` itself and checks in Host
+    (`SiteControls`, `Downloads`, `SettingsDataRows`, …), so this moves the guard to where a missed Host check
+    can't leak the regular profile's data into a private window. Worth taking for that alone.
+  - Memory Saver's kept-active sites go only to regular profiles (not guest or system ones; `d7ca2394`).
+- `ac_passwords_logins.cc` (new): reads every saved login for Ardia's sync, all or nothing. Ray has no sync; harmless.
+- Refactor: `AC_PROFILE_CALL` / `AC_ARGS_CALL` preludes replace 25 inline ones; 15 headers that only declared
+  exports are deleted; `ac_downloads_command {id, command}` replaces five `ac_downloads_<verb>` exports (Ray's
+  `Downloads` calls cancel, keep, pause, remove and resume and must move to the new call); `ac_omnibox_opened` and
+  `ac_tab_restore_load` removed (Ray calls neither); bookmarks and history watchers become profile state.
+- ArdiaCore: page views get ArdiaCore's own delegate with typed scroll/overscroll acks (`ac_page_view.mm`, new),
+  `ac_app_urls.mm` (new), page script loading in `ac_page_script.cc`; `ArdiaCore.h` changes by 34 lines: diff it
+  against `RayCore.h` for renamed or removed delegate methods before building (Swift would only warn "nearly
+  matches").
+- PiP: glass tab and close buttons and a stash handle (`2f1743e3`, `ac_pip_mac.mm`), taken back out of the app's
+  look in nightly.6.
+- Ray's fixups: 0002 and 0004 touch `BUILD.gn`, `series` and raycore files this release rewrites; expect to
+  rebase them.
+
+**App:**
+- Unified liquid glass with no outlines on macOS 26 (reverted in nightly.6).
+
+**Fixes to shared behaviour:**
+- Closing the last tab keeps the window while it has pinned tiles or a pinned group; a window with nothing pinned
+  closes and asks first (`d8e1098b`). Ray: item 11.
+- Switching update channel keeps the downloaded update; quit waits at most 8 s for it (`55a78c6c`, `7b2090f4`).
+  Ray has no channels (one Sparkle feed); nothing to take.
+- Sync, profile themes, split views, sidebar drag refactors: Ardia-only.
+
+**Competitive:** Ardia is ahead on engine-side private-window gating and secret zeroing; Ray is ahead on staying
+flat (Ardia spent two nightlies on glass) and on a native Settings window.
 
 ## v0.2.43-nightly.4 (2026-10-29), engine-2f172eb50b89
 
