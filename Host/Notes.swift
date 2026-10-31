@@ -4,7 +4,7 @@ import QuartzCore
 // Ray's notes: short messages at one of six spots on the page ("Copied Current URL" and the zoom level at the top
 // right, a download at the bottom left, …). One note per spot, never stacked: a new note in a taken spot reshapes
 // the one there, and notes in different spots show together. Any feature shows one with
-// `controller.notes.show(Note(…))`. Glass by default, solid in Settings › Appearance (`noteStyle`).
+// `controller.notes.show(Note(…))`. Glass by default, solid in Settings › Appearance (`surfaceStyle`, Surface.swift).
 //
 // Motion is the sidebar's spring (response 0.26 s, damping 0.86: no bounce) for entering, reshaping and making way;
 // leaving is 160 ms. Reduce Motion keeps only the fades.
@@ -161,7 +161,7 @@ final class Notes {
 
   init(host: NSView) {
     self.host = host
-    observation = RaySettings.shared.observe(.noteStyle) { [weak self] _ in
+    observation = RaySettings.shared.observe(.surfaceStyle) { [weak self] _ in
       self?.views.values.forEach { $0.applyStyle() }
       self?.onChange?()
     }
@@ -170,7 +170,7 @@ final class Notes {
     }
   }
 
-  static var style: String { RaySettings.shared[.noteStyle] }
+  static var style: String { SurfaceBackdrop.style }
   static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
   @discardableResult
@@ -359,10 +359,9 @@ final class NoteView: NSView {
   private(set) var note: Note
   private(set) var serial: Int
   private weak var notes: Notes?
+  /// Clips the content to the corners while the box reshapes; the backdrop is its bottom view.
   private let body = NSView()
-  private var effect: NSVisualEffectView?
-  /// Over the frost (glass) or the whole fill (solid).
-  private let wash = NSView()
+  private let backdrop = SurfaceBackdrop(radius: NoteView.radius)
   private var content: NoteContentView
   private var sizeSpring: Spring!
   private var fromSize = NSSize.zero
@@ -375,7 +374,7 @@ final class NoteView: NSView {
   private var hideAt: Date?
   private var hovering = false
   private var shownAt = Date()
-  private(set) var style = "glass"
+  var style: String { backdrop.style }
   static let radius: CGFloat = 12
 
   fileprivate init(note: Note, serial: Int, notes: Notes) {
@@ -386,25 +385,18 @@ final class NoteView: NSView {
     content = NoteContentView(note: note)
     super.init(frame: .zero)
     wantsLayer = true
-    layer?.shadowColor = NSColor.black.cgColor
-    layer?.shadowRadius = 14
-    layer?.shadowOffset = CGSize(width: 0, height: -6)
     body.wantsLayer = true
     body.layer?.cornerRadius = Self.radius
     body.layer?.cornerCurve = .continuous
     body.layer?.masksToBounds = true
-    body.layer?.borderWidth = 0.5
     addSubview(body)
-    wash.wantsLayer = true
-    wash.autoresizingMask = [.width, .height]
-    body.addSubview(wash)
+    body.addSubview(backdrop)
     sizeSpring = Spring(value: 1, response: Notes.response, dampingRatio: Notes.dampingRatio) { [weak self] t in
       guard let self else { return }
       self.currentSize = NSSize(width: self.fromSize.width + (self.targetSize.width - self.fromSize.width) * t,
                                 height: self.fromSize.height + (self.targetSize.height - self.fromSize.height) * t)
       self.notes?.place(self)
     }
-    applyStyle()
     content.onPress = { [weak self] index, button in self?.pressed(index, from: button) }
     body.addSubview(content)
     targetSize = content.size(limit: notes.maxWidth)
@@ -423,47 +415,13 @@ final class NoteView: NSView {
 
   // MARK: Note look
 
+  /// The backdrop follows the setting by itself; this repaints at once (the observer runs a turn later).
   func applyStyle() {
-    style = Notes.style == "solid" ? "solid" : "glass"
-    if style == "glass" {
-      if effect == nil {
-        // Within the window: it frosts the page under it (Chrome's layer included), never the desktop.
-        let effect = NSVisualEffectView()
-        effect.material = .popover
-        effect.blendingMode = .withinWindow
-        effect.state = .active
-        effect.autoresizingMask = [.width, .height]
-        effect.frame = body.bounds
-        body.addSubview(effect, positioned: .below, relativeTo: wash)
-        self.effect = effect
-      }
-    } else {
-      effect?.removeFromSuperview()
-      effect = nil
-    }
-    refreshColors()
-  }
-
-  /// Glass: a light wash over the frost (the mock's 68 % white, 66 % graphite); solid: the card.
-  static let solidFill = NSColor(name: nil) { appearance in
-    appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-      ? NSColor(srgbRed: 0x2C / 255.0, green: 0x2C / 255.0, blue: 0x31 / 255.0, alpha: 1) : .white
-  }
-  private static let glassWash = NSColor(name: nil) { appearance in
-    appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-      ? NSColor(srgbRed: 0.16, green: 0.16, blue: 0.18, alpha: 0.35) : NSColor(white: 1, alpha: 0.4)
-  }
-  private static let edge = NSColor(name: nil) { appearance in
-    appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.08)
+    backdrop.apply()
   }
 
   func refreshColors() {
-    effectiveAppearance.performAsCurrentDrawingAppearance {
-      let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-      wash.layer?.backgroundColor = (style == "glass" ? Self.glassWash : Self.solidFill).cgColor
-      body.layer?.borderColor = Self.edge.cgColor
-      layer?.shadowOpacity = dark ? 0.45 : 0.16
-    }
+    backdrop.refreshColors()
     content.refreshColors()
   }
 
@@ -475,11 +433,10 @@ final class NoteView: NSView {
   override func layout() {
     super.layout()
     body.frame = bounds
-    effect?.frame = body.bounds
-    wash.frame = body.bounds
+    backdrop.frame = body.bounds
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Self.radius, cornerHeight: Self.radius, transform: nil)
+    SurfaceBackdrop.shadow(on: self, radius: Self.radius)
     CATransaction.commit()
     for case let content as NoteContentView in body.subviews {
       content.frame = anchored(content.laidSize, in: bounds.size)
@@ -877,7 +834,7 @@ final class NoteContentView: NSView {
 
   func refreshColors() {
     effectiveAppearance.performAsCurrentDrawingAppearance {
-      tile.backgroundColor = ProfileColor.mix(ProfileColor.accent, over: NoteView.solidFill, 0.12, dark: 0.22).cgColor
+      tile.backgroundColor = ProfileColor.mix(ProfileColor.accent, over: SurfaceBackdrop.solidFill, 0.12, dark: 0.22).cgColor
     }
     title.textColor = .labelColor
     icon?.refreshColors()
@@ -953,7 +910,7 @@ final class NoteIconView: NSView {
   }
 
   /// The profile's colour, moved just far enough to read on the note (a warning stays grey).
-  static var accent: NSColor { ProfileColor.visible(on: NoteView.solidFill, minimum: 3) }
+  static var accent: NSColor { ProfileColor.visible(on: SurfaceBackdrop.solidFill, minimum: 3) }
 
   func refreshColors() {
     image.contentTintColor = kind == .warning ? .secondaryLabelColor : Self.accent

@@ -38,7 +38,7 @@ settings.push("settings-passwords", "settings-autofill");
 // What a setting's value or its change notice reaches: the settings checks, the welcome (theme, keys), and the
 // features they drive (address bar, loading, site controls' zoom reset, ⇧⌘C, ⌘S, menu keys in the command bar).
 const settingReaders = [...settings, "onboarding", "page-toolbar", "page-loading", "load-sweep-once", "address-fragment",
-  "site-controls", "copy-url", "sidebar-toggle", "page-commands", "bar-actions", "notes"];
+  "site-controls", "copy-url", "sidebar-toggle", "page-commands", "bar-actions", "notes", "panels"];
 
 export const areas = {
   // Central: windows, menus, key routing, saved state, the engine bridge.
@@ -112,9 +112,10 @@ export const areas = {
   "Host/BrowserWindowController.swift#Browser import": ["import-browser", "arc-import", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Onboarding": ["onboarding"],
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
+  "Host/BrowserWindowController.swift#Panels": ["panels", "site-controls"],
   "Host/BrowserWindowController.swift#Notes": ["notes", "copy-url", "page-commands", "find-in-page"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
-  "Host/BrowserWindowController.swift#Site controls": ["site-controls", "extensions", "copy-url", "find-in-page", "settings-privacy"],
+  "Host/BrowserWindowController.swift#Site controls": ["panels", "site-controls", "extensions", "copy-url", "find-in-page", "settings-privacy"],
   "Host/BrowserWindowController.swift#Entries": "all",
   "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename", "warn-before-quitting"],
   // A tab's own name: Rename…, the double click, the test command's `rename` (folders too).
@@ -216,9 +217,11 @@ export const areas = {
   // Which loads the address field sweeps for.
   "Host/LoadSweep.swift": ["page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar"],
   "Host/PermissionPrompt.swift": permissions,
-  "Host/SiteControls.swift": ["site-controls", "extensions", "settings-privacy"],
+  "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay"],
+  "Host/Panels.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
+  "Host/Surface.swift": ["panels", "notes", "site-controls", "permission", "permission-allow", "downloads"],
   "Host/Updater.swift": ["updater-config", "settings-general"],
   // ⇧⌘T and History › Recently Closed.
   "Host/ClosedTabs.swift": ["reopen-closed-tab", "tab-rename"],

@@ -309,7 +309,7 @@ async function resetSettings() {
   for (const [name, value] of [["minimalURL", "off"], ["loadingProgress", "on"], ["theme", "default"], ["defaultZoom", "1"],
     ["newTabNextToActive", "off"], ["recentTabCycling", "on"], ["copyLinkShortcut", "on"], ["sidebarShortcut", "on"],
     ["appearanceMode", "auto"], ["scrollBars", "system"], ["pageAddressBar", "on"], ["showSidebarButton", "on"],
-    ["fadeUnloadedTabs", "off"], ["tabReorderHaptics", "on"], ["undoReopensClosedTab", "off"], ["shortcuts", "default"], ["noteStyle", "glass"]])
+    ["fadeUnloadedTabs", "off"], ["tabReorderHaptics", "on"], ["undoReopensClosedTab", "off"], ["shortcuts", "default"], ["surfaceStyle", "glass"]])
     await command(`setting ${name} ${value}`);
   await command("state");
 }
@@ -2713,6 +2713,49 @@ const checks = {
     await until("tab switch closes", async () => { await command("state"); return panel() === null; });
     await command(`row ${entryFor(tabFor("/a").id).id}`);
   },
+  async "panels"() {
+    // Ray's panels (Panels.swift), site controls being one: from its button, one at a time, the notes' look; "…" is a
+    // second page in the same panel (it reshapes); Escape closes it.
+    await resetSettings();
+    const entries = () => ["favorites", "pinned", "today"].flatMap((k) => state().sidebar[k]);
+    const live = entries().find((e) => e.live && e.url.startsWith(origin));
+    if (live) {
+      await command(`row ${live.id}`);
+      await until("a page of ours", () => state().active === live.tab);
+    }
+    const open = () => state().panels.open;
+    const rect = (text) => text.split(",").map(Number);
+    const before = { ...state().panels.steps };
+    await command("menu toggleSiteControls");
+    await until("panel open", async () => { await command("state"); return open()?.name === "siteControls"; });
+    assert(open().style === "glass" && open().below && open().trailing, `look and side: ${JSON.stringify(open())}`);
+    await sleep(500);
+    await command("state");
+    // Under its button: trailing edges together, a 6 pt gap.
+    const [px, py, pw, ph] = rect(open().frame), [ax, ay, aw] = rect(open().anchor);
+    assert(Math.abs(px + pw - (ax + aw)) <= 1 && Math.abs(py + ph - (ay - 6)) <= 1, `panel ${open().frame} against its button ${open().anchor}`);
+    const mainHeight = ph;
+    await command("site press more");
+    await until("more page", async () => { await command("state"); return state().siteControls?.page === "more"; });
+    assert(state().panels.steps.reshaped === before.reshaped + 1, `the page change didn't reshape: ${JSON.stringify(state().panels.steps)}`);
+    await sleep(600);
+    await command("state");
+    const moreHeight = rect(open().frame)[3];
+    assert(moreHeight < mainHeight && rect(open().frame)[1] + moreHeight === py + ph, `the "…" page: ${open().frame}, was ${open().frame}`);
+    await command("site press back");
+    await until("main page", async () => { await command("state"); return state().siteControls?.page === "main"; });
+    await until("its size back", async () => { await command("state"); return rect(open().frame)[3] === mainHeight; }, 3000);
+    // The look follows Settings at once, by its old name too (0.6.0's noteStyle).
+    await setSetting("surfaceStyle", "solid");
+    await until("solid", async () => { await command("state"); return open()?.style === "solid"; });
+    await setSetting("noteStyle", "glass");
+    await until("glass by the old name", async () => { await command("state"); return open()?.style === "glass" && state().settings?.surfaceStyle !== "solid"; });
+    await command("key esc keywin");
+    await until("escape closes", async () => { await command("state"); return open() === null && state().panels.lastClosedBy === "escape"; });
+    assert(state().siteControls === null, "the panel's content stayed");
+    assert(state().panels.steps.opened === before.opened + 1 && state().panels.steps.closed === before.closed + 1,
+      `one open, one close: ${JSON.stringify(state().panels.steps)}`);
+  },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]
       .find((e) => e.id === state().activeEntry).url;
@@ -2782,11 +2825,11 @@ const checks = {
     await until("progress moved", async () => (await spots()).bottom?.detail === "60%");
     assert(state().notes.steps.reshaped === reshaped, "a progress update crossfaded");
     await command("note dismiss bottom");
-    // Settings › Appearance › Notes: solid, then back to glass, on the note already shown.
+    // Settings › Appearance › Panels and notes: solid, then back to glass, on the note already shown.
     await command("note show topTrailing Style");
-    await setSetting("noteStyle", "solid");
+    await setSetting("surfaceStyle", "solid");
     await until("solid", async () => (await spots()).topTrailing?.style === "solid" && state().notes.style === "solid");
-    await setSetting("noteStyle", "glass");
+    await setSetting("surfaceStyle", "glass");
     await until("glass", async () => (await spots()).topTrailing?.style === "glass");
     await command("note dismiss topTrailing");
     await until("all gone", async () => Object.keys(await spots()).length === 0, 3000);
