@@ -208,8 +208,24 @@ publicly or create accounts.
   pixels back with `onscreen on`; install prompt),
   `Downloads` (button in the sidebar footer, ⌥⌘L; the list slides up as a panel inside the sidebar), `FindBar` (⌘F),
   `PermissionPrompt` (site permissions, only over their own tab), `ArcImport` (the old Import from Arc…, sidebar
-  only; its action still exists without a menu item), `Toast` (Arc's top-right note, "Copied Current URL"; a
-  `figure` style is the zoom level note, "110%", shown after ⌘+ ⌘− ⌘0 but never when Ray applies the default zoom).
+  only; its action still exists without a menu item).
+- `Notes` (`Host/Notes.swift`): short messages on the page at one of six `NoteSpot`s (corners, top and bottom
+  centre), one note per spot, never stacked; notes in different spots show together. Any feature:
+  `controller.notes.show(Note(text, detail:, icon:, figure:, actions:, spot:, lasts:, key:, asks:))`, which returns a
+  `NoteHandle` (`update`, `dismiss`); `notes.update(key:)`, `dismiss(spot:)`, `dismiss(key:)`. A new note in a taken
+  spot reshapes the one there (box on the spring, words crossfade 120/180 ms); a same-shaped update (a download's
+  bytes) changes in place; a `figure` ("110%") rolls only the digits that changed. A key lives in one spot. A centre
+  note that would meet a corner note moves one row in. Motion is the sidebar's spring (response 0.26, damping 0.86;
+  no bounce, scale or blur): 8 pt in from the spot's edge with a 160 ms fade, 160 ms out; Reduce Motion fades only.
+  `lasts` `.auto` (2.4–6 s by length, 6 s with a button, 1.4 s for a figure), `.seconds`, `.held`; hovering holds.
+  `asks`: buttons ignore clicks for 0.5 s, the last one is the primary (profile colour). Look: Settings › Appearance ›
+  Notes (`noteStyle`, Glass default: `NSVisualEffectView` within the window plus a wash; Solid: the card colour).
+  Spots in use: ⇧⌘C's "Copied Current URL" (3 s, Share) and the zoom level (never when Ray applies the default zoom)
+  top right, below the find bar while it's open; downloads bottom left (progress, then "Downloaded", Show); Cast
+  errors bottom; Cleared Site Data and JumpCloud (key `jumpcloud`, each replacing the last) top. State log `notes`
+  (`spots` with text, frame, target size, style, truncated; `steps` entered/reshaped/rolled/madeWay/left;
+  `pressed`, `tooEarly`, `shift`) and `noteText` (every shown note's text); test command `note
+  show|ask|press|dismiss|hover|progress <spot> …`; check `notes`.
 - `LinksFromApps`: Ray as a web browser to macOS. Info.plist (`build-app.sh`) declares http/https and HTML, XHTML,
   PDF (`AddressInput.documentTypes`; no `file` scheme), so Ray can be picked as the default browser. Ray installs its
   own GetURL and Open Documents Apple Event handlers on willFinishLaunching (AppKit's never reached the delegate);
@@ -235,7 +251,7 @@ publicly or create accounts.
   so a full-screen Ray keeps its Space and Ray never takes focus back. Not signed in within `headlessDeadline` (10 s
   from Chrome's answer), or headless Chrome quit, lost its page or never answered: it's closed and the relay starts
   again in a visible Chrome, 440×620 over Ray's window, brought forward as before unless Ray's window is full screen;
-  then a held Toast "Finish signing in to JumpCloud in Chrome" whose button (`showChrome`) brings it forward. A
+  then a note "Finish signing in to JumpCloud in Chrome" whose button (`showChrome`) brings it forward. A
   `/userconsole` URL (`Target.targetInfoChanged`) is signed in: `Storage.getCookies`, only jumpcloud.com and
   subdomains (`isJumpCloudDomain`, dot boundary), `ac_site_data_clear` on jumpcloud.com (the import keeps cookies Ray
   has) then `ac_cookies_import` through `callWithSecret`, and the tab reloads if still on that login page, or, signing in for an app (`context=sso|oauth` with `redirectTo`),
@@ -244,9 +260,9 @@ publicly or create accounts.
   since the page never forwards a session it didn't make. Ray comes
   back to the front only after a relay that brought Chrome forward. Deadlines: 15 s for each Chrome's first answer (a
   policy may forbid the pipe), 120 s to sign in overall; one relay at a time. With the setting off, a JumpCloud login page gets a note once per launch ("JumpCloud Go works in Ray: turn it on in
-  Settings", its button opens Passwords at the switch; test command `jumpcloud opensetting`). While it runs, a Toast says "Signing in with JumpCloud Go…" (its result replaces it). A login page relays unless the tab has
+  Settings", its button opens Passwords at the switch; test command `jumpcloud opensetting`). While it runs, a held note says "Signing in with JumpCloud Go…" (its result replaces it). A login page relays unless the tab has
   reached the console (`/userconsole`) 1.5 s after it commits (signed in, JumpCloud's script moves on by itself); a tab that relayed twice in
-  60 s gets a Toast on its next login page, not another relay (a retry relays, a page that keeps coming back stops).
+  60 s gets a note on its next login page, not another relay (a retry relays, a page that keeps coming back stops).
   Set Up… (Passwords' own row,
   `SettingsJumpCloud.swift`) opens a visible Chrome on JumpCloud Go's Web Store page (a relay while it's open uses a
   window in it); Chrome quits when its last window closes. Never the Keychain, never the user's Chrome profile; logs
@@ -417,6 +433,8 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   answers at once with no prompt. A test instance without it never makes a re-auth call (`settingsReauthAllowed`).
   Secrets for the panes' test commands come from `RAY_TEST_SECRETS` (JSON, by index), never a command line, which
   stderr echoes. `ownInstance(name, env)` in checks.mjs starts such an instance on its own data dir.
+- With `sidebarShortcut` off, ⌘S is Save Page As: a check that presses it opens Chrome's save panel over the test
+  window, which nothing closes and which swallows every later check's keys. Assert `menuKeys` instead.
 - Multi-window checks: `state()` is whichever window logged last; poll `command("state")`, which logs the current one.
 - Known environment noise. Spring checks skip while the display sleeps (`needsFrames`). Some checks only run when the
   hidden test window happens to land on the visible desktop: `switch-back-latency` then fails (on older commits
@@ -468,7 +486,7 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   points or the page creeps a little on every ⌘S.
 - Chrome that moves with the sidebar takes `dockSpring.value` in `layout()`; never switch it on
   `state.sidebarHidden`, which flips before the animation starts.
-- Subview order in the window's root: pages < toolbar < sidebar / floating peek < panels and toast. New UI over the
+- Subview order in the window's root: pages < toolbar < sidebar / floating peek < panels and notes. New UI over the
   page goes below `floating`, so a peeking sidebar covers it.
 - Security icon (`ConnectionLook`): nothing on dev hosts (localhost, 127/8, ::1, `*.localhost`, `*.test`), a grey
   open lock for plain http, red only for a certificate error on a real site. The user hated Dia's red lock on dev.

@@ -14,7 +14,7 @@ import AppKit
 extension AnySettingKey {
   /// Every setting, in the order the window lists them (rows group by `group`, in order of first appearance).
   static let all: [AnySettingKey] = [
-    theme, appearanceMode, minimalURL, loadingProgress, defaultZoom, scrollBars, newTabNextToActive, recentTabCycling,
+    theme, appearanceMode, noteStyle, minimalURL, loadingProgress, defaultZoom, scrollBars, newTabNextToActive, recentTabCycling,
     copyLinkShortcut, sidebarShortcut,
     warnBeforeQuitting, warnBeforeClosingWindow, onQuit,  // General (SettingsGeneral.swift)
     offerToSavePasswords, jumpCloudRelay, autofillAddresses, autofillCards,  // Passwords (and JumpCloudRelay.swift), Autofill
@@ -69,6 +69,15 @@ extension AnySettingKey {
         [SettingChoice(title: "Automatic", value: "auto"), SettingChoice(title: "Light", value: "light"),
          SettingChoice(title: "Dark", value: "dark")],
         picture: { MiniRayWindow.appearanceChoice($0) })))
+
+  /// How Ray's notes look (`Notes`): frosted glass, or a solid card.
+  static let noteStyle = SettingKey<String>(
+    "noteStyle", default: "glass",
+    ui: SettingUI(
+      pane: .appearance, group: .theme, title: "Notes",
+      detail: "", about: "The short notes at the page's edge, like Copied Current URL and the zoom level.",
+      keywords: ["notes", "toast", "notification", "banner", "glass", "solid", "frosted"],
+      control: .segmented([SettingChoice(title: "Glass", value: "glass"), SettingChoice(title: "Solid", value: "solid")])))
 
   /// The page address bar shows only the host, the path on hover (off: the full address). View › Show Full Address
   /// is the same setting, inverted.

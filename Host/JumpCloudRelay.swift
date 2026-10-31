@@ -535,9 +535,9 @@ final class JumpCloudRelay {
     guard !noticeShown else { return }
     noticeShown = true
     notices += 1
-    controller.showToast("JumpCloud Go works in Ray: turn it on in Settings", symbol: "gearshape", duration: 8) {
-      [weak self] in self?.openSetting()
-    }
+    controller.notes.show(Note("JumpCloud Go works in Ray: turn it on in Settings", icon: .symbol("key.fill"),
+                               actions: [NoteAction("Settings") { [weak self] in self?.openSetting() }],
+                               spot: .top, lasts: .seconds(8), key: Self.noteKey))
     changed()
   }
 
@@ -566,15 +566,14 @@ final class JumpCloudRelay {
 
   private func start(_ match: JumpCloudLogin.Match, tab: RayCoreTab, controller: BrowserWindowController) {
     guard isSetUp else {
-      return finish("notSetUp", note: "Set up JumpCloud Go in Chrome first", symbol: "gearshape", in: controller) {
-        [weak self] in self?.setUp()
-      }
+      return finish("notSetUp", note: "Set up JumpCloud Go in Chrome first", in: controller,
+                    action: NoteAction("Set Up") { [weak self] in self?.setUp() })
     }
     relays[tab.tabId, default: []].append(ProcessInfo.processInfo.systemUptime)
     let relay = Relay(match: match, tab: tab, controller: controller)
     self.relay = relay
     // Headless Chrome shows nothing: say it's happening until the relay ends (its result replaces this note).
-    controller.showToast("Signing in with JumpCloud Go…", symbol: "key.fill", duration: signInDeadline)
+    controller.notes.show(Note("Signing in with JumpCloud Go…", icon: .spinner, spot: .top, lasts: .held, key: Self.noteKey))
     let deadline = DispatchWorkItem { [weak self, weak relay] in
       guard let self, let relay, self.relay === relay, !relay.importing else { return }
       self.fail(relay, "timedOut", note: "JumpCloud sign-in didn't finish")
@@ -654,8 +653,10 @@ final class JumpCloudRelay {
       relay.targetID = target
       self.place(target, bounds: bounds, in: chrome)
       if self.isFullScreen(relay.controller) {
-        relay.controller?.showToast("Finish signing in to JumpCloud in Chrome", symbol: "arrow.up.forward.app",
-                                    duration: 8) { [weak self] in self?.showChrome() }
+        relay.controller?.notes.show(Note(
+          "Finish signing in to JumpCloud in Chrome", icon: .symbol("arrow.up.forward.app"),
+          actions: [NoteAction("Show Chrome") { [weak self] in self?.showChrome() }], spot: .top, lasts: .seconds(8),
+          key: Self.noteKey))
       } else {
         relay.activated = true
         self.bringForward(chrome)
@@ -877,7 +878,7 @@ final class JumpCloudRelay {
         tab.userReload()
       }
     }
-    finish("signedIn", note: "Signed in with JumpCloud Go", symbol: "checkmark.circle.fill", duration: 4, in: relay.controller)
+    finish("signedIn", note: "Signed in with JumpCloud Go", icon: .done, lasts: .seconds(4), in: relay.controller)
   }
 
   private func fail(_ relay: Relay, _ result: String, note: String) {
@@ -890,12 +891,16 @@ final class JumpCloudRelay {
     finish(result, note: note, in: relay.controller)
   }
 
-  private func finish(_ result: String, note: String, symbol: String? = nil, duration: TimeInterval? = nil,
-                      in controller: BrowserWindowController?, action: (() -> Void)? = nil) {
+  /// Its notes share one key at the top centre: each replaces the last ("Signing in…" becomes its result).
+  static let noteKey = "jumpcloud"
+
+  private func finish(_ result: String, note: String, icon: NoteIcon = .warning, lasts: NoteLasting = .auto,
+                      in controller: BrowserWindowController?, action: NoteAction? = nil) {
     lastResult = result
     // Never logs addresses or cookies, in any build.
     NSLog("[ray] JumpCloud relay: %@", result)
-    (controller ?? AppController.shared.current)?.showToast(note, symbol: symbol, duration: duration, action: action)
+    (controller ?? AppController.shared.current)?.notes.show(Note(
+      note, icon: icon, actions: action.map { [$0] } ?? [], spot: .top, lasts: lasts, key: Self.noteKey))
     changed()
   }
 

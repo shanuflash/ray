@@ -309,7 +309,7 @@ async function resetSettings() {
   for (const [name, value] of [["minimalURL", "off"], ["loadingProgress", "on"], ["theme", "default"], ["defaultZoom", "1"],
     ["newTabNextToActive", "off"], ["recentTabCycling", "on"], ["copyLinkShortcut", "on"], ["sidebarShortcut", "on"],
     ["appearanceMode", "auto"], ["scrollBars", "system"], ["pageAddressBar", "on"], ["showSidebarButton", "on"],
-    ["fadeUnloadedTabs", "off"], ["tabReorderHaptics", "on"], ["undoReopensClosedTab", "off"], ["shortcuts", "default"]])
+    ["fadeUnloadedTabs", "off"], ["tabReorderHaptics", "on"], ["undoReopensClosedTab", "off"], ["shortcuts", "default"], ["noteStyle", "glass"]])
     await command(`setting ${name} ${value}`);
   await command("state");
 }
@@ -1513,10 +1513,10 @@ const checks = {
     await until("back to second", () => state().find?.active === 2);
     await command("escape");
     await until("closed", () => state().find === null);
-    // The bar's buttons take clicks, even after a toast has come and gone in the same corner.
+    // The bar's buttons take clicks, even after a note has come and gone in the same corner.
     await command("key c cmd shift");
-    await until("toast", () => state().toast !== "");
-    await until("toast gone", async () => { await command("state"); return state().toast === ""; }, 5000);
+    await until("note", () => state().noteText !== "");
+    await until("note gone", async () => { await command("state"); return state().noteText === ""; }, 5000);
     await sleep(400);
     await command("key f cmd");
     await until("open again", () => state().find);
@@ -2547,9 +2547,78 @@ const checks = {
       .find((e) => e.id === state().activeEntry).url;
     await command("key c cmd shift");
     await until("copied", () => state().pasteboard === url);
-    assert(state().toast === "Copied Current URL", `toast says ${state().toast}`);
-    assert(state().toastTruncated === false, "the toast cut its message short");
-    await until("toast gone", async () => { await command("state"); return state().toast === ""; }, 5000);
+    assert(state().noteText === "Copied Current URL", `note says ${state().noteText}`);
+    assert(Object.values(state().notes.spots).every((n) => !n.truncated), "the note cut its message short");
+    const copied = state().notes.spots.topTrailing;
+    assert(copied && copied.actions.join() === "Share", `Arc's spot and share button: ${JSON.stringify(state().notes.spots)}`);
+    // Share keeps the note (its menu hangs from the button); it goes on its own after 3 s.
+    await until("note gone", async () => { await command("state"); return state().noteText === ""; }, 6000);
+  },
+  async "notes"() {
+    // Ray's notes (Notes.swift): six spots, one note each, never stacked. A new note in a taken spot reshapes the one
+    // there; a centre note moves a row in rather than cover a corner note; questions ignore early clicks.
+    await resetSettings();
+    const spots = async () => { await command("state"); return state().notes.spots; };
+    for (const spot of ["topLeading", "top", "topTrailing", "bottomLeading", "bottom", "bottomTrailing"]) await command(`note dismiss ${spot}`);
+    await until("no notes", async () => Object.keys(await spots()).length === 0, 3000);
+    assert(state().notes.style === "glass", `default style ${state().notes.style}`);
+    await command("note show topLeading One");
+    await command("note show topTrailing Two");
+    await command("note show bottom Three");
+    await until("three spots", async () => Object.keys(await spots()).length === 3);
+    const before = { ...state().notes.steps };
+    await command("note show topLeading Replaced");
+    await until("replaced", async () => (await spots()).topLeading?.text === "Replaced");
+    assert(Object.keys(state().notes.spots).length === 3, `stacked: ${JSON.stringify(state().notes.spots)}`);
+    const steps = state().notes.steps;
+    assert(steps.reshaped === before.reshaped + 1 && steps.entered === before.entered,
+      `a taken spot reshapes, never enters again: ${JSON.stringify(before)} → ${JSON.stringify(steps)}`);
+    // A note as wide as the page at the top centre meets both top corners: it takes the row below them.
+    await command(`note show top ${"Wide note ".repeat(40).trim()}`);
+    await until("made way", async () => { await spots(); return state().notes.shift.top > 0; });
+    assert(state().notes.spots.top.truncated === true, "a note wider than the page truncates");
+    await sleep(700);
+    const rects = Object.entries(await spots()).map(([spot, n]) => [spot, n.frame.split(",").map(Number)]);
+    for (const [a, [ax, ay, aw, ah]] of rects) for (const [b, [bx, by, bw, bh]] of rects) {
+      if (a >= b) continue;
+      assert(ax + aw <= bx || bx + bw <= ax || ay + ah <= by || by + bh <= ay, `${a} covers ${b}: ${JSON.stringify(rects)}`);
+    }
+    await command("note dismiss topLeading");
+    await command("note dismiss topTrailing");
+    await until("back to its row", async () => { await spots(); return state().notes.shift.top === 0 && !state().notes.spots.topLeading; });
+    await command("note dismiss top");
+    // A question's buttons ignore clicks for its first 0.5 s.
+    const pressed = state().notes.pressed, early = state().notes.tooEarly;
+    await command("note ask bottomTrailing Allow?");
+    await command("note press bottomTrailing");
+    await until("early click ignored", async () => { await spots(); return state().notes.tooEarly === early + 1; });
+    assert(state().notes.spots.bottomTrailing?.held && state().notes.pressed === pressed, "an early click answered the question");
+    await sleep(600);
+    await command("note press bottomTrailing");
+    await until("answered", async () => { await spots(); return !state().notes.spots.bottomTrailing && state().notes.pressed === pressed + 1; });
+    // Hovering holds a note past its time; leaving lets it go.
+    await command("note show bottomLeading Held");
+    await command("note hover bottomLeading on");
+    await sleep(3200);
+    assert((await spots()).bottomLeading?.text === "Held", "a hovered note left");
+    await command("note hover bottomLeading off");
+    await until("hover let go", async () => !(await spots()).bottomLeading, 5000);
+    // Progress updates in place: no crossfade.
+    await command("note progress bottom 0.2");
+    await until("progress", async () => (await spots()).bottom?.text === "Downloading");
+    const reshaped = state().notes.steps.reshaped;
+    await command("note progress bottom 0.6");
+    await until("progress moved", async () => (await spots()).bottom?.detail === "60%");
+    assert(state().notes.steps.reshaped === reshaped, "a progress update crossfaded");
+    await command("note dismiss bottom");
+    // Settings › Appearance › Notes: solid, then back to glass, on the note already shown.
+    await command("note show topTrailing Style");
+    await setSetting("noteStyle", "solid");
+    await until("solid", async () => (await spots()).topTrailing?.style === "solid" && state().notes.style === "solid");
+    await setSetting("noteStyle", "glass");
+    await until("glass", async () => (await spots()).topTrailing?.style === "glass");
+    await command("note dismiss topTrailing");
+    await until("all gone", async () => Object.keys(await spots()).length === 0, 3000);
   },
   async "page-commands"() {
     // The basics from Chrome's menus: zoom keys, View Source, History, Clear Browsing Data, Save Page As, Print.
@@ -2567,19 +2636,23 @@ const checks = {
     };
     await zoomTo("= cmd", 1.1, "⌘=");
     // Arc's zoom level at the top right of the page, after a zoom you asked for.
-    assert(state().toast === "110%" && state().toastTruncated === false, `zoom indicator says ${JSON.stringify(state().toast)}`);
+    assert(state().noteText === "110%" && Object.values(state().notes.spots).every((n) => !n.truncated), `zoom indicator says ${JSON.stringify(state().noteText)}`);
+    assert(state().notes.spots.topTrailing?.figure, `zoom at the top right: ${JSON.stringify(state().notes.spots)}`);
+    const rolled = state().notes.steps.rolled;
     await zoomTo("- cmd", 1, "⌘−");
     await zoomTo("= cmd", 1.1, "⌘= again");
     await zoomTo("= cmd", 1.25, "⌘= twice");
     await zoomTo("0 cmd", 1, "⌘0");
-    assert(state().toast === "100%", `after ⌘0 the indicator says ${JSON.stringify(state().toast)}`);
+    assert(state().noteText === "100%", `after ⌘0 the indicator says ${JSON.stringify(state().noteText)}`);
+    // Each zoom while the note shows rolls its digits in place.
+    assert(state().notes.steps.rolled > rolled, `zoom changes didn't roll: ${JSON.stringify(state().notes.steps)}`);
     // A navigation settling the default zoom isn't a zoom you asked for: no indicator.
-    await until("indicator gone", async () => { await command("state"); return state().toast === ""; }, 5000);
+    await until("indicator gone", async () => { await command("state"); return state().noteText === ""; }, 5000);
     await setSetting("defaultZoom", "1.25");
     await until("default applied", async () => { await command("state"); return near(activeZoom(), 1.25); });
     await sleep(400);
     await command("state");
-    assert(state().toast === "", `changing the default showed ${JSON.stringify(state().toast)}`);
+    assert(state().noteText === "", `changing the default showed ${JSON.stringify(state().noteText)}`);
     await setSetting("defaultZoom", "1");
     await until("default back", async () => { await command("state"); return near(activeZoom(), 1); });
     // View Source (⌥⌘U): the page's source in a new tab, not for Chrome's own pages.
@@ -3300,10 +3373,9 @@ const checks = {
     await setSetting("sidebarShortcut", "off");
     assert(state().menuKeys.toggleSidebar === "", `⌘S still on the menu: ${JSON.stringify(state().menuKeys)}`);
     const hidden = state().sidebar.hidden;
-    await command("key s cmd");
-    await sleep(600);
-    await command("state");
-    assert(state().sidebar.hidden === hidden, "⌘S toggled the sidebar with the setting off");
+    // Off, ⌘S is Save Page As's (page-commands); pressing it here would open Chrome's save panel over the test window,
+    // which no check closes and which then swallows the keys of every check after it.
+    assert(state().menuKeys.savePage === "s", `⌘S didn't go to Save Page As: ${JSON.stringify(state().menuKeys)}`);
     await command("menu toggleSidebar");
     await until("the menu item still works", async () => { await command("state"); return state().sidebar.hidden === !hidden; });
     await command("menu toggleSidebar");
@@ -3423,7 +3495,7 @@ const checks = {
       // Off (the default): the login page loads in Ray and nothing starts, but a note says Ray can do JumpCloud Go,
       // once per launch; its button opens Settings › Passwords at the switch, flashing it.
       await goTo("/login?n=off");
-      await until("off note", async () => (await now()).toast.includes("JumpCloud Go works in Ray"), 6000, 50);
+      await until("off note", async () => (await now()).noteText.includes("JumpCloud Go works in Ray"), 6000, 50);
       assert((await relay()).launches === 0 && lines("launches.jsonl").length === 0, "Chrome started with the setting off");
       assert(latest().jumpCloudRelay.notices === 1, "the off note isn't recorded");
       await ok("jumpcloud opensetting");
@@ -3440,7 +3512,7 @@ const checks = {
       await ok("setting jumpCloudRelay on");
       await goTo("/login?n=nosetup");
       await until("not set up", async () => (await relay()).lastResult === "notSetUp");
-      assert(latest().toast.includes("Set up JumpCloud Go") && latest().jumpCloudRelay.launches === 0, `not set up: ${latest().toast}`);
+      assert(latest().noteText.includes("Set up JumpCloud Go") && latest().jumpCloudRelay.launches === 0, `not set up: ${latest().noteText}`);
       const profile = join(data, "JumpCloud Relay");
       mkdirSync(join(profile, "Default/Extensions/jdoahkhfkeipblhbhppmcbdgapeoaopa/3.3.5_0"), { recursive: true });
 
@@ -3509,7 +3581,7 @@ const checks = {
       await goTo("/login?n=loop&stay=1");
       await until("second relay", async () => (await relay()).launches === 2, 15000);
       await until("loop guard", async () => (await relay()).lastResult === "loopGuard", 20000);
-      assert(latest().jumpCloudRelay.launches === 2 && latest().toast.includes("Still not signed in"), `loop: ${latest().toast}`);
+      assert(latest().jumpCloudRelay.launches === 2 && latest().noteText.includes("Still not signed in"), `loop: ${latest().noteText}`);
 
       // Never from a private window.
       await ok("menu newPrivateWindow");
@@ -3548,8 +3620,8 @@ const checks = {
       await signOut();
       await goTo("/login?n=fb", true);
       // Headless shows no window, so Ray says it is signing in until the relay ends.
-      await until("signing-in note", async () => (await now()).toast.includes("Signing in with JumpCloud Go"), 6000, 50);
-      await until("fallback note", async () => (await now()).toast.includes("Finish signing in to JumpCloud in Chrome"), 8000, 50);
+      await until("signing-in note", async () => (await now()).noteText.includes("Signing in with JumpCloud Go"), 6000, 50);
+      await until("fallback note", async () => (await now()).noteText.includes("Finish signing in to JumpCloud in Chrome"), 8000, 50);
       state = latest().jumpCloudRelay;
       assert(state.fallbacks === 1 && state.mode === "window" && state.activations === 0 && state.launches === before + 2,
         `full-screen fallback ${JSON.stringify(state)}`);
@@ -3584,7 +3656,7 @@ const checks = {
       await signOut();
       await goTo("/login?n=3", true);
       await until("timed out", async () => (await relay()).lastResult === "timedOut", 12000);
-      assert(latest().toast.includes("didn't finish") && latest().jumpCloudRelay.launches === before + 2, `deadline: ${latest().toast}`);
+      assert(latest().noteText.includes("didn't finish") && latest().jumpCloudRelay.launches === before + 2, `deadline: ${latest().noteText}`);
       for (const never of lines("launches.jsonl").slice(before)) await until("timed-out Chrome gone", () => !alive(never.pid), 10000);
 
       // A Chrome that never answers its pipe (policy RemoteDebuggingAllowed off): given up on, and killed; headless
@@ -3594,8 +3666,8 @@ const checks = {
       await signOut();
       await goTo("/login?n=4", true);
       await until("no answer", async () => (await relay()).lastResult === "noAnswer", 12000);
-      assert(latest().toast.includes("didn't answer") && latest().jumpCloudRelay.launches === before + 2,
-        `silent: ${latest().toast} ${JSON.stringify(latest().jumpCloudRelay)}`);
+      assert(latest().noteText.includes("didn't answer") && latest().jumpCloudRelay.launches === before + 2,
+        `silent: ${latest().noteText} ${JSON.stringify(latest().jumpCloudRelay)}`);
       const silent = lines("launches.jsonl").slice(before);
       assert(silent[0].argv.includes("--headless=new") && !silent[1].argv.includes("--headless=new"), "silent fallback arguments");
       for (const quiet of silent) await until("silent Chrome gone", () => !alive(quiet.pid), 10000);
