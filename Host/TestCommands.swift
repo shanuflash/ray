@@ -469,6 +469,18 @@ enum TestCommands {
       result = rename(argument)
     case "rowmenu":
       result = rowMenu(argument)
+    case "selaction":
+      // `selaction newfolder|pin|unpin|close|copylinks|infolder <folder id>`: the selection menu's items.
+      let parts = argument.split(separator: " ").map(String.init)
+      let actions: [String: SidebarRowAction] = ["newfolder": .newFolder, "pin": .pin, "unpin": .unpin, "close": .close,
+                                                 "copylinks": .copyLinks]
+      if let controller = AppController.shared.current, controller.selectedEntries.count > 1,
+         let action = parts.first == "infolder" ? (parts.count == 2 ? UUID(uuidString: parts[1]).map { SidebarRowAction.moveToFolder($0) } : nil)
+           : parts.first.flatMap({ actions[$0] }) {
+        controller.performOnSelection(action)
+      } else {
+        result = "usage: selaction newfolder|pin|unpin|close|copylinks|infolder <id> (two or more selected)"
+      }
     case "rowclick":
       // `rowclick <id> cmd|shift|cmdshift|plain`: a click on a row with those keys held, as the sidebar takes one.
       let parts = argument.split(separator: " ").map(String.init)

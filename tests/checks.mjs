@@ -1349,6 +1349,57 @@ const checks = {
     await command(`rowaction infolder ${b} ${nested.id}`);
     await until("kept a folder for restore", () => state().sidebar.pinned.find((e) => e.id === b)?.parent === nested.id);
   },
+  async "multi-select"() {
+    // Arc's multi-select: ⌘-click picks or drops a tab, ⇧-click a range; neither switches tabs. The menu, ⇧⌘C and a
+    // drag act on all of them.
+    await todayTabs(state().sidebar.today.filter((e) => e.kind !== "folder").length + 4);
+    const ids = () => state().sidebar.today.filter((e) => e.kind !== "folder" && !e.parent).map((e) => e.id);
+    const [t0, t1, t2, t3] = ids();
+    const selection = async () => { await command("state"); return state().sidebar.selection; };
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    await command(`row ${t0}`);
+    await until("t0 active", () => state().activeEntry === t0);
+    await command(`rowclick ${t2} cmd`);
+    assert(same(await selection(), [t0, t2]) && state().activeEntry === t0, `⌘-click: ${state().sidebar.selection}`);
+    await command(`rowclick ${t1} shift`);
+    assert(same(await selection(), [t1, t2]), `⇧-click range from the last ⌘-click: ${state().sidebar.selection}`);
+    await command(`rowclick ${t3} cmdshift`);
+    assert(same(await selection(), [t1, t2, t3]), `⌘⇧-click adds a range: ${state().sidebar.selection}`);
+    await command(`rowclick ${t2} cmd`);
+    assert(same(await selection(), [t1, t3]), `⌘-click drops one: ${state().sidebar.selection}`);
+    const menu = JSON.parse(await commandResult(`rowmenu ${t3}`));
+    for (const item of ["New Folder with 2 Tabs", "Pin 2 Tabs", "Copy 2 Links", "Close 2 Tabs"]) assert(menu.includes(item), `selection menu ${menu}`);
+    await command("menu copyURL");
+    await until("both links copied", async () => { await command("state"); const p = state().pasteboard ?? ""; return p.split("\n").length === 2 && p.includes("/c?n="); });
+    await command(`rowclick ${t0} plain`);
+    assert(same(await selection(), []), "a plain click didn't end the selection");
+    // New Folder with them: one folder, both inside, ready to name.
+    await command(`rowclick ${t1} cmd`);
+    await command(`rowclick ${t2} cmd`);
+    assert(same(await selection(), [t0, t1, t2]), `picked ${state().sidebar.selection}`);
+    await command(`rowclick ${t0} cmd`);
+    await command("selaction newfolder");
+    const folder = await until("folder with both", async () => {
+      await command("state");
+      const f = state().sidebar.today.find((e) => e.kind === "folder");
+      const byId = (id) => state().sidebar.today.find((e) => e.id === id);
+      return f && byId(t1)?.parent === f.id && byId(t2)?.parent === f.id && state().sidebar.selection.length === 0 ? f : null;
+    });
+    await command(`rename ${folder.id} Picked`);
+    // Dragging one of two selected tabs takes both into the folder.
+    await command(`row ${t0}`);
+    await command(`rowclick ${t3} cmd`);
+    assert(same(await selection(), [t0, t3]), `picked for the drag ${state().sidebar.selection}`);
+    await settle();
+    const from = frameOf(t0), to = frameOf(folder.id);
+    await command(`drag ${from.cx} ${from.cy} ${to.cx - from.cx} ${to.cy - from.cy}`);
+    await until("both dragged in", async () => {
+      await command("state");
+      return [t0, t3].every((id) => state().sidebar.today.find((e) => e.id === id)?.parent === folder.id);
+    });
+    await command(`rowaction closetabs ${folder.id}`);
+    await until("closed", async () => { await command("state"); return !state().sidebar.today.some((e) => e.kind === "folder"); });
+  },
   async folders() {
     // Folders in Today are Chrome tab groups: an extension (like Claude's, which groups the tabs it drives) and the
     // sidebar see and change the same groups. A local unpacked extension stands in; nothing comes from the Web Store.

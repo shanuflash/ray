@@ -9,10 +9,9 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 
 ## Top priority (owner)
 
-1. **Select several tabs** (owner, 2026-10-29): ⌘-click adds or removes a tab, ⇧-click selects a range, as in Arc.
-   On a selection: ⇧⌘C copies all their links (one per line), right-click › Duplicate (needs Duplicate tab, item
-   10 below), New Folder with them, drag them together; Split View with them once it exists. Waiting for the owner's
-   go (other sessions first).
+1. **Select several tabs: what's left** (owner, 2026-10-29). ⌘/⇧-click, the selection's menu, ⇧⌘C and dragging
+   them together landed 2026-10-31. Left: Duplicate on a selection (needs Duplicate tab, item 10 below), Split View
+   with them once it exists, Escape to end a selection (the sidebar doesn't take keys), a count on the dragged row.
 
 ## Arc features Ray doesn't have
 
@@ -293,3 +292,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Settings: Light, Dark or Automatic (pages follow); scroll bars Automatic / When scrolling / Always (pages follow live); one address-bar-on-page setting for every window; show or hide the sidebar button; fade unloaded tabs; reorder haptic; ⌘Z reopens a closed tab outside text | 2026-10-29, `d2c6ed0` |
 | Settings › Shortcuts: an editor for every menu command (record, conflicts with Replace, none, reset; macOS's keys refused; Quit and Settings locked); the command bar and reserved keys follow | 2026-10-29, `7f3b29d` |
 | Folders in Today as Chrome tab groups (extensions like Claude's drive them; ungrouping, renaming, colours, collapse both ways), colours, Change Icon (Arc's panel), an animated folder icon, sliding moves, spring-loaded closed folders, Pin / Unpin Folder, Close Tabs; kept over relaunch | 2026-10-31, `e18f3c8` |
+| Select several tabs (⌘-click, ⇧-click): New Folder with them, Add to Folder, Pin/Unpin, Copy Links (⇧⌘C), Close, drag together | 2026-10-31, `claude/folders` |

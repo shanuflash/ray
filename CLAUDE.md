@@ -216,6 +216,14 @@ publicly or create accounts.
   panel too); state log `sidebar.tabGroups` (Chrome's groups as last seen), `sidebar.folderIcons`,
   `sidebar.iconPicker`, `sidebar.iconPickerAnimations`, `sidebar.changesAnimated`, and `color`/`icon`/`group` per entry.
   Checks `folders` (an unpacked extension's service worker drives `chrome.tabGroups`), `folders-relaunch`.
+- Multi-select (`SidebarView` `// MARK: Selection`, Arc's): ⌘-click picks or drops a tab (the active one counts),
+  ⇧-click picks the shown tabs from the anchor (the last ⌘-click, else the active tab), ⌘⇧ adds a range; neither
+  switches tabs, a plain click ends it (on a selected tab, only at the release, so the selection can be dragged).
+  Picked rows take the active highlight. Right-click one: New Folder with N Tabs, Add to Folder ▸, Pin / Unpin N
+  Tabs, Copy N Links, Close N Tabs (`sidebar(_:perform:onAll:)`); ⇧⌘C copies every link, one per line
+  (`copyLinks`); dragging one moves them all, the rest right after the held one (`sidebar(_:move:to:)` with a list).
+  Never saved. Test commands `rowclick <id> cmd|shift|cmdshift|plain`, `selaction newfolder|pin|unpin|close|
+  copylinks|infolder <id>`; state log `sidebar.selection`; check `multi-select`.
 - Tab names (Arc's Rename): `SidebarEntry.customTitle` (Sidebar.json `customTitle`, optional; `name(from:)` makes
   it one plain line of at most 200 characters), which `displayTitle` prefers over `pageTitle`; page title updates
   only ever write `title`. Rows' menus (tiles too) have Rename… (the `.renameFolder` action, for tabs as well) and,

@@ -1953,6 +1953,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   func sidebarSelectionChanged(_ sidebar: SidebarView) { logState("selection") }
 
+  /// For tests: the selected tabs, and a selection menu item pressed.
+  var selectedEntries: [SidebarEntry] { sidebar.selection }
+  func performOnSelection(_ action: SidebarRowAction) {
+    let entries = sidebar.selection
+    sidebar.clearSelection()
+    sidebar(sidebar, perform: action, onAll: entries)
+  }
+
   /// For tests: a click on a row with modifier keys, as the sidebar takes one (a plain one selects the tab).
   func clickRow(_ entry: SidebarEntry, flags: NSEvent.ModifierFlags) -> Bool {
     if sidebar.select(entry, with: flags) { return true }

@@ -16,7 +16,7 @@ const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-
 const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];
 // Folders in Pinned and Today (Today's are Chrome tab groups), their icon and Change Icon.
-const folders = ["folders", "folders-relaunch", "folder-create", "folder-toggle", "folder-rename", "folder-animation",
+const folders = ["folders", "folders-relaunch", "multi-select", "folder-create", "folder-toggle", "folder-rename", "folder-animation",
   "folder-drag-in", "folder-drag-folder", "folder-out-and-delete"];
 const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still"];
 const pageSurface = ["switch-back-latency", "switch-no-blank", "top-strip-click", "toggle-keeps-page-still", "activate-target",
@@ -142,6 +142,8 @@ export const areas = {
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
   "Host/SidebarView.swift#Folder motion": [...folders, ...drag],
   "Host/BrowserWindowController.swift#Folder icon": folders,
+  "Host/SidebarView.swift#Selection": [...folders, ...drag, "copy-url"],
+  "Host/BrowserWindowController.swift#Selection": [...folders, ...drag, "copy-url"],
   // Also the rows' menus and the test hooks for renaming (the field, its Done button).
   "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder", "folder-rename", "tab-rename",
     "settings-reorder-haptics"],

@@ -12,6 +12,8 @@ Early and personal. Expect rough edges.
   double-click its title); the name sticks across pages and relaunches, and Arc's names come over on import.
 - Folders in Pinned and Today, with a colour and an icon (right-click › Colour, Change Icon…). Today folders are
   Chrome tab groups, so extensions that group the tabs they drive (Claude's) work, and their groups show as folders.
+- Select several tabs with ⌘-click or ⇧-click, as in Arc: put them in a new folder, pin, copy their links (⇧⌘C),
+  close or drag them together.
 - ⌘S hides the sidebar; hovering the left edge slides it back in as a floating panel, sprung to Arc's recorded motion.
 - Command bar (⌘T, ⌘L): open tabs, history, search suggestions, URLs, and Ray's own commands by name ("task manager",
   "clear cache", "zoom in"…) with their shortcuts.
