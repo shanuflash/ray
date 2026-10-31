@@ -14,7 +14,7 @@ import AppKit
 extension AnySettingKey {
   /// Every setting, in the order the window lists them (rows group by `group`, in order of first appearance).
   static let all: [AnySettingKey] = [
-    theme, appearanceMode, noteStyle, minimalURL, loadingProgress, defaultZoom, scrollBars, newTabNextToActive, recentTabCycling,
+    theme, appearanceMode, surfaceStyle, minimalURL, loadingProgress, defaultZoom, scrollBars, newTabNextToActive, recentTabCycling,
     copyLinkShortcut, sidebarShortcut,
     warnBeforeQuitting, warnBeforeClosingWindow, onQuit,  // General (SettingsGeneral.swift)
     offerToSavePasswords, jumpCloudRelay, autofillAddresses, autofillCards,  // Passwords (and JumpCloudRelay.swift), Autofill
@@ -33,7 +33,7 @@ extension AnySettingKey {
   ]
 
   /// Old ids that now load into a renamed setting: `"oldId": "newId"`. The old key stays in Settings.json as it was.
-  static let aliases: [String: String] = [:]
+  static let aliases: [String: String] = ["noteStyle": "surfaceStyle"]
 
   // Appearance
 
@@ -70,13 +70,13 @@ extension AnySettingKey {
          SettingChoice(title: "Dark", value: "dark")],
         picture: { MiniRayWindow.appearanceChoice($0) })))
 
-  /// How Ray's notes look (`Notes`): frosted glass, or a solid card.
-  static let noteStyle = SettingKey<String>(
-    "noteStyle", default: "glass",
+  /// How Ray's notes and panels look (`SurfaceBackdrop`): frosted glass, or a solid card. Was `noteStyle` in 0.6.0.
+  static let surfaceStyle = SettingKey<String>(
+    "surfaceStyle", default: "glass",
     ui: SettingUI(
-      pane: .appearance, group: .theme, title: "Notes",
-      detail: "", about: "The short notes at the page's edge, like Copied Current URL and the zoom level.",
-      keywords: ["notes", "toast", "notification", "banner", "glass", "solid", "frosted"],
+      pane: .appearance, group: .theme, title: "Panels and notes",
+      detail: "", about: "Site controls, prompts, downloads and the short notes at the page's edge, like Copied Current URL.",
+      keywords: ["notes", "panels", "toast", "popup", "notification", "banner", "glass", "solid", "frosted", "menu"],
       control: .segmented([SettingChoice(title: "Glass", value: "glass"), SettingChoice(title: "Solid", value: "solid")])))
 
   /// The page address bar shows only the host, the path on hover (off: the full address). View › Show Full Address

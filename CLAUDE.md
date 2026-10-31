@@ -57,9 +57,10 @@ publicly or create accounts.
   (`third_party/ardia/apps/browser/src/components/ui/theme.ts` `layout`, `components/toolbar/Toolbar.tsx`): 41 pt,
   buttons centred at 21/56/92/127, address from 145; the host in medium weight, then path and query in grey
   (View › Show Full Address, the same setting as Settings › Minimal URL, inverted; minimal shows them on hover). The sidebar/back/forward/reload
-  buttons ride the sidebar's dock spring in while the sidebar is hidden. Its sliders button opens `SiteControls`:
-  quick actions, extension tiles, the site's permissions (`ac_site_settings_*`, keyed by the tab's
-  `committedOrigin`) and the connection state.
+  buttons ride the sidebar's dock spring in while the sidebar is hidden. Its sliders button opens `SiteControls`
+  (a `Panels` panel): quick actions, extension tiles, the site's permissions (`ac_site_settings_*`, keyed by the
+  tab's `committedOrigin`), the connection state and a "…" page (Site Settings, Reset Permissions, Clear Site Data,
+  Developer Tools; `PanelKit` rows, back to the first page) in the same panel.
 - `ConnectionLook` (in `AddressInput.swift`): the security icon for both address fields and the panel's footer.
 - `ProfileColor`: the profile's colour, which every accent in Ray's UI uses (loading wash, progress, drop targets,
   selection, "on" states, Settings' switches). Default: Dia's lavender; Settings › Theme sets it (`apply(hex:)`,
@@ -250,13 +251,32 @@ publicly or create accounts.
   no bounce, scale or blur): 8 pt in from the spot's edge with a 160 ms fade, 160 ms out; Reduce Motion fades only.
   `lasts` `.auto` (2.4–6 s by length, 6 s with a button, 1.4 s for a figure), `.seconds`, `.held`; hovering holds.
   `asks`: buttons ignore clicks for 0.5 s, the last one is the primary (profile colour). Look: Settings › Appearance ›
-  Notes (`noteStyle`, Glass default: `NSVisualEffectView` within the window plus a wash; Solid: the card colour).
+  Panels and notes (`surfaceStyle`, `SurfaceBackdrop`).
   Spots in use: ⇧⌘C's "Copied Current URL" (3 s, Share) and the zoom level (never when Ray applies the default zoom)
   top right, below the find bar while it's open; downloads bottom left (progress, then "Downloaded", Show); Cast
   errors bottom; Cleared Site Data and JumpCloud (key `jumpcloud`, each replacing the last) top. State log `notes`
   (`spots` with text, frame, target size, style, truncated; `steps` entered/reshaped/rolled/madeWay/left;
   `pressed`, `tooEarly`, `shift`) and `noteText` (every shown note's text); test command `note
   show|ask|press|dismiss|hover|progress <spot> …`; check `notes`.
+- `SurfaceBackdrop` (`Host/Surface.swift`): the look notes, panels, permission prompts and the downloads panel
+  share: Settings › Appearance › Panels and notes (`surfaceStyle`, Glass default; 0.6.0's `noteStyle` loads into it
+  through `aliases`). Glass is an `NSVisualEffectView` (`.popover`, within the window) under a wash; Solid is the card
+  colour (`SurfaceBackdrop.solidFill`, also what accents are measured against). A 0.5 pt edge; the owner view's
+  layer carries the shadow (`SurfaceBackdrop.shadow(on:radius:)`, in its `layout`). It follows the setting itself.
+- `Panels` (`Host/Panels.swift`): anything that opens from a button over the page, one per window (opening another
+  closes the open one). `panels.open(PanelSpec(name:, content:, anchor: PanelAnchor(rect:, below:, trailing:,
+  button:, hold:), closesOn:, origin:, asks:, onClose:))` returns a `PanelHandle` (`show(newContent)`,
+  `contentChanged()`, `close()`). The content sizes itself (its frame); the panel hangs 6 pt from the anchor rect
+  (asked again on every layout), its trailing or leading edge on the button's, kept 8 pt inside the window, below
+  `floating`. It grows out of the button (8 pt, 97 % scale about the button's corner) on the sidebar's spring with a
+  140 ms fade; reshapes on the spring when its content changes (old content out in 110 ms, new in over 170 ms, held at
+  the button's corner); closes in 140 ms toward the button (90 ms when another takes its place). Closes on a click
+  outside (not on its button), Escape, a tab switch, the window resigning key, or `.otherSite` (the active tab
+  committing another origin); `asks` never closes on an outside click. `PanelKit`: `stack`, `header`, `row`
+  (`SettingRow`), `back`, `separator`; `PanelButton` (28 pt, primary in the profile colour). Permission prompts keep
+  their per-tab queue and top-left spot (`PermissionPrompts`) on the same surface, `PanelButton`s and spring. State
+  log `panels` (`open` with name, frame, anchor, target size, style; `steps` opened/reshaped/closed;
+  `lastClosedBy`); check `panels`.
 - `LinksFromApps`: Ray as a web browser to macOS. Info.plist (`build-app.sh`) declares http/https and HTML, XHTML,
   PDF (`AddressInput.documentTypes`; no `file` scheme), so Ray can be picked as the default browser. Ray installs its
   own GetURL and Open Documents Apple Event handlers on willFinishLaunching (AppKit's never reached the delegate);

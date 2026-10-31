@@ -632,7 +632,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func showOnboarding(_ mode: OnboardingMode) {
     guard onboarding == nil, !isPrivate else { return }
     closeCommandBar(focus: false)
-    closeSiteControls()
+    panels.close()
     let host = coreWindow.hostView
     let view = OnboardingView(mode: mode, browser: self)
     view.frame = host.bounds
@@ -685,6 +685,15 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     prompts.host = { [unowned self] in (self.root, self.pages.frame, self.activeTab) }
     prompts.onChange = { [weak self] in self?.logState("permission") }
     return prompts
+  }()
+
+  // MARK: Panels
+
+  /// This window's panel over the page (`Panels.swift`): one at a time, from a button.
+  private(set) lazy var panels: Panels = {
+    let panels = Panels(host: root) { [weak self] in self?.floating }
+    panels.onChange = { [weak self] in self?.logState("panels") }
+    return panels
   }()
 
   // MARK: Notes
@@ -748,7 +757,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   // MARK: Site controls
 
   private var siteControls: SiteControlsView?
-  private var siteControlsMonitor: Any?
+  private var siteControlsPanel: PanelHandle?
   /// Where popovers from the panel's actions (share, an extension's popup) hang once the panel has gone: the
   /// panel's top right, under the sliders button.
   private let siteAnchor = NSView()
@@ -780,47 +789,46 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     panel.onClose = { [weak self] in self?.closeSiteControls() }
     if siteAnchor.superview !== root { root.addSubview(siteAnchor) }
-    root.addSubview(panel, positioned: .below, relativeTo: floating)
     siteControls = panel
-    toolbar.siteButton.isHeld = true
     layoutSiteControls()
-    panel.animateIn()
-    // A click anywhere else in the window, or Escape, closes it. App-local: only Ray's own events.
-    siteControlsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) {
-      [weak self] event in
-      guard let self, let panel = self.siteControls else { return event }
-      if event.type == .keyDown {
-        guard event.keyCode == 53, event.window === self.window else { return event }
-        self.closeSiteControls()
-        return nil
-      }
-      guard event.window === self.window else { return event }
-      let point = self.root.convert(event.locationInWindow, from: nil)
-      let button = self.toolbar.siteButton
-      let onButton = self.toolbarShown && button.convert(button.bounds, to: self.root).contains(point)
-      if !panel.frame.contains(point) && !onButton { self.closeSiteControls() }
-      return event
+    // Under the sliders button (the address bar's right end); with the address bar off, the page's top right.
+    let anchor = PanelAnchor(rect: { [weak self] in self?.siteControlsAnchor ?? .zero }, below: true, trailing: true,
+                             button: toolbar.siteButton, hold: { [weak self] held in self?.toolbar.siteButton.isHeld = held })
+    let handle = panels.open(PanelSpec(
+      name: "siteControls", content: panel, anchor: anchor,
+      closesOn: [.outsideClick, .escape, .tabSwitch, .windowInactive, .otherSite], origin: tab.committedOrigin,
+      onClose: { [weak self, weak panel] in
+        guard let self, self.siteControls === panel else { return }
+        self.siteControls = nil
+        self.siteControlsPanel = nil
+        self.logState("siteControls")
+      }))
+    siteControlsPanel = handle
+    panel.onResize = { handle.contentChanged() }
+    panel.onPage = { [weak panel] page in
+      guard let panel else { return }
+      handle.show(page ?? panel)
     }
     logState("siteControls")
   }
 
   func closeSiteControls() {
-    guard let panel = siteControls else { return }
-    siteControls = nil
-    if let siteControlsMonitor { NSEvent.removeMonitor(siteControlsMonitor) }
-    siteControlsMonitor = nil
-    toolbar.siteButton.isHeld = false
-    panel.dismiss()
-    logState("siteControls")
+    guard siteControls != nil else { return }
+    siteControlsPanel?.close()
   }
 
-  /// Under the sliders button, its right edge on the button's; with the address bar off, the page's top right.
-  private func layoutSiteControls() {
-    let size = siteControls?.frame.size ?? NSSize(width: SiteControlsView.width, height: 0)
+  /// The sliders button's frame: the address bar's right end, 2 pt above its bottom; the page's top right without it.
+  private var siteControlsAnchor: NSRect {
     let right = toolbarShown ? toolbar.frame.maxX - 4 : pages.frame.maxX - 8
-    let top = toolbarShown ? toolbar.frame.minY - 2 : pages.frame.maxY - 8
-    siteAnchor.frame = NSRect(x: right - 28, y: top - 1, width: 28, height: 1)
-    siteControls?.frame = NSRect(x: right - size.width, y: top - size.height, width: size.width, height: size.height)
+    let top = toolbarShown ? toolbar.frame.minY - 2 + Panels.gap : pages.frame.maxY - 8 + Panels.gap
+    return NSRect(x: right - 28, y: top, width: 28, height: 1)
+  }
+
+  /// Where things the panel opens hang (share's menu, an extension's popup) once it has gone; panels follow too.
+  private func layoutSiteControls() {
+    let anchor = siteControlsAnchor
+    siteAnchor.frame = NSRect(x: anchor.minX, y: anchor.minY - Panels.gap - 1, width: anchor.width, height: 1)
+    panels.layout()
   }
 
   private func siteControlsAction(_ action: SiteControlsView.Action, tab: RayCoreTab) {
@@ -886,7 +894,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       panel.cacheDisplay(in: panel.bounds, to: rep)
       let image = NSImage(size: panel.bounds.size)
       image.lockFocus()
-      panel.effectiveAppearance.performAsCurrentDrawingAppearance { PanelColors.background.setFill() }
+      panel.effectiveAppearance.performAsCurrentDrawingAppearance { SurfaceBackdrop.solidFill.setFill() }
       NSBezierPath(roundedRect: NSRect(origin: .zero, size: panel.bounds.size), xRadius: 14, yRadius: 14).fill()
       rep.draw(in: NSRect(origin: .zero, size: panel.bounds.size))
       image.unlockFocus()
@@ -1044,7 +1052,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     // Going to a tab by any other way ends a Ctrl+Tab in progress.
     if switched, !cycling { tabCycle = nil }
     if switched, findTab != nil, findTab !== tab { closeFind() }
-    if switched { closeSiteControls() }
+    if switched { panels.tabSwitched() }
     if switched { iconPicker?.close() }
     // An extension's popup belongs to the tab it opened over.
     if switched { extensions.closePopup() }
@@ -2103,7 +2111,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     sidebar.refresh(entry)
     if entry.id == state.activeEntryID {
       // A navigation to another site leaves the panel showing the old one's settings.
-      if let panel = siteControls, panel.origin != tab.committedOrigin { closeSiteControls() }
+      panels.navigated(to: tab.committedOrigin)
       sidebar.showAddress(entry)
       sidebar.setNavigation(canGoBack: tab.canGoBack, canGoForward: tab.canGoForward)
       updateToolbar()
@@ -2458,6 +2466,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       // A password or card number copied from Settings is concealed: never in this log.
       "pasteboard": (SettingsPasteboard.isConcealed ? "<concealed>" : Self.pasteboard.string(forType: .string)) ?? NSNull(),
       "notes": notes.state,
+      "panels": panels.state,
       "noteText": notes.text,
       "realLightsHidden": [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
         window.standardWindowButton($0)?.isHidden ?? true

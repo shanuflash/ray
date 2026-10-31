@@ -43,6 +43,7 @@ final class PermissionPrompts {
       prompt.onAnswer = { [weak self] result, remember in self?.answer(request.id, result, remember: remember) }
       host.parent.addSubview(prompt)
       view = prompt
+      prompt.animateIn()
     }
     let size = view!.fittingSize
     view!.frame = NSRect(x: host.frame.minX + 12, y: host.frame.maxY - size.height - 12, width: size.width, height: size.height)
@@ -67,20 +68,17 @@ final class PermissionPromptView: NSView {
   private(set) var request: PermissionPrompts.Request?
   var onAnswer: ((_ result: String, _ remember: Bool) -> Void)?
   private let stack = NSStackView()
-  private let block = NSButton(title: "Block", target: nil, action: nil)
-  private let allow = NSButton(title: "Allow", target: nil, action: nil)
+  private let backdrop = SurfaceBackdrop(radius: Panels.radius)
+  private let block = PanelButton(title: "Block")
+  private let allow = PanelButton(title: "Allow", primary: true)
   private(set) var ready = false
 
   init(request: PermissionPrompts.Request) {
     self.request = request
     super.init(frame: .zero)
     wantsLayer = true
-    layer?.cornerRadius = 12
-    layer?.cornerCurve = .continuous
-    layer?.borderWidth = 1
-    layer?.shadowOpacity = 0.2
-    layer?.shadowRadius = 10
-    layer?.shadowOffset = CGSize(width: 0, height: -3)
+    // The panels' look: glass or solid, as Settings › Appearance › Panels and notes says.
+    addSubview(backdrop)
 
     stack.orientation = .vertical
     stack.alignment = .leading
@@ -113,27 +111,44 @@ final class PermissionPromptView: NSView {
     }
     let buttons = NSStackView(views: [block, allow])
     buttons.spacing = 8
-    for button in [block, allow] {
-      button.bezelStyle = .rounded
-      button.target = self
-      button.isEnabled = false
-      // Neither is the default button: Return does nothing, Escape dismisses.
-      button.keyEquivalent = ""
-    }
-    block.action = #selector(blockClicked)
-    allow.action = #selector(allowClicked)
+    // Neither is a default button: Return does nothing, Escape dismisses.
+    for button in [block, allow] { button.isEnabled = false }
+    block.onClick = { [weak self] in self?.blockClicked() }
+    allow.onClick = { [weak self] in self?.allowClicked() }
     stack.addArrangedSubview(buttons)
     stack.setCustomSpacing(12, after: stack.arrangedSubviews[stack.arrangedSubviews.count - 2])
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
-  override var wantsUpdateLayer: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
 
-  override func updateLayer() {
-    layer?.backgroundColor = SidebarColors.background.cgColor
-    layer?.borderColor = NSColor.separatorColor.cgColor
+  override func layout() {
+    super.layout()
+    backdrop.frame = bounds
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    SurfaceBackdrop.shadow(on: self, radius: Panels.radius)
+    CATransaction.commit()
+  }
+
+  /// In from just above its spot on the panels' spring, fading in (Reduce Motion: only the fade).
+  func animateIn() {
+    guard let layer else { return }
+    if !Panels.reduceMotion {
+      let drop = CASpringAnimation(keyPath: "transform.translation.y")
+      drop.fromValue = 8
+      drop.toValue = 0
+      drop.stiffness = pow(2 * .pi / Notes.response, 2)
+      drop.damping = 4 * .pi * Notes.dampingRatio / Notes.response
+      drop.duration = drop.settlingDuration
+      layer.add(drop, forKey: "drop")
+    }
+    let fade = CABasicAnimation(keyPath: "opacity")
+    fade.fromValue = 0
+    fade.toValue = 1
+    fade.duration = 0.14
+    layer.add(fade, forKey: "fade")
   }
 
   override func viewDidMoveToWindow() {
@@ -153,8 +168,8 @@ final class PermissionPromptView: NSView {
 
   override func cancelOperation(_ sender: Any?) { onAnswer?("dismiss", false) }
 
-  @objc private func blockClicked() { onAnswer?("deny", true) }
-  @objc private func allowClicked() { onAnswer?("accept", true) }
+  private func blockClicked() { onAnswer?("deny", true) }
+  private func allowClicked() { onAnswer?("accept", true) }
 
   func press(_ choice: String) -> Bool {
     switch choice {

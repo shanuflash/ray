@@ -1,10 +1,10 @@
 import AppKit
 
-/// The site controls panel under the address bar's sliders button, as in Dia: quick actions (share, copy link,
-/// find, cast), the extensions as tiles with a "+" for the Web Store, the site's permissions, and a footer with the
-/// connection's state and a "…" menu. The site is the tab's committed origin as the engine reports it, never
-/// anything the page says. It's an in-window panel over the page's top right; a click elsewhere, Escape, a tab
-/// switch or a navigation to another origin closes it.
+/// The site controls panel's content, under the address bar's sliders button, as in Dia: quick actions (share, copy
+/// link, find, cast), the extensions as tiles with a "+" for the Web Store, the site's permissions, and a footer with
+/// the connection's state and a "…" page (Site Settings, Reset Permissions, Clear Site Data, Developer Tools). The
+/// site is the tab's committed origin as the engine reports it, never anything the page says. `Panels` shows it (the
+/// look, the motion, closing on a click elsewhere, Escape, a tab switch or another site).
 final class SiteControlsView: NSView {
   enum Action {
     case share, copyLink, find, cast, addExtension, siteSettings, clearData, developerTools
@@ -26,6 +26,12 @@ final class SiteControlsView: NSView {
 
   var onAction: ((Action) -> Void)?
   var onClose: (() -> Void)?
+  /// Its size changed (a permission row came or went).
+  var onResize: (() -> Void)?
+  /// Show this page in the panel instead (the "…" page), or nil for this view again.
+  var onPage: ((NSView?) -> Void)?
+  /// Which page is shown, for the state log: "main" or "more".
+  private(set) var page = "main"
 
   /// The site's origin (from the engine), or nil for pages without one (ray:// pages, files).
   let origin: String?
@@ -65,13 +71,6 @@ final class SiteControlsView: NSView {
       ("cast", PanelTile(symbol: "tv.badge.wifi", label: "Cast")),
     ]
     super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: 100))
-    wantsLayer = true
-    layer?.cornerRadius = 14
-    layer?.cornerCurve = .continuous
-    layer?.borderWidth = 1
-    layer?.shadowOpacity = 0.28
-    layer?.shadowRadius = 18
-    layer?.shadowOffset = CGSize(width: 0, height: -6)
     for (name, tile) in quickTiles {
       tile.onPress = { [weak self] in self?.perform(name) }
       addSubview(tile)
@@ -102,20 +101,9 @@ final class SiteControlsView: NSView {
   required init?(coder: NSCoder) { fatalError() }
 
   override var isFlipped: Bool { true }
-  override var wantsUpdateLayer: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
   // Swallows clicks on its padding so they never reach the page below.
   override func mouseDown(with event: NSEvent) {}
-
-  override func updateLayer() {
-    layer?.backgroundColor = PanelColors.background.cgColor
-    layer?.borderColor = PanelColors.border.cgColor
-  }
-
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    needsDisplay = true
-  }
 
   private func perform(_ name: String) {
     switch name {
@@ -130,6 +118,8 @@ final class SiteControlsView: NSView {
   /// For tests: presses a tile by name ("share", "copyLink", "find", "cast", "add", or an extension's id).
   func press(_ name: String) -> Bool {
     if name == "add" { addTile.onPress?(); return true }
+    if name == "more" { showMore(); return true }
+    if name == "back" { showMain(); return true }
     if name == "siteSettings" { openSiteSettings(); return true }
     if let tile = quickTiles.first(where: { $0.name == name })?.tile ?? extensionTiles.first(where: { $0.id == name })?.tile,
        tile.isEnabled {
@@ -218,28 +208,35 @@ final class SiteControlsView: NSView {
 
   // MARK: More
 
+  /// The "…" page in the same panel: the site's own actions, and back.
   private func showMore() {
-    let menu = NSMenu()
-    func add(_ title: String, _ action: Selector, enabled: Bool = true) {
-      let item = NSMenuItem(title: title, action: enabled ? action : nil, keyEquivalent: "")
-      item.target = self
-      menu.addItem(item)
-    }
+    var views: [NSView] = [PanelKit.back(host.isEmpty ? "Site" : host) { [weak self] in self?.showMain() }]
     if isWeb {
-      add("Site Settings…", #selector(openSiteSettings))
-      add("Reset Permissions", #selector(resetPermissions), enabled: settings.contains { !$0.isDefault })
-      add("Clear Cookies and Site Data…", #selector(clearData))
-      menu.addItem(.separator())
+      views.append(PanelKit.row(symbol: "gearshape", title: "Site Settings…") { [weak self] in self?.openSiteSettings() })
+      views.append(PanelKit.row(symbol: "arrow.counterclockwise", title: "Reset Permissions",
+                                enabled: settings.contains { !$0.isDefault }) { [weak self] in
+        self?.resetPermissions()
+        self?.showMain()
+      })
+      views.append(PanelKit.row(symbol: "trash", title: "Clear Cookies and Site Data…") { [weak self] in self?.clearData() })
     }
-    add("Developer Tools", #selector(developerTools))
-    menu.popUp(positioning: nil, at: NSPoint(x: 0, y: moreButton.bounds.maxY + 4), in: moreButton)
+    views.append(PanelKit.row(symbol: "chevron.left.forwardslash.chevron.right", title: "Developer Tools", value: "⌥⌘I") {
+      [weak self] in self?.developerTools()
+    })
+    page = "more"
+    onPage?(PanelKit.stack(views, width: Self.width - PanelKit.padding * 2, spacing: 2))
   }
 
-  @objc private func openSiteSettings() { onAction?(.siteSettings) }
-  @objc private func clearData() { onAction?(.clearData) }
-  @objc private func developerTools() { onAction?(.developerTools) }
+  private func showMain() {
+    page = "main"
+    onPage?(nil)
+  }
 
-  @objc private func resetPermissions() {
+  private func openSiteSettings() { onAction?(.siteSettings) }
+  private func clearData() { onAction?(.clearData) }
+  private func developerTools() { onAction?(.developerTools) }
+
+  private func resetPermissions() {
     guard let origin, isWeb else { return }
     EngineCalls.call("ac_site_settings_reset", profile: profile, args: ["origin": origin, "offTheRecord": profile.offTheRecord]) { [weak self] _ in
       self?.loadSettings()
@@ -250,8 +247,10 @@ final class SiteControlsView: NSView {
 
   private func resize() {
     let height = layoutContent(apply: false)
+    let changed = frame.height != height
     setFrameSize(NSSize(width: Self.width, height: height))
     needsLayout = true
+    if changed { onResize?() }
   }
 
   override func layout() {
@@ -301,53 +300,7 @@ final class SiteControlsView: NSView {
 
   // MARK: Showing
 
-  func animateIn() {
-    guard let layer else { return }
-    layer.removeAllAnimations()
-    let drop = CASpringAnimation(keyPath: "transform.translation.y")
-    drop.fromValue = 8
-    drop.toValue = 0
-    let scale = CASpringAnimation(keyPath: "transform.scale")
-    scale.fromValue = 0.96
-    scale.toValue = 1
-    for spring in [drop, scale] {
-      spring.mass = 1
-      spring.stiffness = 520
-      spring.damping = 32
-      spring.duration = spring.settlingDuration
-    }
-    let fade = CABasicAnimation(keyPath: "opacity")
-    fade.fromValue = 0
-    fade.toValue = 1
-    fade.duration = 0.14
-    fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
-    layer.opacity = 1
-    layer.add(drop, forKey: "drop")
-    layer.add(scale, forKey: "scale")
-    layer.add(fade, forKey: "fade")
-  }
-
   func close() { onClose?() }
-
-  /// Fades out and leaves its superview.
-  func dismiss() {
-    guard let layer else { return removeFromSuperview() }
-    let fade = CABasicAnimation(keyPath: "opacity")
-    fade.fromValue = 1
-    fade.toValue = 0
-    let scale = CABasicAnimation(keyPath: "transform.scale")
-    scale.fromValue = 1
-    scale.toValue = 0.98
-    let group = CAAnimationGroup()
-    group.animations = [fade, scale]
-    group.duration = 0.12
-    group.timingFunction = CAMediaTimingFunction(name: .easeIn)
-    CATransaction.begin()
-    CATransaction.setCompletionBlock { [weak self] in self?.removeFromSuperview() }
-    layer.opacity = 0
-    layer.add(group, forKey: "leave")
-    CATransaction.commit()
-  }
 
   var state: [String: Any] {
     [
@@ -357,6 +310,7 @@ final class SiteControlsView: NSView {
       "extensions": extensionTiles.map(\.id),
       "extensionIcons": extensionIcons,
       "settings": rows.map { ["title": $0.title, "value": $0.subtitle] },
+      "page": page,
       "frame": NSStringFromRect(frame),
     ]
   }
@@ -507,8 +461,12 @@ private final class PanelTile: NSView {
 }
 
 /// One setting: a round icon (filled with the profile's colour when it's allowed), its name and its value.
-private final class SettingRow: NSView {
+/// A 44 pt row: an icon in a circle (the profile's colour when on), a title and a grey value; also `PanelKit.row`.
+final class SettingRow: NSView {
   var onClick: ((SettingRow) -> Void)?
+  var isEnabled = true {
+    didSet { alphaValue = isEnabled ? 1 : 0.4 }
+  }
   let title: String
   let subtitle: String
   private let circle = NSView()
@@ -569,13 +527,15 @@ private final class SettingRow: NSView {
     circle.frame = NSRect(x: 6, y: mid - 14, width: 28, height: 28)
     icon.frame = NSRect(x: 5, y: 5, width: 18, height: 18)
     let x: CGFloat = 44
-    titleLabel.frame = NSRect(x: x, y: mid - 17, width: bounds.width - x - 6, height: 17)
+    // No value: the title alone, centred.
+    titleLabel.frame = NSRect(x: x, y: subtitle.isEmpty ? mid - 9 : mid - 17, width: bounds.width - x - 6, height: 17)
     subtitleLabel.frame = NSRect(x: x, y: mid + 1, width: bounds.width - x - 6, height: 16)
+    subtitleLabel.isHidden = subtitle.isEmpty
   }
 
-  override func mouseEntered(with event: NSEvent) { hovered = true; needsDisplay = true }
+  override func mouseEntered(with event: NSEvent) { hovered = isEnabled; needsDisplay = true }
   override func mouseExited(with event: NSEvent) { hovered = false; needsDisplay = true }
-  override func mouseDown(with event: NSEvent) { onClick?(self) }
+  override func mouseDown(with event: NSEvent) { if isEnabled { onClick?(self) } }
 }
 
 /// The footer's connection state: "Secure" with a lock, "Not Secure" in red, and so on. The host in its tooltip

@@ -468,39 +468,24 @@ final class DownloadRowView: NSView {
   }
 }
 
-/// The sidebar's downloads panel: the list on a raised, rounded card that slides up from the footer.
+/// The sidebar's downloads panel: the list on the panels' surface (glass or solid, Settings › Appearance › Panels
+/// and notes), sliding up from the footer.
 final class DownloadsPanelView: NSView {
   let list: DownloadsListView
+  private let backdrop = SurfaceBackdrop(radius: 12)
 
   init(list: DownloadsListView) {
     self.list = list
     super.init(frame: .zero)
     wantsLayer = true
-    layer?.cornerRadius = 12
-    layer?.cornerCurve = .continuous
-    layer?.borderWidth = 1
-    layer?.shadowOpacity = 0.18
-    layer?.shadowRadius = 10
-    layer?.shadowOffset = CGSize(width: 0, height: 3)
+    addSubview(backdrop)
     addSubview(list)
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
   override var isFlipped: Bool { true }
-  override var wantsUpdateLayer: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
-
-  override func updateLayer() {
-    let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    layer?.backgroundColor = (dark ? NSColor(white: 0.14, alpha: 1) : NSColor(white: 0.99, alpha: 1)).cgColor
-    layer?.borderColor = (dark ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.08)).cgColor
-  }
-
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    needsDisplay = true
-  }
 
   /// Presses on the card's empty space stay with it (otherwise they'd fall through to the window and drag it).
   override func mouseDown(with event: NSEvent) {}
@@ -509,6 +494,11 @@ final class DownloadsPanelView: NSView {
 
   override func layout() {
     super.layout()
+    backdrop.frame = bounds
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    SurfaceBackdrop.shadow(on: self, radius: 12)
+    CATransaction.commit()
     list.frame = bounds
   }
 }

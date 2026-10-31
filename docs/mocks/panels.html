@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Panels</title>
+<style>
+:root {
+  --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --hair: rgba(0,0,0,.08);
+  --side: #E8E5EF; --sideInk: #3A3A3F; --page: #FFFFFF; --line: #EDEDF0; --chip: #FFFFFF;
+  --card: #FFFFFF; --cardInk: #1C1C1E; --cardInk2: #6C6C70; --edge: rgba(0,0,0,.075);
+  --tile: rgba(0,0,0,.045); --tileHover: rgba(0,0,0,.08); --sep: rgba(0,0,0,.08);
+  --glass: rgba(255,255,255,.68);
+  --shadow: 0 1px 1.5px rgba(0,0,0,.05), 0 6px 14px -4px rgba(0,0,0,.08), 0 22px 48px -12px rgba(0,0,0,.22);
+  --accent: #8257E5;
+}
+:root[data-theme="dark"] {
+  --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09);
+  --side: #1D1B22; --sideInk: #D8D6DE; --page: #242428; --line: #2F2F34; --chip: #28282D;
+  --card: #2C2C31; --cardInk: #F5F5F7; --cardInk2: #A1A1A9; --edge: rgba(255,255,255,.09);
+  --tile: rgba(255,255,255,.07); --tileHover: rgba(255,255,255,.12); --sep: rgba(255,255,255,.09);
+  --glass: rgba(40,40,46,.66);
+  --shadow: 0 1px 1.5px rgba(0,0,0,.3), 0 6px 14px -4px rgba(0,0,0,.3), 0 24px 52px -12px rgba(0,0,0,.6);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px 64px; }
+h1 { font-size: 22px; font-weight: 600; margin: 26px 0 4px; letter-spacing: -.01em; }
+.sub { color: var(--ink2); margin: 0 0 14px; }
+h3 { font-size: 13px; font-weight: 600; margin: 26px 0 8px; }
+.bar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--desk) 86%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 10px 0; border-bottom: 1px solid var(--hair); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.row + .row { margin-top: 6px; }
+.lab { color: var(--ink2); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; min-width: 58px; }
+button.t { font: inherit; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--chip); border: 1px solid var(--hair); border-radius: 7px; padding: 4px 9px; cursor: pointer; white-space: nowrap; }
+button.t:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+button.t[aria-pressed="true"] { background: var(--accent); color: var(--onAccent, #fff); border-color: transparent; }
+.sw { width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,.1); }
+.sw[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+/* Window */
+.win { position: relative; margin-top: 16px; height: 580px; border-radius: 12px; background: var(--side); overflow: hidden;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.2), 0 20px 50px -12px rgba(0,0,0,.28); display: flex; }
+.side { width: 212px; flex: none; padding: 12px 10px; color: var(--sideInk); display: flex; flex-direction: column; }
+.lights { display: flex; gap: 8px; margin: 3px 0 16px 5px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; } .lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+.favs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; }
+.favs i { height: 38px; border-radius: 9px; background: color-mix(in srgb, var(--page) 50%, transparent); display: grid; place-items: center; }
+.favs i::after { content: ""; width: 16px; height: 16px; border-radius: 4px; background: var(--c); }
+.tab { height: 32px; border-radius: 8px; margin-bottom: 2px; display: flex; align-items: center; gap: 9px; padding: 0 9px; font-size: 12.5px; white-space: nowrap; overflow: hidden; }
+.tab.on { background: var(--page); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.tab b { width: 16px; height: 16px; border-radius: 4px; background: var(--c); flex: none; }
+.foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
+.ibtn { width: 28px; height: 28px; border-radius: 7px; border: 0; background: transparent; color: var(--ink2); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.ibtn:hover, .ibtn.on { background: var(--tile); color: var(--ink); }
+.ibtn svg { width: 16px; height: 16px; }
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.toolbar { height: 41px; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 10px; }
+.toolbar .addr { flex: 1; display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink2); min-width: 0; padding-left: 4px; }
+.toolbar .addr b { color: var(--ink); font-weight: 500; }
+.toolbar .site { width: 22px; height: 22px; border-radius: 6px; border: 0; background: transparent; color: var(--ink2); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.toolbar .site:hover, .toolbar .site.on { background: var(--tile); color: var(--ink); }
+.toolbar .site svg { width: 13px; height: 13px; }
+.page { position: relative; flex: 1; margin: 0 8px 8px 0; border-radius: 10px; background: var(--page); box-shadow: 0 0 0 .5px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
+.site-pg nav { height: 52px; display: flex; align-items: center; gap: 18px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+.site-pg nav .logo { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, #4F8CFF, #22C1C3); }
+.site-pg nav i { width: 46px; height: 7px; border-radius: 4px; background: var(--line); }
+.site-pg .hero { margin: 26px 28px 0; height: 210px; border-radius: 14px; background: radial-gradient(120% 140% at 85% 0%, #FFB86B 0%, #FF6A88 35%, #7B61FF 70%, #2D7FF9 100%); }
+.site-pg .text { padding: 22px 28px; } .site-pg .text div { height: 9px; border-radius: 5px; background: var(--line); margin-bottom: 12px; }
+.layer { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
+.layer > * { pointer-events: auto; }
+
+/* Panel chrome: the notes' look */
+.panel { position: absolute; border-radius: 14px; color: var(--cardInk); background: var(--card); overflow: hidden;
+  box-shadow: 0 0 0 .5px var(--edge), var(--shadow); will-change: transform, opacity, width, height; }
+.glass .panel { background: var(--glass); backdrop-filter: blur(34px) saturate(190%); -webkit-backdrop-filter: blur(34px) saturate(190%); }
+.pane { position: absolute; top: 0; left: 0; }
+.pc { padding: 12px; width: max-content; }
+
+/* Building blocks */
+.tiles { display: grid; grid-template-columns: repeat(4, 58px); gap: 6px; }
+.tilebtn { height: 40px; border-radius: 10px; border: 0; background: var(--tile); color: var(--cardInk); display: grid; place-items: center; cursor: pointer; padding: 0; transition: background .12s; }
+.tilebtn:hover { background: var(--tileHover); }
+.tilebtn svg { width: 17px; height: 17px; }
+.tilebtn .ext { width: 18px; height: 18px; border-radius: 5px; background: var(--c); }
+.hd { font-size: 12px; font-weight: 600; color: var(--cardInk2); margin: 14px 4px 7px; }
+.prow { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 6px; border-radius: 9px; cursor: pointer; }
+.prow:hover { background: var(--tile); }
+.prow .pi { width: 28px; height: 28px; border-radius: 50%; background: var(--tile); display: grid; place-items: center; flex: none; }
+.prow .pi svg { width: 14px; height: 14px; }
+.prow .pt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.prow .pt b { font-size: 13px; font-weight: 500; } .prow .pt span { font-size: 11.5px; color: var(--cardInk2); }
+.prow .chev { color: var(--cardInk2); width: 12px; height: 12px; }
+.psep { height: 1px; background: var(--sep); margin: 8px 4px; }
+.pfoot { display: flex; align-items: center; justify-content: space-between; }
+.pill { height: 30px; border-radius: 9px; background: var(--tile); display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; font-size: 12.5px; font-weight: 500; }
+.pill svg { width: 12px; height: 12px; }
+.round { width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--tile); color: var(--cardInk); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.round:hover { background: var(--tileHover); }
+.round svg { width: 14px; height: 14px; }
+.back { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px 0 2px; margin-bottom: 4px; border: 0; background: transparent; color: var(--cardInk); font: inherit; font-weight: 600; cursor: pointer; border-radius: 8px; }
+.back:hover { background: var(--tile); }
+.back svg { width: 13px; height: 13px; }
+.ask h4 { margin: 2px 4px 2px; font-size: 13.5px; font-weight: 600; }
+.ask p { margin: 0 4px 12px; font-size: 12px; color: var(--cardInk2); }
+.ask .origin { color: var(--cardInk); font-weight: 600; }
+.btns { display: flex; justify-content: flex-end; gap: 6px; }
+.btn { height: 28px; border-radius: 8px; border: 0; background: var(--tile); color: var(--cardInk); font: inherit; font-size: 12.5px; font-weight: 500; padding: 0 12px; cursor: pointer; }
+.btn:hover { background: var(--tileHover); }
+.btn.primary { background: var(--accent); color: var(--onAccent); font-weight: 600; }
+.field { height: 30px; border-radius: 8px; background: var(--tile); display: flex; align-items: center; padding: 0 10px; margin: 0 0 6px; font-size: 12.5px; gap: 8px; }
+.field span { color: var(--cardInk2); width: 70px; }
+.dl { display: flex; align-items: center; gap: 10px; padding: 7px 6px; border-radius: 9px; }
+.dl:hover { background: var(--tile); }
+.dl .fi { width: 30px; height: 30px; border-radius: 7px; background: var(--accentWash); color: var(--accentInk); display: grid; place-items: center; flex: none; font-size: 9px; font-weight: 700; }
+.dl .dt { flex: 1; min-width: 0; } .dl .dt b { display: block; font-size: 12.5px; font-weight: 500; } .dl .dt span { font-size: 11.5px; color: var(--cardInk2); }
+.dl .bar3 { height: 3px; border-radius: 2px; background: var(--sep); margin-top: 4px; overflow: hidden; } .dl .bar3 i { display: block; height: 100%; background: var(--accent); }
+.phead { display: flex; align-items: center; justify-content: space-between; margin: 0 4px 6px; font-size: 12px; font-weight: 600; color: var(--cardInk2); }
+
+pre { background: var(--page); border: 1px solid var(--hair); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--page); border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 1px var(--hair); }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+th { font-weight: 600; color: var(--ink2); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+.tw { overflow-x: auto; }
+ul.notes { margin: 6px 0 0; padding-left: 18px; color: var(--ink2); } ul.notes li { margin: 3px 0; }
+@media (max-width: 760px) { .side { display: none; } .page { margin-left: 8px; } }
+</style>
+</head>
+<body>
+<div class="bar"><div class="wrap" style="padding-bottom:0">
+  <div class="row">
+    <span class="lab">Open</span>
+    <button class="t" data-go="site">Site controls</button>
+    <button class="t" data-go="more">Site controls › …</button>
+    <button class="t" data-go="downloads">Downloads</button>
+    <button class="t" data-go="perm">Camera prompt</button>
+    <button class="t" data-go="password">Save password</button>
+    <button class="t" data-go="close">Close (Esc)</button>
+  </div>
+  <div class="row">
+    <span class="lab">Look</span>
+    <button class="t" id="solid" aria-pressed="false">Solid</button>
+    <button class="t" id="glass" aria-pressed="true">Glass</button>
+    <span style="width:8px"></span>
+    <button class="t" id="themeL" aria-pressed="false">Light</button>
+    <button class="t" id="themeD" aria-pressed="true">Dark</button>
+    <span style="width:8px"></span>
+    <button class="sw" data-acc="lavender" aria-pressed="true" title="Lavender" style="background:#8257E5"></button>
+    <button class="sw" data-acc="#2F6BEA" aria-pressed="false" title="Blue" style="background:#2F6BEA"></button>
+    <button class="sw" data-acc="#F0654A" aria-pressed="false" title="Coral" style="background:#F0654A"></button>
+    <span style="width:8px"></span>
+    <button class="t" id="slow" aria-pressed="false">Slow ×4</button>
+    <button class="t" id="rm" aria-pressed="false">Reduce Motion</button>
+  </div>
+</div></div>
+
+<div class="wrap">
+  <h1>Ray's panels</h1>
+  <p class="sub">The notes' look and spring, for anything that opens from a button. One panel at a time; it grows from its button and reshapes when its content changes. Click the sliders, the camera or download buttons, or use the bar above.</p>
+
+  <div class="win glass" id="win">
+    <div class="side">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="favs"><i style="--c:#5E6AD2"></i><i style="--c:#EA4335"></i><i style="--c:#1DB954"></i><i style="--c:#F24E1E"></i></div>
+      <div class="tab"><b style="--c:#24292F"></b>shanuflash/ray</div>
+      <div class="tab on"><b style="--c:#22C1C3"></b>Weather · Today</div>
+      <div class="tab"><b style="--c:#FF4500"></b>r/MacApps</div>
+      <div class="tab"><b style="--c:#0A66C2"></b>Arc shutdown FAQ</div>
+      <div class="foot">
+        <button class="ibtn" id="dlBtn" title="Downloads"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v6M5.6 8.6L8 11l2.4-2.4"/></svg></button>
+        <button class="ibtn" title="New Space"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></button>
+      </div>
+    </div>
+    <div class="main">
+      <div class="toolbar">
+        <div class="addr"><button class="site" id="camBtn" title="Camera"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 5.4c0-.9.7-1.6 1.6-1.6h5.8c.9 0 1.6.7 1.6 1.6v5.2c0 .9-.7 1.6-1.6 1.6H3.6c-.9 0-1.6-.7-1.6-1.6z"/><path d="M11.8 6.6l2.2-1.4v5.6l-2.2-1.4z"/></svg></button><b>weather.example.com</b>/today</div>
+        <button class="site" id="keyBtn" title="Passwords"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="5" cy="10.5" r="2.4"/><path d="M6.8 8.7l5.4-5.4M10.6 4.9l1.4 1.4"/></svg></button>
+        <button class="site" id="slidersBtn" title="Site controls"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 5h11M2.5 11h11"/><circle cx="10.5" cy="5" r="1.8" fill="var(--side)"/><circle cx="5.5" cy="11" r="1.8" fill="var(--side)"/></svg></button>
+      </div>
+      <div class="page"><div class="site-pg"><nav><span class="logo"></span><i></i><i></i><i></i></nav><div class="hero"></div><div class="text"><div style="width:44%;height:16px"></div><div></div><div style="width:90%"></div><div style="width:76%"></div></div></div></div>
+    </div>
+    <div class="layer" id="layer"></div>
+  </div>
+
+  <h3>Behaviour</h3>
+  <ul class="notes">
+    <li>Grows from its button: 8 pt from the button's side and 97 % scale, anchored at the button, on the sidebar's spring (0.26 s, 0.86); fades in over 140 ms. Closes in 140 ms toward the button.</li>
+    <li>Content changes (the "…" page, a permission row appearing, a download finishing) reshape the panel on the same spring while the old content fades out and the new fades in. Back returns the same way.</li>
+    <li>One panel per window: opening another closes the open one first. Its button stays highlighted while it's open.</li>
+    <li>Closes on a click outside, Escape, a tab switch, the window going to the background, or (per panel) a navigation to another site.</li>
+    <li>A panel that asks (camera, save password) never closes on an outside click; its buttons ignore clicks for 0.5 s; closing it is "no". It shows the full origin.</li>
+    <li>Glass or Solid with the notes (one setting: Settings › Appearance › Panels and notes). Reduce Motion: fades only.</li>
+    <li>Extension popups stay a child window (a page can't sit under Ray's own views) but take the same corners, shadow and motion.</li>
+  </ul>
+
+  <h3>Proposed Swift API</h3>
+<pre>/// What a panel hangs from: a button (the panel grows out of it) on one of its sides.
+struct PanelAnchor { var view: NSView; var edge: NSRectEdge = .minY; var align: Align = .trailing }   // .leading, .center, .trailing
+
+/// Any feature's panel: its content view plus how it behaves. `controller.panels.open(…)`.
+struct PanelSpec {
+  var content: NSView                    // sizes itself (fittingSize); built from PanelKit pieces or anything
+  var anchor: PanelAnchor
+  var closesOn: Set&lt;PanelClose&gt; = [.outsideClick, .escape, .tabSwitch, .windowInactive]   // + .navigation(origin)
+  var asks = false                       // never closes on an outside click; buttons wait 0.5 s; closing is "no"
+  var onClose: (() -> Void)? = nil
+}
+
+@discardableResult func open(_ spec: PanelSpec) -> PanelHandle   // closes the open one first
+func close()
+// handle.show(newContent)  — reshape + crossfade (the "…" page, back)
+// handle.contentChanged()  — re-measure after the content grew or shrank (a permission row appeared)
+// handle.close()
+
+/// The pieces the screenshot's panel is made of, so a new prompt is a few lines:
+enum PanelKit {
+  static func tiles(_ items: [(symbol: String, label: String, action: () -> Void)], columns: Int = 4) -> NSView
+  static func header(_ title: String) -> NSView
+  static func row(icon: String, title: String, value: String?, action: (() -> Void)?) -> NSView
+  static func separator() -> NSView
+  static func buttons(_ actions: [PanelButton]) -> NSView           // last one primary (profile colour) when asking
+  static func field(_ label: String, text: String) -> NSView
+  static func stack(_ views: [NSView], spacing: CGFloat = 0) -> NSView
+}
+
+// Site controls becomes:
+panels.open(PanelSpec(content: PanelKit.stack([quickTiles, PanelKit.header("Extensions"), extensionTiles,
+                                               PanelKit.header("Settings"), rows, PanelKit.separator(), footer]),
+                      anchor: PanelAnchor(view: toolbar.sliders), closesOn: [.outsideClick, .escape, .tabSwitch, .navigation(origin)]))</pre>
+
+  <h3>Panels today → framework</h3>
+  <div class="tw"><table>
+    <tr><th>Panel</th><th>Today</th><th>With the framework</th></tr>
+    <tr><td>Site controls</td><td>Own chrome (radius 14, spring 520/32), own close monitors in the window controller</td><td>PanelKit pieces, anchored to the sliders button; "…" becomes a second page in the same panel</td></tr>
+    <tr><td>Permission prompt</td><td>Own view, radius 12, NSButtons</td><td>A panel that asks, under the address's site icon</td></tr>
+    <tr><td>Downloads</td><td>Card sliding up inside the sidebar</td><td>A panel above the downloads button (same list view inside)</td></tr>
+    <tr><td>Extension popups</td><td>Borderless child window</td><td>Stays a window; same corners, shadow, motion</td></tr>
+    <tr><td>Coming</td><td>—</td><td>Save password, external app, pop-up blocked details, folder editing</td></tr>
+  </table></div>
+</div>
+
+<script>
+const root = document.documentElement;
+let accentPick = "lavender";
+const hexRGB = h => { const v = parseInt(h.slice(1), 16); return [(v >> 16) & 255, (v >> 8) & 255, v & 255]; };
+const lum = c => { const f = x => { x /= 255; return x <= .03928 ? x / 12.92 : Math.pow((x + .055) / 1.055, 2.4); }; return .2126 * f(c[0]) + .7152 * f(c[1]) + .0722 * f(c[2]); };
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + .05) / (y + .05); };
+const mix = (a, b, t) => a.map((v, i) => Math.round(v * t + b[i] * (1 - t)));
+const css = c => `rgb(${c.join(",")})`;
+function legible(acc, bg, min = 3.2) { const to = lum(bg) > .4 ? [0, 0, 0] : [255, 255, 255]; for (let t = 1; t >= 0; t -= .02) { const c = mix(acc, to, t); if (contrast(c, bg) >= min) return c; } return to; }
+function applyLook() {
+  const dark = root.dataset.theme === "dark";
+  const hex = accentPick === "lavender" ? (dark ? "#A486F0" : "#8257E5") : accentPick;
+  const acc = hexRGB(hex), card = dark ? [44, 44, 49] : [255, 255, 255];
+  root.style.setProperty("--accent", hex);
+  root.style.setProperty("--onAccent", contrast([255, 255, 255], acc) >= contrast([0, 0, 0], acc) ? "#fff" : "#000");
+  root.style.setProperty("--accentInk", css(legible(acc, card)));
+  root.style.setProperty("--accentWash", css(mix(acc, card, dark ? .22 : .12)));
+}
+function toggle(on, off, f) { document.getElementById(on).onclick = () => { document.getElementById(on).setAttribute("aria-pressed", "true"); document.getElementById(off).setAttribute("aria-pressed", "false"); f(); }; }
+toggle("themeL", "themeD", () => { root.dataset.theme = "light"; applyLook(); });
+toggle("themeD", "themeL", () => { root.dataset.theme = "dark"; applyLook(); });
+toggle("solid", "glass", () => document.getElementById("win").classList.remove("glass"));
+toggle("glass", "solid", () => document.getElementById("win").classList.add("glass"));
+document.querySelectorAll(".sw").forEach(b => b.onclick = () => { accentPick = b.dataset.acc; document.querySelectorAll(".sw").forEach(s => s.setAttribute("aria-pressed", String(s === b))); applyLook(); });
+root.dataset.theme = "dark"; applyLook();
+let slow = 1, reduce = false;
+document.getElementById("slow").onclick = e => { slow = slow === 1 ? 4 : 1; e.currentTarget.setAttribute("aria-pressed", String(slow > 1)); };
+document.getElementById("rm").onclick = e => { reduce = !reduce; e.currentTarget.setAttribute("aria-pressed", String(reduce)); };
+
+// The sidebar's spring.
+function spring(response, z) {
+  const w0 = 2 * Math.PI / response, wd = w0 * Math.sqrt(1 - z * z);
+  const x = t => 1 - Math.exp(-z * w0 * t) * (Math.cos(wd * t) + (z * w0 / wd) * Math.sin(wd * t));
+  let T = 0; for (let t = 0; t < 2; t += .002) if (Math.abs(1 - x(t)) > .0015) T = t;
+  T += .002; const pts = []; for (let i = 0; i <= 40; i++) pts.push(+x(T * i / 40).toFixed(4)); pts[40] = 1;
+  return { easing: `linear(${pts.join(",")})`, ms: T * 1000 };
+}
+const SPRING = spring(0.26, 0.86);
+const ms = v => v * slow;
+const anim = (el, frames, dur, easing, extra = {}) => el.animate(frames, { duration: ms(dur), easing, fill: "both", ...extra });
+const EASE_IN = "cubic-bezier(.4,0,1,1)", EASE_OUT = "cubic-bezier(0,0,.2,1)";
+
+const S = 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
+const I = {
+  share: `<svg viewBox="0 0 16 16" ${S}><path d="M8 2.4v7.6M5.4 4.9L8 2.4l2.6 2.5M5.6 7H4.2v6.6h7.6V7h-1.4"/></svg>`,
+  link: `<svg viewBox="0 0 16 16" ${S}><path d="M6.6 9.4l2.8-2.8M7.2 4.6l1.1-1.1a2.8 2.8 0 014 4l-1.1 1.1M8.8 11.4l-1.1 1.1a2.8 2.8 0 01-4-4l1.1-1.1"/></svg>`,
+  find: `<svg viewBox="0 0 16 16" ${S}><circle cx="7" cy="7" r="4.6"/><path d="M10.4 10.4l3.4 3.4M5 6.2h4M5 8h2.6"/></svg>`,
+  cast: `<svg viewBox="0 0 16 16" ${S}><rect x="2" y="3" width="12" height="8.4" rx="1.4"/><path d="M10.6 13.6c0-1 .8-1.8 1.8-1.8M9 13.6a3.4 3.4 0 013.4-3.4"/></svg>`,
+  plus: `<svg viewBox="0 0 16 16" ${S}><path d="M8 3v10M3 8h10"/></svg>`,
+  x: `<svg viewBox="0 0 16 16" ${S}><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>`,
+  popup: `<svg viewBox="0 0 16 16" ${S}><rect x="2.6" y="2.6" width="10.8" height="10.8" rx="2.4"/><path d="M6.4 9.6l3.4-3.4M6.9 6.2h2.9v2.9"/></svg>`,
+  cam: `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 5.4c0-.9.7-1.6 1.6-1.6h5.8c.9 0 1.6.7 1.6 1.6v5.2c0 .9-.7 1.6-1.6 1.6H3.6c-.9 0-1.6-.7-1.6-1.6z"/><path d="M11.8 6.6l2.2-1.4v5.6l-2.2-1.4z"/></svg>`,
+  lock: `<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="7" width="10" height="7.4" rx="1.6"/><path d="M5.2 7V5a2.8 2.8 0 015.6 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  more: `<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg>`,
+  chev: `<svg class="chev" viewBox="0 0 12 12" ${S}><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>`,
+  back: `<svg viewBox="0 0 12 12" ${S}><path d="M7.5 2.5L4 6l3.5 3.5"/></svg>`,
+  gear: `<svg viewBox="0 0 16 16" ${S}><circle cx="8" cy="8" r="2.1"/><path d="M8 1.8v1.8M8 12.4v1.8M1.8 8h1.8M12.4 8h1.8M3.6 3.6l1.3 1.3M11.1 11.1l1.3 1.3M3.6 12.4l1.3-1.3M11.1 4.9l1.3-1.3"/></svg>`,
+  trash: `<svg viewBox="0 0 16 16" ${S}><path d="M3 4.5h10M6.2 4.5V3h3.6v1.5M4.4 4.5l.6 9h6l.6-9"/></svg>`,
+  code: `<svg viewBox="0 0 16 16" ${S}><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/></svg>`,
+};
+
+// ---------- Content ----------
+function el(html) { const d = document.createElement("div"); d.className = "pc"; d.innerHTML = html; return d; }
+const row = (icon, title, value, chev = false) => `<div class="prow"><span class="pi">${I[icon]}</span><span class="pt"><b>${title}</b>${value ? `<span>${value}</span>` : ""}</span>${chev ? I.chev : ""}</div>`;
+function siteMain() {
+  const exts = ["#8B1A1A", "#61DAFB", "#A26BFA", "#4ADE80", "#E07A5F"];
+  return el(`<div class="tiles">${["share", "link", "find", "cast"].map(i => `<button class="tilebtn">${I[i]}</button>`).join("")}</div>
+    <div class="hd">Extensions</div>
+    <div class="tiles">${exts.map(c => `<button class="tilebtn"><span class="ext" style="--c:${c}"></span></button>`).join("")}<button class="tilebtn">${I.plus}</button></div>
+    <div class="hd">Settings</div>
+    ${row("popup", "Pop-ups and Redirects", "Blocked")}
+    ${row("cam", "Camera", "Ask")}
+    <div class="psep"></div>
+    <div class="pfoot"><span class="pill">${I.lock} Secure</span><button class="round" data-more>${I.more}</button></div>`);
+}
+function siteMore() {
+  return el(`<button class="back" data-back>${I.back} weather.example.com</button>
+    ${row("gear", "Site Settings…", null, true)}
+    ${row("trash", "Clear Site Data…", null)}
+    ${row("code", "Developer Tools", "⌥⌘I")}`);
+}
+function downloads() {
+  const items = [["PDF", "report-q3.pdf", "2.6 of 4.2 MB", .62], ["ZIP", "Ray-0.6.0.zip", "146 MB · Done", null], ["PNG", "screenshot.png", "1.1 MB · Done", null]];
+  return el(`<div class="phead">Downloads<button class="ibtn" style="width:24px;height:24px" data-close>${I.x}</button></div>
+    <div style="width:252px">${items.map(([t, n, d, p]) => `<div class="dl"><span class="fi">${t}</span><span class="dt"><b>${n}</b><span>${d}</span>${p != null ? `<div class="bar3"><i style="width:${p * 100}%"></i></div>` : ""}</span></div>`).join("")}</div>`);
+}
+function perm() {
+  return el(`<div class="ask" style="width:268px"><h4>Use your camera?</h4><p><span class="origin">meet.google.com</span> wants to use your camera.</p>
+    <div class="btns"><button class="btn" data-answer>Block</button><button class="btn primary" data-answer>Allow</button></div></div>`);
+}
+function password() {
+  return el(`<div class="ask" style="width:280px"><h4>Save password?</h4><p>For <span class="origin">github.com</span></p>
+    <div class="field"><span>Username</span>shanuflash</div><div class="field"><span>Password</span>••••••••••••</div>
+    <div class="btns" style="margin-top:10px"><button class="btn" data-answer>Never</button><button class="btn" data-answer>Not Now</button><button class="btn primary" data-answer>Save</button></div></div>`);
+}
+
+// ---------- The panel ----------
+const win = document.getElementById("win"), layer = document.getElementById("layer");
+let open = null;
+
+function measure(content) {
+  const probe = document.createElement("div"); probe.className = "panel"; probe.style.cssText = "visibility:hidden;left:0;top:0";
+  probe.appendChild(content); layer.appendChild(probe);
+  const r = content.getBoundingClientRect(); probe.remove();
+  return { w: Math.ceil(r.width), h: Math.ceil(r.height) };
+}
+// Its frame against its button: below or above, its leading or trailing edge lined up with the button's.
+function frame(anchor, edge, align, { w, h }) {
+  const a = anchor.getBoundingClientRect(), wr = win.getBoundingClientRect();
+  const x = align === "trailing" ? a.right - wr.left - w + 4 : a.left - wr.left - 4;
+  const y = edge === "below" ? a.bottom - wr.top + 6 : a.top - wr.top - h - 6;
+  return { x: Math.max(8, Math.min(x, wr.width - w - 8)), y };
+}
+const origin = (edge, align) => `${align === "trailing" ? "100%" : "0%"} ${edge === "below" ? "0%" : "100%"}`;
+
+function openPanel(anchor, content, { edge = "below", align = "trailing", asks = false } = {}) {
+  if (open && open.anchor === anchor) return closePanel();
+  if (open) closePanel(true);
+  const size = measure(content), { x, y } = frame(anchor, edge, align, size);
+  const p = document.createElement("div"); p.className = "panel";
+  p.style.cssText = `left:${x}px;top:${y}px;width:${size.w}px;height:${size.h}px;transform-origin:${origin(edge, align)}`;
+  const pane = document.createElement("div"); pane.className = "pane"; pane.appendChild(content); p.appendChild(pane);
+  if (align === "trailing") { pane.style.left = "auto"; pane.style.right = "0"; }
+  if (edge === "above") { pane.style.top = "auto"; pane.style.bottom = "0"; }
+  layer.appendChild(p);
+  anchor.classList.add("on");
+  open = { el: p, anchor, edge, align, asks, size, born: performance.now() };
+  wire(content);
+  const dy = edge === "below" ? -8 : 8;
+  if (!reduce) anim(p, [{ transform: `translateY(${dy}px) scale(.97)` }, { transform: "none" }], SPRING.ms, SPRING.easing);
+  anim(p, [{ opacity: 0 }, { opacity: 1 }], 140, EASE_OUT);
+}
+function closePanel(fast) {
+  if (!open) return;
+  const { el: p, anchor, edge } = open; open = null;
+  anchor.classList.remove("on");
+  p.getAnimations().forEach(a => a.cancel());
+  const a = anim(p, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: reduce ? "none" : `translateY(${edge === "below" ? -4 : 4}px) scale(.98)` }], fast ? 90 : 140, EASE_IN);
+  a.onfinish = () => p.remove();
+}
+// New content in the open panel: it reshapes on the spring, held at its button; old content out, new in.
+function show(content) {
+  if (!open) return;
+  const p = open.el, from = open.size, to = measure(content);
+  const f0 = frame(open.anchor, open.edge, open.align, from), f1 = frame(open.anchor, open.edge, open.align, to);
+  const old = p.querySelector(".pane:not(.leaving)");
+  const pane = document.createElement("div"); pane.className = "pane"; pane.appendChild(content); p.appendChild(pane);
+  if (open.align === "trailing") { pane.style.left = "auto"; pane.style.right = "0"; }
+  if (open.edge === "above") { pane.style.top = "auto"; pane.style.bottom = "0"; }
+  if (old) { old.classList.add("leaving"); anim(old, [{ opacity: 1 }, { opacity: 0 }], 110, EASE_IN).onfinish = () => old.remove(); }
+  anim(pane, [{ opacity: 0 }, { opacity: 1 }], 170, EASE_OUT, { delay: ms(reduce ? 0 : 60) });
+  p.style.left = f1.x + "px"; p.style.top = f1.y + "px"; p.style.width = to.w + "px"; p.style.height = to.h + "px";
+  if (!reduce) anim(p, [{ left: f0.x + "px", top: f0.y + "px", width: from.w + "px", height: from.h + "px" }, { left: f1.x + "px", top: f1.y + "px", width: to.w + "px", height: to.h + "px" }], SPRING.ms, SPRING.easing);
+  open.size = to;
+  wire(content);
+}
+function wire(content) {
+  content.querySelector("[data-more]")?.addEventListener("click", () => show(siteMore()));
+  content.querySelector("[data-back]")?.addEventListener("click", () => show(siteMain()));
+  content.querySelector("[data-close]")?.addEventListener("click", () => closePanel());
+  content.querySelectorAll("[data-answer]").forEach(b => b.addEventListener("click", () => {
+    if (open?.asks && performance.now() - open.born < ms(500)) return;   // a click meant for the page never answers it
+    closePanel();
+  }));
+}
+
+const slidersBtn = document.getElementById("slidersBtn"), camBtn = document.getElementById("camBtn"), dlBtn = document.getElementById("dlBtn"), keyBtn = document.getElementById("keyBtn");
+const go = {
+  site: () => openPanel(slidersBtn, siteMain(), { edge: "below", align: "trailing" }),
+  more: () => { const was = open && open.anchor === slidersBtn; if (!was) go.site(); setTimeout(() => show(siteMore()), was ? 0 : ms(380)); },
+  downloads: () => openPanel(dlBtn, downloads(), { edge: "above", align: "leading" }),
+  perm: () => openPanel(camBtn, perm(), { edge: "below", align: "leading", asks: true }),
+  password: () => openPanel(keyBtn, password(), { edge: "below", align: "trailing", asks: true }),
+  close: () => closePanel(),
+};
+document.querySelectorAll("[data-go]").forEach(b => b.onclick = e => { e.stopPropagation(); go[b.dataset.go](); });
+slidersBtn.onclick = e => { e.stopPropagation(); go.site(); };
+camBtn.onclick = e => { e.stopPropagation(); go.perm(); };
+dlBtn.onclick = e => { e.stopPropagation(); go.downloads(); };
+keyBtn.onclick = e => { e.stopPropagation(); go.password(); };
+// A click outside closes it, unless it asks; Escape always does.
+document.addEventListener("mousedown", e => { if (open && !open.asks && !open.el.contains(e.target) && !e.target.closest("[data-go]") && !open.anchor.contains(e.target)) closePanel(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closePanel(); });
+setTimeout(go.site, 400);
+</script>
+</body>
+</html>
