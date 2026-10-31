@@ -263,9 +263,9 @@ Smaller gaps found while building the items above. Each says where the fix goes.
      (kept from before 2026-10-31) can't be picked again (Arc's set is symbols only).
    - Not yet tried with the real Claude extension (needs the owner's sign-in in their own Ray).
 
-31. **`settings-page-address-bar` fails on main** (seen 2026-10-31 at `1df5243`, before the panels batch): "an older
-    Sidebar.json's address bar off became on", so the one-time move of `pageToolbar` into Settings may have broken.
-    Bisect from 0.6.0 (`3bcc843`).
+31. **`settings-page-address-bar` is flaky** (2026-10-31/11-01): it failed twice in a row on one run and passed in
+    the full suite and alone right after. Its own instance reads the setting a moment after launch; if it fails
+    again, look at the timing of the one-time `pageToolbar` move.
 32. **Not yet on the panels' look:** extension popups (their own window; could take the panels' corners, shadow and
     motion), and the dead Import from Arc confirm (`importFromArc`, no menu item reaches it).
 
