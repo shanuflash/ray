@@ -1699,6 +1699,9 @@ const checks = {
     await command("extprompt fake Evil\u2028Name");
     await until("prompt shown", () => state().installPrompt);
     assert(state().installPrompt.addEnabled === false, "Add was clickable straight away");
+    await command("state");
+    assert(state().panels.open?.name === "extensionInstall" && state().panels.open.asks && state().panels.open.align === "center",
+      `a panel that asks, from the page's top centre: ${JSON.stringify(state().panels.open)}`);
     assert(await commandResult("extprompt accept") === "not ready", "Add took a click in its first half second");
     await until("add ready", async () => { await command("state"); return state().installPrompt?.addEnabled; }, 3000);
     await command("extprompt cancel");
@@ -2812,7 +2815,7 @@ const checks = {
     const before = { ...state().panels.steps };
     await command("menu toggleSiteControls");
     await until("panel open", async () => { await command("state"); return open()?.name === "siteControls"; });
-    assert(open().style === "glass" && open().below && open().trailing, `look and side: ${JSON.stringify(open())}`);
+    assert(open().style === "glass" && open().below && open().align === "trailing", `look and side: ${JSON.stringify(open())}`);
     await sleep(500);
     await command("state");
     // Under its button: trailing edges together, a 6 pt gap.
@@ -2829,6 +2832,15 @@ const checks = {
     await command("site press back");
     await until("main page", async () => { await command("state"); return state().siteControls?.page === "main"; });
     await until("its size back", async () => { await command("state"); return rect(open().frame)[3] === mainHeight; }, 3000);
+    // A permission's choices and Clear Site Data's question are pages of their own; Cancel goes back.
+    await until("pop-ups row", async () => { await command("state"); return state().siteControls?.settings.some((x) => x.title === "Pop-ups and Redirects"); });
+    await command("site press choices:popups");
+    await until("choices page", async () => { await command("state"); return state().siteControls?.page === "permission"; });
+    await command("site press back");
+    await command("site press clearData");
+    await until("clear page", async () => { await command("state"); return state().siteControls?.page === "clearData"; });
+    await command("site press back");
+    await until("main again", async () => { await command("state"); return state().siteControls?.page === "main"; });
     // The look follows Settings at once, by its old name too (0.6.0's noteStyle).
     await setSetting("surfaceStyle", "solid");
     await until("solid", async () => { await command("state"); return open()?.style === "solid"; });
@@ -2839,6 +2851,20 @@ const checks = {
     assert(state().siteControls === null, "the panel's content stayed");
     assert(state().panels.steps.opened === before.opened + 1 && state().panels.steps.closed === before.closed + 1,
       `one open, one close: ${JSON.stringify(state().panels.steps)}`);
+    // With the page's address bar off, the sidebar's address field has the sliders button: the panel opens to its
+    // right, over the page, its leading edge on the button's.
+    await setSetting("pageAddressBar", "off");
+    await until("sidebar address", async () => { await command("state"); return state().toolbar === null; });
+    await command("menu toggleSiteControls");
+    await until("panel from the sidebar", async () => { await command("state"); return open()?.name === "siteControls"; });
+    assert(open().overSidebar && open().align === "leading", `from the sidebar: ${JSON.stringify(open())}`);
+    await sleep(500);
+    await command("state");
+    const [sx] = rect(open().frame), [bx] = rect(open().anchor);
+    assert(Math.abs(sx - bx) <= 1, `panel ${open().frame} against the sidebar's button ${open().anchor}`);
+    await command("key esc keywin");
+    await until("closed again", async () => { await command("state"); return open() === null; });
+    await setSetting("pageAddressBar", "on");
   },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]

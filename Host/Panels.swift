@@ -14,6 +14,8 @@ enum PanelClose: Hashable {
   case otherSite
 }
 
+enum PanelAlign: String { case leading, center, trailing }
+
 /// What a panel hangs from.
 struct PanelAnchor {
   /// The button's frame in the host's coordinates, asked again on every layout (the toolbar moves, the sidebar
@@ -21,8 +23,9 @@ struct PanelAnchor {
   var rect: () -> NSRect
   /// Below the button (it opens downward) or above it.
   var below = true
-  /// Its trailing edge on the button's trailing edge, or its leading edge on the button's leading edge.
-  var trailing = true
+  /// Its trailing edge on the button's, its leading edge on the button's, or centred on it (questions drop from the
+  /// page's top centre, as a sheet would).
+  var align = PanelAlign.trailing
   /// The button: a click on it isn't an outside click (it toggles the panel), and it's held while the panel is open.
   weak var button: NSView?
   var hold: ((Bool) -> Void)?
@@ -39,6 +42,10 @@ struct PanelSpec {
   var origin: String?
   /// A question: an outside click never closes it (Escape does, and closing is "no").
   var asks = false
+  /// Over the sidebar (its button is in it): above a peeking sidebar too, and the peek stays out while it's open.
+  var overSidebar = false
+  /// What Return does (a question's default answer); nil leaves Return to the focused control.
+  var onReturn: (() -> Void)?
   var onClose: (() -> Void)?
 }
 
@@ -83,6 +90,8 @@ final class Panels {
 
   var isOpen: Bool { open != nil }
   var name: String? { spec?.name }
+  /// A panel from the sidebar is open: a peeking sidebar stays out.
+  var holdsSidebar: Bool { spec?.overSidebar == true }
 
   @discardableResult
   func open(_ spec: PanelSpec) -> PanelHandle {
@@ -90,7 +99,7 @@ final class Panels {
     close(by: "another", fast: true)
     serial += 1
     let view = PanelView(spec: spec, serial: serial, panels: self)
-    if let below = below(), below.superview === host {
+    if !spec.overSidebar, let below = below(), below.superview === host {
       host.addSubview(view, positioned: .below, relativeTo: below)
     } else {
       host.addSubview(view, positioned: .above, relativeTo: nil)
@@ -146,7 +155,12 @@ final class Panels {
     let spec = view.spec
     let anchor = spec.anchor.rect()
     let size = view.currentSize
-    var x = spec.anchor.trailing ? anchor.maxX - size.width : anchor.minX
+    var x: CGFloat
+    switch spec.anchor.align {
+    case .trailing: x = anchor.maxX - size.width
+    case .leading: x = anchor.minX
+    case .center: x = anchor.midX - size.width / 2
+    }
     x = max(8, min(x, host.bounds.width - size.width - 8))
     let y = spec.anchor.below ? anchor.minY - Self.gap - size.height : anchor.maxY + Self.gap
     view.frame = NSRect(x: x.rounded(), y: y.rounded(), width: size.width.rounded(), height: size.height.rounded())
@@ -160,6 +174,10 @@ final class Panels {
       guard let self, let view, self.open === view, let spec = self.spec, let host = self.host,
             event.window === host.window else { return event }
       if event.type == .keyDown {
+        if event.keyCode == 36 || event.keyCode == 76, let onReturn = spec.onReturn {
+          onReturn()
+          return nil
+        }
         guard event.keyCode == 53, spec.closesOn.contains(.escape) else { return event }
         self.close(by: "escape")
         return nil
@@ -193,7 +211,7 @@ final class Panels {
         "frame": "\(Int(view.frame.minX)),\(Int(view.frame.minY)),\(Int(view.frame.width)),\(Int(view.frame.height))",
         "target": "\(Int(view.targetSize.width)),\(Int(view.targetSize.height))",
         "anchor": { let r = spec.anchor.rect(); return "\(Int(r.minX)),\(Int(r.minY)),\(Int(r.width)),\(Int(r.height))" }(),
-        "below": spec.anchor.below, "trailing": spec.anchor.trailing,
+        "below": spec.anchor.below, "align": spec.anchor.align.rawValue, "overSidebar": spec.overSidebar,
       ] as [String: Any]
     }
     return ["open": open, "steps": steps, "lastClosedBy": lastClosedBy ?? NSNull(), "style": SurfaceBackdrop.style]
@@ -267,7 +285,12 @@ final class PanelView: NSView {
 
   /// Content keeps to the button's corner: the top (opening down) or bottom, the trailing or leading edge.
   private func anchored(_ size: NSSize) -> NSPoint {
-    let x = spec.anchor.trailing ? bounds.width - size.width : 0
+    let x: CGFloat
+    switch spec.anchor.align {
+    case .trailing: x = bounds.width - size.width
+    case .leading: x = 0
+    case .center: x = (bounds.width - size.width) / 2
+    }
     let y = spec.anchor.below ? bounds.height - size.height : 0
     return NSPoint(x: x.rounded(), y: y.rounded())
   }
@@ -279,7 +302,13 @@ final class PanelView: NSView {
   /// The corner at the button, in the layer's own terms (AppKit sets the anchor point; scale about this corner).
   private func scale(_ amount: CGFloat, lift: CGFloat) -> CATransform3D {
     guard let layer else { return CATransform3DIdentity }
-    let corner = CGPoint(x: spec.anchor.trailing ? bounds.width : 0, y: spec.anchor.below ? bounds.height : 0)
+    let edgeX: CGFloat
+    switch spec.anchor.align {
+    case .trailing: edgeX = bounds.width
+    case .leading: edgeX = 0
+    case .center: edgeX = bounds.width / 2
+    }
+    let corner = CGPoint(x: edgeX, y: spec.anchor.below ? bounds.height : 0)
     let pivot = CGPoint(x: corner.x - layer.anchorPoint.x * bounds.width, y: corner.y - layer.anchorPoint.y * bounds.height)
     var transform = CATransform3DMakeTranslation(pivot.x, pivot.y, 0)
     transform = CATransform3DScale(transform, amount, amount, 1)
@@ -437,6 +466,14 @@ enum PanelKit {
     return button
   }
 
+  /// A choice in a list: its title, and a tick when it's the current one.
+  static func choice(_ title: String, chosen: Bool, action: @escaping () -> Void) -> NSView {
+    let row = SettingRow(symbol: chosen ? "checkmark" : "", title: title, subtitle: "", on: false, plain: true)
+    row.frame.size.height = 36
+    row.onClick = { _ in action() }
+    return row
+  }
+
   /// A hairline across the panel.
   static func separator() -> NSView {
     let holder = PanelColumn(frame: NSRect(x: 0, y: 0, width: 10, height: 17))
@@ -510,12 +547,15 @@ final class PanelButton: NSView {
     didSet { needsDisplay = true }
   }
   private let primary: Bool
+  private let destructive: Bool
   private let label: NSTextField
   private var hovered = false
   private var down = false
 
-  init(title: String, primary: Bool = false) {
-    self.primary = primary
+  /// `destructive`: filled red, for an answer that deletes (Clear).
+  init(title: String, primary: Bool = false, destructive: Bool = false) {
+    self.primary = primary || destructive
+    self.destructive = destructive
     label = NSTextField(labelWithString: title)
     super.init(frame: .zero)
     wantsLayer = true
@@ -540,7 +580,10 @@ final class PanelButton: NSView {
   }
 
   override func updateLayer() {
-    if primary {
+    if destructive {
+      layer?.backgroundColor = NSColor.systemRed.cgColor
+      label.textColor = .white
+    } else if primary {
       layer?.backgroundColor = ProfileColor.accent.cgColor
       label.textColor = ProfileColor.foreground(on: ProfileColor.accent)
     } else {
@@ -575,4 +618,102 @@ final class PanelButton: NSView {
   /// A click as the mouse would make it (tests, VoiceOver).
   func performClick(_ sender: Any?) { if isEnabled { onClick?() } }
   override func accessibilityPerformPress() -> Bool { performClick(nil); return isEnabled }
+}
+
+/// A question in a panel: a title, a grey message (both wrapping), an optional icon at the left and an optional "Don't
+/// ask again" box, then its buttons at the bottom right. `PanelKit.question` builds one; `buttons` are in order.
+final class PanelQuestion: NSView {
+  let buttons: [PanelButton]
+  let check: NSButton?
+  private let icon: NSImageView?
+  private let title: NSTextField
+  private let message: NSTextField
+  private let width: CGFloat
+
+  /// `answers`: (title, primary, destructive); `wait`: their buttons take no clicks for that long after it appears.
+  init(title: String, message: String, icon: NSImage? = nil, check: String? = nil, width: CGFloat = 320,
+       answers: [(title: String, primary: Bool, destructive: Bool)], wait: TimeInterval = 0, onAnswer: @escaping (Int) -> Void) {
+    self.width = width
+    self.title = NSTextField(wrappingLabelWithString: title)
+    self.message = NSTextField(wrappingLabelWithString: message)
+    self.icon = icon.map { NSImageView(image: $0) }
+    self.check = check.map { NSButton(checkboxWithTitle: $0, target: nil, action: nil) }
+    buttons = answers.map { PanelButton(title: $0.title, primary: $0.primary, destructive: $0.destructive) }
+    super.init(frame: .zero)
+    self.title.font = .systemFont(ofSize: 13.5, weight: .semibold)
+    self.message.font = .systemFont(ofSize: 12)
+    self.message.textColor = .secondaryLabelColor
+    for label in [self.title, self.message] {
+      label.isSelectable = false
+      addSubview(label)
+    }
+    self.message.isHidden = message.isEmpty
+    if let icon = self.icon {
+      icon.imageScaling = .scaleProportionallyUpOrDown
+      addSubview(icon)
+    }
+    if let check = self.check {
+      check.font = .systemFont(ofSize: 12)
+      check.refusesFirstResponder = true
+      addSubview(check)
+    }
+    for (index, button) in buttons.enumerated() {
+      button.onClick = { onAnswer(index) }
+      addSubview(button)
+    }
+    if wait > 0 {
+      buttons.forEach { $0.isEnabled = false }
+      DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in self?.buttons.forEach { $0.isEnabled = true } }
+    }
+    let height = layoutContent(apply: false)
+    frame = NSRect(x: 0, y: 0, width: width, height: height)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override var mouseDownCanMoveWindow: Bool { false }
+
+  override func layout() {
+    super.layout()
+    _ = layoutContent(apply: true)
+  }
+
+  private func layoutContent(apply: Bool) -> CGFloat {
+    let pad: CGFloat = 16
+    let left = pad + (icon == nil ? 0 : 44)
+    let textWidth = width - left - pad
+    func height(_ label: NSTextField) -> CGFloat {
+      label.preferredMaxLayoutWidth = textWidth
+      return ceil(label.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: textWidth, height: 10_000)).height ?? 16)
+    }
+    var y = pad
+    let titleHeight = height(title)
+    if apply {
+      icon?.frame = NSRect(x: pad, y: pad, width: 32, height: 32)
+      title.frame = NSRect(x: left - 2, y: y, width: textWidth + 4, height: titleHeight)
+    }
+    y += titleHeight
+    if !message.isHidden {
+      y += 4
+      let messageHeight = height(message)
+      if apply { message.frame = NSRect(x: left - 2, y: y, width: textWidth + 4, height: messageHeight) }
+      y += messageHeight
+    }
+    if icon != nil { y = max(y, pad + 32) }
+    if let check {
+      y += 10
+      if apply { check.frame = NSRect(x: left - 2, y: y, width: textWidth + 4, height: 18) }
+      y += 18
+    }
+    y += 14
+    var right = width - pad
+    for button in buttons.reversed() {
+      let width = button.intrinsicContentSize.width
+      right -= width
+      if apply { button.frame = NSRect(x: right, y: y, width: width, height: 28) }
+      right -= 6
+    }
+    return y + 28 + pad
+  }
 }

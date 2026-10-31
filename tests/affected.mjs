@@ -70,7 +70,7 @@ export const areas = {
   "Host/TabGroups.swift": [...folders, "extensions", "clear", "reopen-closed-tab"],
   // The folder icon's layers and Change Icon's panel.
   "Host/FolderIcon.swift": [...folders, ...drag],
-  "Host/FolderIconPicker.swift": folders,
+  "Host/FolderIconPicker.swift": [...folders, "panels"],
   "Host/EngineCalls.swift": "all",
   "Host/TestEnvironment.swift": "all",
   // Colours only: the checks that read a colour or draw with it.
@@ -177,7 +177,7 @@ export const areas = {
   "Host/SettingsTabs.swift": ["settings-panes", "settings-window"],
   "Host/SettingsAbout.swift": ["settings-panes", "settings-search"],
   "Host/SettingsGeneral.swift": ["settings-general", "settings-panes", "settings-search", "warn-before-quitting", "updater-config"],
-  "Host/CloseWarnings.swift": ["warn-before-quitting", "warn-before-closing-window", "close-last-window", "private-window"],
+  "Host/CloseWarnings.swift": ["panels", "warn-before-quitting", "warn-before-closing-window", "close-last-window", "private-window"],
   // Settings › Privacy and Settings › Extensions, over the engine's data calls, and the pieces they share.
   "Host/SettingsPrivacy.swift": ["settings-privacy", "settings-panes", "settings-search", "site-controls"],
   "Host/SettingsExtensions.swift": ["settings-extensions", "settings-panes", "settings-search", "extensions"],
@@ -210,8 +210,8 @@ export const areas = {
   // The command bar's action rows: menu commands by name (they run through the menu's own validation and selectors).
   "Host/BarActions.swift": [...commandBar, "page-commands", "copy-url"],
   "Host/Downloads.swift": ["downloads", "download-insecure-blocked"],
-  "Host/Extensions.swift": ["extensions", "extension-prompt", "site-controls"],
-  "Host/FindBar.swift": ["find-in-page"],
+  "Host/Extensions.swift": ["extensions", "extension-prompt", "site-controls", "panels"],
+  "Host/FindBar.swift": ["find-in-page", "notes"],
   "Host/PageContainerView.swift": pageSurface,
   // When a page that was just shown has drawn (the tab switch holds the page left until then).
   "Host/PageFrameWatch.swift": pageSurface,
@@ -223,7 +223,7 @@ export const areas = {
   "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay"],
-  "Host/Panels.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
+  "Host/Panels.swift": ["panels", "site-controls", "extensions", "extension-prompt", "settings-privacy", "warn-before-quitting", "warn-before-closing-window", ...folders],
   "Host/Surface.swift": ["panels", "notes", "site-controls", "permission", "permission-allow", "downloads"],
   "Host/Updater.swift": ["updater-config", "settings-general"],
   // ⇧⌘T and History › Recently Closed.

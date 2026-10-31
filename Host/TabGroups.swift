@@ -140,9 +140,23 @@ final class TabGroupSync {
 
   // MARK: To Chrome
 
+  private var pushScheduled = false
+
   /// Makes Chrome's groups match the Today folders: a group for each folder with open tabs, its open tabs in it and
-  /// no others, its look. Cheap when nothing differs; called after every change of the sidebar.
+  /// no others, its look. Cheap when nothing differs; called after every change of the sidebar. Runs on the next turn
+  /// of the run loop, once for any number of calls: a change can come from inside Chrome's own tab strip notification
+  /// (a tab just inserted), and changing the tab strip there trips TabStripModel's reentrancy CHECK.
   func push() {
+    guard !pushScheduled else { return }
+    pushScheduled = true
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.pushScheduled = false
+      self.pushNow()
+    }
+  }
+
+  private func pushNow() {
     let window = windowID()
     guard window >= 0 else { return }
     let state = state()

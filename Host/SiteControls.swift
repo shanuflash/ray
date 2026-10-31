@@ -30,7 +30,7 @@ final class SiteControlsView: NSView {
   var onResize: (() -> Void)?
   /// Show this page in the panel instead (the "…" page), or nil for this view again.
   var onPage: ((NSView?) -> Void)?
-  /// Which page is shown, for the state log: "main" or "more".
+  /// Which page is shown, for the state log: "main", "more", "permission" or "clearData".
   private(set) var page = "main"
 
   /// The site's origin (from the engine), or nil for pages without one (ray:// pages, files).
@@ -119,6 +119,11 @@ final class SiteControlsView: NSView {
   func press(_ name: String) -> Bool {
     if name == "add" { addTile.onPress?(); return true }
     if name == "more" { showMore(); return true }
+    if name == "clearData" { confirmClearData(); return true }
+    if name.hasPrefix("choices:"), let setting = settings.first(where: { $0.type == name.dropFirst(8) }) {
+      showChoices(for: setting.type, current: setting.value, from: self)
+      return true
+    }
     if name == "back" { showMain(); return true }
     if name == "siteSettings" { openSiteSettings(); return true }
     if let tile = quickTiles.first(where: { $0.name == name })?.tile ?? extensionTiles.first(where: { $0.id == name })?.tile,
@@ -172,28 +177,25 @@ final class SiteControlsView: NSView {
     resize()
   }
 
+  /// A permission's choices as a page in the same panel: Allow, Block, Ask where it can, Reset to Default; the
+  /// current one ticked. A choice applies at once and goes back.
   private func showChoices(for type: String, current: String, from row: NSView) {
-    let menu = NSMenu()
     var values = ["allow", "block"]
     if Permission.askable.contains(type) { values.append("ask") }
+    var views: [NSView] = [PanelKit.back(Permission(type).title) { [weak self] in self?.showMain() }]
     for value in values {
-      let item = NSMenuItem(title: Permission.choice(value), action: #selector(choose(_:)), keyEquivalent: "")
-      item.target = self
-      item.representedObject = [type, value]
-      item.state = value == current ? .on : .off
-      menu.addItem(item)
+      views.append(PanelKit.choice(Permission.choice(value), chosen: value == current) { [weak self] in
+        self?.set(type, to: value)
+        self?.showMain()
+      })
     }
-    menu.addItem(.separator())
-    let reset = NSMenuItem(title: "Reset to Default", action: #selector(choose(_:)), keyEquivalent: "")
-    reset.target = self
-    reset.representedObject = [type, "default"]
-    menu.addItem(reset)
-    menu.popUp(positioning: nil, at: NSPoint(x: 44, y: row.bounds.maxY), in: row)
-  }
-
-  @objc private func choose(_ item: NSMenuItem) {
-    guard let pair = item.representedObject as? [String] else { return }
-    set(pair[0], to: pair[1])
+    views.append(PanelKit.separator())
+    views.append(PanelKit.choice("Reset to Default", chosen: false) { [weak self] in
+      self?.set(type, to: "default")
+      self?.showMain()
+    })
+    page = "permission"
+    onPage?(PanelKit.stack(views, width: Self.width - PanelKit.padding * 2, spacing: 2))
   }
 
   /// Sets one permission for this site (`allow`, `block`, `ask` or `default`), then shows the engine's answer.
@@ -218,7 +220,7 @@ final class SiteControlsView: NSView {
         self?.resetPermissions()
         self?.showMain()
       })
-      views.append(PanelKit.row(symbol: "trash", title: "Clear Cookies and Site Data…") { [weak self] in self?.clearData() })
+      views.append(PanelKit.row(symbol: "trash", title: "Clear Cookies and Site Data…") { [weak self] in self?.confirmClearData() })
     }
     views.append(PanelKit.row(symbol: "chevron.left.forwardslash.chevron.right", title: "Developer Tools", value: "⌥⌘I") {
       [weak self] in self?.developerTools()
@@ -234,6 +236,17 @@ final class SiteControlsView: NSView {
 
   private func openSiteSettings() { onAction?(.siteSettings) }
   private func clearData() { onAction?(.clearData) }
+
+  /// Clearing signs you out: asked on a page of its own (Cancel goes back), its Clear in red.
+  private func confirmClearData() {
+    page = "clearData"
+    onPage?(PanelQuestion(
+      title: "Clear cookies and site data for \(host)?",
+      message: "You'll be signed out of this site, and anything it keeps on your Mac will be deleted.",
+      width: Self.width, answers: [("Cancel", false, false), ("Clear", false, true)]) { [weak self] answer in
+        answer == 1 ? self?.clearData() : self?.showMore()
+      })
+  }
   private func developerTools() { onAction?(.developerTools) }
 
   private func resetPermissions() {
@@ -474,12 +487,15 @@ final class SettingRow: NSView {
   private let titleLabel: NSTextField
   private let subtitleLabel: NSTextField
   private let on: Bool
+  /// A choice in a list: no circle, the symbol (a tick, or nothing) in the profile's colour.
+  private let plain: Bool
   private var hovered = false
 
-  init(symbol: String, title: String, subtitle: String, on: Bool) {
+  init(symbol: String, title: String, subtitle: String, on: Bool, plain: Bool = false) {
     self.title = title
     self.subtitle = subtitle
     self.on = on
+    self.plain = plain
     titleLabel = NSTextField(labelWithString: title)
     subtitleLabel = NSTextField(labelWithString: subtitle)
     super.init(frame: .zero)
@@ -488,7 +504,8 @@ final class SettingRow: NSView {
     layer?.cornerCurve = .continuous
     circle.wantsLayer = true
     circle.layer?.cornerRadius = 14
-    icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+    icon.image = symbol.isEmpty ? nil : NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+    circle.isHidden = plain
     icon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
     titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
     titleLabel.lineBreakMode = .byTruncatingTail
@@ -512,8 +529,9 @@ final class SettingRow: NSView {
   override func updateLayer() {
     layer?.backgroundColor = (hovered ? PanelColors.tile : .clear).cgColor
     circle.layer?.backgroundColor = (on ? ProfileColor.accent : PanelColors.tileHover).cgColor
-    // White or black, whichever reads better on the profile's colour.
-    icon.contentTintColor = on ? ProfileColor.foreground(on: ProfileColor.accent) : .labelColor
+    // White or black, whichever reads better on the profile's colour; a choice's tick in the colour itself.
+    icon.contentTintColor = plain ? ProfileColor.visible(on: SurfaceBackdrop.solidFill)
+      : on ? ProfileColor.foreground(on: ProfileColor.accent) : .labelColor
   }
 
   override func viewDidChangeEffectiveAppearance() {
@@ -525,8 +543,10 @@ final class SettingRow: NSView {
     super.layout()
     let mid = bounds.height / 2
     circle.frame = NSRect(x: 6, y: mid - 14, width: 28, height: 28)
-    icon.frame = NSRect(x: 5, y: 5, width: 18, height: 18)
-    let x: CGFloat = 44
+    // A choice's tick sits on the row itself (its circle is hidden).
+    if plain, icon.superview !== self { addSubview(icon) }
+    icon.frame = plain ? NSRect(x: 10, y: mid - 9, width: 18, height: 18) : NSRect(x: 5, y: 5, width: 18, height: 18)
+    let x: CGFloat = plain ? 34 : 44
     // No value: the title alone, centred.
     titleLabel.frame = NSRect(x: x, y: subtitle.isEmpty ? mid - 9 : mid - 17, width: bounds.width - x - 6, height: 17)
     subtitleLabel.frame = NSRect(x: x, y: mid + 1, width: bounds.width - x - 6, height: 16)

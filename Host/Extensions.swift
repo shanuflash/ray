@@ -23,7 +23,7 @@ final class ExtensionsController: NSObject, RayCoreTabDelegate {
   private var popupMonitors: [Any] = []
   private var popupObservers: [NSObjectProtocol] = []
   private(set) var popupURL: String?
-  private var prompt: (id: String, name: String, alert: NSAlert, add: NSButton)?
+  private var prompt: (id: String, name: String, question: PanelQuestion, panel: PanelHandle)?
 
   init(profile: RayCoreProfile, coreWindow: RayCoreWindow) {
     self.profile = profile
@@ -50,48 +50,10 @@ final class ExtensionsController: NSObject, RayCoreTabDelegate {
     }
   }
 
-  // MARK: Menu
-
-  func menu(for tab: RayCoreTab?, anchor: NSView) -> NSMenu {
-    let menu = NSMenu()
-    let enabled = items.filter(\.enabled)
-    let states = tab?.actionStates(forExtensions: enabled.map(\.id)) ?? [:]
-    for item in enabled {
-      let state = states[item.id] as? [String: Any]
-      var title = item.name
-      if let badge = state?["badgeText"] as? String, !badge.isEmpty { title += "  \(badge)" }
-      let entry = NSMenuItem(title: title, action: #selector(run(_:)), keyEquivalent: "")
-      entry.target = self
-      entry.representedObject = RunChoice(id: item.id, tab: tab, anchor: anchor)
-      entry.image = icon(for: item, state: state)
-        ?? NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: nil)
-      entry.image?.size = NSSize(width: 16, height: 16)
-      entry.isEnabled = tab != nil && (state?["enabled"] as? Bool ?? true)
-      menu.addItem(entry)
-    }
-    if !enabled.isEmpty { menu.addItem(.separator()) }
-    let manage = NSMenuItem(title: "Manage Extensions…", action: #selector(openManage), keyEquivalent: "")
-    manage.target = self
-    menu.addItem(manage)
-    let store = NSMenuItem(title: "Get Extensions…", action: #selector(openStore), keyEquivalent: "")
-    store.target = self
-    menu.addItem(store)
-    return menu
-  }
-
   /// The action's icon for this tab, else the extension's own, as Chrome's toolbar falls back (an action's icon
   /// loads late, and some extensions only ever set one from their background page).
   func icon(for item: Item, state: [String: Any]?) -> NSImage? {
     (state?["icon"] as? String).flatMap(Self.image(fromDataURL:)) ?? item.icon.flatMap(Self.image(fromDataURL:))
-  }
-
-  @objc private func openManage() { openPage?("chrome://extensions") }
-  @objc private func openStore() { openPage?("https://chromewebstore.google.com/category/extensions") }
-
-  @objc private func run(_ item: NSMenuItem) {
-    guard let choice = item.representedObject as? RunChoice, let tab = choice.tab, !tab.closed,
-          let anchor = choice.anchor else { return }
-    run(choice.id, on: tab, anchor: anchor)
   }
 
   /// Runs an extension's toolbar action on a tab; an action with a popup opens it under the anchor.
@@ -249,17 +211,16 @@ final class ExtensionsController: NSObject, RayCoreTabDelegate {
 
   // MARK: Install prompt
 
-  /// Chrome's "Add extension?" as a sheet. Following the security checklist: Return and Escape cancel, the Add
-  /// button ignores clicks for its first half second, and the prompt names the extension, version and ID.
-  func showInstallPrompt(_ request: [String: Any], in window: NSWindow?) {
+  /// Chrome's "Add extension?" as a panel that asks, dropping from the page's top centre. Following the security
+  /// checklist: Return and Escape cancel, its buttons ignore clicks for their first half second, closing it any other
+  /// way cancels, and it names the extension, version and ID.
+  func showInstallPrompt(_ request: [String: Any], in controller: BrowserWindowController?) {
     guard let id = request["requestId"] as? String else { return }
-    guard let window, prompt == nil else {
+    guard let controller, prompt == nil else {
       RayCoreEngine.resolveExtensionInstallPrompt(id, accepted: false)
       return
     }
     let name = Self.plain(request["name"] as? String ?? "this extension", limit: 60)
-    let alert = NSAlert()
-    alert.messageText = "Add “\(name)”?"
     let permissions = (request["permissions"] as? [String] ?? []).map { "• " + Self.plain($0, limit: 160) }
     var details = permissions.isEmpty
       ? "It doesn't ask for any special permissions."
@@ -267,32 +228,40 @@ final class ExtensionsController: NSObject, RayCoreTabDelegate {
     let version = Self.plain(request["version"] as? String ?? "", limit: 40)
     let extensionID = Self.plain(request["id"] as? String ?? "", limit: 40)
     details += "\n\nVersion \(version) · ID \(extensionID)"
-    alert.informativeText = details
-    if let icon = (request["icon"] as? String).flatMap(Self.image(fromDataURL:)) { alert.icon = icon }
-    alert.addButton(withTitle: "Cancel")
-    let add = alert.addButton(withTitle: "Add Extension")
-    add.keyEquivalent = ""
-    add.isEnabled = false
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { add.isEnabled = true }
-    prompt = (id, name, alert, add)
-    onChange?()
-    alert.beginSheetModal(for: window) { [weak self] response in
-      guard let self else { return }
-      self.prompt = nil
-      RayCoreEngine.resolveExtensionInstallPrompt(id, accepted: response == .alertSecondButtonReturn)
-      self.refresh()
-      self.onChange?()
+    let icon = (request["icon"] as? String).flatMap(Self.image(fromDataURL:))
+      ?? NSImage(systemSymbolName: "puzzlepiece.extension.fill", accessibilityDescription: nil)
+    var answered = false
+    let resolve = { [weak self] (accepted: Bool) in
+      guard !answered else { return }
+      answered = true
+      self?.prompt = nil
+      RayCoreEngine.resolveExtensionInstallPrompt(id, accepted: accepted)
+      self?.refresh()
+      self?.onChange?()
     }
+    var close: (() -> Void)?
+    let question = PanelQuestion(
+      title: "Add “\(name)”?", message: details, icon: icon,
+      answers: [("Cancel", false, false), ("Add Extension", true, false)], wait: 0.5) { answer in
+        resolve(answer == 1)
+        close?()
+      }
+    let handle = controller.panels.open(PanelSpec(
+      name: "extensionInstall", content: question, anchor: controller.questionAnchor, asks: true,
+      onReturn: { resolve(false); close?() }, onClose: { resolve(false) }))
+    close = { handle.close() }
+    prompt = (id, name, question, handle)
+    onChange?()
   }
 
   /// For tests: the open prompt, and answering it the way a click would.
   var promptState: [String: Any]? {
-    prompt.map { ["id": $0.id, "name": $0.name, "addEnabled": $0.add.isEnabled] }
+    prompt.map { ["id": $0.id, "name": $0.name, "addEnabled": $0.question.buttons[1].isEnabled] }
   }
 
   func answerPrompt(accept: Bool) -> Bool {
     guard let prompt else { return false }
-    let button = accept ? prompt.add : prompt.alert.buttons[0]
+    let button = prompt.question.buttons[accept ? 1 : 0]
     guard button.isEnabled else { return false }
     button.performClick(nil)
     return true
@@ -320,16 +289,4 @@ private final class ExtensionPopupWindow: NSWindow {
   override var canBecomeKey: Bool { true }
   override var canBecomeMain: Bool { false }
   override func cancelOperation(_ sender: Any?) { onCancel?() }
-}
-
-private final class RunChoice {
-  let id: String
-  weak var tab: RayCoreTab?
-  weak var anchor: NSView?
-
-  init(id: String, tab: RayCoreTab?, anchor: NSView) {
-    self.id = id
-    self.tab = tab
-    self.anchor = anchor
-  }
 }

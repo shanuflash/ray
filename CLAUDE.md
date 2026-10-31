@@ -134,9 +134,10 @@ publicly or create accounts.
   without an updater only the version; `SUAutomaticallyUpdate` in Info.plist makes install-automatically default on)
   and Import… (File › Import from Browser…). `GeneralSystem` re-reads on activation; in test builds the default
   browser, login item and updater are fakes (`general …` test commands; checks never touch the real ones).
-  `CloseWarnings`: ⌘Q's "Quit Ray?" sheet (⌘Q again quits; menu Quit only, never Dock/logout/update quits) and the
-  close sheet for a window that would lose 2+ tabs (only private windows: the normal one keeps its tabs for ⌘N), each
-  with "Don't ask again"; test command `warning confirm|suppress|cancel`. Start fresh: the launch's first normal
+  `CloseWarnings`: ⌘Q's "Quit Ray?" (⌘Q again quits; menu Quit only, never Dock/logout/update quits) and the
+  close warning for a window that would lose 2+ tabs (only private windows: the normal one keeps its tabs for ⌘N), each
+  a `Panels` question from the page's top centre (`questionAnchor`) with "Don't ask again" (Return confirms, Escape or
+  closing it cancels; an app-wide alert only when no window is visible); test command `warning confirm|suppress|cancel`. Start fresh: the launch's first normal
   window drops last time's Today tabs into Recently Closed (`startFresh`, `restore(fresh:)`). Checks
   `settings-general`, `warn-before-quitting` (own instances; also Start fresh), `warn-before-closing-window`.
 - `SettingsPrivacy` (Settings › Privacy, the normal profile's only, never a private window's): sites with a permission
@@ -200,13 +201,14 @@ publicly or create accounts.
   (Claude's) drive the same groups: `ac_tabs_watch` starts the engine's `tabs.strip` events (each window's tabs with
   their group, and each group's title/colour/collapsed), merged three ways against the last one seen (only Chrome's
   own changes are adopted, so a stale event never undoes Ray's), then `push()` sends what still differs through
-  `ac_tabs_group` after every `changed()`. Group ids live per run (`groupToken`, never saved); a folder's group holds
+  `ac_tabs_group` after every `changed()`, on the next run-loop turn (a change from inside Chrome's tab strip
+  notification, a tab just inserted, can't touch the strip: TabStripModel's reentrancy CHECK crashed there). Group ids live per run (`groupToken`, never saved); a folder's group holds
   its open tabs and is made when one opens. Pin Folder ends the group (`release`; Chrome never groups a pinned tab),
   Unpin Folder makes one again (nested folders fold in). A tab opened from a tab in a Today folder joins it.
   `FolderIconView` (`Host/FolderIcon.swift`): the folder icon in layers (back with its tab, two sheets, a front flap
   carrying the glyph) whose sheets rise and flap leans on springs when it opens, hover and drop-target states.
-  `FolderIconPicker` (`Host/FolderIconPicker.swift`): Change Icon…, Arc's icon panel (in `root`, never an NSPopover):
-  "Icon" with a trash button and Arc's 24 filled symbols, its arrow on the folder's icon, springing out of the arrow;
+  `FolderIconPicker` (`Host/FolderIconPicker.swift`): Change Icon…, Arc's icon panel as a `Panels` panel under the
+  folder's icon (over the sidebar, no arrow): "Icon" with a trash button and Arc's 24 filled symbols;
   a pick applies and closes it, as do a click elsewhere, Escape and a tab switch. New folders start in the row's
   rename field (with Done), as tabs do. Menus: Rename…, Change Icon…, Colour ▸, New Tab in Folder / New Nested
   Folder, Pin / Unpin Folder, Delete Folder (tabs move up, ungrouped), Close Tabs (Today). Moves that reshape the
@@ -234,11 +236,12 @@ publicly or create accounts.
   ⇧⌘T use it; imports keep Arc's and Zen's names as names (`ArcImport.Node.tab`'s `name`). Never logged in normal
   runs. Test commands `rowaction rename <id>`, `rename <id> [text]`, `rowmenu <id>`; state log `customTitle` and
   `pageTitle` per entry; check `tab-rename` (restore compares every name after the relaunch).
-- `Extensions` (puzzle button in the sidebar address field, action popups in a borderless child window under the
-  button, Crest's way: rounded, no arrow, sized by the page, closed by a click elsewhere, Escape, a tab switch, Ray
+- `Extensions` (tiles in site controls, whose sliders button is in the sidebar's address field too while the page
+  address bar is off; action popups in a borderless child window under that button, Crest's way: rounded, no arrow, sized by the page, closed by a click elsewhere, Escape, a tab switch, Ray
   going to the background or the page closing itself; state log `extensionPopupView`, check `extensions` reads its
-  pixels back with `onscreen on`; install prompt),
-  `Downloads` (button in the sidebar footer, ⌥⌘L; the list slides up as a panel inside the sidebar), `FindBar` (⌘F),
+  pixels back with `onscreen on`; the install prompt is a `Panels` question that waits 0.5 s, Return cancels),
+  `Downloads` (button in the sidebar footer, ⌥⌘L; the list slides up as a panel inside the sidebar), `FindBar` (⌘F,
+  on `SurfaceBackdrop`, dropping in on the panels' spring),
   `PermissionPrompt` (site permissions, only over their own tab), `ArcImport` (the old Import from Arc…, sidebar
   only; its action still exists without a menu item).
 - `Notes` (`Host/Notes.swift`): short messages on the page at one of six `NoteSpot`s (corners, top and bottom
@@ -272,8 +275,12 @@ publicly or create accounts.
   140 ms fade; reshapes on the spring when its content changes (old content out in 110 ms, new in over 170 ms, held at
   the button's corner); closes in 140 ms toward the button (90 ms when another takes its place). Closes on a click
   outside (not on its button), Escape, a tab switch, the window resigning key, or `.otherSite` (the active tab
-  committing another origin); `asks` never closes on an outside click. `PanelKit`: `stack`, `header`, `row`
-  (`SettingRow`), `back`, `separator`; `PanelButton` (28 pt, primary in the profile colour). Permission prompts keep
+  committing another origin); `asks` never closes on an outside click. `PanelAnchor.align` is leading, centre or
+  trailing; `overSidebar` puts it above a peeking sidebar and keeps the peek out; `onReturn` is Return's answer.
+  `PanelKit`: `stack`, `header`, `row` (`SettingRow`), `choice` (a ticked list row), `back`, `separator`;
+  `PanelButton` (28 pt, primary in the profile colour, destructive in red); `PanelQuestion` (title, wrapping
+  message, optional icon and "Don't ask again", buttons that can wait). Site controls' pages: "…", a permission's
+  choices (`choices:<type>`), Clear Site Data's question (`clearData`). Permission prompts keep
   their per-tab queue and top-left spot (`PermissionPrompts`) on the same surface, `PanelButton`s and spring. State
   log `panels` (`open` with name, frame, anchor, target size, style; `steps` opened/reshaped/closed;
   `lastClosedBy`); check `panels`.

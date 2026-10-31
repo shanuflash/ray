@@ -146,7 +146,7 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
       if let id = prompt["requestId"] as? String { RayCoreEngine.resolveExtensionInstallPrompt(id, accepted: false) }
       return
     }
-    controller.extensions.showInstallPrompt(prompt, in: controller.window)
+    controller.extensions.showInstallPrompt(prompt, in: controller)
   }
 
   func engine(_ engine: RayCoreEngine, extensionActionPopup popup: [String: Any], tab: RayCoreTab) -> Bool {

@@ -321,7 +321,7 @@ enum TestCommands {
       controller.extensions.showInstallPrompt([
         "requestId": "test-install", "id": "abcdefghijklmnopabcdefghijklmnop", "name": parts.count > 1 ? parts[1] : "Test",
         "version": "1.0", "permissions": ["Read and change all your data on all websites"],
-      ], in: controller.window)
+      ], in: controller)
       return "ok"
     case "accept": return controller.extensions.answerPrompt(accept: true) ? "ok" : "not ready"
     case "cancel": return controller.extensions.answerPrompt(accept: false) ? "ok" : "no prompt"

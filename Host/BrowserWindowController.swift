@@ -76,8 +76,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   var activeEntry: SidebarEntry? { state.activeEntryID.flatMap(state.entry(id:)) }
 
   func owns(_ tab: RayCoreTab) -> Bool { state.entry(for: tab) != nil }
-  /// The puzzle button in the sidebar's address field, or the sliders button while that field is hidden.
-  var extensionsAnchor: NSView { sidebar.showsAddress ? sidebar.extensionsAnchor : toolbar.siteButton }
+  /// Where an extension's popup hangs: the sliders button in the sidebar's address field, or the page address bar's.
+  var extensionsAnchor: NSView { siteControlsInSidebar ? sidebar.siteButton : toolbar.siteButton }
 
   var activeTab: RayCoreTab? { activeEntry.flatMap { $0.isLive ? $0.tab : nil } }
 
@@ -247,7 +247,6 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let controller = ExtensionsController(profile: profile, coreWindow: coreWindow)
     controller.onChange = { [weak self, weak controller] in
       guard let self, let controller else { return }
-      self.sidebar.setExtensionsShown(controller.items.contains { $0.enabled })
       self.logState("extensions")
     }
     controller.openPage = { [weak self] url in self?.openToday(url, after: nil, foreground: true) }
@@ -696,6 +695,15 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     return panels
   }()
 
+  /// Where a question drops from (an install prompt, a warning): the page's top centre, under the address bar, as a
+  /// sheet would.
+  var questionAnchor: PanelAnchor {
+    PanelAnchor(rect: { [weak self] in
+      guard let self else { return .zero }
+      return NSRect(x: self.pages.frame.midX, y: self.pages.frame.maxY - 10 + Panels.gap, width: 0, height: 0)
+    }, below: true, align: .center)
+  }
+
   // MARK: Notes
 
   /// This window's notes over the page (`Notes.swift`): `notes.show(Note(…))` from any feature.
@@ -725,6 +733,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       root.addSubview(bar, positioned: .above, relativeTo: pages)
       findBar = bar
       layout()
+      bar.animateIn()
     }
     findTab = tab
     bar.focus()
@@ -791,12 +800,17 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if siteAnchor.superview !== root { root.addSubview(siteAnchor) }
     siteControls = panel
     layoutSiteControls()
-    // Under the sliders button (the address bar's right end); with the address bar off, the page's top right.
-    let anchor = PanelAnchor(rect: { [weak self] in self?.siteControlsAnchor ?? .zero }, below: true, trailing: true,
-                             button: toolbar.siteButton, hold: { [weak self] held in self?.toolbar.siteButton.isHeld = held })
+    // Under the sliders button: the page address bar's right end, or the sidebar's address field (the panel opens to
+    // its right, over the page); with neither on screen, the page's top right.
+    let inSidebar = siteControlsInSidebar
+    let button: HoverIconButton = inSidebar ? sidebar.siteButton : toolbar.siteButton
+    let anchor = PanelAnchor(rect: { [weak self] in self?.siteControlsAnchor ?? .zero }, below: true,
+                             align: inSidebar ? .leading : .trailing, button: button,
+                             hold: { [weak button] held in button?.isHeld = held })
     let handle = panels.open(PanelSpec(
       name: "siteControls", content: panel, anchor: anchor,
       closesOn: [.outsideClick, .escape, .tabSwitch, .windowInactive, .otherSite], origin: tab.committedOrigin,
+      overSidebar: inSidebar,
       onClose: { [weak self, weak panel] in
         guard let self, self.siteControls === panel else { return }
         self.siteControls = nil
@@ -817,8 +831,18 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     siteControlsPanel?.close()
   }
 
-  /// The sliders button's frame: the address bar's right end, 2 pt above its bottom; the page's top right without it.
+  /// Site controls hang from the sidebar's address field: the page address bar is off and the sidebar is out.
+  private var siteControlsInSidebar: Bool {
+    !toolbarShown && sidebar.showsAddress && (!state.sidebarHidden || peeking) && !sidebar.siteButton.isHidden
+  }
+
+  /// The sliders button's frame: the sidebar's, or the address bar's right end 2 pt above its bottom, or (neither on
+  /// screen) the page's top right.
   private var siteControlsAnchor: NSRect {
+    if siteControlsInSidebar || siteControls != nil && panels.holdsSidebar {
+      let button = sidebar.siteButton
+      return button.convert(button.bounds, to: root)
+    }
     let right = toolbarShown ? toolbar.frame.maxX - 4 : pages.frame.maxX - 8
     let top = toolbarShown ? toolbar.frame.minY - 2 + Panels.gap : pages.frame.maxY - 8 + Panels.gap
     return NSRect(x: right - 28, y: top, width: 28, height: 1)
@@ -850,18 +874,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       if let origin, !isPrivate { (SettingsPanes.content(for: .privacy) as? PrivacyPaneContent)?.reveal(origin) }
     case .developerTools: toggleDevTools()
     case .clearData:
-      guard let origin, let host = URLComponents(string: origin)?.host else { return }
-      let alert = NSAlert()
-      alert.messageText = "Clear cookies and site data for \(host)?"
-      alert.informativeText = "You'll be signed out of this site, and anything it keeps on your Mac will be deleted."
-      alert.addButton(withTitle: "Cancel")
-      alert.addButton(withTitle: "Clear").hasDestructiveAction = true
-      alert.beginSheetModal(for: window) { [weak self, weak tab] response in
-        guard response == .alertSecondButtonReturn, let self else { return }
-        EngineCalls.call("ac_site_data_clear", profile: self.profile, args: ["origin": origin, "offTheRecord": self.isPrivate]) { [weak self] _ in
-          tab?.userReload()
-          self?.notes.show(Note("Cleared Site Data", icon: .done, spot: .top))
-        }
+      // Already confirmed on the panel's own page (SiteControlsView.confirmClearData).
+      guard let origin, URLComponents(string: origin)?.host != nil else { return }
+      EngineCalls.call("ac_site_data_clear", profile: profile, args: ["origin": origin, "offTheRecord": isPrivate]) { [weak self, weak tab] _ in
+        tab?.userReload()
+        self?.notes.show(Note("Cleared Site Data", icon: .done, spot: .top))
       }
     }
   }
@@ -1636,11 +1653,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   private func schedulePeekEnd() {
-    guard peekEndWork == nil, !forcedOpen, !sidebar.isDragging, !sidebar.downloadsOpen else { return }
+    guard peekEndWork == nil, !forcedOpen, !sidebar.isDragging, !sidebar.downloadsOpen, !panels.holdsSidebar else { return }
     let work = DispatchWorkItem { [weak self] in
       guard let self else { return }
       self.peekEndWork = nil
-      if self.sidebar.isDragging || self.sidebar.downloadsOpen { return }
+      if self.sidebar.isDragging || self.sidebar.downloadsOpen || self.panels.holdsSidebar { return }
       self.endPeek(animated: true)
     }
     peekEndWork = work
@@ -1987,30 +2004,36 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// Change Icon…'s panel, while it's open.
   private(set) var iconPicker: FolderIconPicker?
 
-  /// Right-click a folder › Change Icon…: Arc's icon panel, its arrow on the folder's icon, over the sidebar and page.
+  /// Right-click a folder › Change Icon…: Arc's icon panel under the folder's icon, over the sidebar and page.
   func showIconPicker(for folder: SidebarEntry) {
     iconPicker?.close()
-    guard let anchor = sidebar.iconFrame(of: folder, in: root) else { return }
+    guard sidebar.iconFrame(of: folder, in: root) != nil else { return }
     let picker = FolderIconPicker(chosen: folder.icon)
     picker.onPick = { [weak self, weak folder] icon in
       guard let self, let folder else { return }
       self.perform(.setIcon(icon), on: folder)
     }
-    picker.onClose = { [weak self, weak picker] in
-      if let self, self.iconPicker === picker { self.iconPicker = nil }
-    }
-    root.addSubview(picker)
-    picker.place(under: anchor, within: root.bounds)
+    // Its leading edge a little left of the icon, as Arc's hangs.
+    let anchor = PanelAnchor(rect: { [weak self, weak folder] in
+      guard let self, let folder, let frame = self.sidebar.iconFrame(of: folder, in: self.root) else { return .zero }
+      return frame.offsetBy(dx: -12, dy: 0)
+    }, below: true, align: .leading)
+    let handle = panels.open(PanelSpec(
+      name: "iconPicker", content: picker, anchor: anchor, overSidebar: true,
+      onClose: { [weak self, weak picker] in
+        guard let self, self.iconPicker === picker else { return }
+        self.iconPicker = nil
+        FolderIconPicker.animations += 1
+        self.logState("iconPicker")
+      }))
+    picker.requestClose = { handle.close() }
     iconPicker = picker
-    picker.appear()
+    if !Panels.reduceMotion { FolderIconPicker.animations += 1 }
+    window.makeFirstResponder(picker)
     logState("iconPicker")
   }
 
-  func sidebarExtensions(_ sidebar: SidebarView, anchor: NSView) {
-    extensions.refresh()
-    extensions.menu(for: activeTab, anchor: anchor)
-      .popUp(positioning: nil, at: NSPoint(x: 0, y: anchor.bounds.maxY + 4), in: anchor)
-  }
+  func sidebarSiteControls(_ sidebar: SidebarView) { toggleSiteControls() }
 
   func sidebarDownloads(_ sidebar: SidebarView, anchor: NSView) {
     toggleDownloads()

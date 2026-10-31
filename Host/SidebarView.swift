@@ -35,7 +35,7 @@ protocol SidebarViewDelegate: AnyObject {
   func sidebarForward(_ sidebar: SidebarView)
   func sidebarReload(_ sidebar: SidebarView)
   func sidebarIcon(for entry: SidebarEntry) -> NSImage?
-  func sidebarExtensions(_ sidebar: SidebarView, anchor: NSView)
+  func sidebarSiteControls(_ sidebar: SidebarView)
   func sidebarDownloads(_ sidebar: SidebarView, anchor: NSView)
 }
 
@@ -233,9 +233,9 @@ final class SidebarView: NSView {
       guard let self else { return }
       self.delegate?.sidebarOpenAddress(self)
     }
-    addressPill.onExtensions = { [weak self] anchor in
+    addressPill.onSiteControls = { [weak self] in
       guard let self else { return }
-      self.delegate?.sidebarExtensions(self, anchor: anchor)
+      self.delegate?.sidebarSiteControls(self)
     }
 
     scrollView.documentView = content
@@ -350,7 +350,6 @@ final class SidebarView: NSView {
   /// For tests: the connection look, whether its icon shows, and how far the text's middle is from the field's.
   var addressDebug: [String: Any] { addressPill.debug }
 
-  func setExtensionsShown(_ shown: Bool) { addressPill.extensionsShown = shown }
   /// The address field under the top row. Off while the sidebar is docked beside the page's own address bar, which
   /// already shows the address (as in Dia); on while it peeks over that bar or the bar is off.
   var showsAddress = true {
@@ -365,7 +364,8 @@ final class SidebarView: NSView {
   private var contentTop: CGFloat {
     showsAddress ? addressPill.frame.maxY + 8 : trafficLightsCenterY + 24
   }
-  var extensionsAnchor: NSView { addressPill.extensionsButton }
+  /// The address field's sliders button (site controls), as the page address bar has.
+  var siteButton: HoverIconButton { addressPill.siteButton }
 
   var debugToggleCenter: String {
     let frame = toggleButton.convert(toggleButton.bounds, to: nil)
@@ -1661,16 +1661,10 @@ final class AddressPill: NSView {
   private let label = NSTextField(labelWithString: "")
   private let securityIcon = NSImageView()
   private let searchIcon = NSImageView()
-  /// Arc keeps extensions behind a button at the end of the address field; shown once any are installed.
-  let extensionsButton = HoverIconButton()
-  var onExtensions: ((NSView) -> Void)?
-  var extensionsShown = false {
-    didSet {
-      guard oldValue != extensionsShown else { return }
-      extensionsButton.isHidden = !extensionsShown
-      needsLayout = true
-    }
-  }
+  /// Site controls (extensions, permissions, the site's actions) at the end of the address field, as Dia's address
+  /// bar has them; shown while there's a page.
+  let siteButton = HoverIconButton()
+  var onSiteControls: (() -> Void)?
   private(set) var text = ""
   private(set) var look = ConnectionLook.quiet
 
@@ -1686,17 +1680,18 @@ final class AddressPill: NSView {
     searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
     searchIcon.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
     searchIcon.contentTintColor = .tertiaryLabelColor
-    extensionsButton.image = NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: "Extensions")
-    extensionsButton.symbolConfiguration = .init(pointSize: 13, weight: .medium)
-    extensionsButton.isBordered = false
-    extensionsButton.bezelStyle = .regularSquare
-    extensionsButton.imagePosition = .imageOnly
-    extensionsButton.contentTintColor = .secondaryLabelColor
-    extensionsButton.refusesFirstResponder = true
-    extensionsButton.isHidden = true
-    extensionsButton.target = self
-    extensionsButton.action = #selector(showExtensions)
-    addSubview(extensionsButton)
+    siteButton.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Site Controls")
+    siteButton.symbolConfiguration = .init(pointSize: 13, weight: .medium)
+    siteButton.isBordered = false
+    siteButton.bezelStyle = .regularSquare
+    siteButton.imagePosition = .imageOnly
+    siteButton.contentTintColor = .secondaryLabelColor
+    siteButton.refusesFirstResponder = true
+    siteButton.isHidden = true
+    siteButton.toolTip = "Site Controls"
+    siteButton.target = self
+    siteButton.action = #selector(showSiteControls)
+    addSubview(siteButton)
     addSubview(searchIcon)
     addSubview(securityIcon)
     addSubview(label)
@@ -1714,7 +1709,7 @@ final class AddressPill: NSView {
 
   override func mouseDown(with event: NSEvent) { onClick?() }
 
-  @objc private func showExtensions() { onExtensions?(extensionsButton) }
+  @objc private func showSiteControls() { onSiteControls?() }
 
   var debug: [String: Any] {
     layoutSubtreeIfNeeded()
@@ -1731,6 +1726,7 @@ final class AddressPill: NSView {
     label.lineBreakMode = hasHost ? .byTruncatingHead : .byTruncatingTail
     label.textColor = empty ? .tertiaryLabelColor : .secondaryLabelColor
     searchIcon.isHidden = !empty
+    siteButton.isHidden = empty
     let look = ConnectionLook.of(level: security, url: url)
     securityIcon.image = look.symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: look.label) }
     securityIcon.contentTintColor = look.tint
@@ -1745,8 +1741,8 @@ final class AddressPill: NSView {
     securityIcon.frame = NSRect(x: 12, y: mid - 8, width: 16, height: 16)
     searchIcon.frame = securityIcon.frame
     let x: CGFloat = securityIcon.isHidden && searchIcon.isHidden ? 12 : 34
-    extensionsButton.frame = NSRect(x: bounds.width - 32, y: mid - 13, width: 26, height: 26)
-    let right: CGFloat = extensionsShown ? 36 : 12
+    siteButton.frame = NSRect(x: bounds.width - 32, y: mid - 13, width: 26, height: 26)
+    let right: CGFloat = siteButton.isHidden ? 12 : 36
     // The label draws from its frame's top, so a frame of exactly one line keeps the text on the field's middle.
     let line = ceil(label.intrinsicContentSize.height)
     label.frame = NSRect(x: x, y: (mid - line / 2).rounded(), width: bounds.width - x - right, height: line)

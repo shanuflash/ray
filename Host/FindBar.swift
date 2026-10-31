@@ -5,8 +5,8 @@ protocol FindBarDelegate: AnyObject {
   func findBarClose(_ bar: FindBarView)
 }
 
-/// Find in page (⌘F): a small bar floating at the top right of the page, as in Arc. Return / ⌘G go to the next
-/// match, ⇧Return / ⇧⌘G to the previous one, Escape closes.
+/// Find in page (⌘F): a small bar floating at the top right of the page, as in Arc, on the panels' surface (glass or
+/// solid). Return / ⌘G go to the next match, ⇧Return / ⇧⌘G to the previous one, Escape closes.
 final class FindBarView: NSView, NSTextFieldDelegate {
   static let size = NSSize(width: 320, height: 40)
 
@@ -18,16 +18,12 @@ final class FindBarView: NSView, NSTextFieldDelegate {
   private let next = FindBarView.button("chevron.down", "Next Match")
   private let close = FindBarView.button("xmark", "Close")
   private(set) var matches = (count: 0, active: 0)
+  private let backdrop = SurfaceBackdrop(radius: 12)
 
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    layer?.cornerRadius = 10
-    layer?.cornerCurve = .continuous
-    layer?.borderWidth = 1
-    layer?.shadowOpacity = 0.18
-    layer?.shadowRadius = 8
-    layer?.shadowOffset = CGSize(width: 0, height: -2)
+    addSubview(backdrop)
     icon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
     icon.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
     icon.contentTintColor = .tertiaryLabelColor
@@ -52,17 +48,25 @@ final class FindBarView: NSView, NSTextFieldDelegate {
 
   required init?(coder: NSCoder) { fatalError() }
 
-  override var wantsUpdateLayer: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
 
-  override func updateLayer() {
-    layer?.backgroundColor = SidebarColors.background.cgColor
-    layer?.borderColor = NSColor.separatorColor.cgColor
-  }
-
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    needsDisplay = true
+  /// In from just above on the panels' spring, fading in (Reduce Motion: only the fade).
+  func animateIn() {
+    guard let layer else { return }
+    if !Panels.reduceMotion {
+      let drop = CASpringAnimation(keyPath: "transform.translation.y")
+      drop.fromValue = 8
+      drop.toValue = 0
+      drop.stiffness = pow(2 * .pi / Notes.response, 2)
+      drop.damping = 4 * .pi * Notes.dampingRatio / Notes.response
+      drop.duration = drop.settlingDuration
+      layer.add(drop, forKey: "drop")
+    }
+    let fade = CABasicAnimation(keyPath: "opacity")
+    fade.fromValue = 0
+    fade.toValue = 1
+    fade.duration = 0.14
+    layer.add(fade, forKey: "fade")
   }
 
   var text: String { field.stringValue }
@@ -113,6 +117,11 @@ final class FindBarView: NSView, NSTextFieldDelegate {
 
   override func layout() {
     super.layout()
+    backdrop.frame = bounds
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    SurfaceBackdrop.shadow(on: self, radius: 12)
+    CATransaction.commit()
     let mid = bounds.height / 2
     icon.frame = NSRect(x: 12, y: mid - 8, width: 16, height: 16)
     close.frame = NSRect(x: bounds.width - 32, y: mid - 13, width: 26, height: 26)
