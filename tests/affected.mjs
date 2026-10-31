@@ -38,7 +38,7 @@ settings.push("settings-passwords", "settings-autofill");
 // What a setting's value or its change notice reaches: the settings checks, the welcome (theme, keys), and the
 // features they drive (address bar, loading, site controls' zoom reset, ⇧⌘C, ⌘S, menu keys in the command bar).
 const settingReaders = [...settings, "onboarding", "page-toolbar", "page-loading", "load-sweep-once", "address-fragment",
-  "site-controls", "copy-url", "sidebar-toggle", "page-commands", "bar-actions"];
+  "site-controls", "copy-url", "sidebar-toggle", "page-commands", "bar-actions", "notes"];
 
 export const areas = {
   // Central: windows, menus, key routing, saved state, the engine bridge.
@@ -104,7 +104,7 @@ export const areas = {
 
   // BrowserWindowController: by section. Lines outside them (properties, init) run everything.
   "Host/BrowserWindowController.swift#Layout": [...sidebarMotion, ...pageSurface, "page-toolbar", "site-controls",
-    "find-in-page", "copy-url"],
+    "find-in-page", "copy-url", "notes"],
   "Host/BrowserWindowController.swift#Extensions and downloads": ["extensions", "extension-prompt", "downloads",
     "download-insecure-blocked", "site-controls"],
   "Host/BrowserWindowController.swift#Test snapshots": ["folder-rename", "tile-hover", "bar-actions", "load-sweep-once"],
@@ -112,7 +112,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Browser import": ["import-browser", "arc-import", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Onboarding": ["onboarding"],
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
-  "Host/BrowserWindowController.swift#Toast": ["copy-url", "page-commands"],
+  "Host/BrowserWindowController.swift#Notes": ["notes", "copy-url", "page-commands", "find-in-page"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Site controls": ["site-controls", "extensions", "copy-url", "find-in-page", "settings-privacy"],
   "Host/BrowserWindowController.swift#Entries": "all",
@@ -218,7 +218,7 @@ export const areas = {
   "Host/PermissionPrompt.swift": permissions,
   "Host/SiteControls.swift": ["site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
-  "Host/Toast.swift": ["copy-url", "page-commands", "jumpcloud-relay"],
+  "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay"],
   "Host/Updater.swift": ["updater-config", "settings-general"],
   // ⇧⌘T and History › Recently Closed.
   "Host/ClosedTabs.swift": ["reopen-closed-tab", "tab-rename"],
@@ -232,7 +232,7 @@ export const areas = {
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
   "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
-    "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor"],
+    "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

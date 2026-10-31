@@ -649,6 +649,10 @@ enum TestCommands {
         && $0.contentView?.subviews.contains { "\(type(of: $0))" == "WebContentsViewCocoa" } == true }
         .map { NSStringFromRect($0.frame) }
       result = "[" + frames.map { "\"\($0)\"" }.joined(separator: ",") + "]"
+    case "note":
+      // The notes' own test command (`Notes.test`): show, ask, press, dismiss, hover, progress.
+      guard let controller = AppController.shared.current else { result = "no window"; break }
+      if let answer = controller.notes.test(argument) { result = answer }
     case "zoom":
       if AppController.shared.current?.zoomCommand(argument) != true { result = "usage: zoom in|out|reset (a page open)" }
     case "drag":

@@ -268,6 +268,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | What | When |
 |---|---|
 | Ray's own engine (Phase B) and "Ray Safe Storage" | 2026-10-28, 0.2.0 |
+| Notes: six spots on the page, one each, glass or solid (Settings › Appearance), the sidebar's spring; downloads note with progress | 2026-10-31, toast-revamp |
 | Print (⌘P), Print Using System Dialog (⌥⌘P), Save Page As, Show Full History (⌘Y), Zoom In/Out/Actual Size, View Source (⌥⌘U), Task Manager, Clear Browsing Data (⇧⌘⌫) | 2026-10-29, `9c27c31` |
 | Arc's zoom level note; print preview centred with rounded corners | 2026-10-29, `17dabae` |
 | Import from Arc and other browsers (pinned, favorites, open tabs, history, bookmarks, passwords, cookies, autofill) and first-run onboarding | 2026-10-29, `0154dab` … `58611e6` |

@@ -225,13 +225,13 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     pages.frame = NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
     pages.cornerRadius = isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
     permissions.update()
-    layoutToast()
     layoutSiteControls()
     if let findBar {
       let size = FindBarView.size
       findBar.frame = NSRect(x: pages.frame.maxX - size.width - 12, y: pages.frame.maxY - size.height - 12,
                              width: size.width, height: size.height)
     }
+    layoutNotes()
     updateTrafficLights()
   }
 
@@ -274,16 +274,51 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if newlyWaiting {
       // A held download needs an answer: open the list where it can be given.
       showDownloads()
-    } else if let started = items.first, started.active, !sidebar.downloadsOpen, started.received == 0 {
-      showToast("Downloading \(started.filename)", symbol: "arrow.down.circle") { [weak self] in self?.showDownloads() }
+    } else if let started = items.first, started.active, !sidebar.downloadsOpen, started.received == 0,
+              notedDownload != started.id {
+      notedDownload = started.id
+      notes.show(downloadNote(started))
     }
+    updateDownloadNote(items)
     logState("downloads")
+  }
+
+  /// The download the bottom-left note follows: its progress while it runs, then "Downloaded".
+  private var notedDownload: String?
+  private static let byteCount: ByteCountFormatter = {
+    let formatter = ByteCountFormatter()
+    formatter.countStyle = .file
+    return formatter
+  }()
+
+  /// Bottom left, next to the sidebar's downloads button.
+  private func downloadNote(_ item: DownloadsController.Item) -> Note {
+    let show = NoteAction("Show") { [weak self] in self?.showDownloads() }
+    if item.state == "finished" {
+      return Note(item.filename, detail: "Downloaded", icon: .done, actions: [show], spot: .bottomLeading, key: "download")
+    }
+    let detail = item.total > 0
+      ? "\(Self.byteCount.string(fromByteCount: Int64(item.received))) of \(Self.byteCount.string(fromByteCount: Int64(item.total)))"
+      : "Downloading"
+    return Note(item.filename, detail: detail, icon: .progress(item.fraction), actions: [show], spot: .bottomLeading,
+                lasts: .held, key: "download")
+  }
+
+  private func updateDownloadNote(_ items: [DownloadsController.Item]) {
+    guard let id = notedDownload else { return }
+    guard let item = items.first(where: { $0.id == id }), item.active || item.state == "finished" else {
+      notedDownload = nil
+      return notes.dismiss(key: "download")
+    }
+    if !item.active { notedDownload = nil }
+    notes.update(key: "download") { $0 = downloadNote(item) }
   }
 
   /// The downloads panel slides up from the sidebar's footer; with the sidebar hidden, the sidebar comes out first
   /// and stays out while the panel is open.
   func showDownloads() {
     guard !sidebar.downloadsOpen else { return }
+    notes.dismiss(key: "download")
     downloads.loadHistory()
     if state.sidebarHidden && !peeking { beginPeek() }
     sidebar.layoutSubtreeIfNeeded()
@@ -639,25 +674,19 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     return prompts
   }()
 
-  // MARK: Toast
+  // MARK: Notes
 
-  private lazy var toast = ToastView()
+  /// This window's notes over the page (`Notes.swift`): `notes.show(Note(…))` from any feature.
+  private(set) lazy var notes: Notes = {
+    let notes = Notes(host: root)
+    notes.onChange = { [weak self] in self?.logState("notes") }
+    return notes
+  }()
 
-  func showToast(_ message: String, symbol: String? = nil, figure: Bool = false, duration: TimeInterval? = nil,
-                 action: (() -> Void)? = nil) {
-    if toast.superview !== root { root.addSubview(toast, positioned: .above, relativeTo: nil) }
-    toast.show(message, symbol: symbol, figure: figure, duration: duration, action: action)
-    layoutToast()
-    logState("toast")
-  }
-
-  /// Top right of the page card, 8 pt in (below the find bar while that's open).
-  private func layoutToast() {
-    guard toast.superview != nil else { return }
-    let size = toast.fit(max(120, pages.frame.width - 16))
-    let below = findBar.map { $0.frame.height + 8 } ?? 0
-    toast.frame = NSRect(x: pages.frame.maxX - size.width - 8, y: pages.frame.maxY - size.height - 8 - below,
-                         width: size.width, height: size.height)
+  /// Six spots on the page card; the top-right one keeps below the find bar while that's open.
+  private func layoutNotes() {
+    let clearance = findBar.map { $0.frame.height + 12 - Notes.inset + 8 } ?? 0
+    notes.layout(in: pages.frame, topTrailingClearance: max(0, clearance))
   }
 
   // MARK: Find in page
@@ -690,6 +719,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     findTab?.stopFinding()
     findBar.removeFromSuperview()
     self.findBar = nil
+    layoutNotes()
     let tab = findTab
     findTab = nil
     if let tab, tab === activeTab { focusPage(tab) }
@@ -790,7 +820,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     case .copyLink: copyURL()
     case .find: showFind()
     case .cast:
-      if !tab.showCastDialog() { showToast("Casting isn't available on this page") }
+      if !tab.showCastDialog() { notes.show(Note("Casting isn't available on this page", icon: .warning, spot: .bottom)) }
     case .addExtension: openToday("https://chromewebstore.google.com/category/extensions", after: nil, foreground: true)
     case .runExtension(let id): extensions.run(id, on: tab, anchor: siteAnchor)
     case .siteSettings:
@@ -809,7 +839,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         guard response == .alertSecondButtonReturn, let self else { return }
         EngineCalls.call("ac_site_data_clear", profile: self.profile, args: ["origin": origin, "offTheRecord": self.isPrivate]) { [weak self] _ in
           tab?.userReload()
-          self?.showToast("Cleared Site Data")
+          self?.notes.show(Note("Cleared Site Data", icon: .done, spot: .top))
         }
       }
     }
@@ -1660,17 +1690,17 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     openCommandBar(.currentTab, query: activeEntry.map { AddressInput.display(for: $0.currentURL) } ?? "")
   }
 
-  /// ⇧⌘C, as in Arc and Chrome: the current page's full URL to the clipboard, and Arc's "Copied Current URL" toast
+  /// ⇧⌘C, as in Arc and Chrome: the current page's full URL to the clipboard, and Arc's "Copied Current URL" note
   /// with a share button.
   func copyURL() {
     guard let url = activeEntry?.currentURL, !url.isEmpty else { return }
     let pasteboard = Self.pasteboard
     pasteboard.clearContents()
     pasteboard.setString(url, forType: .string)
-    showToast("Copied Current URL", symbol: "square.and.arrow.up") { [weak self] in
-      guard let self, let link = URL(string: url) else { return }
-      NSSharingServicePicker(items: [link]).show(relativeTo: self.toast.bounds, of: self.toast, preferredEdge: .minY)
-    }
+    notes.show(.copied("Copied Current URL") { button in
+      guard let link = URL(string: url) else { return }
+      NSSharingServicePicker(items: [link]).show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    })
     logState("copyURL")
   }
 
@@ -2191,7 +2221,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private func showZoomIndicator(for tab: RayCoreTab) {
     zoomIndicatorTab = nil
     guard tab === activeTab else { return }
-    showToast("\(Int((tab.zoomFactor * 100).rounded()))%", figure: true)
+    notes.show(.zoom(tab.zoomFactor))
   }
 
   // MARK: Page commands
@@ -2306,8 +2336,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "displayAsleep": CGDisplayIsAsleep(window.screen?.displayID ?? CGMainDisplayID()) != 0,
       // A password or card number copied from Settings is concealed: never in this log.
       "pasteboard": (SettingsPasteboard.isConcealed ? "<concealed>" : Self.pasteboard.string(forType: .string)) ?? NSNull(),
-      "toast": toast.message,
-      "toastTruncated": toast.truncated,
+      "notes": notes.state,
+      "noteText": notes.text,
       "realLightsHidden": [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
         window.standardWindowButton($0)?.isHidden ?? true
       },

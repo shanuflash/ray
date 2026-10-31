@@ -20,6 +20,8 @@ Early and personal. Expect rough edges.
   in), addresses and cards. Never another browser's settings. Later: File › Import from Browser….
 - Dia's address bar above the page, with its loading glow; site controls; find (⌘F); downloads; permission prompts;
   extension buttons and popups from the Chrome Web Store.
+- Notes on the page ("Copied Current URL", the zoom level, a download's progress) in frosted glass or solid,
+  each in its own spot, never stacked.
 - Chrome's basics: Print (⌘P), Show Full History (⌘Y), zoom (⌘+ ⌘− ⌘0, with Arc's zoom level note), View Source
   (⌥⌘U), Save Page As, Task Manager, Clear Browsing Data (⇧⌘⌫).
 - Settings window (⌘,): a searchable sidebar of panes, live pictures of what a setting does, and every setting
