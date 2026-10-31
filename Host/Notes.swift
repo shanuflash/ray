@@ -202,6 +202,10 @@ final class Notes {
 
   func dismiss(spot: NoteSpot) { views[spot]?.leave() }
   func dismiss(key: String) { views.values.filter { $0.note.key == key }.forEach { $0.leave() } }
+  /// Notes a panel is opening over leave (a panel the user opened beats a passing note).
+  func dismiss(overlapping frame: NSRect) {
+    views.values.filter { !$0.leaving && $0.frame.intersects(frame.insetBy(dx: -4, dy: -4)) }.forEach { $0.leave() }
+  }
 
   /// The shown note with this key, changed in place; false when none is shown.
   @discardableResult

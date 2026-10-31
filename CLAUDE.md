@@ -276,7 +276,7 @@ publicly or create accounts.
   the button's corner); closes in 140 ms toward the button (90 ms when another takes its place). Closes on a click
   outside (not on its button), Escape, a tab switch, the window resigning key, or `.otherSite` (the active tab
   committing another origin); `asks` never closes on an outside click. `PanelAnchor.align` is leading, centre or
-  trailing; `overSidebar` puts it above a peeking sidebar and keeps the peek out; `onReturn` is Return's answer.
+  trailing; `overSidebar` puts it above a peeking sidebar and keeps the peek out; `onReturn` is Return's answer. Notes under a panel that opens leave (`Panels.onOpen` → `notes.dismiss(overlapping:)`).
   `PanelKit`: `stack`, `header`, `row` (`SettingRow`), `choice` (a ticked list row), `back`, `separator`;
   `PanelButton` (28 pt, primary in the profile colour, destructive in red); `PanelQuestion` (title, wrapping
   message, optional icon and "Don't ask again", buttons that can wait). Site controls' pages: "…", a permission's
@@ -381,8 +381,10 @@ publicly or create accounts.
   remove <kw>|fill <json>|save|cancel` (Settings › Search's own controls), `tab` / `backspace` (in the field, as the
   keys), `zoom in|out|reset`, and
   `key tab ctrl keywin` / `key ctrlup` for ⌃Tab walks, `key z cmd keywin` for ⌘Z. The command bar's state has its `scope` and each search
-  row's `url`. `onscreen on|off` puts the hidden window on the shown Space
-  (accessory policy, nearly transparent, click-through, not activated) for checks of what pages draw. The state log
+  row's `url`. `onscreen on|show|off` puts the hidden window on the shown Space
+  (accessory policy, nearly transparent, click-through, not activated) for checks of what pages draw; `show` makes it
+  opaque for screenshots: the check `surfaces-snap` (only with `SNAP_DIR`) photographs every note, panel and question
+  into that folder with `screencapture -l` of the state log's `windowNumber`. The state log
   has `settings`, `settingsWindow` (pane, panes listed, rows per pane by id, search results, `flashing` /
   `lastFlash` / `flashVisible`, the selected row's colours and contrast, live pictures, open "More" lines),
   `menuKeys`, `recentOrder`, `tabCycle`, `looks` (app and window appearance, scroller style), `undo` (Edit › Undo's

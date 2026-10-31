@@ -119,14 +119,15 @@ enum TestCommands {
   private static var offScreenLook: (NSWindow.CollectionBehavior, CGFloat, NSWindow.Level, Bool)?
   private static func onScreen(_ argument: String, _ window: NSWindow?) -> String {
     guard let window else { return "no window" }
-    if argument == "on" {
+    if argument == "on" || argument == "show" {
       if offScreenLook == nil {
         offScreenLook = (window.collectionBehavior, window.alphaValue, window.level, window.ignoresMouseEvents)
       }
       // Only an accessory app's windows can join another app's full-screen Space.
       NSApp.setActivationPolicy(.accessory)
       window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
-      window.alphaValue = 0.02
+      // `show`: fully opaque, for screenshots of the window (still click-through, never activated).
+      window.alphaValue = argument == "show" ? 1 : 0.02
       window.ignoresMouseEvents = true
       // Above full-screen overlays such as the screenshot tool's, which would leave it covered.
       window.level = .statusBar

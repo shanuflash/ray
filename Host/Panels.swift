@@ -80,6 +80,8 @@ final class Panels {
   private(set) var steps: [String: Int] = ["opened": 0, "reshaped": 0, "closed": 0]
   private(set) var lastClosedBy: String?
   var onChange: (() -> Void)?
+  /// A panel opened here (its frame in the host): notes under it get out of the way.
+  var onOpen: ((NSRect) -> Void)?
 
   init(host: NSView, below: @escaping () -> NSView?) {
     self.host = host
@@ -109,6 +111,7 @@ final class Panels {
     spec.anchor.hold?(true)
     place(view)
     view.enter()
+    onOpen?(view.frame)
     steps["opened", default: 0] += 1
     watch(view)
     onChange?()

@@ -2813,8 +2813,12 @@ const checks = {
     const open = () => state().panels.open;
     const rect = (text) => text.split(",").map(Number);
     const before = { ...state().panels.steps };
+    // A note in the panel's corner (the zoom level) gets out of its way.
+    await command("note show topTrailing 110%");
+    await until("note up", async () => { await command("state"); return state().notes.spots.topTrailing; });
     await command("menu toggleSiteControls");
     await until("panel open", async () => { await command("state"); return open()?.name === "siteControls"; });
+    await until("note gone from under it", async () => { await command("state"); return !state().notes.spots.topTrailing; }, 2000);
     assert(open().style === "glass" && open().below && open().align === "trailing", `look and side: ${JSON.stringify(open())}`);
     await sleep(500);
     await command("state");
@@ -2865,6 +2869,102 @@ const checks = {
     await command("key esc keywin");
     await until("closed again", async () => { await command("state"); return open() === null; });
     await setSetting("pageAddressBar", "on");
+  },
+  async "surfaces-snap"() {
+    // Photographs of every note, panel and question, for a person to look at: SNAP_DIR=<folder> scripts/test.sh
+    // surfaces-snap. Never in a normal run: the window is opaque on screen (click-through, not activated) meanwhile.
+    const dir = process.env.SNAP_DIR;
+    if (!dir) throw new Skip("SNAP_DIR not set");
+    mkdirSync(dir, { recursive: true });
+    await resetSettings();
+    if (await commandResult("onscreen show") !== "ok") throw new Skip("no window");
+    let shots = 0;
+    const snap = async (name) => {
+      await sleep(700);
+      await command("state");
+      const file = join(dir, `${String(++shots).padStart(2, "0")}-${name}.png`);
+      const r = spawnSync("screencapture", ["-x", "-o", `-l${state().windowNumber}`, file]);
+      if (r.status !== 0 || !existsSync(file)) throw new Skip("screen capture not allowed");
+    };
+    const entryFor = (tabId) => ["favorites", "pinned", "today"].flatMap((k) => state().sidebar[k]).find((e) => e.tab === tabId);
+    const panelOpen = async () => until("panel open", async () => { await command("state"); return state().panels.open; });
+    const panelClosed = async () => until("panel closed", async () => { await command("state"); return !state().panels.open; });
+    try {
+      await command(`row ${entryFor(tabFor("/a").id).id}`);
+      await until("/a active", () => state().active === tabFor("/a").id);
+      for (const [mode, look] of [["light", "glass"], ["dark", "glass"], ["light", "solid"], ["dark", "solid"]]) {
+        await setSetting("appearanceMode", mode);
+        await setSetting("surfaceStyle", look);
+        await command("key c cmd shift");
+        await command("zoom in");
+        await snap(`${mode}-${look}-notes`);
+        await command("zoom reset");
+        await command("menu toggleSiteControls");
+        await panelOpen();
+        await snap(`${mode}-${look}-site-controls`);
+        if (mode === "light" && look === "glass") {
+          for (const page of ["more", "back", "choices:popups", "back", "clearData"]) {
+            await command(`site press ${page}`);
+            if (page !== "back") await snap(`site-controls-${page.replace(":", "-")}`);
+          }
+        }
+        await command("key esc keywin");
+        await panelClosed();
+      }
+      await setSetting("appearanceMode", "light");
+      await setSetting("surfaceStyle", "glass");
+      // The find bar, and site controls from the sidebar's address field.
+      await command("key f cmd keywin");
+      await until("find bar", () => state().find);
+      await snap("find-bar");
+      await command("escape");
+      await setSetting("pageAddressBar", "off");
+      await command("menu toggleSiteControls");
+      await panelOpen();
+      await snap("sidebar-site-controls");
+      await command("key esc keywin");
+      await panelClosed();
+      await setSetting("pageAddressBar", "on");
+      // A site asking for notifications.
+      const { sessionId } = await session("/a");
+      await evaluate(sessionId, `Notification.requestPermission(); 0`);
+      await until("permission prompt", () => state().permission);
+      await snap("permission-prompt");
+      await sleep(400);
+      await command("perm block");
+      await command(`setting siteSettings default`).catch(() => {});
+      // An extension asking to be added, and the quit warning.
+      await command("extprompt fake Demo Extension");
+      await until("install prompt", () => state().installPrompt);
+      await snap("extension-install");
+      await until("cancel ready", async () => { await command("state"); return state().installPrompt?.addEnabled; }, 3000);
+      await command("extprompt cancel");
+      await setSetting("warnBeforeQuitting", "on");
+      await command("menu quit");
+      await panelOpen();
+      await snap("quit-warning");
+      await command("warning cancel");
+      await setSetting("warnBeforeQuitting", "off");
+      // A download's note.
+      await evaluate(sessionId, `(() => { const a = document.createElement("a"); a.href = "/files/notes.txt"; a.click(); })()`);
+      await until("download note", async () => { await command("state"); return state().notes.spots.bottomLeading; }, 8000);
+      await snap("download-note");
+      // Change Icon… on a new Today folder.
+      const tab = state().sidebar.today.find((e) => e.live && e.kind !== "folder");
+      await command(`rowaction newfolder ${tab.id}`);
+      const folder = await until("folder", async () => { await command("state"); return state().sidebar.today.find((e) => e.kind === "folder" && e.title === "New Folder"); });
+      await command(`rename ${folder.id} Snap`);
+      await command(`rowaction changeicon ${folder.id}`);
+      await panelOpen();
+      await snap("icon-picker");
+      await command("iconpicker close");
+      await panelClosed();
+      await command(`rowaction deletefolder ${folder.id}`);
+      console.log(`     ${shots} pictures in ${dir}`);
+    } finally {
+      await command("onscreen off");
+      await resetSettings();
+    }
   },
   async "copy-url"() {
     const url = state().sidebar[["favorites", "pinned", "today"].find((k) => state().sidebar[k].some((e) => e.id === state().activeEntry))]

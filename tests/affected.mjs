@@ -224,7 +224,7 @@ export const areas = {
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay"],
   "Host/Panels.swift": ["panels", "site-controls", "extensions", "extension-prompt", "settings-privacy", "warn-before-quitting", "warn-before-closing-window", ...folders],
-  "Host/Surface.swift": ["panels", "notes", "site-controls", "permission", "permission-allow", "downloads"],
+  "Host/Surface.swift": ["surfaces-snap", "panels", "notes", "site-controls", "permission", "permission-allow", "downloads"],
   "Host/Updater.swift": ["updater-config", "settings-general"],
   // ⇧⌘T and History › Recently Closed.
   "Host/ClosedTabs.swift": ["reopen-closed-tab", "tab-rename"],

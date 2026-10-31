@@ -692,6 +692,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private(set) lazy var panels: Panels = {
     let panels = Panels(host: root) { [weak self] in self?.floating }
     panels.onChange = { [weak self] in self?.logState("panels") }
+    panels.onOpen = { [weak self] frame in self?.notes.dismiss(overlapping: frame) }
     return panels
   }()
 
@@ -2449,6 +2450,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "pages": pages.debugState,
       "cardFrame": NSStringFromRect(pages.frame),
       "windowFrame": NSStringFromRect(window.frame),
+      "windowNumber": window.windowNumber,
       "windowMovable": window.isMovable,
       "windowVisibleOnScreen": window.occlusionState.contains(.visible),
       "windowOnActiveSpace": window.isOnActiveSpace,
