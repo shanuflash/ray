@@ -3,9 +3,11 @@ import AppKit
 enum SidebarRowAction {
   case pin, unpin, addToFavorites, removeFromFavorites, backToPinned, close, unload
   case toggleFolder, newFolder, newNestedFolder, renameFolder, removeFromFolder, deleteFolder
-  case editFolder, pinFolder, unpinFolder, newTabInFolder, closeFolderTabs
+  case changeIcon, pinFolder, unpinFolder, newTabInFolder, closeFolderTabs
   case moveToFolder(UUID)
-  case setColor(String?)
+  case setColor(String?), setIcon(String?)
+  /// Several selected tabs' links to the clipboard.
+  case copyLinks
 }
 
 /// Where a dragged entry lands. Indexes count the section without the dragged entry (for a folder, without
@@ -19,12 +21,14 @@ protocol SidebarViewDelegate: AnyObject {
   func sidebar(_ sidebar: SidebarView, select entry: SidebarEntry)
   func sidebar(_ sidebar: SidebarView, perform action: SidebarRowAction, on entry: SidebarEntry)
   func sidebar(_ sidebar: SidebarView, move entry: SidebarEntry, to target: SidebarDropTarget)
+  /// Several selected tabs: a menu action on all of them, or dragged together (`entries[0]` is the one held).
+  func sidebar(_ sidebar: SidebarView, perform action: SidebarRowAction, onAll entries: [SidebarEntry])
+  func sidebar(_ sidebar: SidebarView, move entries: [SidebarEntry], to target: SidebarDropTarget)
   func sidebar(_ sidebar: SidebarView, rename entry: SidebarEntry, to title: String)
-  /// Edit Folder: a colour or icon picked (live), or the name at the end.
-  func sidebar(_ sidebar: SidebarView, edit folder: SidebarEntry, title: String?, color: String?, icon: String?)
   /// A tab's own name, as typed in its row (empty: back to the page's title).
   func sidebar(_ sidebar: SidebarView, name entry: SidebarEntry, as name: String)
   func sidebarNewTab(_ sidebar: SidebarView)
+  func sidebarSelectionChanged(_ sidebar: SidebarView)
   func sidebarOpenAddress(_ sidebar: SidebarView)
   func sidebarToggle(_ sidebar: SidebarView)
   func sidebarBack(_ sidebar: SidebarView)
@@ -286,6 +290,8 @@ final class SidebarView: NSView {
     self.pinned = pinned
     self.today = today
     self.active = active
+    selection.removeAll { entry in !(pinned + today).contains { $0 === entry } }
+    if selection.count < 2 { selection = [] }
     tiles = reuse(tiles, count: favorites.count, in: tilesView) { FavoriteTileView() }
     pinnedRows = reuse(pinnedRows, count: pinned.count, in: content) { SidebarRowView() }
     todayRows = reuse(todayRows, count: today.count, in: content) { SidebarRowView() }
@@ -302,7 +308,7 @@ final class SidebarView: NSView {
     for (row, entry) in zip(pinnedRows + todayRows, pinned + today) {
       row.folderCount = counts[entry.id] ?? 0
       row.animatesFold = foldPending
-      row.show(entry, icon: entry.isFolder ? nil : delegate?.sidebarIcon(for: entry), selected: entry === active)
+      row.show(entry, icon: entry.isFolder ? nil : delegate?.sidebarIcon(for: entry), selected: isSelected(entry))
       row.animatesFold = false
       row.onClick = { [weak self] part in self?.clicked(entry, part: part) }
       // A double click on a tab's title renames it (Arc's row tip says so); folders open and close on every click.
@@ -324,9 +330,9 @@ final class SidebarView: NSView {
     if let index = favorites.firstIndex(where: { $0 === entry }) {
       tiles[index].show(entry, icon: icon, selected: entry === active)
     } else if let index = pinned.firstIndex(where: { $0 === entry }) {
-      pinnedRows[index].show(entry, icon: icon, selected: entry === active)
+      pinnedRows[index].show(entry, icon: icon, selected: isSelected(entry))
     } else if let index = today.firstIndex(where: { $0 === entry }) {
-      todayRows[index].show(entry, icon: icon, selected: entry === active)
+      todayRows[index].show(entry, icon: icon, selected: isSelected(entry))
     }
   }
 
@@ -458,11 +464,6 @@ final class SidebarView: NSView {
     }
     showRows(pinnedRows, pinned, pinnedRest)
     showRows(todayRows, today, todayRest)
-    // Edit Folder stands in for its folder's row.
-    let editing = folderEditor?.folder
-    if let editing, let row = zip(pinnedRows + todayRows, pinned + today).first(where: { $0.1 === editing })?.0 {
-      row.isHidden = true
-    }
     func treeSlots(_ rows: [SidebarRowView], _ entries: [SidebarEntry], _ rest: [TreeRow], gap: Int?)
       -> [(SidebarRowView, SidebarEntry, Int)?] {
       let rowFor = Dictionary(zip(entries.map(\.id), rows), uniquingKeysWith: { first, _ in first })
@@ -513,6 +514,7 @@ final class SidebarView: NSView {
       return nil
     }
     var appearingIndex = 0
+    var shown = Set<UUID>()
     func placeTree(_ slots: [(SidebarRowView, SidebarEntry, Int)?]) {
       for slot in slots {
         if case let (row, entry, depth)? = slot {
@@ -530,10 +532,13 @@ final class SidebarView: NSView {
             } else {
               foldPlace(row, frame, from: nil, alpha: 1)
             }
+          } else if moving, landing[entry.id] == nil, !shownLast.contains(entry.id) {
+            // New in this change (a folder just made, a tab that came in): it drops in where it lands.
+            foldPlace(row, frame, from: frame.offsetBy(dx: 0, dy: -Self.foldDrop), alpha: 1)
           } else {
             place(row, frame, entry: entry)
           }
-          if entry === editing { rowY += FolderEditorView.height - Self.rowHeight }
+          shown.insert(entry.id)
         }
         rowY += Self.rowHeight
       }
@@ -566,14 +571,8 @@ final class SidebarView: NSView {
     placeTree(todaySlots)
     fadeCollapsing(pinnedRows, pinned)
     fadeCollapsing(todayRows, today)
-    if let editor = folderEditor {
-      if let frame = placed[editor.folder.id] {
-        place(editor.view, NSRect(x: frame.minX, y: frame.minY, width: frame.width, height: FolderEditorView.height), entry: nil)
-      } else {
-        // Its folder went out of sight (closed into its parent, or gone): editing ends, keeping what was picked.
-        DispatchQueue.main.async { [weak self] in self?.endFolderEditor(keep: true) }
-      }
-    }
+    shownLast = shown
+    moving = false
     content.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(rowY + inset, scrollView.frame.height))
     landing = [:]
   }
@@ -606,43 +605,35 @@ final class SidebarView: NSView {
     return result
   }
 
-  // MARK: Edit Folder
+  // MARK: Folder motion
 
-  /// The folder being edited and its panel, which stands in for the folder's row.
-  private(set) var folderEditor: (folder: SidebarEntry, view: FolderEditorView)?
+  /// Set by `animateNextChange`: the next layout slides rows from where they are now and drops new ones in.
+  private var moving = false
+  /// The rows the last layout showed, to tell which ones a change brings in.
+  private var shownLast: Set<UUID> = []
 
-  /// Right-click › Edit Folder… (and a new folder): name, colour and icon in a panel in the sidebar, under where the
-  /// folder's row was. Colours and icons apply as they're picked; Escape puts back what was there.
-  func beginEditFolder(_ folder: SidebarEntry) {
-    pendingRename = nil
-    DispatchQueue.main.async { [weak self] in
-      guard let self, (self.pinned + self.today).contains(where: { $0 === folder }) else { return }
-      self.endFolderEditor(keep: true)
-      let editor = FolderEditorView(title: folder.title, color: folder.color, icon: folder.icon,
-                                    isToday: self.today.contains { $0 === folder })
-      editor.onChange = { [weak self] _, color, icon in
-        guard let self else { return }
-        self.delegate?.sidebar(self, edit: folder, title: nil, color: color, icon: icon)
-      }
-      editor.onEnd = { [weak self, weak editor] keep, title, color, icon in
-        guard let self, let editor, self.folderEditor?.view === editor else { return }
-        self.folderEditor = nil
-        editor.removeFromSuperview()
-        self.delegate?.sidebar(self, edit: folder, title: keep ? title : nil, color: color, icon: icon)
-        self.needsLayout = true
-      }
-      self.folderEditor = (folder, editor)
-      self.content.addSubview(editor)
-      self.needsLayout = true
-      self.layoutSubtreeIfNeeded()
-      editor.scrollToVisible(editor.bounds)
-      editor.focus()
+  /// Before a change that moves rows around (a folder made, a tab put in or out of one, a folder pinned): the next
+  /// layout slides every row from where it's drawn now to its new place, as a drop does, and new rows drop in.
+  func animateNextChange() {
+    guard window != nil, !isDragging, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+    for (view, entry) in shownViews where !view.isHidden {
+      guard let parent = view.superview else { continue }
+      let frame = view.layer?.animation(forKey: "slide.position") != nil ? view.layer?.presentation()?.frame : nil
+      landing[entry.id] = convert(frame ?? view.frame, from: parent)
     }
+    moving = true
+    Self.changesAnimated += 1
   }
 
-  func endFolderEditor(keep: Bool) {
-    guard let editor = folderEditor?.view else { return }
-    keep ? editor.pressReturn() : editor.pressEscape()
+  /// Changes animated so far, for the state log (checks record motion app-side).
+  static var changesAnimated = 0
+
+  /// A folder row's icon, in `view`'s coordinates (where Change Icon's panel points), nil when it isn't showing.
+  func iconFrame(of folder: SidebarEntry, in view: NSView) -> NSRect? {
+    layoutSubtreeIfNeeded()
+    guard let row = zip(pinnedRows + todayRows, pinned + today).first(where: { $0.1 === folder })?.0, !row.isHidden else { return nil }
+    row.scrollToVisible(row.bounds)
+    return row.folderIcon.convert(row.folderIcon.bounds, to: view)
   }
 
   /// Starts renaming a folder or a tab in place (a new folder starts this way; rows' menus have Rename…, and a tab's
@@ -686,6 +677,11 @@ final class SidebarView: NSView {
       row?.removeFromSuperview()
       commit(name)
     }
+  }
+
+  /// Closes an entry's open rename field, keeping the old name (for tests that commit a name themselves).
+  func cancelRename(_ entry: SidebarEntry) {
+    renameRows.first { $0.1 === entry && $0.0.isRenaming }?.0.cancelRename()
   }
 
   /// The rows that can hold a rename field, with what each shows.
@@ -802,6 +798,8 @@ final class SidebarView: NSView {
         delegate?.sidebar(self, perform: .toggleFolder, on: drag.entry)
         return
       }
+      if !drag.lifted, pendingClear === drag.entry { clearSelection() }
+      pendingClear = nil
       drop(drag)
     default:
       break
@@ -849,9 +847,31 @@ final class SidebarView: NSView {
     retarget(drag)
   }
 
+  /// How far from a folder row's middle a dragged row drops into it.
+  private static func folderBand(_ folder: SidebarEntry) -> CGFloat {
+    (folder.isOpen ?? true) ? rowHeight / 4 : rowHeight * 0.42
+  }
+
+  /// A closed folder a tab is held over springs open after a moment (Finder's spring-loaded folders), so it can be
+  /// dropped between the folder's tabs.
+  private var springOpen: DispatchWorkItem?
+  static let springDelay: TimeInterval = 0.6
+
   private func retarget(_ drag: SidebarDrag) {
     let target = dropTarget(for: drag)
     guard target != drag.target else { return }
+    springOpen?.cancel()
+    springOpen = nil
+    if case .folder(let id)? = target, let folder = (pinned + today).first(where: { $0.id == id }), !(folder.isOpen ?? true) {
+      let work = DispatchWorkItem { [weak self, weak drag] in
+        guard let self, let drag, self.drag === drag, drag.target == .folder(id), !(folder.isOpen ?? true) else { return }
+        self.delegate?.sidebar(self, perform: .toggleFolder, on: folder)
+        drag.target = nil
+        self.retarget(drag)
+      }
+      springOpen = work
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.springDelay, execute: work)
+    }
     // Settings › Haptic feedback when reordering tabs: a tick each time the tab finds a new place (not on lifting it,
     // nor when it leaves every place), as Ardia's drag does.
     if drag.placed, target != nil, RaySettings.shared[.tabReorderHaptics] {
@@ -903,10 +923,11 @@ final class SidebarView: NSView {
     func index(_ value: CGFloat, _ count: Int) -> Int { min(max(Int((value / height).rounded()), 0), count) }
     let pinLimit = pinnedCount > 0 ? newTabY + height / 2 : pinning ? lineY : height / 2
     if centre < pinLimit {
-      // The middle half of a folder row drops into it (Crest's band; Ardia uses the middle two thirds).
+      // The middle half of an open folder's row drops into it (Crest's band; Ardia uses the middle two thirds); a
+      // closed folder's takes nearly all of it, since nothing shows below it to aim between.
       let over = Int(floor(centre / height))
       if over >= 0, over < rest.count, rest[over].entry.isFolder,
-         abs(centre - (CGFloat(over) + 0.5) * height) < height / 4 {
+         abs(centre - (CGFloat(over) + 0.5) * height) < Self.folderBand(rest[over].entry) {
         return .folder(rest[over].entry.id)
       }
       let gap = index(top, pinnedCount)
@@ -946,7 +967,7 @@ final class SidebarView: NSView {
     let restCount = today.count - dragged
     let over = Int(floor(centre / height))
     if !drag.entry.isFolder, over >= 0, over < rest.count, rest[over].entry.isFolder,
-       abs(centre - (CGFloat(over) + 0.5) * height) < height / 4 {
+       abs(centre - (CGFloat(over) + 0.5) * height) < Self.folderBand(rest[over].entry) {
       return .folder(rest[over].entry.id)
     }
     var gap = min(max(Int(((centre - height / 2) / height).rounded()), 0), rest.count)
@@ -989,6 +1010,8 @@ final class SidebarView: NSView {
 
   private func drop(_ drag: SidebarDrag) {
     self.drag = nil
+    springOpen?.cancel()
+    springOpen = nil
     guard drag.lifted else { return }
     autoscroll?.invalidate()
     autoscroll = nil
@@ -1003,8 +1026,15 @@ final class SidebarView: NSView {
     drag.ghost?.removeFromSuperview()
     drag.view.alphaValue = 1
     landing = frames
+    let together = selection.count > 1 && selection.contains { $0 === drag.entry }
+      ? [drag.entry] + selection.filter { $0 !== drag.entry } : []
     if let target {
-      delegate?.sidebar(self, move: drag.entry, to: target)
+      if together.isEmpty {
+        delegate?.sidebar(self, move: drag.entry, to: target)
+      } else {
+        clearSelection()
+        delegate?.sidebar(self, move: together, to: target)
+      }
     }
     pendingShow?()
     needsLayout = true
@@ -1108,6 +1138,13 @@ final class SidebarView: NSView {
   private func clicked(_ entry: SidebarEntry, part: SidebarRowView.Part) {
     // A folder opens or closes on release, so pressing one to drag it doesn't toggle it.
     if entry.isFolder { return }
+    if select(entry, with: NSApp.currentEvent?.modifierFlags ?? []) { return }
+    // Pressing one of several selected tabs may start dragging them all: the selection stays until the release.
+    if selection.count > 1, selection.contains(where: { $0 === entry }) {
+      pendingClear = entry
+      delegate?.sidebar(self, select: entry)
+      return
+    }
     if part == .icon, entry.isAwayFromPinned, entry.isLive {
       delegate?.sidebar(self, perform: .backToPinned, on: entry)
     } else {
@@ -1116,10 +1153,112 @@ final class SidebarView: NSView {
   }
 
   private func select(_ entry: SidebarEntry) {
+    clearSelection()
     delegate?.sidebar(self, select: entry)
   }
 
+  // MARK: Selection
+
+  /// Tabs picked with ⌘-click or ⇧-click, as in Arc, in sidebar order: empty unless two or more are.
+  private(set) var selection: [SidebarEntry] = []
+  /// Where a ⇧-click range starts: the last tab ⌘- or plain-clicked (else the active one).
+  private var selectionAnchor: SidebarEntry?
+  /// A selected tab pressed without a modifier: released without a drag, the selection ends.
+  private var pendingClear: SidebarEntry?
+
+  private func isSelected(_ entry: SidebarEntry) -> Bool {
+    entry === active || selection.contains { $0 === entry }
+  }
+
+  /// ⌘-click adds or takes out a tab (the active one counts as picked), ⇧-click picks the shown tabs from the anchor
+  /// to it. Neither switches tabs. Returns whether the click was one of those.
+  @discardableResult
+  func select(_ entry: SidebarEntry, with flags: NSEvent.ModifierFlags) -> Bool {
+    let flags = flags.intersection([.command, .shift])
+    guard !flags.isEmpty, !entry.isFolder, entry.kind != .favorite else { return false }
+    let tabs = (visibleTree(pinned, without: nil) + visibleTree(today, without: nil)).map(\.entry).filter { !$0.isFolder }
+    var picked = selection.isEmpty ? [active].compactMap { $0 }.filter { a in tabs.contains { $0 === a } } : selection
+    if flags.contains(.shift) {
+      let anchor = selectionAnchor.flatMap { a in tabs.firstIndex { $0 === a } }
+        ?? active.flatMap { a in tabs.firstIndex { $0 === a } } ?? 0
+      guard let to = tabs.firstIndex(where: { $0 === entry }) else { return true }
+      let range = Array(tabs[min(anchor, to)...max(anchor, to)])
+      picked = flags.contains(.command) ? picked + range.filter { r in !picked.contains { $0 === r } } : range
+    } else if let at = picked.firstIndex(where: { $0 === entry }) {
+      picked.remove(at: at)
+      selectionAnchor = entry
+    } else {
+      picked.append(entry)
+      selectionAnchor = entry
+    }
+    selection = tabs.filter { t in picked.contains { $0 === t } }
+    if selection.count < 2 { selection = [] }
+    showSelection()
+    return true
+  }
+
+  func clearSelection() {
+    selectionAnchor = nil
+    guard !selection.isEmpty else { return }
+    selection = []
+    showSelection()
+  }
+
+  /// Rows' highlight and menus after the selection changed.
+  private func showSelection() {
+    for (row, entry) in zip(pinnedRows + todayRows, pinned + today) where !entry.isFolder {
+      row.setSelected(isSelected(entry))
+      row.menu = menu(for: entry)
+    }
+    delegate?.sidebarSelectionChanged(self)
+  }
+
+  /// The menu for a right-click on one of several selected tabs: what applies to all of them.
+  private func selectionMenu(_ entries: [SidebarEntry]) -> NSMenu {
+    let menu = NSMenu()
+    func add(_ title: String, _ action: SidebarRowAction) {
+      let item = NSMenuItem(title: title, action: #selector(selectionAction(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = SelectionChoice(action: action, entries: entries)
+      menu.addItem(item)
+    }
+    let count = entries.count
+    add("New Folder with \(count) Tabs", .newFolder)
+    let folders = NSMenu()
+    let sections = [("Today", today.filter(\.isFolder)), ("Pinned", pinned.filter(\.isFolder))].filter { !$0.1.isEmpty }
+    for (index, (name, choices)) in sections.enumerated() {
+      if index > 0 { folders.addItem(.separator()) }
+      if sections.count > 1 { folders.addItem(.sectionHeader(title: name)) }
+      for folder in choices {
+        let item = NSMenuItem(title: folderName(folder), action: #selector(selectionAction(_:)), keyEquivalent: "")
+        item.target = self
+        item.image = FolderLook.swatch(folder.color)
+        item.indentationLevel = min(depthOf(folder), 8)
+        item.representedObject = SelectionChoice(action: .moveToFolder(folder.id), entries: entries)
+        folders.addItem(item)
+      }
+    }
+    if !sections.isEmpty {
+      let holder = NSMenuItem(title: "Add to Folder", action: nil, keyEquivalent: "")
+      holder.submenu = folders
+      menu.addItem(holder)
+    }
+    if entries.contains(where: { $0.kind == .today }) { add("Pin \(count) Tabs", .pin) }
+    if entries.allSatisfy({ $0.kind == .pinned }) { add("Unpin \(count) Tabs", .unpin) }
+    add("Copy \(count) Links", .copyLinks)
+    menu.addItem(.separator())
+    add("Close \(count) Tabs", .close)
+    return menu
+  }
+
+  @objc private func selectionAction(_ item: NSMenuItem) {
+    guard let choice = item.representedObject as? SelectionChoice else { return }
+    clearSelection()
+    delegate?.sidebar(self, perform: choice.action, onAll: choice.entries)
+  }
+
   private func menu(for entry: SidebarEntry) -> NSMenu {
+    if selection.count > 1, selection.contains(where: { $0 === entry }) { return selectionMenu(selection) }
     let menu = NSMenu()
     func add(_ title: String, _ action: SidebarRowAction) {
       let item = NSMenuItem(title: title, action: #selector(menuAction(_:)), keyEquivalent: "")
@@ -1183,7 +1322,8 @@ final class SidebarView: NSView {
       }
     case .folder:
       let inToday = today.contains { $0 === entry }
-      add("Edit Folder…", .editFolder)
+      add("Rename…", .renameFolder)
+      add("Change Icon…", .changeIcon)
       let colours = NSMenu()
       for color in [nil] + FolderLook.colors.map(Optional.some) {
         let item = NSMenuItem(title: FolderLook.title(color), action: #selector(menuAction(_:)), keyEquivalent: "")
@@ -1245,10 +1385,6 @@ final class SidebarView: NSView {
     guard let choice = item.representedObject as? RowMenuChoice else { return }
     if case .renameFolder = choice.action {
       beginRename(choice.entry)
-      return
-    }
-    if case .editFolder = choice.action {
-      beginEditFolder(choice.entry)
       return
     }
     delegate?.sidebar(self, perform: choice.action, on: choice.entry)
@@ -1498,6 +1634,15 @@ final class HoverIconButton: NSButton {
   override func mouseExited(with event: NSEvent) {
     hovered = false
     needsDisplay = true
+  }
+}
+
+private final class SelectionChoice {
+  let action: SidebarRowAction
+  let entries: [SidebarEntry]
+  init(action: SidebarRowAction, entries: [SidebarEntry]) {
+    self.action = action
+    self.entries = entries
   }
 }
 
@@ -1810,7 +1955,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     doneButton.target = self
     doneButton.action = #selector(pressDone)
     doneButton.refusesFirstResponder = true
-    countLabel.font = .systemFont(ofSize: 12)
+    countLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
     countLabel.textColor = .secondaryLabelColor
     countLabel.alignment = .right
     countLabel.isHidden = true
@@ -2079,6 +2224,8 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     endRename(editor?.stringValue)
   }
 
+  func cancelRename() { endRename(nil) }
+
   private func endRename(_ name: String?) {
     guard let editor else { return }
     self.editor = nil
@@ -2130,7 +2277,8 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     chevron.frame = NSRect(x: bounds.width - 26, y: mid - 7, width: 14, height: 14)
     let doneWidth: CGFloat = 44
     doneButton.frame = NSRect(x: bounds.width - doneWidth - 8, y: mid - 10, width: doneWidth, height: 20)
-    let countWidth: CGFloat = countLabel.isHidden ? 0 : ceil(countLabel.intrinsicContentSize.width)
+    // A label's own size leaves its last glyph a hair short: room for it.
+    let countWidth: CGFloat = countLabel.isHidden ? 0 : ceil(countLabel.intrinsicContentSize.width) + 4
     let countHeight = ceil(countLabel.intrinsicContentSize.height)
     countLabel.frame = NSRect(x: chevron.frame.minX - 2 - countWidth, y: (mid - countHeight / 2).rounded(), width: countWidth, height: countHeight)
     let trailing = editor != nil ? doneButton.frame.minX - 4

@@ -260,7 +260,8 @@ Smaller gaps found while building the items above. Each says where the fix goes.
      look it saved when a group was made. `TabGroupSync` pushes Ray's look over it for 5 s after making a group; turning
      the service off in the engine would remove the race.
    - Close Tabs has no undo note yet (⇧⌘T and History › Recently Closed bring tabs back): `notes.show(Note(…, spot: .bottom))` with an Undo button.
-   - The folder icon has no accessibility label; Edit Folder's grid has no arrow-key navigation.
+   - The folder icon has no accessibility label; Change Icon's grid has no arrow-key navigation, and an emoji icon
+     (kept from before 2026-10-31) can't be picked again (Arc's set is symbols only).
    - Not yet tried with the real Claude extension (needs the owner's sign-in in their own Ray).
 
 ## Done
@@ -291,4 +292,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | JumpCloud Go sign-in relayed through Google Chrome (Settings › Passwords; known limitation #15) | 2026-10-29, `0b6fb3f` |
 | Settings: Light, Dark or Automatic (pages follow); scroll bars Automatic / When scrolling / Always (pages follow live); one address-bar-on-page setting for every window; show or hide the sidebar button; fade unloaded tabs; reorder haptic; ⌘Z reopens a closed tab outside text | 2026-10-29, `d2c6ed0` |
 | Settings › Shortcuts: an editor for every menu command (record, conflicts with Replace, none, reset; macOS's keys refused; Quit and Settings locked); the command bar and reserved keys follow | 2026-10-29, `7f3b29d` |
-| Folders in Today as Chrome tab groups (extensions like Claude's drive them; ungrouping, renaming, colours, collapse both ways), Edit Folder (name, colour, symbol or emoji), an animated folder icon, Pin / Unpin Folder, Close Tabs; kept over relaunch | 2026-10-31, `e18f3c8` |
+| Folders in Today as Chrome tab groups (extensions like Claude's drive them; ungrouping, renaming, colours, collapse both ways), colours, Change Icon (Arc's panel), an animated folder icon, sliding moves, spring-loaded closed folders, Pin / Unpin Folder, Close Tabs; kept over relaunch | 2026-10-31, `e18f3c8` |

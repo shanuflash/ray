@@ -1173,13 +1173,11 @@ const checks = {
     assert(folder.title === "New Folder", `folder named ${folder.title}`);
     const order = state().sidebar.pinned.map((e) => e.id);
     assert(order.indexOf(a.id) === order.indexOf(folder.id) + 1, "the tab isn't right after its folder");
-    // A new folder opens Edit Folder in its row's place, ready to name.
-    await until("editing the new folder", async () => { await command("state"); return state().sidebar.folderEditor?.title === "New Folder"; }, 3000);
-    await command("folderedit name Work");
-    await command("folderedit enter");
-    await until("renamed", () => state().sidebar.pinned.find((e) => e.id === folder.id)?.title === "Work" && !state().sidebar.folderEditor);
+    await until("renaming the new folder", async () => { await command("state"); return state().sidebarFrames.renaming === folder.id; }, 3000);
     await settle();
     assert(frameOf(a.id).x === frameOf(folder.id).x + 16, `indent ${frameOf(folder.id).x} -> ${frameOf(a.id).x}`);
+    await command(`rename ${folder.id} Work`);
+    await until("renamed", () => state().sidebar.pinned.find((e) => e.id === folder.id)?.title === "Work");
     folderIDs = { folder: folder.id, a: a.id, b: b.id };
   },
   async "folder-toggle"() {
@@ -1367,7 +1365,11 @@ const checks = {
     const sw = await until("worker", async () => (await send("Target.getTargets")).targetInfos.find((t) => t.url.startsWith(`chrome-extension://${id}/`)), 10000);
     const { sessionId } = await send("Target.attachToTarget", { targetId: sw.targetId, flatten: true });
     const run = async (js) => {
-      const r = await send("Runtime.evaluate", { expression: `(async () => { ${js} })()`, awaitPromise: true, returnByValue: true }, sessionId);
+      // A worker that stopped answers nothing: every call has its deadline.
+      const r = await Promise.race([
+        send("Runtime.evaluate", { expression: `(async () => { ${js} })()`, awaitPromise: true, returnByValue: true }, sessionId),
+        sleep(10000).then(() => { throw new Error(`extension call timed out: ${js.slice(0, 80)}`); }),
+      ]);
       if (r.exceptionDetails) throw new Error(`extension: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
       return r.result?.value;
     };
@@ -1420,35 +1422,44 @@ const checks = {
     await until("out of the group", async () => (await run(`return (await chrome.tabs.get(${made.tab})).groupId`)) === -1);
     assert(byId(made.id).parent === null, "the tab stayed in the folder");
 
-    // The user makes one: New Folder from a tab's menu opens Edit Folder; name, colour and icon go to Chrome.
+    // The user makes one: New Folder from a tab's menu, named in place (the row's field, with Done), its tab sliding in.
     const third = entryOfTab(tabs[2]);
     const menu = JSON.parse(await commandResult(`rowmenu ${third.id}`));
     assert(menu.some((t) => t.startsWith("Add to Folder > New Folder") && t.includes("Agents")), `tab menu ${menu}`);
+    const motion = (await live()).sidebar.changesAnimated;
     await command(`rowaction newfolder ${third.id}`);
-    await until("Edit Folder open", async () => (await live()).sidebar.folderEditor);
-    await command("folderedit name Mine");
-    await command("folderedit color green");
-    await command("folderedit tab symbols");
-    await command("folderedit icon sf:star");
-    await command("folderedit enter");
+    const fresh = await until("renaming the new folder", async () => {
+      const s = await live();
+      const f = s.sidebar.today.find((e) => e.kind === "folder" && e.title === "New Folder");
+      return f && s.sidebarFrames.renaming === f.id ? f : null;
+    }, 4000);
+    assert(state().sidebar.changesAnimated > motion || state().sidebarFrames.reduceMotion === "1", "making a folder didn't animate");
+    await command(`rename ${fresh.id} Mine`);
+    await command(`rowaction color ${fresh.id} green`);
+    // Change Icon…: Arc's panel, pointing at the folder's icon; a pick applies and closes it.
+    const panels = state().sidebar.iconPickerAnimations;
+    await command(`rowaction changeicon ${fresh.id}`);
+    const picker = await until("icon panel", async () => (await live()).sidebar.iconPicker, 3000);
+    assert(picker.symbols >= 20 && picker.chosen === null, `icon panel ${JSON.stringify(picker)}`);
+    await command("iconpicker pick sf:star.fill");
     const mine = await until("the user's folder", async () => {
       const s = await live();
       const f = s.sidebar.today.find((e) => e.kind === "folder" && e.title === "Mine");
-      return f && !s.sidebar.folderEditor && f.color === "green" && f.icon === "sf:star" && entryOfTab(tabs[2]).parent === f.id ? f : null;
+      return f && !s.sidebar.iconPicker && f.color === "green" && f.icon === "sf:star.fill" && entryOfTab(tabs[2]).parent === f.id ? f : null;
     });
+    assert(state().sidebar.folderIcons.rows[mine.id]?.icon === "sf:star.fill", `folder icon ${JSON.stringify(state().sidebar.folderIcons.rows[mine.id])}`);
+    assert(state().sidebar.iconPickerAnimations >= panels + 2 || state().sidebarFrames.reduceMotion === "1", "the icon panel didn't animate in and out");
     await until("Chrome has the user's folder", async () => (await chromeGroups()).some((g) => g.title === "Mine" && g.color === "green" && g.tabs.includes(tabs[2])));
     const folderMenu = JSON.parse(await commandResult(`rowmenu ${mine.id}`));
-    for (const item of ["Edit Folder…", "New Tab in Folder", "Pin Folder", "Delete Folder", "Close Tabs"]) {
+    for (const item of ["Rename…", "Change Icon…", "New Tab in Folder", "Pin Folder", "Delete Folder", "Close Tabs"]) {
       assert(folderMenu.some((t) => t === item || t.startsWith(item)), `folder menu lacks ${item}: ${folderMenu}`);
     }
     assert(folderMenu.some((t) => t.startsWith("Colour > None|Blue")), `colour menu ${folderMenu}`);
-    // Escape puts back what a colour pick changed while editing.
-    await command(`rowaction editfolder ${mine.id}`);
-    await until("Edit Folder open again", async () => (await live()).sidebar.folderEditor);
-    await command("folderedit color red");
-    await until("the colour applies at once", async () => byId(mine.id)?.color === "red" && (await live()) && byId(mine.id).color === "red");
-    await command("folderedit escape");
-    await until("Escape put it back", async () => { const s = await live(); return !s.sidebar.folderEditor && byId(mine.id).color === "green"; });
+    // The trash button takes the icon off; Escape-like closes keep it.
+    await command(`rowaction changeicon ${mine.id}`);
+    await until("icon panel again", async () => (await live()).sidebar.iconPicker?.chosen === "sf:star.fill", 3000);
+    await command("iconpicker close");
+    await until("closed, icon kept", async () => { const s = await live(); return !s.sidebar.iconPicker && byId(mine.id).icon === "sf:star.fill"; });
 
     // Dragging a tab onto a folder's row puts it in that folder (and its group).
     await command("state");
@@ -1456,6 +1467,24 @@ const checks = {
     await command(`drag ${moving.cx} ${moving.cy} ${target.cx - moving.cx} ${target.cy - moving.cy}`);
     await until("dragged into the folder", async () => (await live()) && byId(made.id)?.parent === mine.id);
     await until("and into its group", async () => (await chromeGroups()).some((g) => g.title === "Mine" && g.tabs.includes(made.tab)));
+    // A closed folder takes a tab dropped anywhere on most of its row, and springs open when a tab is held over it.
+    await command(`rowaction outfolder ${made.id}`);
+    await command(`rowaction togglefolder ${mine.id}`);
+    await until("closed, tab out", async () => (await live()) && byId(mine.id).open === false && byId(made.id).parent === null);
+    await settle();
+    let closed = frameOf(mine.id), loose = frameOf(made.id);
+    await command(`drag ${loose.cx} ${loose.cy} ${closed.cx - loose.cx} ${closed.cy - 13 - loose.cy}`);
+    await until("dropped high on a closed folder, in it", async () => (await live()) && byId(made.id)?.parent === mine.id);
+    await command(`rowaction outfolder ${made.id}`);
+    await command(`rowaction togglefolder ${mine.id}`);
+    await until("closed again, tab out", async () => (await live()) && byId(mine.id).open === false && byId(made.id).parent === null);
+    await settle();
+    closed = frameOf(mine.id); loose = frameOf(made.id);
+    await command(`press ${loose.cx} ${loose.cy}`);
+    for (const t of [0.3, 0.7, 1]) await command(`move ${loose.cx + (closed.cx - loose.cx) * t} ${loose.cy + (closed.cy - loose.cy) * t}`);
+    await until("the held-over folder sprang open", async () => (await live()) && byId(mine.id).open === true, 3000);
+    await command(`release ${closed.cx} ${closed.cy}`);
+    await until("and took the tab", async () => (await live()) && byId(made.id)?.parent === mine.id);
 
     // Pinning a folder: pinned tabs in a pinned folder, no longer a Chrome group. Unpinning makes it one again.
     await command(`rowaction pinfolder ${mine.id}`);
@@ -1491,18 +1520,20 @@ const checks = {
     // A Today folder (name, colour, icon, its tabs) comes back after a relaunch, and is a Chrome group again once one
     // of its tabs is open. Its own instance, relaunched on the same data dir.
     const dir = mkdtempSync(join(tmpdir(), "ray-folders-relaunch-"));
+    let it;
     try {
-      let it = ownInstance("folders-relaunch", { RAY_DATA_DIR: dir });
+      it = ownInstance("folders-relaunch", { RAY_DATA_DIR: dir });
       let s = await it.until("started", (x) => x?.sidebar?.today.some((e) => e.live));
       const tab = s.sidebar.today.find((e) => e.live);
       await it.ok(`rowaction newfolder ${tab.id}`);
-      await it.until("Edit Folder", (x) => x.sidebar.folderEditor);
-      await it.ok("folderedit name Trip");
-      await it.ok("folderedit color purple");
-      await it.ok("folderedit tab emoji");
-      await it.ok("folderedit icon ✈️");
-      await it.ok("folderedit enter");
-      s = await it.until("folder made", (x) => x.sidebar.today.some((e) => e.kind === "folder" && e.title === "Trip" && e.icon === "✈️")
+      const made = await it.until("renaming", (x) => x.sidebar.today.some((e) => e.kind === "folder" && x.sidebarFrames.renaming === e.id));
+      const fid = made.sidebar.today.find((e) => e.kind === "folder").id;
+      await it.ok(`rename ${fid} Trip`);
+      await it.ok(`rowaction color ${fid} purple`);
+      await it.ok(`rowaction changeicon ${fid}`);
+      await it.until("icon panel", (x) => x.sidebar.iconPicker);
+      await it.ok("iconpicker pick sf:airplane");
+      s = await it.until("folder made", (x) => x.sidebar.today.some((e) => e.kind === "folder" && e.title === "Trip" && e.icon === "sf:airplane")
         && x.sidebar.tabGroups.some((g) => g.title === "Trip" && g.color === "purple"));
       const folder = s.sidebar.today.find((e) => e.kind === "folder");
       await it.stop().catch(() => {});
@@ -1510,13 +1541,15 @@ const checks = {
       try {
         s = await it.until("relaunched with the folder", (x) => x?.sidebar?.today.some((e) => e.id === folder.id));
         const back = s.sidebar.today.find((e) => e.id === folder.id);
-        assert(back.title === "Trip" && back.color === "purple" && back.icon === "✈️", `folder after relaunch ${JSON.stringify(back)}`);
+        assert(back.title === "Trip" && back.color === "purple" && back.icon === "sf:airplane", `folder after relaunch ${JSON.stringify(back)}`);
         assert(s.sidebar.today.find((e) => e.id === tab.id)?.parent === folder.id, "its tab left it over the relaunch");
         await it.until("a group again with its open tab", (x) => x.sidebar.tabGroups.some((g) => g.title === "Trip" && g.color === "purple" && g.tabs.length === 1));
       } finally {
         await it.stop().catch(() => {});
       }
     } finally {
+      // Whichever instance is still up (a failure before the relaunch leaves the first one) goes.
+      if (it && it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
       rmSync(dir, { recursive: true, force: true });
     }
   },

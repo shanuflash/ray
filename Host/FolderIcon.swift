@@ -114,64 +114,6 @@ enum FolderLook {
   /// The icon if it's valid, else nil.
   static func validIcon(_ s: String?) -> String? { isValidIcon(s) ? s : nil }
 
-  // Symbols and emoji with their search words: Ardia's IconPicker.tsx lists (Apache-2.0).
-  private static let symbolNames = [
-    "star", "heart", "bookmark", "flag", "pin", "bolt", "flame", "leaf", "globe", "house", "briefcase", "cart", "bag", "creditcard",
-    "dollarsign.circle", "chart.bar", "chart.line.uptrend.xyaxis", "calendar", "clock", "alarm", "envelope", "bubble.left", "phone", "video",
-    "music.note", "headphones", "gamecontroller", "paintbrush", "camera", "film", "tv", "airplane", "map", "car", "fork.knife", "cup.and.saucer",
-    "figure.run", "sportscourt", "pawprint", "tree", "sun.max", "moon", "cloud", "snowflake", "sparkles", "gift", "trophy", "target", "brain",
-    "eye", "laptopcomputer", "desktopcomputer", "keyboard", "hammer", "wrench.and.screwdriver", "gearshape", "testtube.2", "ant", "lock",
-    "key", "puzzlepiece", "shippingbox", "folder", "archivebox", "newspaper", "link", "magnifyingglass", "safari", "tag", "lightbulb",
-    "questionmark.circle", "exclamationmark.triangle", "book", "graduationcap", "doc.text", "list.bullet", "checkmark.circle", "person.2",
-  ]
-
-  /// The symbols the editor offers, without any this macOS doesn't have (worked out once, on first use).
-  static let symbols: [(name: String, keywords: String)] = symbolNames
-    .filter { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }
-    .map { ($0, $0.replacingOccurrences(of: ".", with: " ")) }
-
-  static let emoji: [(char: String, keywords: String)] = [
-    ("⭐️", "star favorite"), ("🔥", "fire hot"), ("❤️", "heart love"), ("✅", "check done"), ("📌", "pin"), ("🚀", "rocket launch ship"),
-    ("💡", "idea bulb"), ("📝", "note memo write"), ("📚", "books read study"), ("📖", "book read"), ("🎓", "school graduate"), ("💼", "work briefcase"),
-    ("🏠", "home house"), ("🛒", "shopping cart"), ("💰", "money"), ("💳", "card pay"), ("📈", "chart growth stocks"), ("📊", "chart data"),
-    ("🗓️", "calendar date"), ("⏰", "alarm time"), ("📧", "email mail"), ("💬", "chat message"), ("📞", "phone call"), ("🎥", "video camera"),
-    ("🎵", "music song"), ("🎧", "headphones music"), ("🎮", "game play"), ("🎨", "art design paint"), ("📷", "photo camera"), ("🎬", "movie film"),
-    ("📺", "tv watch"), ("🍿", "popcorn movie"), ("✈️", "travel plane"), ("🗺️", "map travel"), ("🏖️", "beach holiday"), ("🌍", "world earth globe"),
-    ("🍕", "pizza food"), ("🍔", "burger food"), ("☕️", "coffee"), ("🍷", "wine"), ("🍎", "apple fruit"), ("🥗", "salad food healthy"),
-    ("🏋️", "gym fitness"), ("⚽️", "football soccer sport"), ("🏀", "basketball sport"), ("🚴", "bike cycling"), ("🧘", "yoga calm"), ("💊", "health pill"),
-    ("🐶", "dog pet"), ("🐱", "cat pet"), ("🦊", "fox"), ("🐼", "panda"), ("🦄", "unicorn"), ("🐙", "octopus github"),
-    ("🌱", "plant grow"), ("🌸", "flower blossom"), ("🌈", "rainbow"), ("☀️", "sun"), ("🌙", "moon night"), ("❄️", "snow cold"),
-    ("⚡️", "lightning fast"), ("💎", "gem diamond"), ("🎁", "gift present"), ("🎉", "party celebrate"), ("🏆", "trophy win"), ("🎯", "target goal"),
-    ("🧠", "brain think"), ("👀", "eyes look"), ("🤖", "robot ai bot"), ("👾", "alien game"), ("💻", "laptop computer code"), ("🖥️", "desktop computer"),
-    ("⌨️", "keyboard type"), ("🛠️", "tools build"), ("⚙️", "settings gear"), ("🔧", "wrench fix"), ("🧪", "test lab science"), ("🔬", "science research"),
-    ("🐛", "bug"), ("🔒", "lock secure"), ("🔑", "key"), ("🧩", "puzzle extension"), ("📦", "package box"), ("🗂️", "folder files"),
-    ("📁", "folder"), ("🗃️", "archive"), ("📰", "news paper"), ("🔗", "link"), ("🔍", "search find"), ("🧭", "compass explore"),
-    ("🏷️", "tag label"), ("💭", "thought"), ("❓", "question"), ("❗️", "important"), ("⚠️", "warning"), ("🚧", "construction wip"),
-    ("🟥", "red square"), ("🟧", "orange square"), ("🟨", "yellow square"), ("🟩", "green square"), ("🟦", "blue square"), ("🟪", "purple square"),
-    ("🔴", "red circle"), ("🟠", "orange circle"), ("🟡", "yellow circle"), ("🟢", "green circle"), ("🔵", "blue circle"), ("🟣", "purple circle"),
-  ]
-
-  private static func words(_ text: String) -> [Substring] {
-    text.lowercased().split { !$0.isLetter && !$0.isNumber }
-  }
-
-  /// The editor's search: every word typed starts a word of the name or its keywords, ignoring case. Empty matches all.
-  static func matches(_ query: String, name: String, keywords: String) -> Bool {
-    let typed = words(query)
-    guard !typed.isEmpty else { return true }
-    let targets = words(name + " " + keywords)
-    return typed.allSatisfy { word in targets.contains { $0.hasPrefix(word) } }
-  }
-
-  /// The symbols matching a search, as icon values ("sf:<name>").
-  static func symbols(matching query: String) -> [String] {
-    symbols.filter { matches(query, name: $0.name, keywords: $0.keywords) }.map { symbolPrefix + $0.name }
-  }
-
-  static func emoji(matching query: String) -> [String] {
-    emoji.filter { matches(query, name: "", keywords: $0.keywords) }.map(\.char)
-  }
-
   /// An SF Symbol drawn in one colour. The colour resolves when the image draws, so draw it at once (it isn't cached
   /// per appearance).
   static func symbolImage(_ name: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSImage? {
@@ -324,10 +266,20 @@ final class FolderIconView: NSView {
   // MARK: Look
 
   /// Shows a folder's colour and icon (unknown ones as none).
+  private var hasLook = false
+
   func show(color: String?, icon: String?) {
     let color = FolderLook.valid(color)
     let icon = FolderLook.validIcon(icon)
     guard color != colorName || icon != self.icon else { return }
+    // A new colour or glyph on a folder that's on screen cross-fades (a first look just appears).
+    if window != nil, hasLook, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+      let fade = CATransition()
+      fade.type = .fade
+      fade.duration = 0.2
+      root.add(fade, forKey: "look")
+    }
+    hasLook = true
     colorName = color
     self.icon = icon
     applyLook()

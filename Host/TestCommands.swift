@@ -279,7 +279,7 @@ enum TestCommands {
       "back": .backToPinned, "close": .close, "unload": .unload, "newfolder": .newFolder,
       "nestfolder": .newNestedFolder, "togglefolder": .toggleFolder, "outfolder": .removeFromFolder,
       "deletefolder": .deleteFolder, "renamefolder": .renameFolder, "rename": .renameFolder,
-      "editfolder": .editFolder, "pinfolder": .pinFolder, "unpinfolder": .unpinFolder, "newtabin": .newTabInFolder,
+      "changeicon": .changeIcon, "pinfolder": .pinFolder, "unpinfolder": .unpinFolder, "newtabin": .newTabInFolder,
       "closetabs": .closeFolderTabs,
     ]
     guard parts.count >= 2, let id = UUID(uuidString: parts[1]),
@@ -298,22 +298,16 @@ enum TestCommands {
     return "ok"
   }
 
-  /// `folderedit state|name <text>|color <name|none>|icon <sf:name|emoji|none>|tab symbols|emoji|search <text>|
-  /// enter|escape`: the open Edit Folder panel, pressed as a click or key would. `state` answers with its JSON.
-  private static func folderEdit(_ argument: String) -> String {
-    guard let editor = AppController.shared.current?.folderEditorView else { return "no editor" }
+  /// `iconpicker state|pick <sf:name>|clear|close`: Change Icon's panel, pressed as a click would.
+  private static func iconPicker(_ argument: String) -> String {
+    guard let picker = AppController.shared.current?.iconPicker else { return "no picker" }
     let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
-    let value = parts.count > 1 ? parts[1] : ""
     switch parts.first {
-    case "state": return json(editor.debug)
-    case "name": editor.setTitle(value)
-    case "color": editor.press(color: value == "none" ? nil : value)
-    case "icon": editor.press(icon: value == "none" ? nil : value)
-    case "tab": editor.show(tab: value)
-    case "search": editor.search(value)
-    case "enter": editor.pressReturn()
-    case "escape": editor.pressEscape()
-    default: return "usage: folderedit state|name|color|icon|tab|search|enter|escape"
+    case "state": return json(picker.debug)
+    case "pick" where parts.count == 2: picker.pick(parts[1])
+    case "clear": picker.pick(nil)
+    case "close": picker.close()
+    default: return "usage: iconpicker state|pick <sf:name>|clear|close"
     }
     return "ok"
   }
@@ -475,8 +469,20 @@ enum TestCommands {
       result = rename(argument)
     case "rowmenu":
       result = rowMenu(argument)
-    case "folderedit":
-      result = folderEdit(argument)
+    case "rowclick":
+      // `rowclick <id> cmd|shift|cmdshift|plain`: a click on a row with those keys held, as the sidebar takes one.
+      let parts = argument.split(separator: " ").map(String.init)
+      if parts.count == 2, let id = UUID(uuidString: parts[0]), let controller = AppController.shared.current,
+         let entry = controller.state.entry(id: id) {
+        var flags: NSEvent.ModifierFlags = []
+        if parts[1].contains("cmd") { flags.insert(.command) }
+        if parts[1].contains("shift") { flags.insert(.shift) }
+        if !controller.clickRow(entry, flags: flags) { result = "not a row" }
+      } else {
+        result = "usage: rowclick <id> cmd|shift|cmdshift|plain"
+      }
+    case "iconpicker":
+      result = iconPicker(argument)
     case "extinstall":
       AppController.shared.current?.extensions.installUnpacked(argument) { id in
         FileHandle.standardError.write("[ray-test] installed \(id ?? "nothing")\n".data(using: .utf8)!)

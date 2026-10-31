@@ -204,13 +204,17 @@ publicly or create accounts.
   Unpin Folder makes one again (nested folders fold in). A tab opened from a tab in a Today folder joins it.
   `FolderIconView` (`Host/FolderIcon.swift`): the folder icon in layers (back with its tab, two sheets, a front flap
   carrying the glyph) whose sheets rise and flap leans on springs when it opens, hover and drop-target states.
-  `FolderEditorView` (`Host/FolderEditor.swift`): Edit Folder (menu, and every new folder), standing in for the
-  folder's row: name, colour, Symbols / Emoji (Ardia's lists) with search; picks apply live, Escape puts them back.
-  Menus: Edit Folder…, Colour ▸, New Tab in Folder / New Nested Folder, Pin / Unpin Folder, Delete Folder (tabs move
-  up, ungrouped), Close Tabs (Today). Test commands `rowaction editfolder|pinfolder|unpinfolder|newtabin|closetabs
-  <id>`, `rowaction color <id> <name|none>`, `folderedit state|name|color|icon|tab|search|enter|escape`; state log
-  `sidebar.tabGroups` (Chrome's groups as last seen), `sidebar.folderIcons`, `sidebar.folderEditor`, and
-  `color`/`icon`/`group` per entry.
+  `FolderIconPicker` (`Host/FolderIconPicker.swift`): Change Icon…, Arc's icon panel (in `root`, never an NSPopover):
+  "Icon" with a trash button and Arc's 24 filled symbols, its arrow on the folder's icon, springing out of the arrow;
+  a pick applies and closes it, as do a click elsewhere, Escape and a tab switch. New folders start in the row's
+  rename field (with Done), as tabs do. Menus: Rename…, Change Icon…, Colour ▸, New Tab in Folder / New Nested
+  Folder, Pin / Unpin Folder, Delete Folder (tabs move up, ungrouped), Close Tabs (Today). Moves that reshape the
+  list (`SidebarView` `// MARK: Folder motion`, `animateNextChange`) slide rows from where they were and drop new
+  ones in. A closed folder takes a drop on most of its row and springs open after 0.6 s of a tab held over it.
+  Test commands `rowaction changeicon|pinfolder|unpinfolder|newtabin|closetabs <id>`, `rowaction color <id>
+  <name|none>`, `iconpicker state|pick <sf:name>|clear|close`, `sidebarsnap <path>` (the sidebar from its layers, the
+  panel too); state log `sidebar.tabGroups` (Chrome's groups as last seen), `sidebar.folderIcons`,
+  `sidebar.iconPicker`, `sidebar.iconPickerAnimations`, `sidebar.changesAnimated`, and `color`/`icon`/`group` per entry.
   Checks `folders` (an unpacked extension's service worker drives `chrome.tabGroups`), `folders-relaunch`.
 - Tab names (Arc's Rename): `SidebarEntry.customTitle` (Sidebar.json `customTitle`, optional; `name(from:)` makes
   it one plain line of at most 200 characters), which `displayTitle` prefers over `pageTitle`; page title updates

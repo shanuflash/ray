@@ -346,7 +346,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   // MARK: Test snapshots
 
   /// For tests: the sidebar drawn from its layers (folder icons are layer-only) into `<path>-light.png` and
-  /// `<path>-dark.png` at 2×, to look at rows, folders and Edit Folder.
+  /// `<path>-dark.png` at 2×, to look at rows, folders and Change Icon's panel.
   func snapshotSidebar(to path: String) -> Bool {
     for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
       let old = sidebar.appearance
@@ -356,7 +356,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       sidebar.displayIfNeeded()
       CATransaction.flush()
       guard let layer = sidebar.layer else { return false }
-      let size = sidebar.bounds.size
+      // Change Icon's panel reaches past the sidebar: wide enough for it.
+      let pickerFrame = iconPicker.map { sidebar.convert($0.bounds, from: $0) }
+      let size = NSSize(width: max(sidebar.bounds.width, (pickerFrame?.maxX ?? 0) + 8), height: sidebar.bounds.height)
       guard let context = CGContext(data: nil, width: Int(size.width * 2), height: Int(size.height * 2), bitsPerComponent: 8,
                                     bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
@@ -370,6 +372,17 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         context.scaleBy(x: 1, y: -1)
       }
       layer.render(in: context)
+      if let picker = iconPicker, let pickerLayer = picker.layer, let pickerFrame {
+        picker.appearance = NSAppearance(named: appearance)
+        picker.layoutSubtreeIfNeeded()
+        picker.displayIfNeeded()
+        CATransaction.flush()
+        context.saveGState()
+        context.translateBy(x: pickerFrame.minX, y: pickerFrame.minY)
+        pickerLayer.render(in: context)
+        context.restoreGState()
+        picker.appearance = nil
+      }
       guard let image = context.makeImage(),
             let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]),
             (try? png.write(to: URL(fileURLWithPath: "\(path)-\(name).png"))) != nil else { return false }
@@ -1032,6 +1045,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if switched, !cycling { tabCycle = nil }
     if switched, findTab != nil, findTab !== tab { closeFind() }
     if switched { closeSiteControls() }
+    if switched { iconPicker?.close() }
     // An extension's popup belongs to the tab it opened over.
     if switched { extensions.closePopup() }
     state.activeEntryID = entry.id
@@ -1078,6 +1092,13 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func perform(_ action: SidebarRowAction, on entry: SidebarEntry) {
+    // Changes that move rows around slide them there (and drop new ones in) rather than jump.
+    switch action {
+    case .newFolder, .moveToFolder, .removeFromFolder, .deleteFolder, .pinFolder, .unpinFolder, .pin, .unpin,
+         .closeFolderTabs, .newNestedFolder:
+      sidebar.animateNextChange()
+    default: break
+    }
     switch action {
     case .close, .unload:
       // Both are the row's Close Tab (a pinned or favorite row stays, unloaded): either can be reopened with ⇧⌘T.
@@ -1088,6 +1109,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         state.remove(entry)
         changed("remove")
       }
+      return
+    case .copyLinks:
+      copyLinks([entry])
       return
     case .backToPinned:
       if let target = entry.pinnedURL, let tab = entry.tab, entry.isLive {
@@ -1113,13 +1137,16 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     case .renameFolder:
       sidebar.beginRename(entry)
       return
-    case .editFolder:
+    case .changeIcon:
       guard entry.isFolder else { return }
-      sidebar.beginEditFolder(entry)
+      showIconPicker(for: entry)
       return
     case .setColor(let color):
       guard entry.isFolder else { return }
       entry.color = color.flatMap { FolderLook.colors.contains($0) ? $0 : nil }
+    case .setIcon(let icon):
+      guard entry.isFolder else { return }
+      entry.icon = FolderLook.validIcon(icon)
     case .toggleFolder:
       guard entry.isFolder else { return }
       entry.isOpen = !(entry.isOpen ?? true)
@@ -1131,14 +1158,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         folder.color = FolderLook.nextColor(avoiding: state.todayFolders.map(\.color))
         state.today.insert(folder, at: state.today.firstIndex { $0 === entry } ?? 0)
         move(entry, to: .folder(folder.id))
-        sidebar.beginEditFolder(folder)
+        sidebar.beginRename(folder)
         return
       }
       let folder = SidebarEntry.folder("New Folder", in: entry.kind == .pinned ? entry.parentID : nil)
       let at = entry.kind == .pinned ? state.pinned.firstIndex { $0 === entry } ?? state.pinned.count : state.pinned.count
       state.pinned.insert(folder, at: at)
       move(entry, to: .folder(folder.id))
-      sidebar.beginEditFolder(folder)
+      sidebar.beginRename(folder)
       return
     case .newNestedFolder:
       guard entry.isFolder, !state.isTodayFolder(entry) else { return }
@@ -1147,7 +1174,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       state.pinned.append(folder)
       state.normalizePinned()
       changed("sidebar")
-      sidebar.beginEditFolder(folder)
+      sidebar.beginRename(folder)
       return
     case .newTabInFolder:
       guard state.isTodayFolder(entry) else { return }
@@ -1297,7 +1324,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let folder = SidebarEntry.folder("New Folder", in: nil)
     state.pinned.append(folder)
     changed("sidebar")
-    sidebar.beginEditFolder(folder)
+    sidebar.beginRename(folder)
   }
 
   func rename(_ entry: SidebarEntry, to title: String) {
@@ -1516,12 +1543,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   /// For tests: `rename <id> <text>` commits what the inline field would, for a folder or a tab.
   func renameEntry(_ entry: SidebarEntry, to text: String) {
+    // As typing it into the open field and pressing Return would: the field closes without committing its own text.
+    sidebar.cancelRename(entry)
     if entry.isFolder { rename(entry, to: text) } else { setName(entry, to: text) }
   }
 
   /// For tests: an entry's context menu, as its titles.
   func menuTitles(for entry: SidebarEntry) -> [String] { sidebar.debugMenuTitles(for: entry) }
-  var folderEditorView: FolderEditorView? { sidebar.folderEditor?.view }
+
 
   // MARK: Page toolbar
 
@@ -1693,6 +1722,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// ⇧⌘C, as in Arc and Chrome: the current page's full URL to the clipboard, and Arc's "Copied Current URL" note
   /// with a share button.
   func copyURL() {
+    // With several tabs selected, all their links, as in Arc.
+    if sidebar.selection.count > 1 { return copyLinks(sidebar.selection) }
     guard let url = activeEntry?.currentURL, !url.isEmpty else { return }
     let pasteboard = Self.pasteboard
     pasteboard.clearContents()
@@ -1700,6 +1731,20 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     notes.show(.copied("Copied Current URL") { button in
       guard let link = URL(string: url) else { return }
       NSSharingServicePicker(items: [link]).show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    })
+    logState("copyURL")
+  }
+
+  /// Several tabs' links, one per line, in sidebar order.
+  func copyLinks(_ entries: [SidebarEntry]) {
+    let links = entries.filter { !$0.isFolder }.map(\.currentURL).filter { !$0.isEmpty }
+    guard !links.isEmpty else { return }
+    let pasteboard = Self.pasteboard
+    pasteboard.clearContents()
+    pasteboard.setString(links.joined(separator: "\n"), forType: .string)
+    notes.show(.copied(links.count == 1 ? "Copied Link" : "Copied \(links.count) Links") { button in
+      let urls = links.compactMap(URL.init(string:))
+      NSSharingServicePicker(items: urls).show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     })
     logState("copyURL")
   }
@@ -1860,21 +1905,89 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     move(entry, to: target)
   }
 
+  // MARK: Selection
+
+  func sidebar(_ sidebar: SidebarView, perform action: SidebarRowAction, onAll entries: [SidebarEntry]) {
+    let tabs = entries.filter { !$0.isFolder && state.entry(id: $0.id) === $0 }
+    guard let first = tabs.first else { return }
+    switch action {
+    case .newFolder:
+      // A folder where the first one is, all of them inside it, ready to name.
+      perform(.newFolder, on: first)
+      guard let folder = first.parentID else { return }
+      sidebar.animateNextChange()
+      for tab in tabs.dropFirst() { move(tab, to: .folder(folder)) }
+    case .moveToFolder, .pin, .unpin:
+      sidebar.animateNextChange()
+      for tab in tabs { perform(action, on: tab) }
+    case .close:
+      for tab in tabs.reversed() { perform(.close, on: tab) }
+    case .copyLinks:
+      copyLinks(tabs)
+    default:
+      for tab in tabs { perform(action, on: tab) }
+    }
+  }
+
+  /// Several selected tabs dragged together: the held one lands at the target, the rest right after it, in order.
+  func sidebar(_ sidebar: SidebarView, move entries: [SidebarEntry], to target: SidebarDropTarget) {
+    guard let held = entries.first else { return }
+    move(held, to: target)
+    var previous = held
+    for entry in entries.dropFirst() where state.entry(id: entry.id) === entry && !entry.isFolder {
+      if case .folder(let id) = target {
+        move(entry, to: .folder(id))
+      } else if let at = state.favorites.firstIndex(where: { $0 === previous }) {
+        let mine = state.favorites.firstIndex { $0 === entry }
+        move(entry, to: .favorites(at + 1 - (mine.map { $0 < at ? 1 : 0 } ?? 0)))
+      } else if let at = state.pinned.firstIndex(where: { $0 === previous }) {
+        let mine = state.pinned.firstIndex { $0 === entry }
+        move(entry, to: .pinned(at + 1 - (mine.map { $0 < at ? 1 : 0 } ?? 0), parent: previous.parentID))
+      } else if let at = state.today.firstIndex(where: { $0 === previous }) {
+        let mine = state.today.firstIndex { $0 === entry }
+        move(entry, to: .today(at + 1 - (mine.map { $0 < at ? 1 : 0 } ?? 0), parent: previous.parentID))
+      }
+      previous = entry
+    }
+  }
+
+  func sidebarSelectionChanged(_ sidebar: SidebarView) { logState("selection") }
+
+  /// For tests: a click on a row with modifier keys, as the sidebar takes one (a plain one selects the tab).
+  func clickRow(_ entry: SidebarEntry, flags: NSEvent.ModifierFlags) -> Bool {
+    if sidebar.select(entry, with: flags) { return true }
+    guard !entry.isFolder else { return false }
+    sidebar.clearSelection()
+    select(entry)
+    return true
+  }
+
   func sidebar(_ sidebar: SidebarView, rename entry: SidebarEntry, to title: String) {
     rename(entry, to: title)
   }
 
-  func sidebar(_ sidebar: SidebarView, edit folder: SidebarEntry, title: String?, color: String?, icon: String?) {
-    editFolder(folder, title: title, color: color, icon: icon)
-  }
+  // MARK: Folder icon
 
-  /// Edit Folder's choices: a colour or icon as it's picked, the name when it closes (an empty name keeps the old one).
-  func editFolder(_ folder: SidebarEntry, title: String?, color: String?, icon: String?) {
-    guard folder.isFolder, state.entry(id: folder.id) === folder else { return }
-    if let title, let name = SidebarEntry.name(from: title) { folder.title = name }
-    folder.color = color.flatMap { FolderLook.colors.contains($0) ? $0 : nil }
-    folder.icon = FolderLook.isValidIcon(icon) ? icon : nil
-    changed("sidebar")
+  /// Change Icon…'s panel, while it's open.
+  private(set) var iconPicker: FolderIconPicker?
+
+  /// Right-click a folder › Change Icon…: Arc's icon panel, its arrow on the folder's icon, over the sidebar and page.
+  func showIconPicker(for folder: SidebarEntry) {
+    iconPicker?.close()
+    guard let anchor = sidebar.iconFrame(of: folder, in: root) else { return }
+    let picker = FolderIconPicker(chosen: folder.icon)
+    picker.onPick = { [weak self, weak folder] icon in
+      guard let self, let folder else { return }
+      self.perform(.setIcon(icon), on: folder)
+    }
+    picker.onClose = { [weak self, weak picker] in
+      if let self, self.iconPicker === picker { self.iconPicker = nil }
+    }
+    root.addSubview(picker)
+    picker.place(under: anchor, within: root.bounds)
+    iconPicker = picker
+    picker.appear()
+    logState("iconPicker")
   }
 
   func sidebarExtensions(_ sidebar: SidebarView, anchor: NSView) {
@@ -2347,9 +2460,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         "favorites": self.state.favorites.map(describe),
         "pinned": self.state.pinned.map(describe),
         "today": self.state.today.map(describe),
+        "selection": sidebar.selection.map(\.id.uuidString),
         "tabGroups": groups.debug,
         "folderIcons": sidebar.debugFolderIcons,
-        "folderEditor": sidebar.folderEditor?.view.debug ?? NSNull(),
+        "iconPicker": iconPicker?.debug ?? NSNull(),
+        "iconPickerAnimations": FolderIconPicker.animations,
+        "changesAnimated": SidebarView.changesAnimated,
         "hidden": self.state.sidebarHidden,
         "peeking": peeking,
       ] as [String: Any],
