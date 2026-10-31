@@ -377,46 +377,54 @@ final class SettingsPopUp: NSPopUpButton {
 
 // MARK: Confirm
 
-/// The question before a destructive action (Remove an extension, Clear Site Data), as a sheet on the Settings
-/// window. Following the security checklist: Cancel is the default (Return and Escape cancel), the action's button
-/// ignores clicks for its first half second, and the message names exactly what goes (the full origin, the
-/// extension and its ID).
+/// The question before a destructive action (Remove an extension, Clear Site Data), as a panel over the Settings
+/// window (a sheet when that window isn't on screen). Following the security checklist: Cancel is the default (Return
+/// and Escape cancel), the action's button ignores clicks for its first half second, and the message names exactly
+/// what goes (the full origin, the extension and its ID).
 enum SettingsConfirm {
-  private static var open: (alert: NSAlert, confirm: NSButton, window: NSWindow?)?
+  private static var open: (question: PanelQuestion, message: String, detail: String)?
 
   static func ask(_ message: String, detail: String, action: String, in window: NSWindow?, then: @escaping () -> Void) {
     guard open == nil else { return }
-    let alert = NSAlert()
-    alert.alertStyle = .warning
-    alert.messageText = message
-    alert.informativeText = detail
-    alert.addButton(withTitle: "Cancel")
-    let confirm = alert.addButton(withTitle: action)
-    confirm.hasDestructiveAction = true
-    confirm.keyEquivalent = ""
+    var answered = false
+    var close: (() -> Void)?
+    let finish = { (accepted: Bool) in
+      guard !answered else { return }
+      answered = true
+      open = nil
+      close?()
+      if accepted { then() }
+    }
+    let question = PanelQuestion(title: message, message: detail,
+                                 answers: [("Cancel", false, false), (action, false, true)]) { finish($0 == 1) }
+    let confirm = question.buttons[1]
     confirm.isEnabled = false
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { confirm.isEnabled = true }
-    open = (alert, confirm, window)
-    let done: (NSApplication.ModalResponse) -> Void = { response in
+    open = (question, message, detail)
+    guard let handle = SettingsWindowController.shared.askQuestion(
+      "settingsConfirm", question, onReturn: { finish(false) }, onClose: { finish(false) }) else {
       open = nil
-      if response == .alertSecondButtonReturn { then() }
+      let alert = NSAlert()
+      alert.alertStyle = .warning
+      alert.messageText = message
+      alert.informativeText = detail
+      alert.addButton(withTitle: "Cancel")
+      alert.addButton(withTitle: action).hasDestructiveAction = true
+      if alert.runModal() == .alertSecondButtonReturn { then() }
+      return
     }
-    if let window {
-      alert.beginSheetModal(for: window, completionHandler: done)
-    } else {
-      done(alert.runModal())
-    }
+    close = { handle.close() }
   }
 
   /// For tests: the question showing, if any.
   static var debug: [String: Any]? {
-    open.map { ["message": $0.alert.messageText, "detail": $0.alert.informativeText, "ready": $0.confirm.isEnabled] }
+    open.map { ["message": $0.message, "detail": $0.detail, "ready": $0.question.buttons[1].isEnabled] }
   }
 
   /// For tests: answers as a click would; a click on the action in its first half second does nothing.
   static func answer(accept: Bool) -> String {
     guard let open else { return "no question" }
-    let button = accept ? open.confirm : open.alert.buttons[0]
+    let button = open.question.buttons[accept ? 1 : 0]
     guard button.isEnabled else { return "not ready" }
     button.performClick(nil)
     return "ok"

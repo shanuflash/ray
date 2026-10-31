@@ -268,12 +268,13 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     sidebar.setDownloads(progress: progress)
     if let downloadsList {
       downloadsList.show(items)
-      sidebar.layoutDownloadsPanel()
+      sizeDownloadsList()
+      downloadsPanel?.contentChanged()
     }
     if newlyWaiting {
       // A held download needs an answer: open the list where it can be given.
       showDownloads()
-    } else if let started = items.first, started.active, !sidebar.downloadsOpen, started.received == 0,
+    } else if let started = items.first, started.active, !downloadsOpen, started.received == 0,
               notedDownload != started.id {
       notedDownload = started.id
       notes.show(downloadNote(started))
@@ -315,31 +316,54 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   /// The downloads panel slides up from the sidebar's footer; with the sidebar hidden, the sidebar comes out first
   /// and stays out while the panel is open.
+  /// The downloads list as a panel above the sidebar's downloads button (over the sidebar; a peeking sidebar stays
+  /// out while it's open).
+  private var downloadsPanel: PanelHandle?
+  var downloadsOpen: Bool { downloadsPanel?.isOpen == true }
+  static let downloadsWidth: CGFloat = 280
+
   func showDownloads() {
-    guard !sidebar.downloadsOpen else { return }
+    guard !downloadsOpen else { return }
     notes.dismiss(key: "download")
     downloads.loadHistory()
     if state.sidebarHidden && !peeking { beginPeek() }
     sidebar.layoutSubtreeIfNeeded()
     let list = DownloadsListView(frame: .zero)
-    list.width = sidebar.downloadsPanelWidth
+    list.width = Self.downloadsWidth
     list.controller = downloads
     list.onClose = { [weak self] in self?.closeDownloads() }
     list.show(downloads.items)
     downloadsList = list
-    sidebar.openDownloads(DownloadsPanelView(list: list))
+    sizeDownloadsList()
+    let button = sidebar.downloadsAnchor
+    let anchor = PanelAnchor(rect: { [weak self] in
+      guard let self else { return .zero }
+      let button = self.sidebar.downloadsAnchor
+      return button.convert(button.bounds, to: self.root)
+    }, below: false, align: .leading, button: button, hold: { [weak button] held in (button as? HoverIconButton)?.isHeld = held })
+    downloadsPanel = panels.open(PanelSpec(
+      name: "downloads", content: list, anchor: anchor, closesOn: [.outsideClick, .escape, .windowInactive],
+      overSidebar: true, onClose: { [weak self, weak list] in
+        guard let self, self.downloadsList === list else { return }
+        self.downloadsList = nil
+        self.downloadsPanel = nil
+        self.logState("downloads")
+      }))
     logState("downloads")
+  }
+
+  /// As tall as its rows, up to the window's height less some room.
+  private func sizeDownloadsList() {
+    guard let list = downloadsList else { return }
+    list.setFrameSize(NSSize(width: Self.downloadsWidth, height: min(list.fittingSize.height, max(160, root.bounds.height - 140))))
   }
 
   func closeDownloads() {
-    guard sidebar.downloadsOpen else { return }
-    sidebar.closeDownloads()
-    downloadsList = nil
-    logState("downloads")
+    downloadsPanel?.close()
   }
 
   func toggleDownloads() {
-    sidebar.downloadsOpen ? closeDownloads() : showDownloads()
+    downloadsOpen ? closeDownloads() : showDownloads()
   }
 
   // MARK: Test snapshots
@@ -448,7 +472,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   /// For tests: draws the open downloads list into a PNG, to look at its design.
   func snapshotDownloads(to path: String) -> Bool {
-    guard let panel = sidebar.downloadsPanel else { return false }
+    guard let panel = downloadsList else { return false }
     for (name, appearance, view) in [("light", NSAppearance.Name.aqua, panel as NSView), ("dark", .darkAqua, panel),
                                      ("sidebar", .aqua, sidebar)] {
       let old = view.appearance
@@ -1654,11 +1678,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   private func schedulePeekEnd() {
-    guard peekEndWork == nil, !forcedOpen, !sidebar.isDragging, !sidebar.downloadsOpen, !panels.holdsSidebar else { return }
+    guard peekEndWork == nil, !forcedOpen, !sidebar.isDragging, !downloadsOpen, !panels.holdsSidebar else { return }
     let work = DispatchWorkItem { [weak self] in
       guard let self else { return }
       self.peekEndWork = nil
-      if self.sidebar.isDragging || self.sidebar.downloadsOpen || self.panels.holdsSidebar { return }
+      if self.sidebar.isDragging || self.downloadsOpen || self.panels.holdsSidebar { return }
       self.endPeek(animated: true)
     }
     peekEndWork = work
@@ -2473,7 +2497,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         "id": $0.id, "filename": $0.filename, "state": $0.state, "dangerous": $0.dangerous, "path": $0.path,
         "keepReady": downloadsList?.row(for: $0.id)?.keepReady ?? false,
       ] },
-      "downloadsOpen": sidebar.downloadsOpen,
+      "downloadsOpen": downloadsOpen,
       "downloadsButton": {
         let button = sidebar.downloadsAnchor
         guard !button.isHidden, let height = window.contentView?.bounds.height else { return "" }

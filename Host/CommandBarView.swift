@@ -21,6 +21,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   var onSelectionChange: (() -> Void)?
   let field = NSTextField()
   private let panel = FlippedView()
+  private let backdrop = SurfaceBackdrop(radius: 12)
   private let searchIcon = NSImageView()
   private let chip = ScopeChip()
   /// The site search the bar is scoped to (a keyword, then Tab or a space): what you type searches there.
@@ -63,17 +64,9 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     super.init(frame: frame)
     wantsLayer = true
 
+    // The panels' look (glass or solid, Settings › Appearance › Panels and notes), the panels' shadow.
     panel.wantsLayer = true
-    panel.layer?.cornerRadius = 12
-    panel.layer?.cornerCurve = .continuous
-    panel.layer?.borderWidth = 1
-    panel.shadow = {
-      let shadow = NSShadow()
-      shadow.shadowBlurRadius = 30
-      shadow.shadowOffset = NSSize(width: 0, height: -8)
-      shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
-      return shadow
-    }()
+    panel.addSubview(backdrop)
     addSubview(panel)
 
     searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
@@ -148,9 +141,6 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
 
   private func updateColors() {
     effectiveAppearance.performAsCurrentDrawingAppearance {
-      let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-      panel.layer?.backgroundColor = (dark ? NSColor(white: 0.115, alpha: 1) : NSColor(white: 1, alpha: 1)).cgColor
-      panel.layer?.borderColor = (dark ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.1)).cgColor
       separator.layer?.backgroundColor = NSColor.separatorColor.cgColor
     }
   }
@@ -170,18 +160,29 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     field.stringValue = query
     window?.makeFirstResponder(field)
     field.currentEditor()?.selectAll(nil)
-    let layer = panel.layer
+    // Grows a little about its middle on the panels' spring, fading in over 140 ms (Reduce Motion: the fade only).
+    layoutSubtreeIfNeeded()
+    guard let layer = panel.layer else { return }
+    if !Panels.reduceMotion {
+      let size = panel.bounds.size
+      let pivot = CGPoint(x: size.width / 2 - layer.anchorPoint.x * size.width, y: size.height / 2 - layer.anchorPoint.y * size.height)
+      var from = CATransform3DMakeTranslation(pivot.x, pivot.y, 0)
+      from = CATransform3DScale(from, 0.97, 0.97, 1)
+      from = CATransform3DTranslate(from, -pivot.x, -pivot.y, 0)
+      let grow = CASpringAnimation(keyPath: "transform")
+      grow.fromValue = NSValue(caTransform3D: from)
+      grow.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+      grow.stiffness = pow(2 * .pi / Notes.response, 2)
+      grow.damping = 4 * .pi * Notes.dampingRatio / Notes.response
+      grow.duration = grow.settlingDuration
+      layer.add(grow, forKey: "present")
+    }
     let fade = CABasicAnimation(keyPath: "opacity")
     fade.fromValue = 0
     fade.toValue = 1
-    let grow = CABasicAnimation(keyPath: "transform.scale")
-    grow.fromValue = 0.97
-    grow.toValue = 1
-    let group = CAAnimationGroup()
-    group.animations = [fade, grow]
-    group.duration = 0.14
-    group.timingFunction = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
-    layer?.add(group, forKey: "present")
+    fade.duration = 0.14
+    fade.timingFunction = CAMediaTimingFunction(controlPoints: 0, 0, 0.2, 1)
+    layer.add(fade, forKey: "presentFade")
   }
 
   func show(_ suggestions: [Suggestion]) {
@@ -210,6 +211,11 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     let restingHeight = Self.fieldHeight + CGFloat(Self.shownRowLimit) * Self.rowHeight + Self.listPadding * 2
     let top = max(20, (bounds.height - restingHeight) / 2)
     panel.frame = NSRect(x: (bounds.width - width) / 2, y: top, width: width, height: height)
+    backdrop.frame = panel.bounds
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    SurfaceBackdrop.shadow(on: panel, radius: 12)
+    CATransaction.commit()
     searchIcon.frame = NSRect(x: Self.iconCenter - 9, y: (Self.fieldHeight - 18) / 2, width: 18, height: 18)
     // Scoped, the chip takes the icon's place and the text follows it.
     let chipWidth = chip.isHidden ? 0 : chip.intrinsicContentSize.width

@@ -19,7 +19,8 @@ publicly or create accounts.
   (`PageFrameWatch`: Chrome adds a new content layer under the render view when the page's new compositor delivers
   one). The new page goes on top (`sortSubviews`) at alpha 0 and turns opaque in that same commit; the old one is
   hidden a display frame later. A 0.3 s deadline if no frame comes; no hold when the window isn't on screen.
-- `CommandBarView` + `Suggestions`: the Arc-style command bar (⌘T new tab, ⌘L / clicking the sidebar address =
+- `CommandBarView` + `Suggestions`: the Arc-style command bar (on `SurfaceBackdrop`, growing in on the panels' spring;
+  ⌘T new tab, ⌘L / clicking the sidebar address =
   current tab). Rows: autocompleted host match, typed URL or search, open tabs ("Switch to Tab"), history, and
   `BarActions`: menu commands read from the main menu (Ray's own items, validated as the menu does), matched by word
   starts of their title or synonyms, with the live key equivalent; an exact name leads unless a host autocompletes.
@@ -152,13 +153,14 @@ publicly or create accounts.
   icon, version, description, switch) that open to site access, private windows, Options, Reload (unpacked),
   Remove…; the Web Store; Load unpacked under More; Add from a link unbuilt (test builds only).
   `ray://settings/extensions` opens it; chrome://extensions stays Chrome's. `SettingsDataRows`: what both share
-  (`SettingsDynamicList`, `SettingsItemRow`, `SettingsConfirm`: Cancel by default, the action dead for 0.5 s, the
+  (`SettingsDynamicList`, `SettingsItemRow`, `SettingsConfirm`: a `PanelQuestion` over the Settings window
+  (`SettingsWindowController.askQuestion`, a pass-through `PanelPassThroughView` layer), Cancel by default, the action dead for 0.5 s, the
   full origin or the extension's ID; `SettingsPages.open` uses the normal window). Test commands `privacy …` and
   `extpane …` answer with the pane's lists as JSON and press its controls (checks `settings-privacy`,
   `settings-extensions`).
 - Settings › Passwords (`SettingsPasswords.swift`) and › Autofill (`SettingsAutofill.swift`), on the engine's
   `ac_passwords_*` and `ac_autofill_*` calls; `SettingsDataViews.swift` holds their pieces (`SettingsStack`, item rows,
-  inline cards and forms (`SettingsRecordRow`), `SettingsRecordConfirm` sheets, `SettingsPasteboard`, `SecretJSON`, `SettingsDataGuard`).
+  inline cards and forms (`SettingsRecordRow`), `SettingsRecordConfirm` questions (the same panels), `SettingsPasteboard`, `SecretJSON`, `SettingsDataGuard`).
   Passwords: locked until Unlock (`ac_passwords_unlock`, the engine's Touch ID or login password, `ac_reauth.cc`);
   `SettingsDataGuard` locks it (and hides a shown card number) when the Settings window closes, after 5 min without a
   click or key in it (Chrome's `kPasswordManagerAuthValidity`), on sleep or a user switch. Unlocked: search, a row
@@ -240,7 +242,8 @@ publicly or create accounts.
   address bar is off; action popups in a borderless child window under that button, Crest's way: rounded, no arrow, sized by the page, closed by a click elsewhere, Escape, a tab switch, Ray
   going to the background or the page closing itself; state log `extensionPopupView`, check `extensions` reads its
   pixels back with `onscreen on`; the install prompt is a `Panels` question that waits 0.5 s, Return cancels),
-  `Downloads` (button in the sidebar footer, ⌥⌘L; the list slides up as a panel inside the sidebar), `FindBar` (⌘F,
+  `Downloads` (button in the sidebar footer, ⌥⌘L; the list is a `Panels` panel above that button, over the sidebar,
+  a peeking sidebar kept out while it's open), `FindBar` (⌘F,
   on `SurfaceBackdrop`, dropping in on the panels' spring),
   `PermissionPrompt` (site permissions, only over their own tab), `ArcImport` (the old Import from Arc…, sidebar
   only; its action still exists without a menu item).

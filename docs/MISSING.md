@@ -266,8 +266,8 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 31. **`settings-page-address-bar` fails on main** (seen 2026-10-31 at `1df5243`, before the panels batch): "an older
     Sidebar.json's address bar off became on", so the one-time move of `pageToolbar` into Settings may have broken.
     Bisect from 0.6.0 (`3bcc843`).
-32. **Not yet on the panels' look:** the command bar (its own window and shadow), extension popups (their own window;
-    could take the panels' corners, shadow and motion), and the downloads panel's slide-up motion.
+32. **Not yet on the panels' look:** extension popups (their own window; could take the panels' corners, shadow and
+    motion), and the dead Import from Arc confirm (`importFromArc`, no menu item reaches it).
 
 ## Done
 
@@ -277,6 +277,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Notes: six spots on the page, one each, glass or solid (Settings › Appearance), the sidebar's spring; downloads note with progress | 2026-10-31, `cb92326` |
 | Panels: one framework for site controls (with a "…" page), the notes' glass or solid look on prompts and downloads, Settings › Appearance › Panels and notes | 2026-10-31, `6a326c5` |
 | Panels everywhere: sidebar sliders button (no puzzle menu), permission choices and Clear Site Data as pages, extension install and quit/close warnings as panel questions, folder icon picker on Panels, find bar on the shared surface; tab group push off Chrome's notification (crash) | 2026-10-31, `cd08553` |
+| Command bar on the panels' surface and spring; downloads list as a panel from its button; Settings' Remove/Export confirms as panel questions | 2026-11-01, panels-3 |
 | Print (⌘P), Print Using System Dialog (⌥⌘P), Save Page As, Show Full History (⌘Y), Zoom In/Out/Actual Size, View Source (⌥⌘U), Task Manager, Clear Browsing Data (⇧⌘⌫) | 2026-10-29, `9c27c31` |
 | Arc's zoom level note; print preview centred with rounded corners | 2026-10-29, `17dabae` |
 | Import from Arc and other browsers (pinned, favorites, open tabs, history, bookmarks, passwords, cookies, autofill) and first-run onboarding | 2026-10-29, `0154dab` … `58611e6` |

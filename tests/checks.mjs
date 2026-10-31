@@ -1716,6 +1716,9 @@ const checks = {
     assert(existsSync(item.path), "no file on disk");
     await command("dlopen");
     await until("list open", () => state().downloadsOpen);
+    await command("state");
+    assert(state().panels.open?.name === "downloads" && state().panels.open.overSidebar && !state().panels.open.below,
+      `the list is a panel over its button: ${JSON.stringify(state().panels.open)}`);
     if (process.env.SNAP_DIR) { await sleep(300); await command(`dlsnap ${join(process.env.SNAP_DIR, "downloads.png")}`); }
     // The button sits bottom left in the sidebar's footer.
     const [bx, by] = state().downloadsButton.split(",").map(Number);
@@ -2945,6 +2948,16 @@ const checks = {
       await snap("quit-warning");
       await command("warning cancel");
       await setSetting("warnBeforeQuitting", "off");
+      // The command bar and the downloads list.
+      await command("menu newTab");
+      await until("command bar", () => state().commandBar);
+      await snap("command-bar");
+      await command("escape");
+      await command("dlopen");
+      await until("downloads", () => state().downloadsOpen);
+      await snap("downloads");
+      await command("key esc keywin");
+      await until("downloads closed", async () => { await command("state"); return !state().downloadsOpen; });
       // A download's note.
       await evaluate(sessionId, `(() => { const a = document.createElement("a"); a.href = "/files/notes.txt"; a.click(); })()`);
       await until("download note", async () => { await command("state"); return state().notes.spots.bottomLeading; }, 8000);

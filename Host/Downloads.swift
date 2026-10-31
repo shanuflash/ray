@@ -468,37 +468,3 @@ final class DownloadRowView: NSView {
   }
 }
 
-/// The sidebar's downloads panel: the list on the panels' surface (glass or solid, Settings › Appearance › Panels
-/// and notes), sliding up from the footer.
-final class DownloadsPanelView: NSView {
-  let list: DownloadsListView
-  private let backdrop = SurfaceBackdrop(radius: 12)
-
-  init(list: DownloadsListView) {
-    self.list = list
-    super.init(frame: .zero)
-    wantsLayer = true
-    addSubview(backdrop)
-    addSubview(list)
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override var isFlipped: Bool { true }
-  override var mouseDownCanMoveWindow: Bool { false }
-
-  /// Presses on the card's empty space stay with it (otherwise they'd fall through to the window and drag it).
-  override func mouseDown(with event: NSEvent) {}
-
-  var wantedHeight: CGFloat { list.fittingSize.height }
-
-  override func layout() {
-    super.layout()
-    backdrop.frame = bounds
-    CATransaction.begin()
-    CATransaction.setDisableActions(true)
-    SurfaceBackdrop.shadow(on: self, radius: 12)
-    CATransaction.commit()
-    list.frame = bounds
-  }
-}

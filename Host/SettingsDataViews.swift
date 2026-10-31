@@ -583,45 +583,48 @@ final class SettingsMoreToggle: NSView, SettingsSizing {
 
 // MARK: Confirmation
 
-/// "Delete …?" as a sheet on the Settings window: Cancel is the default, the confirming button is red when it
-/// destroys something. One at a time; tests answer it with `answer(_:)`, as a click on either button would.
+/// "Delete …?" as a panel over the Settings window: Cancel is the default (Return cancels something that destroys),
+/// the confirming button is red when it destroys something. One at a time; tests answer it with `answer(_:)`, as a
+/// click on either button would.
 enum SettingsRecordConfirm {
-  private static var alert: NSAlert?
+  private static var question: PanelQuestion?
   /// What is being confirmed ("removePassword", "export", …), never its text (which names a site).
   private(set) static var pending: String?
 
   static func ask(_ kind: String, title: String, message: String, confirm: String, destructive: Bool = true,
                   from view: NSView, then: @escaping (Bool) -> Void) {
-    guard alert == nil, let window = view.window else { return then(false) }
-    let alert = NSAlert()
-    alert.alertStyle = .warning
-    alert.messageText = title
-    alert.informativeText = message
-    let yes = alert.addButton(withTitle: confirm)
-    let no = alert.addButton(withTitle: "Cancel")
-    yes.hasDestructiveAction = destructive
-    // Return doesn't confirm something that destroys: Cancel is the default.
-    if destructive {
-      yes.keyEquivalent = ""
-      no.keyEquivalent = "\r"
-    }
-    self.alert = alert
-    pending = kind
-    alert.beginSheetModal(for: window) { response in
-      self.alert = nil
+    guard question == nil, view.window != nil else { return then(false) }
+    var answered = false
+    var close: (() -> Void)?
+    let finish = { (yes: Bool) in
+      guard !answered else { return }
+      answered = true
+      question = nil
       pending = nil
-      then(response == .alertFirstButtonReturn)
+      close?()
+      then(yes)
     }
+    let made = PanelQuestion(title: title, message: message,
+                             answers: [("Cancel", false, false), (confirm, !destructive, destructive)]) { finish($0 == 1) }
+    question = made
+    pending = kind
+    guard let handle = SettingsWindowController.shared.askQuestion(
+      kind, made, onReturn: { finish(!destructive) }, onClose: { finish(false) }) else {
+      question = nil
+      pending = nil
+      return then(false)
+    }
+    close = { handle.close() }
   }
 
-  /// For tests: the sheet's confirming button (`true`) or Cancel.
+  /// For tests: the confirming button (`true`) or Cancel, as a click would.
   static func answer(_ yes: Bool) -> Bool {
-    guard let alert, let window = alert.window.sheetParent else { return false }
-    window.endSheet(alert.window, returnCode: yes ? .alertFirstButtonReturn : .alertSecondButtonReturn)
+    guard let question else { return false }
+    question.buttons[yes ? 1 : 0].performClick(nil)
     return true
   }
 
-  /// Closes a sheet still up (the window is closing), as Cancel.
+  /// Closes a question still up (the window is closing), as Cancel.
   static func dismiss() { _ = answer(false) }
 }
 

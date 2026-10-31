@@ -720,3 +720,12 @@ final class PanelQuestion: NSView {
     return y + 28 + pad
   }
 }
+
+/// A host for panels over a view that takes clicks itself (the Settings window): it passes every click it doesn't
+/// cover with a panel through to what's below.
+final class PanelPassThroughView: NSView {
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    let hit = super.hitTest(point)
+    return hit === self ? nil : hit
+  }
+}

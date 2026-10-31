@@ -23,6 +23,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   private var flashing: String?
   private var lastFlash: String?
   private var flashEnd: DispatchWorkItem?
+  private var questionLayer: PanelPassThroughView?
+  private var questionPanels: Panels?
 
   var isOpen: Bool { window?.isVisible ?? false }
   var isKey: Bool { window?.isKeyWindow ?? false }
@@ -147,8 +149,34 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
   func windowDidMove(_ notification: Notification) { rememberFrameSoon() }
 
+  // MARK: Settings questions
+
+  /// A question over the Settings window (Remove…, Export…) in the panels' look, dropping from the top of the pane,
+  /// centred on it; nil when the window isn't on screen.
+  func askQuestion(_ name: String, _ content: NSView, onReturn: (() -> Void)?, onClose: @escaping () -> Void) -> PanelHandle? {
+    guard let root, let window, window.isVisible else { return nil }
+    let layer = questionLayer ?? {
+      let layer = PanelPassThroughView(frame: root.bounds)
+      layer.autoresizingMask = [.width, .height]
+      questionLayer = layer
+      return layer
+    }()
+    if root.subviews.last !== layer { root.addSubview(layer, positioned: .above, relativeTo: nil) }
+    layer.frame = root.bounds
+    let panels = questionPanels ?? Panels(host: layer) { nil }
+    questionPanels = panels
+    let anchor = PanelAnchor(rect: { [weak layer] in
+      guard let layer else { return .zero }
+      let left = SettingsWindowController.sidebarWidth
+      return NSRect(x: left + (layer.bounds.width - left) / 2, y: layer.bounds.maxY - 44 + Panels.gap, width: 0, height: 0)
+    }, below: true, align: .center)
+    return panels.open(PanelSpec(name: name, content: content, anchor: anchor, closesOn: [.escape], asks: true,
+                                 onReturn: onReturn, onClose: onClose))
+  }
+
   func windowWillClose(_ notification: Notification) {
     paneViews.values.forEach { $0.closeColorPanel() }
+    questionPanels?.close()
     if let window { RaySettings.shared.rememberWindowFrame(window.frame) }
     logAll("settingsWindow")
   }

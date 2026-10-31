@@ -148,7 +148,6 @@ export const areas = {
   // Also the rows' menus and the test hooks for renaming (the field, its Done button).
   "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder", "folder-rename", "tab-rename",
     "settings-reorder-haptics"],
-  "Host/SidebarView.swift#Downloads panel": ["downloads"],
 
   "Host/AddressInput.swift": [...commandBar, "page-toolbar", "site-controls", "settings-routes", "settings-trimmed",
     "address-fragment", "settings-privacy", "settings-extensions"],
