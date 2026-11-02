@@ -79,6 +79,10 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
     other userscript managers), and Export Bookmarks as HTML. The engine calls come with Ardia's
     engine-2f172eb50b89 (`ac_extension_drop.mm` and the `engine:extensionInstallFailed:tab:` delegate,
     `ac_extensions_configure` `userScripts`, `ac_bookmarks_export_html`); Ray needs the sync and the UI.
+18. Share from the page's right-click menu: selected text, an image, a link (trackers removed), a video/audio
+    source or the page, through macOS's share sheet; File › Share › Share… on ⌥⌘S. Engine part comes with Ardia's
+    engine-7ad5405dbe6d (`ac_context_menu_share`); Ray implements `tab:shareFromContextMenu:` (Ardia
+    0.2.44-nightly.3, `docs/ARDIA-WATCH.md`).
 
 **Default browser**
 17. **Ask to be the default browser** outside Settings: a step in the onboarding (after the import, "Open links from
@@ -268,6 +272,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     again, look at the timing of the one-time `pageToolbar` move.
 32. **Not yet on the panels' look:** extension popups (their own window; could take the panels' corners, shadow and
     motion), and the dead Import from Arc confirm (`importFromArc`, no menu item reaches it).
+33. **Peek from a background window: not tried.** With the sidebar hidden, hovering the left edge of Ray's window
+    while another app is in front likely slides the sidebar out (`pointer(at:appActive:)` only narrows the reach to
+    the window's own edge strip). Ardia stopped this (0.2.44-nightly.2, its issue #698): peek only while the app is
+    active; a hover from the background opens when Ray comes forward with the pointer still there. Fix in
+    `BrowserWindowController`'s peek code.
 
 ## Done
 

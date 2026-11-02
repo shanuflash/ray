@@ -4,64 +4,149 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.43-nightly.6 (engine-4d8c64033b08), 2026-10-30
+Last reviewed: v0.2.44-nightly.3 (engine-7ad5405dbe6d), 2026-11-02
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac on
-chromiumdash, checked 2026-10-29: 156.0.8078.74 / .75 and 157.0.8103.26. None of the releases below bumps
-Chromium, so Ardia is on .47 too. Chrome's own security releases are tracked in `docs/CHROMIUM-WATCH.md`.
+chromiumdash, checked 2026-11-02: 156.0.8078.80 (.76/.79 before it) and 157.0.8103.26. Ardia moved to
+156.0.8078.79 on Helium 0.20.3 in engine-1982453a46fe (v0.2.43). `docs/CHROMIUM-WATCH.md` doesn't exist yet in this
+checkout, so this file is the only record of the gap for now.
 
 ## Ray should
 
 In priority order. Nothing here is started; engine items cost one engine rebuild (the owner's call).
 
-1. **Plan the next engine rebuild around a Chromium bump.** Ray is about 28 patch builds behind Chrome stable on
-   156 (.47 against .75), and 157 is out; Chrome's stable security fixes land in those builds. Ardia hasn't bumped
-   either. Ray's Chromium is pinned to Helium's (`engine/patches/build/helium-pins.ini`), and Helium 0.20.2.1
-   (helium-macos, 2026-10-28) is on 156.0.8078.73: bump the pins to it ourselves (PLAN.md section 6: "every 4
-   weeks") and take Ardia's engine changes below (now engine-4d8c64033b08) in the same rebuild.
-2. **Take engine-4d8c64033b08** (it includes engine-2f172eb50b89) through `sync-engine.sh`, then
+1. **Rebuild the engine on Chromium 156.0.8078.79+ (Helium 0.20.3).** Ray is on .47, 32 patch builds behind
+   Chrome stable (.80), and those builds carry Chrome's stable security fixes of 2026-10-28/29. Ardia has done the
+   work: engine-1982453a46fe bumps `helium-pins.ini` / `env.sh` to Chromium .79, Helium 0.20.3 and helium-macos
+   0.20.3.1, and fixes the two patches that broke (`chromium-helium-bangs-off`: Helium's reworked bangs loader;
+   `chromium-extension-omaha-attributes`: ungoogled's safebrowsing fix deletes a variable the patch now restores).
+   Taking Ardia's engine (item 2) brings all of it. Xcode 27.2 needs the Metal Toolchain downloaded once
+   (ANGLE's Metal shaders; Ardia's `docs/engine-build.md`).
+2. **Take engine-7ad5405dbe6d** (includes 1982453a, 4d8c6403 and 2f172eb5) through `sync-engine.sh`, then
    re-check `engine-ray/`'s fixups against the reorganised `ac_*.cc` files (4d8c64 rewrites every call's prelude
-   and drops 15 export headers; see its section), then
-   implement the one new delegate method, `engine:extensionInstallFailed:tab:` (renamed to `RayCoreEngine`), or a
-   failed .crx drop says nothing. Brings: install by dropping a .crx, bookmarks export (`ac_bookmarks_export_html`),
-   the "Allow User Scripts" switch (`ac_extensions_configure` `userScripts`), Memory Saver calls
-   (`ac_memory_saver`), extension i18n for component extensions, Picture in Picture reopening where it was left,
-   links an extension opens in another app (Obsidian Web Clipper), and Dia's page menu order.
+   and drops 15 export headers; see its section), move `Downloads` to `ac_downloads_command`, and diff `ArdiaCore.h`
+   against `RayCore.h`: new delegate methods `engine:extensionInstallFailed:tab:` (or a failed .crx drop says
+   nothing) and `tab:shareFromContextMenu:` (7ad5405; the page menu's Share… items show only when the delegate
+   answers it, so Ray can leave it out at first). Brings: Chromium .79, install by dropping a .crx, bookmarks export
+   (`ac_bookmarks_export_html`), the "Allow User Scripts" switch, Memory Saver calls, Picture in Picture reopening
+   where it was left, Obsidian Web Clipper's app links, Dia's page menu order, engine-side private-window gating and
+   secret zeroing, and a host-shown page menu that runs the picked item before tearing the menu down (7ad5405).
 3. **Decide Memory Saver.** Ray has no tab sleeping of its own: Ardia's 20-minute sleep lived in Ardia's app, which
    Ray never copied. But Ray's engine still skips Helium's `memory-saving-by-default.patch` with the reason "would
    fight Ray's own tab sleeping", so Memory Saver is off unless the user turns it on in chrome://settings/performance
-   (which Ray's trim keeps). Ardia now does what Helium does: Memory Saver on by default, Moderate / Balanced /
-   Maximum, "Always keep these sites active". Taking item 2 turns it on by default; the Settings revamp (PLAN.md
-   section 13) should give it rows through `ac_memory_saver`.
-4. **Follow the Mac's language.** Ardia found Chrome took its UI locale from the app bundle's localizations; with
-   none declared, the engine ran in en-US and every extension saw `en` (uBlock Origin's text was blank). Ray's
-   Info.plist (written by `scripts/build-app.sh`) declares no `CFBundleLocalizations` either, so Ray very likely has
-   the same bug (not tried). Fix is app-side, no engine: declare Chromium's 55 desktop locales (Helium's list) and
-   keep their `locale.pak`s (Ray already copies every `*.lproj/locale.pak`). Ray's own UI stays English.
-5. **Per-tab mute and a sound icon** (MISSING, Arc #8 and Chrome #12). Copy Ardia's corrected model, not its first
-   one: the speaker and Mute Tab mute that tab only (Chrome's per-tab mute, kept across navigation and relaunch);
-   Mute Site is its own choice behind ⌥ and in Site controls.
-6. **Collapse the pinned section** (new gap): a "Pinned" toggle on the divider above Today; collapsed, only the
-   entry holding the active tab shows. Ardia's top-asked issue (#521).
-7. **Downloads: a cancelled Save As row.** Ardia listed Chrome's download item before the save panel had a path, so
-   cancelling left a nameless "Cancelled" row. Ray's `Downloads` lists every item with no path check: likely the same
-   (not tried). Fix: list a download once it has a path; drop one cancelled before it had one.
-8. **Peek decision input** (PLAN.md open decision): Ardia now opens other sites' links from Top Apps and pinned tabs
-   in Peek, as Arc does, behind a Settings › Tabs › Links switch (off by default). Ardia keeps Peek on the
-   `chromium-temporary-tab-restore-hook` patch Ray dropped.
-9. **Reserved keys:** Ardia now reserves Helium's set, by menu command: Ray's (`Shortcuts.isReserved`) lacks
-   Developer Tools (⌥⌘I), Toggle Developer Tools (F12) and Search Tabs (⇧⌘A). ⇧⌘C stays Ray's setting. Small.
-10. **Tab-switch blank frame** (another chat is on it): Ardia's fix keeps the outgoing page up until the incoming
-    page's render widget shows new content (at most 250 ms), and on ⌘W hands the closing tab's page view to the one
-    replacing it so Chrome never hides it before the next tab draws (`ArdiaWebView+Painting.mm`,
-    `ArdiaWebView+StandIn.mm`, commits `d18f3414`, `277c8256`). Measured: 0 blank frames in 1,730.
-11. **Closing the last tab keeps the window while anything is pinned** (Ardia 0.2.43-nightly.5, `d8e1098b`, as
-    Arc): unloaded pinned tiles counted as "asleep" made ⌘W on the last Today tab close the whole window. Ray's
-    `close-last-window` covers closing the window, not ⌘W on the last tab: try it by hand with only pinned tabs
-    and favorites left (MISSING known limitation 28).
-12. **Look:** Ardia tried one liquid glass everywhere (nightly.5) and backed out a day later to Dia's flat fills and
-    one-pixel outlines on macOS 26 (nightly.6, "measured against Dia itself"). Ray is already flat AppKit and avoids
-    popovers; keep it that way, no glass.
+   (which Ray's trim keeps). Ardia 0.2.43 (stable) ships Helium's way: on by default, Moderate / Balanced /
+   Maximum, "Always keep these sites active", pinned and current tabs never sleep. Taking item 2 turns it on by
+   default; Settings should give it rows through `ac_memory_saver` (MISSING, Ardia settings 15).
+4. **Follow the Mac's language.** Ardia 0.2.43 confirms the fix: Chrome took its UI locale from the app bundle's
+   localizations; with none declared every extension saw `en` (uBlock Origin's text was blank). Ray's Info.plist
+   (`scripts/build-app.sh`) declares no `CFBundleLocalizations` either (not tried). App-side, no engine: declare
+   Chromium's 55 desktop locales (Helium's list) and keep their `locale.pak`s. Ray's own UI stays English.
+5. **Per-tab mute and a sound icon** (MISSING, Arc #8 and Chrome #12). Copy Ardia's corrected model: the speaker
+   and Mute Tab mute that tab only (kept across navigation and relaunch); Mute Site is its own choice behind ⌥ and
+   in Site controls. New in 0.2.44-nightly.2: a muted tab's or site's notifications post without a sound
+   (`0a71e81d`); do the same when mute lands.
+6. **Collapse the pinned section** (MISSING, Arc #17): shipped in Ardia's stable 0.2.43.
+7. **Downloads: a cancelled Save As row.** Ardia 0.2.43 fixed the nameless "Cancelled" row a cancelled save panel
+   left. Ray's `Downloads` lists every item with no path check: likely the same (not tried). Fix: list a download
+   once it has a path; drop one cancelled before it had one.
+8. **No peek while Ray is in the background** (new, MISSING known limitation). Ardia 0.2.44-nightly.2 (`4530d075`,
+   `19b3e1da`, its issue #698): hovering a background window's left edge slid the collapsed sidebar out; now a
+   peek opens only while the app is active, a hover that arrived in the background opens when the app comes forward
+   with the pointer still there, and one that left opens nothing. Ray's `pointer(at:appActive:)` only narrows the
+   reach to the window's own edge strip when inactive, so it still peeks from a background window (not tried).
+9. **Peek decision input** (PLAN.md open decision): Ardia's stable 0.2.43 opens other sites' links from Top Apps
+   and pinned tabs in Peek, as Arc does, behind Settings › Tabs › Links (off by default).
+10. **Reserved keys:** Ardia's stable now reserves Helium's set by menu command; Ray's (`Shortcuts.isReserved`)
+    lacks Developer Tools (⌥⌘I), Toggle Developer Tools (F12) and Search Tabs (⇧⌘A). Small.
+11. **Tab-switch blank frame** (another chat is on it): Ardia 0.2.43 ships its fix: the outgoing page stays up until
+    the incoming page's render widget shows new content (≤ 250 ms), and ⌘W hands the closing tab's page view to the
+    one replacing it (`d18f3414`, `277c8256`).
+12. **Closing the last tab keeps the window while anything is pinned** (Ardia 0.2.43, as Arc). Try by hand in Ray
+    with only pinned tabs and favorites left (MISSING known limitation 28).
+13. **Share from the page menu** (new, MISSING Chrome gap): Share… for selected text, an image, a link with
+    trackers removed, a video/audio source or the page, through macOS's share sheet; File › Share › Share… on ⌥⌘S.
+    Engine part comes with item 2; Ray then implements `tab:shareFromContextMenu:` with `NSSharingServicePicker`.
+14. **Look:** Ardia went flat, then back to glass, and v0.2.43 ships a Glass / Classic choice (Glass on pinned
+    tiles, address field, buttons, Downloads and site controls, tintable). Ray's Panels and notes setting already
+    offers Glass / Solid on its surfaces; nothing to take beyond watching what users pick.
+
+## v0.2.44-nightly.3 (2026-11-02), engine-7ad5405dbe6d
+
+**Engine** (tree `7ad5405d`, from `1982453a`; no Chromium bump, still 156.0.8078.79):
+- `ac_context_menu_share.{h,mm}` (new) and `ac_context_menu.mm`: the page's right-click menu gets "Share…" items
+  (text, link with trackers removed, image file, video/audio source, page), each placed after its neighbour group,
+  only when the tab's delegate answers the new `tab:shareFromContextMenu:`. Shared images go to a per-process 0700
+  folder with a flock'ed lock, removed on cancel/finish/after an hour and by a startup sweep that never follows
+  symlinks. Ray: item 13.
+- `ShowThroughHost`: the picked item now runs (`ActivatedAt`) before `MenuClosed`, and `MenuClosed` only while the
+  menu still exists. Ray's `ac_context_menu.mm` has the old order (`MenuClosed` first, then the pick only if the
+  weak pointer survived): comes with item 2; if Ray ever drops picks from a host-shown page menu, this is why.
+- No security fixes.
+
+**App:** Share a pinned folder through iCloud Drive (`.webloc` files, three-way merge, per profile); a real emoji
+and SF Symbol picker for profile and sidebar icons; Share in the page menu (⌥⌘S); text fields commit on click-away;
+⌘L on a New Tab page goes to the page's own search box. Ray: Change Icon… already has Arc's 24 symbols plus emoji
+(`FolderIconPicker`); a searchable full emoji grid is a possible follow-up. Shared folders: Ardia-only for now (Ray
+has no sync).
+
+**Competitive:** Ardia keeps adding Arc-beyond features (shared folders, dotfiles config). Ray's edge stays native
+AppKit Settings and panels, but it's now an engine rebuild behind on security.
+
+## v0.2.44-nightly.2 (2026-11-01)
+
+No engine change (engine-1982453a46fe).
+
+**App:** settings, keybindings and themes from `~/.config/ardia/config.json` (dotfiles style, read-only, applied
+at launch and on save) and an `ardia` command that can run commands and hooks; custom themes from the New Tab page;
+the sidebar player shows the time left. **Fixes Ray shares:** muted tabs' notifications are silent (item 5); the
+collapsed sidebar doesn't peek while another app is in front (item 8). Ray: the config file and CLI stay "left out
+on purpose" (MISSING); the player is MISSING Arc #8.
+
+## v0.2.44-nightly.1 (2026-10-31)
+
+No engine change. **App:** Ardia's text sizes, corners, spacing and animation timings collapse into one small token
+set; badges, dividers, toasts, key caps, segmented controls and dialog buttons become shared components. Ray already
+works this way in places (`PanelKit`, `SettingsControls`, `SurfaceBackdrop`, the one spring); nothing to take.
+
+## v0.2.43 (2026-10-31, stable), engine-1982453a46fe
+
+**Engine** (tree `1982453a`, from `4d8c6403`):
+- **Chromium 156.0.8078.79 on Helium 0.20.3 / helium-macos 0.20.3.1** (`a55758e4`): Chrome's stable updates of
+  2026-10-28 and -29 (.73 and .79), with their security fixes. Helium's series unchanged in content and order.
+  Patches reworked: `chromium-helium-bangs-off` (LoadBangs answers an empty catalogue before any fetch) and
+  `chromium-extension-omaha-attributes` (re-declares `should_perform_action_on_omaha_attributes`). Ray has both
+  patches through the rename map, so it hits the same breakage if it bumps alone: take Ardia's. Ray: item 1.
+
+**App** (the stable roll-up of nightlies 1–9; items already covered above and below): Glass / Classic look; Dia's
+right-click menu order with icons on macOS 27, move tabs/groups to another profile or window, Reload's menu turns
+the ad blocker off or clears cookies; sidebar player expands on hover; Memory Saver replaces Ardia's tab sleeping;
+profile icons; collapsible pinned section; bookmarks bar drag and drop and HTML export; per-tab mute; a zoom-level
+panel and ⌘-scroll to the page first; compact 28 pt toolbar; Peek for other sites' links; .crx drop and user
+scripts; tab cleanup to the minute.
+
+**Fixes Ray shares or should check:** no blank frame on tab switch or ⌘W (item 11); Sign in with Google popups
+blank since 0.2.41 (`1c3d5dee`, the page under Ardia's origin strip: Ardia's own popup UI, Ray's popups are
+Chrome's, nothing to take); extensions in the Mac's language (item 4); cancelled Save As row (item 7); PiP where
+left (engine); a website gets every key first except Helium's reserved ones (item 10); old copies of the app no
+longer in Open With (Launch Services: Ray could `lsregister -u` stale copies on update; not tried).
+
+**Competitive:** Ardia is now on .79, Ray on .47: Ardia is ahead on security until Ray rebuilds. Ray is ahead on a
+native Settings window and AppKit panels.
+
+## v0.2.43-nightly.9 (2026-10-31)
+
+No engine change. **App:** Glass covers Downloads and site controls too; the separate "Use glass for panels" switch
+is gone; glass at half strength. Ray: item 14.
+
+## v0.2.43-nightly.8 (2026-10-31)
+
+No engine change. **App:** Glass or Classic in Settings › Appearance and setup, Glass tintable; ⌘N opens on the
+current profile; usage stats now include changed settings (opt-in). Ray: item 14; Ray has one profile and no stats.
+
+## v0.2.43-nightly.7 (2026-10-30)
+
+No engine change. **App:** the sidebar player grows into full controls on hover; glass back on pinned tiles, the
+address field, Downloads and onboarding; the divider under pinned tiles spaced evenly. Ray: player is MISSING Arc #8.
 
 ## v0.2.43-nightly.6 (2026-10-30)
 
