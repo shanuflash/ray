@@ -2349,14 +2349,26 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func tabDidChangeLoading(_ tab: RayCoreTab) {
     LoadSweeps.shared.loadingChanged(tab)
     pages.updateProgress(for: tab)
+    // After the sweep knows of the load: the address shown with it is drawn mid-sweep, never as a load without one.
+    showPendingAddress(of: tab)
     if tab === activeTab { updateToolbarLoading() }
     if !tab.loading { TestEnvironment.log("tab \(tab.tabId) loaded \(tab.url)") }
     if tab === activeTab { logState("loading") }
   }
 
+  /// A navigation's address shows from its start, as Chrome's omnibox shows it (a typed address, a new tab's first
+  /// page; a link in the same tab keeps the old address until it commits, as the engine's visible URL does): the
+  /// engine says the URL changed only when a navigation finishes. A load starting or its progress (reset when another
+  /// navigation starts mid-load) is when to look.
+  private func showPendingAddress(of tab: RayCoreTab) {
+    guard tab.loading, let entry = state.entry(for: tab), !tab.url.isEmpty, tab.url != entry.url else { return }
+    tabChanged(tab, event: "url")
+  }
+
   func tabDidChangeProgress(_ tab: RayCoreTab) {
     LoadSweeps.shared.progressChanged(tab)
     pages.updateProgress(for: tab)
+    showPendingAddress(of: tab)
     if tab === activeTab {
       updateToolbarLoading()
       logState("progress")

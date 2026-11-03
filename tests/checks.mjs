@@ -42,6 +42,8 @@ const pages = {
   "/a": `<title>Page A</title><a id=blank href="/b" target="_blank">blank</a> <a id=plain href="/b">plain</a>
          <button id=open onclick="window.open('/c')">open</button>`,
   "/b": `<title>Page B</title><p>b</p>`,
+  // A link to a page that answers only after 1.5 s, in a new tab.
+  "/blank-slow": `<title>Blank slow</title><a id=go href="/slow-start?blank" target="_blank">go</a>`,
   // A page with a favicon of its own (an orange square): a favorite of it wears Arc's ring when selected.
   "/icon-tile": `<title>Icon tile</title><link rel=icon href="/tile-icon.png"><p>icon tile</p>`,
   // A page that loads a slow frame while it loads, then adds another and moves its own address after it has loaded
@@ -2721,6 +2723,31 @@ const checks = {
     assert(!seen.includes("certificateError"), `a pending page showed a certificate error: ${seen}`);
     await send("Target.closeTarget", { targetId: target.targetId });
     await until("its tab closed", async () => { await command("state"); return !tabFor("slow-start?pending"); });
+  },
+  async "pending-address"() {
+    // A link that opens a new active tab shows where it goes from the start, as Chrome does for a tab's first page;
+    // the engine says the address changed only once the page commits, which left the field empty meanwhile.
+    await send("Target.createTarget", { url: `${origin}/blank-slow` });
+    const { target, sessionId } = await session("/blank-slow");
+    await until("its tab active", () => state().active === tabFor("/blank-slow")?.id);
+    await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+    const opener = state().active;
+    await clickElement(sessionId, "#go");
+    const start = Date.now();
+    const shown = [];
+    let early = false;
+    while (Date.now() - start < 1200 && !early) {
+      await command("state");
+      const field = state().toolbar?.field;
+      if (state().active !== opener) shown.push(field?.shown ?? "");
+      early = state().active !== opener && (field?.shown ?? "").includes("slow-start?blank");
+    }
+    assert(early, `the new tab's address showed only after its page: ${[...new Set(shown)]}`);
+    const opened = await until("opened tab", () => tabFor("/slow-start?blank"), 5000);
+    await send("Target.closeTarget", { targetId: (await session("/slow-start?blank")).target.targetId });
+    await send("Target.closeTarget", { targetId: target.targetId });
+    await until("its tabs closed", async () => { await command("state"); return !tabFor("/slow-start?blank") && !tabFor("/blank-slow"); });
+    assert(opened, "no new tab");
   },
   async "page-loading"() {
     // The address bar shows the load as a wash filling the field, and its reload button is a stop button meanwhile.
