@@ -444,8 +444,8 @@ publicly or create accounts.
   directly: window size, icon view, icon spots, the background's alias record, which it resolves before writing),
   Ray's .icns as the volume icon. Signed with the app's own certificate (its leaf by SHA-1), then mounted hidden
   (`-nobrowse`, a private mount point) to verify the app (`codesign --verify --deep --strict`), the Team IDs and the
-  window's files. The window is "Ocean" (sunrise over the sea, the icon's glyph as the sun, a school of fish from Ray
-  to Applications, a sandy shore); its design lives in that file. Finder draws icon names in black over any
+  window's files. The window is "Ocean", minimal (sunrise over the sea, the icon's glyph as the sun, its shimmer, a thin
+  arrow from Ray to Applications, a sandy shore); its design lives in that file. Finder draws icon names in black over any
   background picture, dark mode included (checked on macOS 27), so the names must sit on something light (the
   sand). Its window bounds include the 32 pt title bar, and its status and path bars (when shown) cover the bottom 50 pt. Never mark Ray.app's extension hidden:
   that writes Finder info on the bundle, which `codesign --strict` rejects (Finder hides ".app" by default anyway).

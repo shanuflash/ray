@@ -22,8 +22,8 @@ func mountPoint(_ volumeName: String) -> String { "/Volumes/" + volumeName }
 
 // MARK: Background
 
-/// "Ocean": sunrise over the sea, the icon's glyph as the sun on the horizon, its shimmer on the water, a boat and two
-/// gulls, a school of fish in the icon's orange to pink swimming from Ray to Applications, and a sandy shore. Finder
+/// "Ocean": sunrise over the sea, minimal: the icon's glyph as the sun on the horizon, its shimmer on the water, a thin
+/// arrow from Ray to Applications and a sandy shore. Finder
 /// draws icon names in black over any background picture (dark mode too), so they sit on the sand, just above the
 /// bottom 56 pt that Finder's path and status bars cover for people who show them.
 func drawBackground(scale: CGFloat) -> NSBitmapImageRep {
@@ -70,7 +70,7 @@ func drawBackground(scale: CGFloat) -> NSBitmapImageRep {
   cg.fillEllipse(in: CGRect(x: 320 - 58, y: horizon - 58, width: 116, height: 116))
   cg.restoreGState()
 
-  // Sea, the sun's path on it, wave glints.
+  // Sea and the sun's path on it.
   cg.saveGState()
   cg.clip(to: CGRect(x: 0, y: horizon, width: windowSize.width, height: windowSize.height - horizon))
   cg.drawLinearGradient(gradient([(0, 0x3E63C9), (1, 0x22357F)]), start: CGPoint(x: 0, y: horizon),
@@ -79,10 +79,6 @@ func drawBackground(scale: CGFloat) -> NSBitmapImageRep {
   for (i, (y, half)) in [(216.0, 74.0), (226, 58), (236, 44), (246, 32), (256, 22), (266, 14)].enumerated() {
     pill(320 - half, y, 2 * half, 4, rgb(0xFFE6B0, 0.9 - 0.12 * CGFloat(i)))
   }
-  for (x, y, w) in [(40.0, 236.0, 30.0), (560, 228, 26), (196, 282, 22), (430, 290, 28), (60, 296, 24), (566, 298, 22)] {
-    pill(x, y, w, 3, rgb(0xFFFFFF, 0.35))
-  }
-
   // The shore: sand where the names sit, with a line of foam.
   let shore = CGMutablePath()
   shore.move(to: CGPoint(x: 0, y: 330))
@@ -101,70 +97,18 @@ func drawBackground(scale: CGFloat) -> NSBitmapImageRep {
   cg.setLineWidth(3)
   cg.strokePath()
 
-  // A little boat and two gulls.
-  cg.saveGState()
-  cg.translateBy(x: 548, y: 182)
-  for (points, color) in [([(0.0, 18.0), (34, 18), (28, 26), (6, 26)], 0x2B2F55), ([(16, -14), (16, 16), (32, 16)], 0xFFFFFF),
-                          ([(14, -6), (14, 16), (2, 16)], 0xFFD9C2)] as [([(CGFloat, CGFloat)], UInt32)] {
-    cg.addLines(between: points.map { CGPoint(x: $0.0, y: $0.1) })
-    cg.closePath()
-    cg.setFillColor(rgb(color))
-    cg.fillPath()
-  }
-  cg.restoreGState()
-  for (x, y, w) in [(84.0, 132.0, 12.0), (116, 116, 8)] {
-    cg.move(to: CGPoint(x: x, y: y))
-    cg.addQuadCurve(to: CGPoint(x: x + w, y: y), control: CGPoint(x: x + w / 2, y: y - w / 2))
-    cg.addQuadCurve(to: CGPoint(x: x + 2 * w, y: y), control: CGPoint(x: x + 1.5 * w, y: y - w / 2))
-  }
-  cg.setStrokeColor(rgb(0x7A3E58))
-  cg.setLineWidth(2)
+  // The way: a thin white arrow over the water, between the icons and under the shimmer.
+  let way = appSpot.y + 26
+  cg.move(to: CGPoint(x: 252, y: way))
+  cg.addLine(to: CGPoint(x: 388, y: way))
+  cg.move(to: CGPoint(x: 379, y: way - 9))
+  cg.addLine(to: CGPoint(x: 388, y: way))
+  cg.addLine(to: CGPoint(x: 379, y: way + 9))
+  cg.setStrokeColor(rgb(0xFFFFFF, 0.9))
+  cg.setLineWidth(2.5)
+  cg.setLineCap(.round)
+  cg.setLineJoin(.round)
   cg.strokePath()
-
-  // The school: Gem fish (a rounded diamond and a triangle tail, flat like the glyph), orange at the back to pink at
-  // the front, growing as they go, the lead one breathing bubbles toward Applications.
-  let school: [(x: CGFloat, y: CGFloat, scale: CGFloat, degrees: CGFloat)] = [
-    (250, 312, 0.8, -6), (272, 299, 0.9, -10), (295, 308, 1, 4), (317, 295, 1.05, -8), (339, 302, 1.12, 2),
-    (362, 289, 1.25, -12),
-  ]
-  func mix(_ t: CGFloat) -> CGColor {
-    CGColor(srgbRed: 1, green: (0x9A + (0x4F - 0x9A) * t) / 255,
-            blue: (0x3C + (0x7B - 0x3C) * t) / 255, alpha: 1)
-  }
-  for (i, fish) in school.enumerated() {
-    let color = mix(CGFloat(i) / CGFloat(school.count - 1))
-    cg.saveGState()
-    // One shadow for the whole fish, not one per part.
-    cg.setShadow(offset: CGSize(width: 0, height: -scale), blur: scale, color: rgb(0x141E50, 0.35))
-    cg.beginTransparencyLayer(auxiliaryInfo: nil)
-    cg.translateBy(x: fish.x, y: fish.y)
-    cg.rotate(by: fish.degrees * .pi / 180)
-    cg.scaleBy(x: fish.scale, y: fish.scale)
-    cg.setFillColor(color)
-    cg.setStrokeColor(color)
-    cg.setLineJoin(.round)
-    for (points, width) in [([(-11.0, 0.0), (-20, -7), (-20, 7)], 2.5), ([(13, 0), (1, -8), (-11, 0), (1, 8)], 3)]
-      as [([(CGFloat, CGFloat)], CGFloat)] {
-      cg.addLines(between: points.map { CGPoint(x: $0.0, y: $0.1) })
-      cg.closePath()
-      cg.setLineWidth(width)
-      cg.drawPath(using: .fillStroke)
-    }
-    cg.move(to: CGPoint(x: 1, y: -8))
-    cg.addLine(to: CGPoint(x: 1, y: 8))
-    cg.setStrokeColor(rgb(0xFFFFFF, 0.35))
-    cg.setLineWidth(1.5)
-    cg.strokePath()
-    cg.setFillColor(rgb(0x1E2A5A))
-    cg.fillEllipse(in: CGRect(x: 6 - 1.4, y: -1.5 - 1.4, width: 2.8, height: 2.8))
-    cg.endTransparencyLayer()
-    cg.restoreGState()
-  }
-  cg.setStrokeColor(rgb(0xFFFFFF, 0.85))
-  cg.setLineWidth(1.4)
-  for (x, y, r) in [(384.0, 278.0, 3.0), (391, 267, 2.2), (386, 257, 1.6)] {
-    cg.strokeEllipse(in: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r))
-  }
 
   // The note, in SF Rounded, centred on baselines, in the sky.
   func line(_ text: String, baseline: CGFloat, size: CGFloat, weight: NSFont.Weight, color: UInt32) {
