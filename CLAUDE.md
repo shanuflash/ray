@@ -21,7 +21,11 @@ publicly or create accounts.
   hidden a display frame later. A 0.3 s deadline if no frame comes; no hold when the window isn't on screen.
 - `CommandBarView` + `Suggestions`: the Arc-style command bar (on `SurfaceBackdrop`, growing in on the panels' spring;
   ⌘T new tab, ⌘L / clicking the sidebar address =
-  current tab). Rows: autocompleted host match, typed URL or search, open tabs ("Switch to Tab"), history, and
+  current tab). Rows: the site whose host you typed the start of (Arc's: the field completes the host inline, the rest
+  selected, `CommandBarView.complete`; the site leads as its open tab, else its root page; a whole host completes only
+  for a site you use, a tab or frecency ≥ 1.5, else only its registrable domain; that site's other pages step aside
+  and other sites matched by host show once each; check `bar-sites`), typed URL or search (just what you typed, no
+  engine name), open tabs ("Switch to Tab"), history, and
   `BarActions`: menu commands read from the main menu (Ray's own items, validated as the menu does), matched by word
   starts of their title or synonyms, with the live key equivalent; an exact name leads unless a host autocompletes.
   Then "Settings: …" rows (`SettingsSearch.barMatches`, matched the same way: each shown setting, section and pane,

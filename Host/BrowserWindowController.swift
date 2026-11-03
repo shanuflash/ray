@@ -1950,7 +1950,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private func refreshSuggestions() {
     guard let bar = commandBar else { return }
     let query =
-      commandBarMode == .currentTab && bar.field.stringValue == activeEntry?.currentURL ? "" : bar.field.stringValue
+      commandBarMode == .currentTab && bar.typed == activeEntry?.currentURL ? "" : bar.typed
     // Scoped to a site search: only that search, nothing from tabs, history or the engine's suggestions.
     if let scope = bar.scope {
       bar.show(Suggestions.scoped(scope, query: query))
@@ -1975,7 +1975,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   private func requestSearchSuggestions() {
     guard let bar = commandBar, bar.scope == nil else { return }
-    let query = bar.field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    let query = bar.typed.trimmingCharacters(in: .whitespacesAndNewlines)
     guard Suggestions.wantsSearchSuggestions(for: query) else { return }
     searches.fetch(query) { [weak self] in self?.refreshSuggestions() }
   }
@@ -2690,7 +2690,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       ] as [String: Any],
       "commandBar": commandBar.map { bar in
         [
-          "mode": commandBarMode.rawValue, "query": bar.field.stringValue, "selected": bar.selectedIndex,
+          "mode": commandBarMode.rawValue, "query": bar.typed, "field": bar.field.stringValue, "completion": bar.inlineCompletion ?? NSNull(), "selected": bar.selectedIndex,
           "scope": bar.scope.map { ["name": $0.name, "keyword": $0.keyword] } ?? NSNull(),
           "rowsFullyVisible": bar.rowsFullyVisible,
           "firstVisibleRow": bar.shownRows.first, "visibleRows": bar.shownRows.count,
@@ -2699,6 +2699,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
             if row.suggested { logged["suggested"] = true }
             if case .tab(let tab) = row.kind { logged["tab"] = Int(tab.tabId) }
             if case .search(let url) = row.kind { logged["url"] = url }
+            if case .history(let url) = row.kind { logged["url"] = url }
+            if case .url(let url) = row.kind { logged["url"] = url }
             return logged
           },
         ] as [String: Any]

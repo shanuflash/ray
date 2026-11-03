@@ -124,10 +124,15 @@ enum AddressInput {
     return labels.suffix(take).joined(separator: ".")
   }
 
-  static func autocompletes(candidateHost: String, typedHost: String?, query: String) -> Bool {
+  static func autocompletes(candidateHost: String, typedHost: String?, query: String, trusted: Bool = false) -> Bool {
     guard !candidateHost.isEmpty else { return false }
     if let typedHost { return candidateHost == typedHost }
-    return registrableDomain(candidateHost).hasPrefix(query.lowercased())
+    let query = query.lowercased()
+    if registrableDomain(candidateHost).hasPrefix(query) { return true }
+    // A site you use (an open tab, or one you go to) completes on its whole host too, as in Chrome and Arc
+    // ("shanu" → shanu.surveysparrow.com, "mail" → mail.google.com). A one-off visit doesn't, so a lookalike
+    // ("google" → google.com.evil.tld) never completes from a single click.
+    return trusted && candidateHost.hasPrefix(query)
   }
 
   static func pillText(for url: String) -> String {

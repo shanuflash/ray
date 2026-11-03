@@ -30,6 +30,19 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   private let scrollView = QuietScrollView()
   private let tableView = NSTableView()
   private(set) var suggestions: [Suggestion] = []
+  /// The typed text's length (UTF-16) while the field shows the leading row's host completed after it, selected.
+  private var completedFrom: Int?
+  /// Completion follows only typing that added to the field, never Delete (Chrome's rule).
+  private var mayComplete = false
+  private var lastTyped = ""
+
+  /// What was typed: the field without its inline completion.
+  var typed: String {
+    guard let completedFrom else { return field.stringValue }
+    return (field.stringValue as NSString).substring(to: min(completedFrom, (field.stringValue as NSString).length))
+  }
+  /// For tests: the host completed inline, if any.
+  var inlineCompletion: String? { completedFrom == nil ? nil : field.stringValue }
 
   var selectedIndex: Int { tableView.selectedRow }
   /// For test snapshots: where the panel sits in the bar.
@@ -158,6 +171,9 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     lastPointer = NSEvent.mouseLocation
     setScope(nil)
     field.stringValue = query
+    completedFrom = nil
+    mayComplete = false
+    lastTyped = query
     window?.makeFirstResponder(field)
     field.currentEditor()?.selectAll(nil)
     // Grows a little about its middle on the panels' spring, fading in over 140 ms (Reduce Motion: the fade only).
@@ -199,7 +215,29 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
       layoutSubtreeIfNeeded()
       if row == 0 { tableView.scroll(.zero) } else { tableView.scrollRowToVisible(row) }
     }
+    complete(with: suggestions.first?.completion)
     needsLayout = true
+  }
+
+  /// Arc's and Chrome's inline autocomplete: the leading row's host after what was typed, the rest selected, so
+  /// typing on replaces it, Delete removes it and Enter goes to that row.
+  private func complete(with completion: String?) {
+    guard let editor = field.currentEditor() as? NSTextView else { return }
+    let typed = self.typed
+    let length = (typed as NSString).length
+    let selection = editor.selectedRange()
+    let atEnd = selection.location + selection.length == (editor.string as NSString).length
+    if let completion, mayComplete, scope == nil, atEnd, completion.hasPrefix(typed.lowercased()),
+       (completion as NSString).length > length {
+      let full = typed + String(completion.dropFirst(typed.count))
+      if editor.string != full { editor.string = full }
+      editor.setSelectedRange(NSRange(location: length, length: (full as NSString).length - length))
+      completedFrom = length
+    } else if completedFrom != nil {
+      editor.string = typed
+      editor.setSelectedRange(NSRange(location: length, length: 0))
+      completedFrom = nil
+    }
   }
 
   override func layout() {
@@ -250,6 +288,10 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   }
 
   func controlTextDidChange(_ notification: Notification) {
+    // Typing replaced (or Delete removed) any completion: the field is what was typed.
+    completedFrom = nil
+    mayComplete = (field.stringValue as NSString).length > (lastTyped as NSString).length
+    lastTyped = field.stringValue
     // A keyword and a space (typed, or pasted with more after it) scopes the bar, as Chrome's space trigger does.
     let text = field.stringValue
     if scope == nil, let space = text.firstIndex(of: " "), space != text.startIndex,
@@ -262,6 +304,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
 
   /// Scopes the bar to `scope`, the field holding `query` (what follows the keyword).
   func enter(_ scope: SearchScope, query: String = "") {
+    completedFrom = nil
     setScope(scope)
     if let editor = field.currentEditor() as? NSTextView {
       editor.string = query
@@ -488,7 +531,8 @@ private final class SuggestionCell: NSTableCellView {
     arrowBox.frame = NSRect(x: bounds.width - 22 - 24, y: mid - 12, width: 24, height: 24)
     arrow.frame = arrowBox.bounds.insetBy(dx: 4, dy: 4)
     let hasAccessory = isTab || !shortcut.isEmpty
-    let actionWidth = hasAccessory ? ceil(action.intrinsicContentSize.width) : 0
+    // A label's own size leaves its last glyph a hair short ("Switch to Tab" lost its b): room for it.
+    let actionWidth = hasAccessory ? ceil(action.intrinsicContentSize.width) + 4 : 0
     // The shortcut's frame is one line tall and centred (a label draws from its top); "Switch to Tab" keeps its own.
     let actionHeight = isTab ? 20 : ceil(action.intrinsicContentSize.height)
     action.frame = NSRect(
@@ -545,9 +589,9 @@ private final class SuggestionCell: NSTableCellView {
       arrow.contentTintColor = selected ? .windowBackgroundColor : .tertiaryLabelColor
       let symbol = icon.image?.isTemplate ?? false
       icon.contentTintColor = symbol ? .secondaryLabelColor : nil
+      // As Arc: a tile behind the icon only on the selected row.
       iconBox.layer?.backgroundColor =
-        symbol ? NSColor.labelColor.withAlphaComponent(0.08).cgColor
-        : selected ? NSColor.white.cgColor : NSColor.clear.cgColor
+        !selected ? NSColor.clear.cgColor : symbol ? NSColor.labelColor.withAlphaComponent(0.08).cgColor : NSColor.white.cgColor
     }
   }
 }

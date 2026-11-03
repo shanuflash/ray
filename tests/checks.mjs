@@ -149,7 +149,7 @@ function launch() {
       RAY_SEARCH_URL: `${origin}/search?q=%s`,
       RAY_DATA_DIR: dataDir,
       RAY_DOWNLOADS_DIR: join(dataDir, "Downloads"),
-      RAY_HOST_RULES: "MAP ray.test 127.0.0.1",
+      RAY_HOST_RULES: "MAP ray.test 127.0.0.1,MAP *.ray.test 127.0.0.1",
       RAY_ARC_SIDEBAR: join(dataDir, "Arc", "StorableSidebar.json"),
       RAY_IGNORE_CERT_ERRORS: "1",
       RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}`,
@@ -623,7 +623,8 @@ const checks = {
     await command("menu newTab");
     await command("type fixed engine");
     const bar = await until("search row", () => state().commandBar?.query === "fixed engine" && state().commandBar.rows[0]?.kind === "search" && state().commandBar);
-    assert(bar.rows[0].detail === "Search Google", `the search row says ${JSON.stringify(bar.rows[0])}`);
+    // Just what you typed, as Arc shows it: no engine name.
+    assert(bar.rows[0].detail === "", `the search row says ${JSON.stringify(bar.rows[0])}`);
     const before = state().tabs.length;
     await command("enter");
     const tab = await until("search tab", () => state().tabs.length === before + 1 &&
@@ -753,6 +754,47 @@ const checks = {
     await until("page closed", async () => { await command("state"); return !state().tabs.some((t) => t.id === page); });
     await resetSettings();
   },
+  async "bar-sites"() {
+    // Typing the start of a site's host is looking for that site, as in Arc: the field completes the host inline, the
+    // site leads (its open tab), what you typed follows as a search with no engine name, and another site's pages show
+    // as one row. Completing a whole host (not just its domain) needs a site you use: here an open tab.
+    const port = new URL(origin).port;
+    const site = `shanu.ray.test:${port}`, other = `shanuother.ray.test:${port}`;
+    for (const path of ["/b?one", "/c?n=1"]) {
+      await send("Target.createTarget", { url: `http://${other}${path}` });
+      const { target, sessionId } = await session(`${other}${path}`);
+      await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+      await send("Target.closeTarget", { targetId: target.targetId });
+    }
+    await send("Target.createTarget", { url: `http://${site}/b?site` });
+    const siteTab = await until("site tab", () => tabFor(`${site}/b?site`));
+    const { target: a } = await session("/a");
+    await send("Target.activateTarget", { targetId: a.targetId });
+    await until("/a active", () => state().active === tabFor("/a").id);
+    await command("menu newTab");
+    await command("type shanu");
+    let last;
+    const bar = await until("site completed", async () => {
+      await command("state");
+      last = state().commandBar;
+      return last?.completion === "shanu.ray.test" && last.rows.some((r) => r.url?.includes("shanuother")) ? last : null;
+    }, 8000).catch((error) => { throw new Error(`${error.message}: ${JSON.stringify(last)}`); });
+    assert(bar.query === "shanu" && bar.field === "shanu.ray.test", `field ${bar.field}, typed ${bar.query}`);
+    assert(bar.rows[0].kind === "tab" && bar.rows[0].tab === siteTab.id, `lead ${JSON.stringify(bar.rows[0])}`);
+    assert(bar.rows[1].kind === "search" && bar.rows[1].title === "shanu" && bar.rows[1].detail === "", `then ${JSON.stringify(bar.rows[1])}`);
+    const others = bar.rows.filter((r) => r.url?.includes("shanuother"));
+    assert(others.length === 1, `another site's pages: ${JSON.stringify(others)}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "bar-sites.png")}`);
+    // Delete takes the completion away, and nothing completes again until you type on.
+    await command("backspace");
+    await until("completion gone", async () => { await command("state"); return state().commandBar?.completion === null && state().commandBar.field === "shanu"; });
+    await command("type .");
+    await until("completes on", async () => { await command("state"); return state().commandBar?.completion === "shanu.ray.test" && state().commandBar.query === "shanu."; });
+    await command("enter");
+    await until("switched to the site's tab", () => state().active === siteTab.id && !state().commandBar);
+    await send("Target.closeTarget", { targetId: (await session(`${site}/b?site`)).target.targetId });
+    await until("site tab closed", async () => { await command("state"); return !tabFor(`${site}/b?site`); });
+  },
   async "bar-ranking"() {
     // Arc's order: a page you go to that matches leads (Enter opens it), then what you typed, then the other pages;
     // the search engine's suggestions (the fixture's, for "zz…") only fill what's left of the five rows shown at once.
@@ -795,7 +837,7 @@ const checks = {
       return null;
     }, 15000).catch((error) => { throw new Error(`${error.message}: ${JSON.stringify(last?.rows)}`); });
     assert(bar.rows[0].kind === "history" && bar.selected === 0, `first row ${JSON.stringify(bar.rows[0])}, selected ${bar.selected}`);
-    assert(bar.rows[1].kind === "search" && bar.rows[1].title === "zzconfig" && bar.rows[1].detail === "Search Google",
+    assert(bar.rows[1].kind === "search" && bar.rows[1].title === "zzconfig" && bar.rows[1].detail === "",
       `second row ${JSON.stringify(bar.rows[1])}`);
     assert(bar.rows.slice(2).every((r) => r.kind === "history"), `then pages: ${JSON.stringify(bar.rows)}`);
     // Short addresses: host, then the path's end, the middle elided; no scheme.
@@ -6251,7 +6293,7 @@ const checks = {
     };
     let asked = suggestRequests.length;
     let bar = await rowsFor("zzduck", (b) => b.rows.some((r) => r.suggested));
-    assert(bar.rows[0].kind === "search" && bar.rows[0].detail === "Search DuckDuckGo" && bar.rows[0].url === "https://duckduckgo.com/?q=zzduck", `typed row ${JSON.stringify(bar.rows[0])}`);
+    assert(bar.rows[0].kind === "search" && bar.rows[0].url === "https://duckduckgo.com/?q=zzduck", `typed row ${JSON.stringify(bar.rows[0])}`);
     assert(bar.rows.filter((r) => r.suggested).every((r) => r.url.startsWith("https://duckduckgo.com/?q=zzduck")), `suggestion rows ${JSON.stringify(bar.rows)}`);
     const sent = suggestRequests.slice(asked);
     assert(sent.some((r) => r.q === "zzduck") && sent.every((r) => r.engine === "duckduckgo"), `asked ${JSON.stringify(sent)}`);
@@ -6259,7 +6301,7 @@ const checks = {
     // Kagi has no suggestions: nothing is asked and none show.
     await setSetting("searchEngine", "kagi");
     asked = suggestRequests.length;
-    await rowsFor("zzkagi", (b) => b.rows[0]?.detail === "Search Kagi");
+    await rowsFor("zzkagi", (b) => b.rows[0]?.url === "https://kagi.com/search?q=zzkagi");
     await sleep(500);
     await command("state");
     assert(!state().commandBar.rows.some((r) => r.suggested) && state().commandBar.rows[0].url === "https://kagi.com/search?q=zzkagi", `Kagi rows ${JSON.stringify(state().commandBar.rows)}`);
@@ -6268,7 +6310,7 @@ const checks = {
     // Back to Google (the fixture stands in for it).
     await setSetting("searchEngine", "default");
     bar = await rowsFor("zzgoogle", (b) => b.rows.some((r) => r.suggested));
-    assert(bar.rows[0].detail === "Search Google" && bar.rows[0].url === `${origin}/search?q=zzgoogle`, `Google row ${JSON.stringify(bar.rows[0])}`);
+    assert(bar.rows[0].url === `${origin}/search?q=zzgoogle`, `Google row ${JSON.stringify(bar.rows[0])}`);
     assert(bar.rows.filter((r) => r.suggested).every((r) => r.url.startsWith(`${origin}/search?q=zzgoogle`)), `Google's suggestions ${JSON.stringify(bar.rows)}`);
     await command("escape");
   },

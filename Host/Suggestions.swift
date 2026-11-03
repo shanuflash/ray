@@ -19,6 +19,9 @@ struct Suggestion {
   let icon: NSImage?
   /// A search suggestion from the search engine (not what you typed).
   var suggested = false
+  /// The leading row's host, which the field completes inline after what was typed (Chrome's and Arc's inline
+  /// autocomplete): "shanu" shows "shanu.surveysparrow.com" with the rest selected.
+  var completion: String?
 
   var key: String {
     switch kind {
@@ -298,16 +301,47 @@ enum Suggestions {
         frecency: entry.frecency))
     }
     pages.sort { $0.rank > $1.rank }
-    if pages.count > limit { pages.removeSubrange(limit...) }
 
     let typed = typedSuggestion(query)
     let typedHost: String? = {
       if case .url(let url)? = typed?.kind { return host(of: url) }
       return nil
     }()
-    let autocomplete = pages.first { page in
-      AddressInput.autocompletes(candidateHost: host(of: page.url), typedHost: typedHost, query: lower)
-    }?.row
+    let completing = pages.first { page in
+      let isTab: Bool
+      if case .tab = page.row.kind { isTab = true } else { isTab = false }
+      return AddressInput.autocompletes(
+        candidateHost: host(of: page.url), typedHost: typedHost, query: lower, trusted: isTab || page.frecency >= leadFrecency)
+    }
+    // A host the field completes inline leads as the site itself, as in Arc: its open tab ("Switch to Tab"), else its
+    // root page. Its other pages, and other sites' pages but their best (or root) one, step aside: typing the start
+    // of a host is looking for a site, so the list offers sites, one row each.
+    var site: String?
+    var autocomplete = completing?.row
+    if let completing, typedHost == nil, host(of: completing.url).hasPrefix(lower), host(of: completing.url) != lower {
+      let siteHost = host(of: completing.url)
+      site = siteHost
+      var lead = others.first { host(of: $0.url) == siteHost }.map { tabSuggestion($0, name: name($0)) }
+        ?? history.first { host(of: $0.url) == siteHost && isRoot($0.url) }.map { historySuggestion($0, favicon: favicon) }
+        ?? (isRoot(completing.url) ? completing.row : nil)
+        ?? Suggestion(kind: .url(root(of: completing.url)), title: siteHost, detail: "", icon: completing.row.icon)
+      lead.completion = siteHost
+      autocomplete = lead
+    }
+    if !tokens.isEmpty {
+      let roots = Dictionary(history.filter { isRoot($0.url) }.map { (host(of: $0.url), $0) }) { first, _ in first }
+      var seen = Set(site.map { [$0] } ?? [])
+      pages = pages.compactMap { page in
+        guard case .history = page.row.kind else { return page }
+        let pageHost = host(of: page.url)
+        guard pageHost.hasPrefix(tokens[0]) else { return page }
+        guard seen.insert(pageHost).inserted else { return nil }
+        guard let root = roots[pageHost], root.url != page.url else { return page }
+        return Page(row: historySuggestion(root, favicon: favicon), url: root.url, match: page.match, strong: page.strong,
+                    frecency: page.frecency)
+      }
+    }
+    if pages.count > limit { pages.removeSubrange(limit...) }
     // Menu commands right after what you typed (Ardia: after the first row and the search). An exact name ("zoom in")
     // leads, so Enter runs it, but never over a host the field autocompletes, and an address never matches one.
     var actionRows: [Suggestion] = []
@@ -426,7 +460,8 @@ enum Suggestions {
   private static func typedSuggestion(_ query: String) -> Suggestion? {
     guard let url = AddressInput.url(for: query) else { return nil }
     if AddressInput.isSearch(url) {
-      return Suggestion(kind: .search(url), title: query, detail: "Search \(SearchEngines.chosen.name)", icon: magnifier)
+      // Just what you typed, as Arc shows it: no engine name.
+      return Suggestion(kind: .search(url), title: query, detail: "", icon: magnifier)
     }
     return Suggestion(kind: .url(url), title: AddressInput.display(for: url), detail: "Open", icon: globe)
   }
@@ -484,6 +519,21 @@ enum Suggestions {
   }
 
   private static func host(of url: String) -> String { AddressInput.host(of: url) }
+
+  /// Whether an address is its site's front page: no path but "/", no query.
+  private static func isRoot(_ url: String) -> Bool {
+    guard let components = URLComponents(string: url) else { return false }
+    return (components.path.isEmpty || components.path == "/") && components.query == nil
+  }
+
+  /// The front page of an address's site.
+  private static func root(of url: String) -> String {
+    guard var components = URLComponents(string: url) else { return url }
+    components.path = "/"
+    components.query = nil
+    components.fragment = nil
+    return components.string ?? url
+  }
 
   private static func same(_ a: Suggestion, _ b: Suggestion) -> Bool {
     switch (a.kind, b.kind) {

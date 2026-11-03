@@ -134,6 +134,19 @@ where AddressInput.autocompletes(candidateHost: candidate, typedHost: typed, que
   failures += 1
   print("FAIL autocompletes(\(candidate), typed: \(typed ?? "nil"), \(query)) != \(expected)")
 }
+// A site you use (an open tab, a page you go to) also completes on its whole host, as in Arc; a one-off visit doesn't.
+let trustedCases: [(String, String, Bool)] = [
+  ("mail.google.com", "mail", true),
+  ("shanu.surveysparrow.com", "shanu", true),
+  ("shanu.surveysparrow.com", "surveys", true),
+  ("shanu.surveysparrow.com", "sparrow", false),
+  ("github.com", "hub", false),
+]
+for (candidate, query, expected) in trustedCases
+where AddressInput.autocompletes(candidateHost: candidate, typedHost: nil, query: query, trusted: true) != expected {
+  failures += 1
+  print("FAIL trusted autocompletes(\(candidate), \(query)) != \(expected)")
+}
 // Dev hosts never warn; plain http elsewhere is a quiet open lock; red only for a real site's bad certificate.
 let lookCases: [(String?, String, ConnectionLook)] = [
   ("insecure", "http://localhost:3000/", .local),
