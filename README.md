@@ -18,12 +18,36 @@ Ray updates itself after that (Ray › Check for Updates…).
 
 ## What works
 
-- Arc's sidebar: favorites, pinned tabs, folders, Today tabs that clear themselves
-- ⌘S hides it, the left edge peeks it back
-- Command bar (⌘T) for tabs, history, search and commands
-- Chrome Web Store extensions on real Chromium
-- Your Arc comes over in one go, signed in (Chrome, Safari, Firefox and others too)
+- Arc's sidebar
+- Favorites, pinned tabs and folders
+- Hide the sidebar with ⌘S
+- Command bar (⌘T)
+- Chrome extensions
+- Import from Arc, still signed in
 - Native Mac app, no Electron
+
+<details>
+<summary>And the rest</summary>
+
+**Sidebar**
+- Rename tabs
+- Folder colours and icons
+- Select several tabs
+- Pinned tabs reset when closed
+- Today tabs archive after 12 hours
+
+**Moving in**
+- Also from Dia, Chrome, Brave, Edge, Helium, Firefox, Zen and Safari
+- Tabs, folders, history, bookmarks, passwords and cookies
+
+**Other**
+- Address bar above the page, like Dia
+- Edge-to-edge full screen
+- Settings in the command bar
+- Your own colour and shortcuts
+- JumpCloud Go sign-in
+
+</details>
 
 ## Not yet
 
