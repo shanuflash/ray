@@ -30,6 +30,7 @@ Ray updates itself after that (Ray › Check for Updates…).
 
 - **Sidebar**
   - Rename tabs
+  - Arc's right-click menus: duplicate, mute, move, tab icons
   - Folder colours and icons
   - Select several tabs
   - Pinned tabs reset when closed

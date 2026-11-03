@@ -281,7 +281,9 @@ enum TestCommands {
       "nestfolder": .newNestedFolder, "togglefolder": .toggleFolder, "outfolder": .removeFromFolder,
       "deletefolder": .deleteFolder, "renamefolder": .renameFolder, "rename": .renameFolder,
       "changeicon": .changeIcon, "pinfolder": .pinFolder, "unpinfolder": .unpinFolder, "newtabin": .newTabInFolder,
-      "closetabs": .closeFolderTabs,
+      "closetabs": .closeFolderTabs, "copylink": .copyLinks, "share": .shareFolder, "duplicate": .duplicate,
+      "mute": .toggleMute, "topinned": .moveToPinned, "totoday": .moveToToday, "replacepin": .replacePinnedURL,
+      "editpin": .editPinnedURL,
     ]
     guard parts.count >= 2, let id = UUID(uuidString: parts[1]),
           let controller = AppController.shared.current, let entry = controller.state.entry(id: id) else {
@@ -291,6 +293,8 @@ enum TestCommands {
       controller.perform(.moveToFolder(folder), on: entry)
     } else if parts[0] == "color", parts.count == 3 {
       controller.perform(.setColor(parts[2] == "none" ? nil : parts[2]), on: entry)
+    } else if parts[0] == "pinurl", parts.count == 3 {
+      controller.perform(.setPinnedURL(parts[2]), on: entry)
     } else if let action = actions[parts[0]], parts.count == 2 {
       controller.perform(action, on: entry)
     } else {
@@ -356,10 +360,13 @@ enum TestCommands {
     return "ok"
   }
 
-  /// `rowmenu <id>`: the titles of that row's context menu, as JSON.
+  /// `rowmenu <id>`: the titles of that row's context menu, as JSON; `rowmenu <id> press <title>` chooses an item
+  /// as a click would ("Move to > Today" for a submenu's).
   private static func rowMenu(_ argument: String) -> String {
-    guard let id = UUID(uuidString: argument), let controller = AppController.shared.current,
-          let entry = controller.state.entry(id: id) else { return "usage: rowmenu <id>" }
+    let parts = argument.components(separatedBy: " press ")
+    guard let id = UUID(uuidString: parts[0]), parts.count <= 2, let controller = AppController.shared.current,
+          let entry = controller.state.entry(id: id) else { return "usage: rowmenu <id> [press <title>]" }
+    if parts.count == 2 { return controller.pressMenuItem(parts[1], for: entry) ? "ok" : "no item" }
     return json(controller.menuTitles(for: entry))
   }
 
@@ -474,13 +481,14 @@ enum TestCommands {
       // `selaction newfolder|pin|unpin|close|copylinks|infolder <folder id>`: the selection menu's items.
       let parts = argument.split(separator: " ").map(String.init)
       let actions: [String: SidebarRowAction] = ["newfolder": .newFolder, "pin": .pin, "unpin": .unpin, "close": .close,
-                                                 "copylinks": .copyLinks]
+                                                 "copylinks": .copyLinks, "duplicate": .duplicate,
+                                                 "topinned": .moveToPinned, "totoday": .moveToToday]
       if let controller = AppController.shared.current, controller.selectedEntries.count > 1,
          let action = parts.first == "infolder" ? (parts.count == 2 ? UUID(uuidString: parts[1]).map { SidebarRowAction.moveToFolder($0) } : nil)
            : parts.first.flatMap({ actions[$0] }) {
         controller.performOnSelection(action)
       } else {
-        result = "usage: selaction newfolder|pin|unpin|close|copylinks|infolder <id> (two or more selected)"
+        result = "usage: selaction newfolder|pin|unpin|close|copylinks|duplicate|topinned|totoday|infolder <id> (two or more selected)"
       }
     case "rowclick":
       // `rowclick <id> cmd|shift|cmdshift|plain`: a click on a row with those keys held, as the sidebar takes one.

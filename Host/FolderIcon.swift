@@ -127,6 +127,24 @@ enum FolderLook {
       return true
     }
   }
+
+  /// A tab's own icon (Change Icon… on a tab or favorite), drawn in place of its favicon: a symbol as a template, so
+  /// it takes the row's text colour in either appearance, or an emoji. Nil for none or anything Ray can't draw.
+  static func tabIcon(_ icon: String?) -> NSImage? {
+    guard let icon = validIcon(icon) else { return nil }
+    if let name = symbolName(icon) {
+      let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+        .withSymbolConfiguration(.init(pointSize: 13, weight: .medium))
+      image?.isTemplate = true
+      return image
+    }
+    let text = NSAttributedString(string: icon, attributes: [.font: NSFont.systemFont(ofSize: 13)])
+    return NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
+      let size = text.size()
+      text.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2))
+      return true
+    }
+  }
 }
 
 // MARK: Folder icon

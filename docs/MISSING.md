@@ -10,8 +10,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 ## Top priority (owner)
 
 1. **Select several tabs: what's left** (owner, 2026-10-29). ⌘/⇧-click, the selection's menu, ⇧⌘C and dragging
-   them together landed 2026-10-31. Left: Duplicate on a selection (needs Duplicate tab, item 10 below), Split View
-   with them once it exists, Escape to end a selection (the sidebar doesn't take keys), a count on the dragged row.
+   them together landed 2026-10-31, Duplicate and Move to on a selection 2026-11-03. Left: Split View with them once
+   it exists, Escape to end a selection (the sidebar doesn't take keys), a count on the dragged row.
 
 ## Arc features Ray doesn't have
 
@@ -37,11 +37,12 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
    decision in PLAN.md.
 
 **Smaller**
-8. Media controls in the sidebar (now playing, play/pause), and a sound icon and mute on tabs. Mute the tab only
-   (Chrome's per-tab mute, kept across navigation); Mute Site as its own choice behind ⌥ (Ardia 0.2.43-nightly.4
-   moved to this after a site-wide mute surprised users; `docs/ARDIA-WATCH.md`).
+8. Media controls in the sidebar (now playing, play/pause), and a sound icon on tabs (mute is in the row's menu
+   since 2026-11-03, the tab only, Chrome's per-tab mute). Mute Site as its own choice behind ⌥ (Ardia
+   0.2.43-nightly.4 moved to this after a site-wide mute surprised users; `docs/ARDIA-WATCH.md`).
 9. Automatic picture-in-picture when you switch away from a playing video (`setAutoPictureInPicture`).
-10. Duplicate tab (`duplicateTab:profile:foreground:`).
+10. Arc's row-menu items that wait on other features: Add Split View (tabs) and Turn "<folder>" into Space (folders)
+    once Split View and Spaces exist; Share Folder… as Arc's shared-folder link (Ray shares the folder's links).
 11. Boosts: per-site CSS/JS, zapping elements.
 12. Air Traffic Control: rules for which Space a link opens in (Cra's `LinkRouting`).
 13. Capture (Arc's screenshot tool).
@@ -73,7 +74,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 
 **Page and tab details**
 11. Link preview at the bottom corner on hover (`didChangeStatusText`).
-12. Tab state: sound/mute (`tabDidChangeAudio`), put to sleep (`tabDidChangeDiscarded`), the site's theme colour.
+12. Tab state: a sound icon (`tabDidChangeAudio`; the menu's Mute reads `audible`/`muted` when opened), put to sleep
+    (`tabDidChangeDiscarded`), the site's theme colour.
 13. Extension side panels and extension keyboard shortcuts (`extensionSidePanel`, `extensionActionShortcut`).
 14. Installing imported extensions: the engine's `ac_extensions_install` takes a folder or a .crx, not a Web Store id.
 15. Web notifications: from the engine's alerts helper, not checked (?).
@@ -279,6 +281,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     the window's own edge strip). Ardia stopped this (0.2.44-nightly.2, its issue #698): peek only while the app is
     active; a hover from the background opens when Ray comes forward with the pointer still there. Fix in
     `BrowserWindowController`'s peek code.
+34. **Row menus (2026-11-03), what's left:** a folder's Delete moves its tabs up a level (Ray's old Delete Folder;
+    Arc's may take them with it, not checked against Arc); Move to ▸ has no Favorites (Add to Favorites does that)
+    and no other windows or Spaces; a tab's own icon shows in the sidebar only (the command bar, Recently Closed and
+    the page toolbar keep the favicon); Edit Pinned Page › Edit… pins only http(s), chrome and about addresses, and
+    a typed phrase pins its search page; Duplicate of an unloaded tab or a folder makes unloaded copies (no history).
 
 ## Done
 
@@ -313,3 +320,4 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | Settings › Shortcuts: an editor for every menu command (record, conflicts with Replace, none, reset; macOS's keys refused; Quit and Settings locked); the command bar and reserved keys follow | 2026-10-29, `7f3b29d` |
 | Folders in Today as Chrome tab groups (extensions like Claude's drive them; ungrouping, renaming, colours, collapse both ways), colours, Change Icon (Arc's panel), an animated folder icon, sliding moves, spring-loaded closed folders, Pin / Unpin Folder, Close Tabs; kept over relaunch | 2026-10-31, `e18f3c8` |
 | Select several tabs (⌘-click, ⇧-click): New Folder with them, Add to Folder, Pin/Unpin, Copy Links (⇧⌘C), Close, drag together | 2026-10-31, `4e94dc3` |
+| Arc's tab, favorite and folder menus: Copy Link, Share, Change Icon on tabs, Mute, Edit Pinned Page (Replace with Current, Edit…), Duplicate (tabs and folders), Move to, Remove Pin, Share Folder…, Copy All Links; Duplicate and Move to on a selection | 2026-11-03, `feat: arc row menus` |
