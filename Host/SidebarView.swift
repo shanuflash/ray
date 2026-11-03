@@ -1089,6 +1089,7 @@ final class SidebarView: NSView {
     }
     frames["hoveredTile"] = zip(tiles, favorites).first { $0.0.hovered }?.1.id.uuidString ?? ""
     frames["hoverShown"] = zip(tiles, favorites).filter { $0.0.hoverShown }.map { $0.1.id.uuidString }.joined(separator: ",")
+    frames["tileRing"] = zip(tiles, favorites).filter { $0.0.ringShown }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["foldSteps"] = String(foldSteps)
     frames["reduceMotion"] = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? "1" : "0"
     frames["collapsing"] = zip(pinnedRows, pinned).filter { $0.0.collapsing }.map { $0.1.id.uuidString }.joined(separator: ",")
@@ -1720,12 +1721,17 @@ final class FavoriteTileView: NSView, Liftable {
   static let hoverFade: CFTimeInterval = 0.12
   /// Fades begun, for tests (a fade is too short to catch mid-way).
   static var fadesStarted = 0
+  /// Selected, Arc's ring and wash from the tile's own favicon (none for the globe).
+  private let selection = TileSelectionLayer()
+  private var favicon: NSImage?
+  var ringShown: Bool { !selection.isHidden }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
     layer?.cornerRadius = 10
     layer?.cornerCurve = .continuous
+    layer?.addSublayer(selection)
     hoverFill.cornerRadius = 10
     hoverFill.cornerCurve = .continuous
     hoverFill.opacity = 0
@@ -1742,7 +1748,9 @@ final class FavoriteTileView: NSView, Liftable {
   override var mouseDownCanMoveWindow: Bool { false }
 
   override func updateLayer() {
-    layer?.backgroundColor = (lifted ? SidebarColors.lifted : selected ? SidebarColors.selected : SidebarColors.fill).cgColor
+    let ringed = updateSelection()
+    layer?.backgroundColor = ringed ? NSColor.clear.cgColor
+      : (lifted ? SidebarColors.lifted : selected ? SidebarColors.selected : SidebarColors.fill).cgColor
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     hoverFill.backgroundColor = SidebarColors.tileHover.cgColor
@@ -1755,9 +1763,20 @@ final class FavoriteTileView: NSView, Liftable {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     hoverFill.frame = bounds
+    selection.frame = bounds
     CATransaction.commit()
-    icon.frame = NSRect(x: (bounds.width - 20) / 2, y: (bounds.height - 20) / 2, width: 20, height: 20)
+    updateSelection()
+    // Arc's 16 pt favicon.
+    icon.frame = NSRect(x: (bounds.width - 16) / 2, y: (bounds.height - 16) / 2, width: 16, height: 16)
     residency.placeDot(at: CGPoint(x: bounds.midX, y: 6))
+  }
+
+  /// Shows or hides the selected face; true when it shows.
+  @discardableResult private func updateSelection() -> Bool {
+    let blurred = selected && !lifted ? favicon.flatMap(BlurredIcon.of) : nil
+    let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    selection.show(blurred, dark: dark, radius: 10, scale: window?.backingScaleFactor ?? 2)
+    return blurred != nil
   }
 
   /// Whether the brightening is (fading) in: only for a tile that is neither selected nor being dragged.
@@ -1807,6 +1826,7 @@ final class FavoriteTileView: NSView, Liftable {
 
   func show(_ entry: SidebarEntry, icon image: NSImage?, selected: Bool) {
     self.selected = selected
+    favicon = image
     icon.image = image ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
     icon.contentTintColor = image == nil ? .secondaryLabelColor : nil
     icon.alphaValue = SidebarView.iconAlpha(for: entry)

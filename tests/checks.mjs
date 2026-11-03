@@ -42,6 +42,8 @@ const pages = {
   "/a": `<title>Page A</title><a id=blank href="/b" target="_blank">blank</a> <a id=plain href="/b">plain</a>
          <button id=open onclick="window.open('/c')">open</button>`,
   "/b": `<title>Page B</title><p>b</p>`,
+  // A page with a favicon of its own (an orange square): a favorite of it wears Arc's ring when selected.
+  "/icon-tile": `<title>Icon tile</title><link rel=icon href="/tile-icon.png"><p>icon tile</p>`,
   // A page that loads a slow frame while it loads, then adds another and moves its own address after it has loaded
   // (as web apps do): one navigation, however many times the tab counts as loading.
   "/late-frames": `<title>Late frames</title><p>late frames</p><a id=next href="/slow?linked">next</a>
@@ -76,6 +78,10 @@ function serve(req, res) {
       headers["set-cookie"] = `ray_safe=${url.searchParams.get("v")}; Max-Age=86400; Path=/`;
     res.writeHead(200, headers);
     return res.end("<title>Safe storage</title><p>safe storage</p>");
+  }
+  if (url.pathname === "/tile-icon.png") {
+    res.writeHead(200, { "content-type": "image/png" });
+    return res.end(solidPNG(32));
   }
   if (url.pathname === "/suggest") {
     const q = url.searchParams.get("q") ?? "";
@@ -1157,10 +1163,25 @@ const checks = {
     await command("state");
     assert(state().sidebarFrames.hoveredTile === fav.id, "a selected tile ignored the pointer");
     assert(state().sidebarFrames.hoverShown === "", "hover brightened the selected tile");
+    // A tile with no favicon (the globe) has no icon colours for Arc's ring.
+    assert(state().sidebarFrames.tileRing === "", `a globe tile ringed: ${state().sidebarFrames.tileRing}`);
     await command(`hover ${row.cx} ${row.cy}`);
     await command(`row ${other.id}`);
     await command(`rowaction unfavorite ${fav.id}`);
     await until("unfavorited", () => !state().sidebar.favorites.some((e) => e.id === fav.id));
+    // Selected, a tile with a favicon wears Arc's ring and wash, both its icon blurred; only while selected.
+    const before = new Set(allEntries().map((e) => e.id));
+    await send("Target.createTarget", { url: `${origin}/icon-tile` });
+    const iconTab = await until("icon tab", async () => { await command("state"); return allEntries().find((e) => !before.has(e.id) && e.url.includes("/icon-tile") && e.live); });
+    await command(`rowaction favorite ${iconTab.id}`);
+    await until("icon tile favorited", () => state().sidebar.favorites.some((e) => e.id === iconTab.id));
+    await command(`row ${iconTab.id}`);
+    await until("ringed", async () => { await command("state"); return state().sidebarFrames.tileRing === iconTab.id; });
+    if (process.env.SNAP_DIR) await command(`sidebarsnap ${join(process.env.SNAP_DIR, "tile-ring.png")}`);
+    await command(`row ${other.id}`);
+    await until("ring gone", async () => { await command("state"); return state().sidebarFrames.tileRing === ""; });
+    await command(`rowaction unfavorite ${iconTab.id}`);
+    await until("icon tile unfavorited", () => !state().sidebar.favorites.some((e) => e.id === iconTab.id));
   },
   async "folder-create"() {
     await todayTabs(3);

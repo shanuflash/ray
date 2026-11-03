@@ -70,6 +70,7 @@ export const areas = {
   "Host/TabGroups.swift": [...folders, "extensions", "clear", "reopen-closed-tab"],
   // The folder icon's layers and Change Icon's panel.
   "Host/FolderIcon.swift": [...folders, ...drag],
+  "Host/TileSelection.swift": ["tile-hover", "favorites"],
   "Host/FolderIconPicker.swift": [...folders, "panels"],
   "Host/EngineCalls.swift": "all",
   "Host/TestEnvironment.swift": "all",

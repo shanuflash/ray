@@ -221,6 +221,9 @@ publicly or create accounts.
   panel too); state log `sidebar.tabGroups` (Chrome's groups as last seen), `sidebar.folderIcons`,
   `sidebar.iconPicker`, `sidebar.iconPickerAnimations`, `sidebar.changesAnimated`, and `color`/`icon`/`group` per entry.
   Checks `folders` (an unpacked extension's service worker drives `chrome.tabGroups`), `folders-relaunch`.
+- `TileSelection` (`Host/TileSelection.swift`, from Ardia's `DockSelection`, Apache-2.0): Arc's selected favorite, a
+  3 pt ring and a 22 % wash, both the tile's favicon blurred (`BlurredIcon`, cached per image); none for the globe.
+  Favorite icons are 16 pt. State log `sidebarFrames.tileRing`; check `tile-hover`.
 - Multi-select (`SidebarView` `// MARK: Selection`, Arc's): ⌘-click picks or drops a tab (the active one counts),
   ⇧-click picks the shown tabs from the anchor (the last ⌘-click, else the active tab), ⌘⇧ adds a range; neither
   switches tabs, a plain click ends it (on a selected tab, only at the release, so the selection can be dragged).
