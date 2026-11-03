@@ -597,7 +597,7 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
   section, engine fixup, setting, test hook or check gets its line in CLAUDE.md's Layout (and Testing/Gotchas when
   it teaches something); a feature that lands moves to `docs/MISSING.md`'s "Done" table with date and commit; a
   roadmap step or decision that changes is updated in PLAN.md; anything a user would notice updates README's "What
-  works", "Not yet" or "Security". Subagents do this for their own change; when merging, check it was done.
+  works", "Coming" or "Privacy and security". Subagents do this for their own change; when merging, check it was done.
 - Don't push until the user has tried the build and says so: commit locally, relaunch, wait. Commit only when the
   checks you ran pass (look for FAIL in the output first).
 - Match Arc and Dia from the user's screenshots and recordings. For exact sizes and spacing read Ardia's source

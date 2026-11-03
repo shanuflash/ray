@@ -49,10 +49,16 @@ Ray updates itself after that (Ray › Check for Updates…).
 
 </details>
 
-## Not yet
+## Coming
 
-Spaces, profiles, Split View, Little Arc, Peek, a built-in ad blocker (use uBlock Origin Lite for now), installing
-the extensions you import. The full list: [docs/MISSING.md](docs/MISSING.md).
+- Spaces
+- Profiles
+- Split View
+- Little Arc
+- Installing your imported extensions
+- A notarized DMG and Homebrew
+
+Full list: [docs/MISSING.md](docs/MISSING.md).
 
 ## Privacy and security
 
