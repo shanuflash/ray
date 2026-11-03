@@ -349,7 +349,7 @@ final class SidebarView: NSView {
   }
 
   func showAddress(_ entry: SidebarEntry?) {
-    let level = entry.flatMap { $0.isLive ? $0.tab?.securityInfo["level"] as? String : nil }
+    let level = entry.flatMap { $0.isLive ? $0.tab.flatMap { ConnectionLook.level($0.securityInfo) } : nil }
     addressPill.show(url: entry?.currentURL ?? "", security: level)
   }
 

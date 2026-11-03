@@ -812,7 +812,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
                    icon: extensions.icon(for: item, state: state),
                    enabled: state?["enabled"] as? Bool ?? true)
     }
-    let level = tab.securityInfo["level"] as? String ?? "none"
+    let level = ConnectionLook.level(tab.securityInfo) ?? "none"
     let isInternal = URLComponents(string: AddressInput.innerURL(of: tab.url))?.scheme.map { ["chrome", AddressInput.internalScheme].contains($0) } ?? false
     let panel = SiteControlsView(
       origin: tab.committedOrigin, url: tab.url, profile: profile, security: level, isInternal: isInternal, extensions: items,
@@ -1731,7 +1731,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   private func updateToolbar() {
     let entry = activeEntry
-    let level = entry.flatMap { $0.isLive ? $0.tab?.securityInfo["level"] as? String : nil }
+    let level = entry.flatMap { $0.isLive ? $0.tab.flatMap { ConnectionLook.level($0.securityInfo) } : nil }
     toolbar.show(url: entry?.currentURL ?? "", security: level,
                  canGoBack: activeTab?.canGoBack ?? false, canGoForward: activeTab?.canGoForward ?? false)
     updateToolbarLoading()
@@ -2693,7 +2693,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       } ?? NSNull(),
       "tabs": tabs.map { tab in
         [
-          "id": Int(tab.tabId), "url": tab.url, "title": tab.title,
+          "id": Int(tab.tabId), "url": tab.url, "title": tab.title, "security": ConnectionLook.level(tab.securityInfo) ?? NSNull(),
           "visible": !tab.view.isHidden && tab.view.superview != nil, "zoom": tab.zoomFactor, "canGoBack": tab.canGoBack,
         ] as [String: Any]
       },

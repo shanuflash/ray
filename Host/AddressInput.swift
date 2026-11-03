@@ -336,6 +336,15 @@ enum AddressInput {
 enum ConnectionLook: Equatable {
   case quiet, local, open, partly, broken
 
+  /// A tab's level from the engine's `securityInfo`, read as Chrome reads it: an https page with no certificate yet (a
+  /// navigation still on its way) has none. The engine says `certificateError` with no errors there, which drew the
+  /// broken lock on every new tab until its page committed.
+  static func level(_ info: [String: Any]) -> String? {
+    guard let level = info["level"] as? String else { return nil }
+    if level == "certificateError", (info["certificateErrors"] as? [Any])?.isEmpty ?? true { return "none" }
+    return level
+  }
+
   /// `level` is the engine's security level for the tab (`secure`, `mixed`, `insecure`, `certificateError`, …).
   /// `url` is the tab's address; a `view-source:` or `blob:` one is judged by the URL inside, the page the engine's
   /// level is for.

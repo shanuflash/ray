@@ -287,6 +287,10 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     and no other windows or Spaces; a tab's own icon shows in the sidebar only (the command bar, Recently Closed and
     the page toolbar keep the favicon); Edit Pinned Page › Edit… pins only http(s), chrome and about addresses, and
     a typed phrase pins its search page; Duplicate of an unloaded tab or a folder makes unloaded copies (no history).
+35. **Engine calls a page with no certificate yet a certificate error.** `SecurityInfoFor` (`ac_tab_info.mm`) reads
+    the visible entry, and a pending https navigation has no certificate, which it reports as `certificateError`
+    (Chrome's `SecurityStateTabHelper` says none). Ray reads levels through `ConnectionLook.level`, which treats one
+    with no errors as none. Fix in the engine (`engine-ray` fixup), then drop the workaround. Found 2026-11-03.
 
 ## Done
 

@@ -95,6 +95,12 @@ function serve(req, res) {
     res.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${name}"` });
     return res.end("ray download fixture\n".repeat(64));
   }
+  if (url.pathname === "/slow-start") {
+    // Nothing at all for 1.5 s: the navigation stays pending (not committed) meanwhile.
+    const timer = setTimeout(() => res.end("<title>Slow start</title><p>slow start</p>"), 1500);
+    res.on("close", () => clearTimeout(timer));
+    return;
+  }
   if (url.pathname === "/slow") {
     // The head arrives at once, the rest 1.5 s later: a page that is visibly loading for a while.
     res.writeHead(200, { "content-type": "text/html" });
@@ -2694,6 +2700,27 @@ const checks = {
     await until("peek ended", async () => { await command("state"); return !state().sidebar.peeking; });
     await command("menu toggleSidebar");
     await until("sidebar back", async () => { await command("state"); return !state().sidebar.hidden && state().sidebarAddressShown === false; });
+  },
+  async "pending-security"() {
+    // A page still on its way has no certificate yet: no security level, as in Chrome. Ray's engine reports that as a
+    // certificate error, which drew the broken lock on every new tab until its page committed.
+    // Its own tab, closed at the end: other checks use /a.
+    await send("Target.createTarget", { url: `${origin}/b?pending` });
+    const { target, sessionId } = await session("/b?pending");
+    await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+    const going = send("Page.navigate", { url: `${secureOrigin}/slow-start?pending` }, sessionId);
+    const seen = [];
+    const start = Date.now();
+    while (Date.now() - start < 1000) {
+      await command("state");
+      const tab = state().tabs.find((t) => t.url.includes("slow-start?pending"));
+      if (tab) seen.push(tab.security);
+    }
+    await going;
+    assert(seen.length > 0, "the pending page's address never showed in its tab");
+    assert(!seen.includes("certificateError"), `a pending page showed a certificate error: ${seen}`);
+    await send("Target.closeTarget", { targetId: target.targetId });
+    await until("its tab closed", async () => { await command("state"); return !tabFor("slow-start?pending"); });
   },
   async "page-loading"() {
     // The address bar shows the load as a wash filling the field, and its reload button is a stop button meanwhile.

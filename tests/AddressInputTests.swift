@@ -159,6 +159,19 @@ let lookCases: [(String?, String, ConnectionLook)] = [
   ("secure", "view-source:https://example.com/", .quiet),
   ("insecure", "blob:http://127.0.0.1:8080/1234", .local),
 ]
+// An https page whose navigation hasn't committed has no certificate yet: no level, not a certificate error.
+let levelCases: [([String: Any], String?)] = [
+  (["level": "certificateError", "certificateErrors": [String]()], "none"),
+  (["level": "certificateError"], "none"),
+  (["level": "certificateError", "certificateErrors": ["DATE_INVALID"]], "certificateError"),
+  (["level": "secure", "certificateErrors": [String]()], "secure"),
+  (["level": "insecure"], "insecure"),
+  ([:], nil),
+]
+for (info, expected) in levelCases where ConnectionLook.level(info) != expected {
+  failures += 1
+  print("FAIL level(\(info)) = \(ConnectionLook.level(info) ?? "nil"), want \(expected ?? "nil")")
+}
 for (level, url, expected) in lookCases where ConnectionLook.of(level: level, url: url) != expected {
   failures += 1
   print("FAIL look(\(level ?? "nil"), \(url)) = \(ConnectionLook.of(level: level, url: url)), want \(expected)")
