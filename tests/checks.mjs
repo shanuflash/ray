@@ -2816,6 +2816,44 @@ const checks = {
     await command("enter");
     await until("/a again", () => tabFor("/a"));
   },
+  async "new-tab-sweep"() {
+    // A tab Ray opens on a page (a new tab from the command bar, a pinned tab's first visit) is already loading when
+    // the engine hands it over: its load still sweeps the address field, as any other does.
+    await command("menu newTab");
+    await command(`type ${origin}/slow?newtab`);
+    await command("enter");
+    const start = Date.now();
+    const seen = [];
+    let swept = false;
+    while (Date.now() - start < 1400 && !swept) {
+      await command("state");
+      const f = state().toolbar?.field;
+      seen.push(`${f?.shown}|${f?.loading}|${f?.wash}`);
+      swept = (f?.shown ?? "").includes("slow?newtab") && f.wash === true;
+    }
+    assert(swept, `a new tab's load didn't sweep: ${[...new Set(seen)].join(" ")}`);
+    await until("loaded", async () => { await command("state"); return state().toolbar?.field.loading === false; }, 5000);
+    // A pinned tab's first visit (or a sleeping tab's) loads the same way.
+    const entry = allEntries().find((e) => e.url.includes("slow?newtab"));
+    await command(`rowaction pin ${entry.id}`);
+    await until("pinned", () => allEntries().find((e) => e.id === entry.id)?.kind === "pinned");
+    await command(`rowaction unload ${entry.id}`);
+    await until("unloaded", async () => { await command("state"); return !allEntries().find((e) => e.id === entry.id)?.live; });
+    await command(`row ${entry.id}`);
+    const again = Date.now();
+    swept = false;
+    while (Date.now() - again < 1400 && !swept) {
+      await command("state");
+      const f = state().toolbar?.field;
+      swept = state().activeEntry === entry.id && (f?.shown ?? "").includes("slow?newtab") && f.wash === true;
+    }
+    assert(swept, "a pinned tab's first visit didn't sweep");
+    await until("loaded again", async () => { await command("state"); return state().toolbar?.field.loading === false; }, 5000);
+    await command(`rowaction unpin ${entry.id}`);
+    await until("unpinned", () => allEntries().find((e) => e.id === entry.id)?.kind === "today");
+    await command("menu closeTab");
+    await until("closed", async () => { await command("state"); return !tabFor("slow?newtab"); });
+  },
   async "load-sweep-once"() {
     // One main-frame navigation, one sweep. Chrome counts the tab as loading while any frame loads and puts its
     // progress back to 0.1 when one starts: a frame during the load mustn't restart the sweep, and frames or

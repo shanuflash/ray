@@ -231,10 +231,10 @@ export const areas = {
   "Host/PageContainerView.swift": pageSurface,
   // When a page that was just shown has drawn (the tab switch holds the page left until then).
   "Host/PageFrameWatch.swift": pageSurface,
-  "Host/PageToolbar.swift": ["pending-security", "pending-address", "page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle",
+  "Host/PageToolbar.swift": ["pending-security", "pending-address", "new-tab-sweep", "page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle",
     "top-strip-click", "settings-sidebar-button"],
   // Which loads the address field sweeps for.
-  "Host/LoadSweep.swift": ["page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar"],
+  "Host/LoadSweep.swift": ["new-tab-sweep", "page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar"],
   "Host/PermissionPrompt.swift": permissions,
   "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],

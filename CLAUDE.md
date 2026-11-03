@@ -387,7 +387,11 @@ publicly or create accounts.
   `address-fragment`.
 - `LoadSweep` + `LoadingWash` (PageToolbar): the address field's loading glow, Dia's measured shape, one sweep per
   main-frame navigation the user started or the page committed (Chrome's frame-level loading/progress would
-  restart it); check `load-sweep-once`.
+  restart it); check `load-sweep-once`. A tab the engine hands over already loading (a new tab on an address, a
+  pinned or sleeping tab's first visit) never reports its load starting: `catchUp` starts it at its first progress
+  or commit (check `new-tab-sweep`). The engine reports a URL change only when a navigation finishes, so
+  `showPendingAddress` (after the sweep update) shows a starting navigation's address, as Chrome's omnibox does
+  (checks `pending-address`, `pending-security`).
 - Tab-modal dialogs (print preview…) are centred on the page with rounded corners: `engine-ray/fixups/0004`
   (raycore's `DialogPositionInHostView`, and `chromium-web-dialog-rounded-corners.patch`).
 - `Spring`: a CADisplayLink spring. `dockSpring` (⌘S) and `peekSpring` drive `layout()` every frame.

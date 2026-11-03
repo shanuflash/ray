@@ -59,6 +59,7 @@ final class LoadSweeps {
   func progressChanged(_ tab: RayCoreTab) {
     let reported = min(1, tab.progress)
     edit(tab) { entry in
+      catchUp(&entry, tab)
       guard entry.sweep.running else { return }
       entry.sweep.progress = max(entry.sweep.progress, reported)
       // At the end: the field runs it out and fades while any frames left finish quietly.
@@ -69,12 +70,22 @@ final class LoadSweeps {
   /// A main-frame document committed. Mid-sweep it's the same navigation; otherwise it's one the page started.
   func documentCommitted(_ tab: RayCoreTab) {
     edit(tab) { entry in
+      catchUp(&entry, tab)
       entry.committed = true
       if entry.loading, !entry.sweep.running { start(&entry) }
     }
   }
 
   func forget(_ tab: RayCoreTab) { entries[tab.tabId] = nil }
+
+  /// A load already under way when the tab reached Ray never said it started: the engine starts a tab's first page
+  /// before handing the tab over (a new tab on an address, a pinned or sleeping tab's first visit), so its loading
+  /// change came before Ray listened. It starts here, at its first progress or commit, as it would have then.
+  private func catchUp(_ entry: inout Entry, _ tab: RayCoreTab) {
+    guard tab.loading, !entry.loading else { return }
+    entry.loading = true
+    if entry.owed || !entry.committed { start(&entry) }
+  }
 
   private func start(_ entry: inout Entry) {
     entry.sweep = Sweep(running: true, progress: Self.minimum, count: entry.sweep.count + 1)
