@@ -207,7 +207,7 @@ publicly or create accounts.
   notification, a tab just inserted, can't touch the strip: TabStripModel's reentrancy CHECK crashed there). Group ids live per run (`groupToken`, never saved); a folder's group holds
   its open tabs and is made when one opens. Pin Folder ends the group (`release`; Chrome never groups a pinned tab),
   Unpin Folder makes one again (nested folders fold in). A tab opened from a tab in a Today folder joins it.
-  `FolderIconView` (`Host/FolderIcon.swift`): the folder icon in layers (back with its tab, two sheets, a front flap
+  `FolderIconView` (`Host/FolderIcon.swift`): the folder icon in layers (20 × 18 pt, glyph 9.5 pt bold) (back with its tab, two sheets, a front flap
   carrying the glyph) whose sheets rise and flap leans on springs when it opens, hover and drop-target states.
   `FolderIconPicker` (`Host/FolderIconPicker.swift`): Change Icon…, Arc's icon panel as a `Panels` panel under the
   folder's icon (over the sidebar, no arrow): "Icon" with a trash button and Arc's 24 filled symbols;
