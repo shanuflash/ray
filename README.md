@@ -26,7 +26,7 @@ Ray updates itself after that (Ray › Check for Updates…).
 - Import from Arc, still signed in
 - Native Mac app, no Electron
 
-## More
+### More
 
 - **Sidebar**
   - Rename tabs
