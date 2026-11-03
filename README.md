@@ -26,28 +26,23 @@ Ray updates itself after that (Ray › Check for Updates…).
 - Import from Arc, still signed in
 - Native Mac app, no Electron
 
-<details>
-<summary>And the rest</summary>
+## More
 
-**Sidebar**
-- Rename tabs
-- Folder colours and icons
-- Select several tabs
-- Pinned tabs reset when closed
-- Today tabs archive after 12 hours
-
-**Moving in**
-- Also from Dia, Chrome, Brave, Edge, Helium, Firefox, Zen and Safari
-- Tabs, folders, history, bookmarks, passwords and cookies
-
-**Other**
-- Address bar above the page, like Dia
-- Edge-to-edge full screen
-- Settings in the command bar
-- Your own colour and shortcuts
-- JumpCloud Go sign-in
-
-</details>
+- **Sidebar**
+  - Rename tabs
+  - Folder colours and icons
+  - Select several tabs
+  - Pinned tabs reset when closed
+  - Today tabs archive after 12 hours
+- **Moving in**
+  - Also from Dia, Chrome, Brave, Edge, Helium, Firefox, Zen and Safari
+  - Tabs, folders, history, bookmarks, passwords and cookies
+- **Other**
+  - Address bar above the page, like Dia
+  - Edge-to-edge full screen
+  - Settings in the command bar
+  - Your own colour and shortcuts
+  - JumpCloud Go sign-in
 
 ## Coming
 
