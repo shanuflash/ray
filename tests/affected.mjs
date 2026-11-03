@@ -151,7 +151,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#State log": [],
 
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
-  "Host/SidebarView.swift": [...drag, ...folders, "tile-hover", "favorites", "pin-unload-restore",
+  "Host/SidebarView.swift": [...drag, ...folders, "tile-hover", "row-hover-close", "favorites", "pin-unload-restore",
     "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment", "tab-rename",
     "settings-sidebar-button", "settings-fade-unloaded", "row-menus"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],

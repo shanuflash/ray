@@ -1185,6 +1185,20 @@ const checks = {
     assert(today.pinnedURL === null, "today tab kept a pinned URL");
     assert(!state().sidebar.favorites.some((e) => e.id === entry.id), "still a favorite");
   },
+  async "row-hover-close"() {
+    // Hovering a row shows its close button, and its title makes room for it: it used to run under the button.
+    await todayTabs(2);
+    const [active, other] = state().sidebar.today.filter((e) => e.live);
+    await command(`row ${active.id}`);
+    await until("active", () => state().activeEntry === active.id);
+    await settle();
+    const row = frameOf(other.id);
+    await command(`hover ${row.cx} ${row.cy}`);
+    await command("state");
+    assert(state().sidebarFrames.closeOverTitle === "", `close over the title of ${state().sidebarFrames.closeOverTitle}`);
+    const away = frameOf(active.id);
+    await command(`hover ${away.cx} ${away.cy}`);
+  },
   async "tile-hover"() {
     await todayTabs(2);
     const [fav, other] = state().sidebar.today;

@@ -1129,6 +1129,8 @@ final class SidebarView: NSView {
     frames["collapsing"] = zip(pinnedRows, pinned).filter { $0.0.collapsing }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["folding"] = foldLink == nil ? "0" : "1"
     frames["toggleShown"] = toggleButton.isHidden ? "0" : "1"
+    frames["closeOverTitle"] = zip(pinnedRows + todayRows, pinned + today).filter { $0.0.closeOverlapsTitle }
+      .map { $0.1.id.uuidString }.joined(separator: ",")
     frames["rowRadius"] = String(format: "%.0f", SidebarRowView.fillRadius)
     frames["fadedIcons"] = shownViews.filter { view, _ in
       (view as? SidebarRowView)?.iconFaded ?? (view as? FavoriteTileView)?.iconFaded ?? false
@@ -1169,6 +1171,10 @@ final class SidebarView: NSView {
       let frame = tile.convert(tile.bounds, to: nil)
       let inside = point.x >= frame.minX && point.x < frame.maxX && point.y >= height - frame.maxY && point.y < height - frame.minY
       tile.setHovered(inside)
+    }
+    for row in pinnedRows + todayRows where !row.isHidden {
+      let frame = row.convert(row.bounds, to: nil)
+      row.setHovered(point.x >= frame.minX && point.x < frame.maxX && point.y >= height - frame.maxY && point.y < height - frame.minY)
     }
   }
 
@@ -2084,15 +2090,13 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
 
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-  override func mouseEntered(with event: NSEvent) {
-    hovered = true
-    updateClose()
-    updateFolderIcon(animated: true)
-    needsDisplay = true
-  }
+  override func mouseEntered(with event: NSEvent) { setHovered(true) }
+  override func mouseExited(with event: NSEvent) { setHovered(false) }
 
-  override func mouseExited(with event: NSEvent) {
-    hovered = false
+  /// The pointer over the row (tests hover through here too).
+  func setHovered(_ on: Bool) {
+    guard hovered != on else { return }
+    hovered = on
     updateClose()
     updateFolderIcon(animated: true)
     needsDisplay = true
@@ -2350,8 +2354,15 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   }
 
   private func updateClose() {
-    closeButton.isHidden = isNewTab || !closable || !(hovered || selected) || editor != nil
+    let hidden = isNewTab || !closable || !(hovered || selected) || editor != nil
+    guard closeButton.isHidden != hidden else { return }
+    closeButton.isHidden = hidden
+    // The title makes room for the button, and takes it back: on hover it ran under the button.
+    needsLayout = true
   }
+
+  /// For tests: the close button shows over the title's end.
+  var closeOverlapsTitle: Bool { !closeButton.isHidden && title.frame.maxX > closeButton.frame.minX }
 
   /// A closed folder's tab count, hidden under the rename field's Done button (it showed through).
   private func updateCount() {
