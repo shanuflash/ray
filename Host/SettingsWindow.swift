@@ -9,8 +9,10 @@ import AppKit
 final class SettingsWindowController: NSObject, NSWindowDelegate {
   static let shared = SettingsWindowController()
 
-  static let size = NSSize(width: 780, height: 560)
-  static let minSize = NSSize(width: 640, height: 440)
+  // Wide enough for the content's full 600 pt column (210 + 24 + 600 + 24); never so narrow a row's control wraps
+  // its title.
+  static let size = NSSize(width: 880, height: 600)
+  static let minSize = NSSize(width: 760, height: 480)
   static let sidebarWidth: CGFloat = 210
 
   private var window: NSWindow?

@@ -3172,7 +3172,7 @@ const checks = {
     assert(win().title === "Settings" && win().pane === "general", `window ${JSON.stringify(win())}`);
     assert(state().menuKeys.settings === ",", `Settings… answers to ${state().menuKeys.settings}`);
     const [, , width, height] = win().frame.match(/-?[\d.]+/g).map(Number);
-    assert(width === 780 && height >= 560 && height < 620, `the window is ${width} x ${height}`);
+    assert(width === 880 && height >= 600 && height < 660, `the window is ${width} x ${height}`);
     // The defaults, as the controls show them.
     assert(c().minimalURL === false && c().loadingProgress === true && c().newTabNextToActive === "At the top" &&
       c().recentTabCycling === true && c().copyLinkShortcut === true && c().sidebarShortcut === true, `switches ${JSON.stringify(c())}`);

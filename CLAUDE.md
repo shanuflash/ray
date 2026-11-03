@@ -93,7 +93,7 @@ publicly or create accounts.
   not settings: the hosts the user zoomed (see Page zoom below), `zoomAdopted`, the Settings window's frame and
   `onboarded`. Private windows read it, never write to it (their zoomed hosts stay in memory).
 - `SettingsWindow`: Ray's own Settings window, direction G (PLAN.md §13): ⌘, (the pane last shown, else General),
-  `ray://settings/<pane>`, or a command bar row. 780×560, full-size content, the traffic lights over a 210 pt
+  `ray://settings/<pane>`, or a command bar row. 880×600 (at least 760×480; a saved frame below that opens at the default), full-size content, the traffic lights over a 210 pt
   sidebar in Ray's sidebar colour: a search field, the panes as 34 pt rows (icon and name; the selected one in
   `SettingsColors.selectedFill`/`selectedInk`, a wash and a legible tint of the profile's colour), and "All Chrome
   Settings…" (chrome://settings) at the bottom. Searching (`SettingsSearch`, after Ardia's `searchMatch.ts`: titles,
