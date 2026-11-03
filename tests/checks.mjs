@@ -1438,7 +1438,13 @@ const checks = {
       await command("state");
       return [t0, t3].every((id) => state().sidebar.today.find((e) => e.id === id)?.parent === folder.id);
     });
-    await command(`rowaction closetabs ${folder.id}`);
+    // ⌘W closes every selected tab, as in Arc.
+    await command(`row ${t0}`);
+    await command(`rowclick ${t3} cmd`);
+    assert(same(await selection(), [t0, t3]), `picked for ⌘W ${state().sidebar.selection}`);
+    await command("menu closeTab");
+    await until("⌘W closed both", async () => { await command("state"); return ![t0, t3].some((id) => allEntries().some((e) => e.id === id)); });
+    if (state().sidebar.today.some((e) => e.kind === "folder")) await command(`rowaction closetabs ${folder.id}`);
     await until("closed", async () => { await command("state"); return !state().sidebar.today.some((e) => e.kind === "folder"); });
   },
   async folders() {

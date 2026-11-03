@@ -120,6 +120,8 @@ export const areas = {
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Site controls": ["panels", "site-controls", "extensions", "copy-url", "find-in-page", "settings-privacy"],
   "Host/BrowserWindowController.swift#Entries": "all",
+  "Host/BrowserWindowController.swift#Closing": ["multi-select", "close-last-window", "reopen-closed-tab",
+    "settings-undo-reopens", "address-fragment", "page-commands", "bar-actions"],
   // What a row's menu items, close buttons and the `rowaction` test command do (pin, move, folders, close…).
   "Host/BrowserWindowController.swift#Row actions": [...drag, ...folders, "row-menus", "favorites", "pin-unload-restore",
     "tab-rename", "reopen-closed-tab", "tile-hover", "peek-zones", "clear", "copy-url", "bar-actions", "bar-ranking",

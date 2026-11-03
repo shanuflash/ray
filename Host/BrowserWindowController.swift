@@ -1127,8 +1127,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
   }
 
-  /// ⌘W: closes the active tab; with no tab open, the window (as Chrome and Arc do).
+  // MARK: Closing
+
+  /// ⌘W: closes the active tab, or every selected tab (as Arc does); with no tab open, the window (as Chrome and Arc
+  /// do).
   func closeActive() {
+    if sidebar.selection.count > 1 { return performOnSelection(.close) }
     guard let entry = activeEntry else {
       window.performClose(nil)
       return

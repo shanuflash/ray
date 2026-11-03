@@ -228,7 +228,7 @@ publicly or create accounts.
   ⇧-click picks the shown tabs from the anchor (the last ⌘-click, else the active tab), ⌘⇧ adds a range; neither
   switches tabs, a plain click ends it (on a selected tab, only at the release, so the selection can be dragged).
   Picked rows take the active highlight. Right-click one: Copy N Links | New Folder with N Tabs, Duplicate N Tabs,
-  Move to ▸ | Close N Tabs (`sidebar(_:perform:onAll:)`); ⇧⌘C copies every link, one per line
+  Move to ▸ | Close N Tabs (`sidebar(_:perform:onAll:)`); ⌘W closes them all (`// MARK: Closing`); ⇧⌘C copies every link, one per line
   (`copyLinks`); dragging one moves them all, the rest right after the held one (`sidebar(_:move:to:)` with a list).
   Never saved. Test commands `rowclick <id> cmd|shift|cmdshift|plain`, `selaction newfolder|pin|unpin|close|
   copylinks|duplicate|topinned|totoday|infolder <id>`; state log `sidebar.selection`; check `multi-select`.
