@@ -296,6 +296,15 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     the visible entry, and a pending https navigation has no certificate, which it reports as `certificateError`
     (Chrome's `SecurityStateTabHelper` says none). Ray reads levels through `ConnectionLook.level`, which treats one
     with no errors as none. Fix in the engine (`engine-ray` fixup), then drop the workaround. Found 2026-11-03.
+36. **No preconnect: a site's first visit pays DNS, connect and TLS after Enter.** Measured on a hidden instance
+    (2026-11-03): navigation starts 2–30 ms after Enter (Ray adds nothing), then 50–90 ms of DNS and 100–800 ms of
+    connect and TLS per new host before the request. Chrome and Arc start that while you type (the omnibox
+    preconnects its top match through `LoadingPredictor::PrepareForPageLoad`, and pages' links are DNS-prefetched),
+    so the page seems to start at once. Ray has neither: its command bar isn't Chrome's omnibox and the engine has no
+    preconnect call, and Helium's `inox-patchset/modify-default-prefs.patch` defaults network prediction to off
+    (Chrome: standard), which also blocks link prefetch and Chrome's own preconnects. Fix: an engine call
+    (`ac_preconnect(url)`, `engine-ray` fixup) that the bar calls for its top row's host as you type, and network
+    prediction on by default (an owner decision: Helium turned it off for privacy).
 
 ## Done
 
