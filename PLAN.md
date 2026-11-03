@@ -34,9 +34,9 @@ window. Every decision serves three things:
    land as pinned folders until Spaces exist), installing imported extensions (the engine installs only from a
    file), Arc's archive and link routes (Cra's importer reads both).
 4. **Distribution:** Sparkle + GitHub Releases, self-signed (Apple Development, free Personal Team), no
-   notarization: a DMG with first-open instructions and the owner's own Homebrew tap in shanuflash/ray (owner,
+   notarization: a DMG with first-open instructions and the owner's own Homebrew tap, shanuflash/homebrew-tap (owner,
    2026-11-03: no paid Apple Developer Program). **Done 2026-11-03:** `scripts/release.sh` makes the zip, appcast
-   and DMG and updates `Casks/ray.rb`.
+   and DMG and the tap's `ray.rb` (`brew install shanuflash/tap/ray`).
 5. **Launch prep:** a README that opens with a short motion video/GIF, a one-line pitch and the install command; a
    side-by-side video with Arc; CONTRIBUTING and good-first-issue labels; regular tagged releases with readable
    notes.
@@ -64,7 +64,7 @@ Recorded for the owner to decide. Don't act on them until they do.
 |---|---|
 | Platform | macOS 14 Sonoma or later, Apple Silicon only |
 | Spaces | Arc-style: many Spaces per Profile |
-| Distribution | Sparkle + GitHub Releases, self-signed (Apple Development, free Personal Team), no notarization: a DMG with first-open instructions and the owner's own Homebrew tap in shanuflash/ray (`Casks/ray.rb`). Owner, 2026-11-03: no paid Apple Developer Program |
+| Distribution | Sparkle + GitHub Releases, self-signed (Apple Development, free Personal Team), no notarization: a DMG with first-open instructions and the owner's own Homebrew tap, shanuflash/homebrew-tap (`brew install shanuflash/tap/ray`). Owner, 2026-11-03: no paid Apple Developer Program |
 | Engine | Ardia's engine, renamed and built from source (Phase B, since 0.2.0). Phase A (Ardia's prebuilt) is over |
 | Import | Ardia's import core (`Importer/`, Apache-2.0) for reading; Ray writes through the engine's `ac_*` calls; never another browser's settings |
 | Onboarding | Once per profile (new ones, and every profile from 0.2.0 and earlier on its next launch), as an overlay in the browser window in Ray's own style; Arc first and recommended |

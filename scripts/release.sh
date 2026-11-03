@@ -1,8 +1,8 @@
 #!/bin/bash
 # Prepares a Ray release for Sparkle: bumps VERSION, builds build/Ray.app, zips it, signs the zip with the EdDSA
 # private key in your login keychain and writes the appcast, then the DMG for first installs, all under
-# build/release/<version>/, and points the Homebrew cask (Casks/ray.rb) at that DMG. It publishes nothing: it prints
-# the `gh release create` command, the commit to make first and the cask's commit to make after.
+# build/release/<version>/, with the Homebrew cask (ray.rb) pointing at that DMG. It publishes nothing: it prints the
+# `gh release create` command, the commit to make first and the tap's commit to make after.
 #   scripts/release.sh <version> [--notes <file.md|.html|.txt>]
 # Needs Branding/sparkle-public-key.txt to be the real key (Sparkle's generate_keys, once; see CLAUDE.md).
 set -euo pipefail
@@ -120,17 +120,16 @@ print(e.get("{http://www.andymatuschak.org/xml-namespaces/sparkle}edSignature"))
 
 # MARK: DMG and cask
 # First installs: a DMG whose window says how to open an un-notarized Ray (scripts/make-dmg.sh checks it), and the
-# cask, Casks/ray.rb: this repo is the owner's tap (`brew tap shanuflash/ray https://github.com/shanuflash/ray`;
-# homebrew/cask takes no app that fails Gatekeeper). Made after generate_appcast, which would list a DMG in the folder
-# as a second item. Updates stay on the zip.
+# cask (scripts/ray-cask.rb with this version and the DMG's sha256) for the owner's tap, shanuflash/homebrew-tap
+# (`brew install shanuflash/tap/ray`; homebrew/cask takes no app that fails Gatekeeper). Made after generate_appcast,
+# which would list a DMG in the folder as a second item. Updates stay on the zip.
 dmg="Ray-$version.dmg"
 "$root/scripts/make-dmg.sh" "$app" "$out/$dmg"
 dmg_sha=$(shasum -a 256 "$out/$dmg" | cut -d' ' -f1)
-cask="$root/Casks/ray.rb"
-sed -E -e "s/^  version \"[^\"]*\"$/  version \"$version\"/" -e "s/^  sha256 .*$/  sha256 \"$dmg_sha\"/" "$cask" > "$out/ray.rb"
+sed -E -e "s/^  version \"[^\"]*\"$/  version \"$version\"/" -e "s/^  sha256 .*$/  sha256 \"$dmg_sha\"/" \
+  "$root/scripts/ray-cask.rb" > "$out/ray.rb"
 grep -qx "  version \"$version\"" "$out/ray.rb" && grep -qx "  sha256 \"$dmg_sha\"" "$out/ray.rb" \
-  || die "Casks/ray.rb has no version or sha256 line to update"
-mv "$out/ray.rb" "$cask"
+  || die "scripts/ray-cask.rb has no version or sha256 line to update"
 
 finished=1
 echo
@@ -141,5 +140,6 @@ echo "Nothing is published. When you've tried it, run these in order:"
 printf '  git add VERSION && git commit -m "chore: release %s" && git push\n' "$version"
 printf '  gh release create v%s \\\n    "%s" \\\n    "%s" \\\n    "%s" \\\n    --repo %s --target %s --title "Ray %s" \\\n    --notes-file "%s" --latest\n' \
   "$version" "$out/$archive" "$out/appcast.xml" "$out/$dmg" "$repo" "$branch" "$version" "$notes_file"
-echo "Then, once the release is up (Casks/ray.rb now points at its DMG):"
-printf '  git add Casks/ray.rb && git commit -m "chore: cask %s" && git push\n' "$version"
+echo "Then, once the release is up, the tap (the first time: gh repo clone shanuflash/homebrew-tap ~/homebrew-tap):"
+printf '  mkdir -p ~/homebrew-tap/Casks && cp "%s" ~/homebrew-tap/Casks/ray.rb\n' "$out/ray.rb"
+printf '  git -C ~/homebrew-tap add Casks/ray.rb && git -C ~/homebrew-tap commit -m "ray %s" && git -C ~/homebrew-tap push\n' "$version"

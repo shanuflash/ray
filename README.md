@@ -12,8 +12,7 @@ macOS 14 or later, Apple Silicon.
    and drag Ray to Applications. Or with Homebrew (the full name matters: plain `ray` is a different app):
 
    ```sh
-   brew tap shanuflash/ray https://github.com/shanuflash/ray
-   brew install --cask shanuflash/ray/ray
+   brew install shanuflash/tap/ray
    ```
 
 2. Open it. Ray isn't notarized (no paid Apple developer account), so the first time:

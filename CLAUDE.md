@@ -438,7 +438,7 @@ publicly or create accounts.
 - `Host/Updater.swift`: Ray › Check for Updates… (`SPUStandardUpdaterController`). It starts only in the real app and
   only with a real `SUPublicEDKey`; the test app never creates it (state log `updater`, check `updater-config`).
 - `scripts/release.sh <version> [--notes file]`: builds, zips, signs and writes the appcast under `build/release/`,
-  then the DMG (`scripts/make-dmg.sh`), and points the Homebrew cask (`Casks/ray.rb`) at it.
+  then the DMG (`scripts/make-dmg.sh`) and the Homebrew cask pointing at it (`ray.rb`, from `scripts/ray-cask.rb`).
 - `scripts/make-dmg.sh <Ray.app> <out.dmg>`: the first-install DMG. Built-in tools only: `hdiutil` (HFS+, LZFSE),
   `tools/dmg-window.swift` (the background, drawn at 1x and 2x, joined by `tiffutil`; and the `.DS_Store`, written
   directly: window size, icon view, icon spots, the background's alias record, which it resolves before writing),
@@ -495,15 +495,15 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   stays off.
 - **Cut a release:** commit everything, then `scripts/release.sh 0.2.0 --notes notes.md`. It bumps `VERSION`, builds
   `build/Ray.app`, zips it with `ditto` (a zip serves both first installs and Sparkle), signs it from the keychain,
-  writes and checks `build/release/0.2.0/appcast.xml`, then makes and checks `Ray-0.2.0.dmg` and sets
-  `Casks/ray.rb`'s version and sha256 to it, and prints the `git commit` (VERSION), `gh release create …` (zip,
-  appcast and DMG) and, after the release is up, the cask's commit. It publishes nothing; run those yourself after
+  writes and checks `build/release/0.2.0/appcast.xml`, then makes and checks `Ray-0.2.0.dmg` and writes `ray.rb`
+  (the cask with its version and sha256), and prints the `git commit` (VERSION), `gh release create …` (zip,
+  appcast and DMG) and, after the release is up, the tap's copy, commit and push. It publishes nothing; run those yourself after
   trying the DMG (open it once: the window's layout and background are only visible in Finder).
-- **Homebrew tap:** this repo is the tap (`Casks/ray.rb`); friends run `brew tap shanuflash/ray
-  https://github.com/shanuflash/ray && brew install --cask shanuflash/ray/ray`. The URL is needed because the short
-  form only finds repos named `homebrew-*`; the full cask name is needed because homebrew/cask has its own `ray`
-  (Spatie's debugger, which plain `brew install --cask ray` installs), and naming the tap makes Homebrew 7 trust
-  it (`brew tap` alone doesn't). Commit the cask only after its GitHub release exists, or installs fetch a 404.
+- **Homebrew tap:** `shanuflash/homebrew-tap` (its own GitHub repo, the owner's; the cask at `Casks/ray.rb`, copied
+  from `build/release/<version>/ray.rb` each release). Friends run `brew install shanuflash/tap/ray`: Homebrew taps
+  it by itself and trusts it because the name is in full (Homebrew 7; `brew tap` alone doesn't trust). Never tell
+  anyone `brew install --cask ray`: homebrew/cask's `ray` is Spatie's debugger. Push the cask only after its GitHub
+  release exists, or installs fetch a 404. The source is `scripts/ray-cask.rb` in this repo.
   The cask has `auto_updates true` (Sparkle updates Ray; `brew upgrade` leaves it), arm64 and Sonoma, a `zap` for
   the data dir, caches and prefs, and the Open Anyway caveat. Lint a change in a throwaway local tap: `brew tap-new
   --no-git <you>/check`, copy the cask in, `brew trust --tap`, `brew style` and `brew audit --cask --strict`, then

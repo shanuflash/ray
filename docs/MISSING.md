@@ -293,7 +293,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | What | When |
 |---|---|
 | Ray's own engine (Phase B) and "Ray Safe Storage" | 2026-10-28, 0.2.0 |
-| First installs without notarization: a DMG whose window shows the drag and the first open (Open Anyway), and a cask in this repo as the owner's tap (`brew tap shanuflash/ray https://github.com/shanuflash/ray && brew install --cask shanuflash/ray/ray`), both from `scripts/release.sh` | 2026-11-03, `feat: dmg and homebrew tap` |
+| First installs without notarization: a DMG whose window shows the drag and the first open (Open Anyway), and a cask for the owner's tap (`brew install shanuflash/tap/ray`), both from `scripts/release.sh` | 2026-11-03, `feat: dmg and homebrew tap` |
 | Notes: six spots on the page, one each, glass or solid (Settings › Appearance), the sidebar's spring; downloads note with progress | 2026-10-31, `cb92326` |
 | Panels: one framework for site controls (with a "…" page), the notes' glass or solid look on prompts and downloads, Settings › Appearance › Panels and notes | 2026-10-31, `6a326c5` |
 | Panels everywhere: sidebar sliders button (no puzzle menu), permission choices and Clear Site Data as pages, extension install and quit/close warnings as panel questions, folder icon picker on Panels, find bar on the shared surface; tab group push off Chrome's notification (crash) | 2026-10-31, `cd08553` |
