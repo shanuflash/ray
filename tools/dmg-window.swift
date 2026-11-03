@@ -15,17 +15,17 @@ let windowSize = CGSize(width: 640, height: 420)
 let titleBarHeight: CGFloat = 32
 let iconSize: CGFloat = 128
 /// Icon centres, from the window's top left (what Finder's Iloc holds).
-let appSpot = CGPoint(x: 160, y: 102)
-let applicationsSpot = CGPoint(x: 480, y: 102)
+let appSpot = CGPoint(x: 160, y: 264)
+let applicationsSpot = CGPoint(x: 480, y: 264)
 /// Where Finder mounts the image for the people who open it.
 func mountPoint(_ volumeName: String) -> String { "/Volumes/" + volumeName }
 
 // MARK: Background
 
-/// "Here comes the sun": warm paper, the icon's sun rising from the bottom edge as 70s bands with its five rays, a
-/// hand-drawn loop from Ray to Applications and the first-open note. Finder picks its icon names' colour from the
-/// picture (black on this one, in dark mode too). Keep the bottom 50 pt decorative: Finder's status and path bars
-/// cover it for people who show them.
+/// "Ocean": sunrise over the sea, the icon's glyph as the sun on the horizon, its shimmer on the water, a boat and two
+/// gulls, a school of fish in the icon's orange to pink swimming from Ray to Applications, and a sandy shore. Finder
+/// draws icon names in black over any background picture (dark mode too), so they sit on the sand, just above the
+/// bottom 56 pt that Finder's path and status bars cover for people who show them.
 func drawBackground(scale: CGFloat) -> NSBitmapImageRep {
   let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
   let cg = CGContext(data: nil, width: Int(windowSize.width * scale), height: Int(windowSize.height * scale),
@@ -37,63 +37,146 @@ func drawBackground(scale: CGFloat) -> NSBitmapImageRep {
   cg.scaleBy(x: 1, y: -1)
   NSGraphicsContext.saveGraphicsState()
   NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: true)
-  func rgb(_ hex: UInt32) -> CGColor {
+  func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
     CGColor(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255,
-            blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+            blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
   }
-
-  cg.setFillColor(rgb(0xFFF5EA))
-  cg.fill(CGRect(origin: .zero, size: windowSize))
-
-  // The sun: the icon's orange to pink (Branding/Ray.icon), its pink at the core.
-  let sun = CGPoint(x: 320, y: 460)
-  for (radius, color) in [(140.0, 0xFFE1BC), (116, 0xFFB45C), (92, 0xFF8A45), (68, 0xFF6A5C), (44, 0xFF4F7B)] as [(CGFloat, UInt32)] {
-    cg.setFillColor(rgb(color))
-    cg.fillEllipse(in: CGRect(x: sun.x - radius, y: sun.y - radius, width: 2 * radius, height: 2 * radius))
+  func gradient(_ stops: [(CGFloat, UInt32)]) -> CGGradient {
+    CGGradient(colorsSpace: srgb, colors: stops.map { rgb($0.1) } as CFArray, locations: stops.map(\.0))!
   }
-  // The glyph's rays, at its angles.
+  func pill(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ color: CGColor) {
+    cg.addPath(CGPath(roundedRect: CGRect(x: x, y: y, width: w, height: h), cornerWidth: h / 2, cornerHeight: h / 2,
+                      transform: nil))
+    cg.setFillColor(color)
+    cg.fillPath()
+  }
+  let horizon: CGFloat = 200
+
+  // Sky, and the sun on the horizon with the glyph's rays.
+  cg.saveGState()
+  cg.clip(to: CGRect(x: 0, y: 0, width: windowSize.width, height: horizon))
+  cg.drawLinearGradient(gradient([(0, 0xFF7A8A), (0.6, 0xFFB07A), (1, 0xFFE0A8)]), start: .zero,
+                        end: CGPoint(x: 0, y: horizon), options: [])
   for degrees in [90.0, 54, 126, 18, 162] as [CGFloat] {
     let t = degrees * .pi / 180
-    cg.move(to: CGPoint(x: sun.x + 154 * cos(t), y: sun.y - 154 * sin(t)))
-    cg.addLine(to: CGPoint(x: sun.x + 176 * cos(t), y: sun.y - 176 * sin(t)))
+    cg.move(to: CGPoint(x: 320 + 72 * cos(t), y: horizon - 72 * sin(t)))
+    cg.addLine(to: CGPoint(x: 320 + 104 * cos(t), y: horizon - 104 * sin(t)))
   }
-  cg.setStrokeColor(rgb(0xFFB45C))
-  cg.setLineWidth(12)
+  cg.setStrokeColor(rgb(0xFFF3D6))
+  cg.setLineWidth(14)
   cg.setLineCap(.round)
   cg.strokePath()
-
-  // The loop, in the sunrise from Ray's side to Applications', level with the icons.
-  let loop = CGMutablePath()
-  loop.move(to: CGPoint(x: 236, y: 116))
-  loop.addCurve(to: CGPoint(x: 306, y: 102), control1: CGPoint(x: 262, y: 136), control2: CGPoint(x: 300, y: 130))
-  loop.addCurve(to: CGPoint(x: 279, y: 90), control1: CGPoint(x: 311, y: 78), control2: CGPoint(x: 284, y: 70))
-  loop.addCurve(to: CGPoint(x: 352, y: 118), control1: CGPoint(x: 273, y: 114), control2: CGPoint(x: 318, y: 130))
-  loop.addCurve(to: CGPoint(x: 398, y: 102), control1: CGPoint(x: 372, y: 111), control2: CGPoint(x: 386, y: 106))
-  cg.saveGState()
-  cg.addPath(loop.copy(strokingWithWidth: 4.5, lineCap: .round, lineJoin: .round, miterLimit: 10))
-  cg.clip()
-  let sunrise = CGGradient(colorsSpace: srgb, colors: [rgb(0xFF9A3C), rgb(0xFF4F7B)] as CFArray, locations: [0, 1])!
-  cg.drawLinearGradient(sunrise, start: CGPoint(x: 236, y: 0), end: CGPoint(x: 398, y: 0), options: [])
+  cg.setFillColor(rgb(0xFFF3D6))
+  cg.fillEllipse(in: CGRect(x: 320 - 58, y: horizon - 58, width: 116, height: 116))
   cg.restoreGState()
-  cg.move(to: CGPoint(x: 386, y: 93))
-  cg.addLine(to: CGPoint(x: 399, y: 102))
-  cg.addLine(to: CGPoint(x: 387, y: 113))
-  cg.setStrokeColor(rgb(0xFF4F7B))
-  cg.setLineWidth(4.5)
-  cg.setLineJoin(.round)
+
+  // Sea, the sun's path on it, wave glints.
+  cg.saveGState()
+  cg.clip(to: CGRect(x: 0, y: horizon, width: windowSize.width, height: windowSize.height - horizon))
+  cg.drawLinearGradient(gradient([(0, 0x3E63C9), (1, 0x22357F)]), start: CGPoint(x: 0, y: horizon),
+                        end: CGPoint(x: 0, y: windowSize.height), options: [])
+  cg.restoreGState()
+  for (i, (y, half)) in [(216.0, 74.0), (226, 58), (236, 44), (246, 32), (256, 22), (266, 14)].enumerated() {
+    pill(320 - half, y, 2 * half, 4, rgb(0xFFE6B0, 0.9 - 0.12 * CGFloat(i)))
+  }
+  for (x, y, w) in [(40.0, 236.0, 30.0), (560, 228, 26), (196, 282, 22), (430, 290, 28), (60, 296, 24), (566, 298, 22)] {
+    pill(x, y, w, 3, rgb(0xFFFFFF, 0.35))
+  }
+
+  // The shore: sand where the names sit, with a line of foam.
+  let shore = CGMutablePath()
+  shore.move(to: CGPoint(x: 0, y: 330))
+  shore.addCurve(to: CGPoint(x: 240, y: 328), control1: CGPoint(x: 80, y: 318), control2: CGPoint(x: 160, y: 338))
+  shore.addCurve(to: CGPoint(x: 480, y: 330), control1: CGPoint(x: 320, y: 318), control2: CGPoint(x: 400, y: 340))
+  shore.addCurve(to: CGPoint(x: 640, y: 326), control1: CGPoint(x: 560, y: 320), control2: CGPoint(x: 600, y: 334))
+  let sand = shore.mutableCopy()!
+  sand.addLine(to: CGPoint(x: 640, y: 420))
+  sand.addLine(to: CGPoint(x: 0, y: 420))
+  sand.closeSubpath()
+  cg.addPath(sand)
+  cg.setFillColor(rgb(0xF4DCA8))
+  cg.fillPath()
+  cg.addPath(shore)
+  cg.setStrokeColor(rgb(0xFFFFFF, 0.75))
+  cg.setLineWidth(3)
   cg.strokePath()
 
-  // The note, in SF Rounded, centred on baselines.
+  // A little boat and two gulls.
+  cg.saveGState()
+  cg.translateBy(x: 548, y: 182)
+  for (points, color) in [([(0.0, 18.0), (34, 18), (28, 26), (6, 26)], 0x2B2F55), ([(16, -14), (16, 16), (32, 16)], 0xFFFFFF),
+                          ([(14, -6), (14, 16), (2, 16)], 0xFFD9C2)] as [([(CGFloat, CGFloat)], UInt32)] {
+    cg.addLines(between: points.map { CGPoint(x: $0.0, y: $0.1) })
+    cg.closePath()
+    cg.setFillColor(rgb(color))
+    cg.fillPath()
+  }
+  cg.restoreGState()
+  for (x, y, w) in [(84.0, 132.0, 12.0), (116, 116, 8)] {
+    cg.move(to: CGPoint(x: x, y: y))
+    cg.addQuadCurve(to: CGPoint(x: x + w, y: y), control: CGPoint(x: x + w / 2, y: y - w / 2))
+    cg.addQuadCurve(to: CGPoint(x: x + 2 * w, y: y), control: CGPoint(x: x + 1.5 * w, y: y - w / 2))
+  }
+  cg.setStrokeColor(rgb(0x7A3E58))
+  cg.setLineWidth(2)
+  cg.strokePath()
+
+  // The school: Gem fish (a rounded diamond and a triangle tail, flat like the glyph), orange at the back to pink at
+  // the front, growing as they go, the lead one breathing bubbles toward Applications.
+  let school: [(x: CGFloat, y: CGFloat, scale: CGFloat, degrees: CGFloat)] = [
+    (250, 312, 0.8, -6), (272, 299, 0.9, -10), (295, 308, 1, 4), (317, 295, 1.05, -8), (339, 302, 1.12, 2),
+    (362, 289, 1.25, -12),
+  ]
+  func mix(_ t: CGFloat) -> CGColor {
+    CGColor(srgbRed: 1, green: (0x9A + (0x4F - 0x9A) * t) / 255,
+            blue: (0x3C + (0x7B - 0x3C) * t) / 255, alpha: 1)
+  }
+  for (i, fish) in school.enumerated() {
+    let color = mix(CGFloat(i) / CGFloat(school.count - 1))
+    cg.saveGState()
+    // One shadow for the whole fish, not one per part.
+    cg.setShadow(offset: CGSize(width: 0, height: -scale), blur: scale, color: rgb(0x141E50, 0.35))
+    cg.beginTransparencyLayer(auxiliaryInfo: nil)
+    cg.translateBy(x: fish.x, y: fish.y)
+    cg.rotate(by: fish.degrees * .pi / 180)
+    cg.scaleBy(x: fish.scale, y: fish.scale)
+    cg.setFillColor(color)
+    cg.setStrokeColor(color)
+    cg.setLineJoin(.round)
+    for (points, width) in [([(-11.0, 0.0), (-20, -7), (-20, 7)], 2.5), ([(13, 0), (1, -8), (-11, 0), (1, 8)], 3)]
+      as [([(CGFloat, CGFloat)], CGFloat)] {
+      cg.addLines(between: points.map { CGPoint(x: $0.0, y: $0.1) })
+      cg.closePath()
+      cg.setLineWidth(width)
+      cg.drawPath(using: .fillStroke)
+    }
+    cg.move(to: CGPoint(x: 1, y: -8))
+    cg.addLine(to: CGPoint(x: 1, y: 8))
+    cg.setStrokeColor(rgb(0xFFFFFF, 0.35))
+    cg.setLineWidth(1.5)
+    cg.strokePath()
+    cg.setFillColor(rgb(0x1E2A5A))
+    cg.fillEllipse(in: CGRect(x: 6 - 1.4, y: -1.5 - 1.4, width: 2.8, height: 2.8))
+    cg.endTransparencyLayer()
+    cg.restoreGState()
+  }
+  cg.setStrokeColor(rgb(0xFFFFFF, 0.85))
+  cg.setLineWidth(1.4)
+  for (x, y, r) in [(384.0, 278.0, 3.0), (391, 267, 2.2), (386, 257, 1.6)] {
+    cg.strokeEllipse(in: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r))
+  }
+
+  // The note, in SF Rounded, centred on baselines, in the sky.
   func line(_ text: String, baseline: CGFloat, size: CGFloat, weight: NSFont.Weight, color: UInt32) {
     let plain = NSFont.systemFont(ofSize: size, weight: weight)
     let font = plain.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? plain
     let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor(cgColor: rgb(color))!])
     string.draw(at: CGPoint(x: (windowSize.width - string.size().width) / 2, y: baseline - font.ascender))
   }
-  line("First time opening it?", baseline: 222, size: 13, weight: .bold, color: 0x3B2A22)
-  line("macOS 14: right-click Ray › Open", baseline: 240, size: 12, weight: .medium, color: 0x7A6156)
-  line("macOS 15+: open it once, then Settings › Privacy & Security › Open Anyway", baseline: 256, size: 12,
-       weight: .medium, color: 0x7A6156)
+  line("First time opening it?", baseline: 40, size: 12.5, weight: .bold, color: 0x5A2440)
+  line("macOS 14: right-click Ray › Open", baseline: 57, size: 11, weight: .medium, color: 0x7A3E58)
+  line("macOS 15+: open it once, then Privacy & Security › Open Anyway", baseline: 72, size: 11, weight: .medium,
+       color: 0x7A3E58)
 
   NSGraphicsContext.restoreGraphicsState()
   let rep = NSBitmapImageRep(cgImage: cg.makeImage()!)
