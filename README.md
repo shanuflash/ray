@@ -16,17 +16,14 @@ macOS 14 or later, Apple Silicon.
 
 Ray updates itself after that (Ray › Check for Updates…).
 
-## What you get
+## What works
 
-- **Arc's sidebar:** favorites, pinned tabs, Today tabs that archive themselves, folders with colours and icons,
-  rename any tab, ⌘-click to select several. ⌘S hides it; the left edge brings it back.
-- **Command bar** (⌘T, ⌘L): tabs, history, search, site searches, and every command and setting by name.
-- **Real Chromium:** Chrome Web Store extensions, DevTools, print, Chrome's own pages. Helium's de-Googling patches.
-- **Moving in:** bring pinned tabs, folders, history, bookmarks, passwords and cookies over from Arc, Dia, Chrome,
-  Brave, Edge, Helium, Firefox, Zen or Safari. You stay signed in.
-- **Native Mac app:** AppKit and Core Animation, no Electron. Light or dark, your own accent colour, a searchable
-  Settings window, your own shortcuts.
-- Your default browser if you want it. Passwords and cards behind Touch ID. JumpCloud Go sign-in, opt-in.
+- Arc's sidebar: favorites, pinned tabs, folders, Today tabs that clear themselves
+- ⌘S hides it, the left edge peeks it back
+- Command bar (⌘T) for tabs, history, search and commands
+- Chrome Web Store extensions on real Chromium
+- Your Arc comes over in one go, signed in (Chrome, Safari, Firefox and others too)
+- Native Mac app, no Electron
 
 ## Not yet
 
