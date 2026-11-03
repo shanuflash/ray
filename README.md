@@ -1,86 +1,61 @@
 # Ray
 
-A macOS browser with Arc's sidebar, on real Chromium. Native AppKit and Core Animation on top of Chrome's own
-framework; no Electron, no WebKit, no React Native.
+Arc's sidebar on real, de-Googled Chromium. A native Mac browser for when Arc shuts down.
 
-Early and personal. Expect rough edges.
+<!-- Hero GIF goes here: a short clip of the sidebar, ⌘S and the command bar. -->
 
-## What works
+## Install
 
-- Arc-style sidebar: pinned tiles, pinned tabs (closing one unloads it and resets it to its pinned URL, `/` when you've
-  wandered off), today tabs with Clear and 12-hour archiving, New Tab. Rename any tab (right-click › Rename…, or
-  double-click its title); the name sticks across pages and relaunches, and Arc's names come over on import.
-- Folders in Pinned and Today, with a colour and an icon (right-click › Colour, Change Icon…). Today folders are
-  Chrome tab groups, so extensions that group the tabs they drive (Claude's) work, and their groups show as folders.
-- Select several tabs with ⌘-click or ⇧-click, as in Arc: put them in a new folder, pin, copy their links (⇧⌘C),
-  close or drag them together.
-- ⌘S hides the sidebar; hovering the left edge slides it back in as a floating panel, sprung to Arc's recorded motion.
-- Command bar (⌘T, ⌘L): open tabs, history, search suggestions, URLs, and Ray's own commands by name ("task manager",
-  "clear cache", "zoom in"…) with their shortcuts.
-- Moving in: a first-run welcome that imports from Arc (recommended), Dia, Chrome, Brave, Edge, Helium, Firefox, Zen
-  or Safari: pinned tabs and folders, favorites, open tabs, history, bookmarks, passwords, cookies (you stay signed
-  in), addresses and cards. Never another browser's settings. Later: File › Import from Browser….
-- Dia's address bar above the page, with its loading glow; site controls; find (⌘F); downloads; permission prompts;
-  extension buttons and popups from the Chrome Web Store.
-- Notes on the page ("Copied Current URL", the zoom level, a download's progress) and panels (site controls,
-  permission prompts, downloads) in frosted glass or solid; notes each in their own spot, never stacked.
-- Chrome's basics: Print (⌘P), Show Full History (⌘Y), zoom (⌘+ ⌘− ⌘0, with Arc's zoom level note), View Source
-  (⌥⌘U), Save Page As, Task Manager, Clear Browsing Data (⇧⌘⌫).
-- Settings window (⌘,): a searchable sidebar of panes, live pictures of what a setting does, and every setting
-  reachable from the command bar ("Settings: …"). Your profile colour drives every accent in Ray. Panes for
-  General, Tabs and sidebar, Appearance (light or dark, scroll bars), Search (engine, site searches), Privacy,
-  Passwords (behind Touch ID), Autofill, Extensions and Shortcuts.
-- Sessions restored at launch; only the active tab loads.
-- Full screen edge to edge when the sidebar is hidden.
-- DevTools (⌥⌘I), popups and `target=_blank` as tabs.
-- Updates itself (Ray › Check for Updates…).
-- Can be your default browser (System Settings › Desktop & Dock › Default web browser): links from other apps, and
-  HTML or PDF files you open with Ray, open as tabs, also when they launch Ray.
-- JumpCloud Go (passwordless work sign-in), through Google Chrome: with Settings › Passwords › Sign in with JumpCloud
-  Go through Chrome on, JumpCloud's login page signs in through a hidden Chrome (no window, and Ray stays in full
-  screen), then you're signed in in Ray (and, when an app sent you there, on to that app). If that doesn't finish in a few seconds, a small Chrome window opens instead
-  (in full screen, Ray offers a button for it rather than switching Spaces). JumpCloud's helper only answers browsers
-  on its own list, so Ray borrows Chrome for that one step.
+macOS 14 or later, Apple Silicon.
 
-Not yet: Spaces, drag and drop between windows, Split View, Little Arc, installing imported extensions. The full
-list is in [docs/MISSING.md](docs/MISSING.md).
+1. Download `Ray-<version>.zip` from the [latest release](https://github.com/shanuflash/ray/releases/latest).
+2. Unzip it and drag Ray to Applications. Don't run it from Downloads, or it can't update itself.
+3. Open it. Ray isn't notarized yet, so the first time:
+   - **macOS 15 and later:** open it once, then System Settings › Privacy & Security › **Open Anyway**.
+   - **macOS 14:** right-click Ray › Open.
 
-## Engine
+Ray updates itself after that (Ray › Check for Updates…).
 
-Ray's engine is Chromium 156 with [Helium](https://github.com/imputnet/helium)'s de-Googling patches and
-[Ardia](https://github.com/mantrakp04/ardia)'s hosting layer, built from `engine/` (Ardia's engine, renamed for Ray
-by `tools/engine/sync-engine.sh`). Building it takes about 45 GB of disk and a few hours the first time: the steps
-are in `engine/patches/build/` (1, 3, 4, 2, 5), and `scripts/fetch-engine.sh` finds the result.
+## What you get
 
-## Build
+- **Arc's sidebar:** favorites, pinned tabs, Today tabs that archive themselves, folders with colours and icons,
+  rename any tab, ⌘-click to select several. ⌘S hides it; the left edge brings it back.
+- **Command bar** (⌘T, ⌘L): tabs, history, search, site searches, and every command and setting by name.
+- **Real Chromium:** Chrome Web Store extensions, DevTools, print, Chrome's own pages. Helium's de-Googling patches.
+- **Moving in:** bring pinned tabs, folders, history, bookmarks, passwords and cookies over from Arc, Dia, Chrome,
+  Brave, Edge, Helium, Firefox, Zen or Safari. You stay signed in.
+- **Native Mac app:** AppKit and Core Animation, no Electron. Light or dark, your own accent colour, a searchable
+  Settings window, your own shortcuts.
+- Your default browser if you want it. Passwords and cards behind Touch ID. JumpCloud Go sign-in, opt-in.
 
-Apple Silicon, macOS 14+, Xcode.
+## Not yet
+
+Spaces, profiles, Split View, Little Arc, Peek, a built-in ad blocker (use uBlock Origin Lite for now), installing
+the extensions you import. The full list: [docs/MISSING.md](docs/MISSING.md).
+
+## Privacy and security
+
+Pages run in Chromium's sandbox with site isolation; Ray's own code never parses web content. No Safe Browsing
+(Helium compiles it out). Passwords and cookies are encrypted with Ray's own key in your login keychain. Imports read
+another browser only when you ask, and send nothing anywhere. Updates are signed and checked before they install.
+
+## Build from source
+
+Needs Xcode and Ray's engine, a Chromium build that takes a few hours and a lot of disk the first time
+(`engine/patches/build/`). Then:
 
 ```sh
-scripts/build-app.sh      # build/Ray.app, plus build/RayTests.app with test hooks
-scripts/test.sh           # unit tests, then checks against a hidden RayTests.app
+scripts/build-app.sh   # build/Ray.app
+scripts/test.sh        # unit tests and checks on a hidden test build
 open build/Ray.app
 ```
 
-## Security
+Details for contributors: [CLAUDE.md](CLAUDE.md) and [PLAN.md](PLAN.md).
 
-Pages run in Chromium's sandbox with site isolation. Ray's own code never parses web content. Read before using it
-with real accounts:
+## Credits and licence
 
-- **Engine updates**: Ray builds its own engine from `engine/` (Chromium 156); it's only as patched as that build.
-- **Saved passwords and cookies** are encrypted with "Ray Safe Storage" in your login keychain. Ray 0.1 used
-  Chromium's stand-in keychain (a public key); the first launch of a newer Ray moves that data to the real key.
-  Builds share one self-signed identity, so macOS asks only once to let Ray use the item.
-- **Importing** reads another browser's saved logins only when you choose passwords, cookies or cards, after macOS
-  asks for your password for that browser's own key; nothing is sent anywhere.
-- **JumpCloud Go through Chrome** (off by default): Ray starts Google Chrome only after checking it's signed by
-  Google, with its own profile (`JumpCloud Relay` next to Ray's data, readable only by you, never your Chrome
-  profile), drives it over a private pipe (no network port), and copies only jumpcloud.com cookies into Ray. Never
-  from a private window.
-- **No Safe Browsing**: Helium compiles it out.
-- **Self-signed** ("Ray Code Signing"), no hardened runtime, not notarized.
-
-## License
-
-GPL-3.0 (`LICENSE`), as the engine it ships with is built with Helium's GPL-3.0 patches. `engine/` is
-from Ardia under Apache-2.0 (`LICENSE.Apache-2.0`); see `NOTICE`.
+Ray is GPL-3.0 ([LICENSE](LICENSE)). Its engine and importer come from [Ardia](https://github.com/mantrakp04/ardia)
+(Apache-2.0, [LICENSE.Apache-2.0](LICENSE.Apache-2.0)), built on [Chromium](https://www.chromium.org) with
+[Helium](https://github.com/imputnet/helium)'s patches; see [NOTICE](NOTICE). Thanks also to
+[Cra](https://github.com/VictorKildahl/cra) and [Crest](https://github.com/pauljoda/Crest), whose work Ray learns from. Updates by
+[Sparkle](https://sparkle-project.org).
