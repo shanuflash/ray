@@ -6,8 +6,19 @@ enum SidebarRowAction {
   case changeIcon, pinFolder, unpinFolder, newTabInFolder, closeFolderTabs
   case moveToFolder(UUID)
   case setColor(String?), setIcon(String?)
-  /// Several selected tabs' links to the clipboard.
+  /// A tab's link to the clipboard; a folder's, every tab's in it; several selected tabs', all of theirs.
   case copyLinks
+  /// Share Folder…: the macOS share picker with the folder's links, at its row.
+  case shareFolder
+  /// A copy right after it: a tab with its history (the engine's duplicate), a folder with everything inside it.
+  case duplicate
+  /// Mute or Unmute: the tab's sound.
+  case toggleMute
+  /// Move to › Pinned (the end of the pinned tabs) and Move to › Today (its top), from anywhere.
+  case moveToPinned, moveToToday
+  /// Edit Pinned Page › Replace Pinned URL with Current, and Edit…'s inline field (`setPinnedURL` commits it).
+  case replacePinnedURL, editPinnedURL
+  case setPinnedURL(String)
 }
 
 /// Where a dragged entry lands. Indexes count the section without the dragged entry (for a folder, without
@@ -301,7 +312,8 @@ final class SidebarView: NSView {
       tile.onPointer = { [weak self, weak tile] event in
         if let self, let tile { self.pointer(event, on: tile, entry: entry) }
       }
-      tile.menu = menu(for: entry)
+      // Built at the right-click, so it says what's true then (Mute while the tab plays sound).
+      tile.menuProvider = { [weak self] in self?.menu(for: entry) }
     }
     var counts: [UUID: Int] = [:]
     for entry in pinned + today where !entry.isFolder { if let parent = entry.parentID { counts[parent, default: 0] += 1 } }
@@ -320,7 +332,7 @@ final class SidebarView: NSView {
         guard let self else { return }
         self.delegate?.sidebar(self, perform: entry.kind == .today ? .close : .unload, on: entry)
       }
-      row.menu = menu(for: entry)
+      row.menuProvider = { [weak self] in self?.menu(for: entry) }
     }
     needsLayout = true
   }
@@ -633,42 +645,64 @@ final class SidebarView: NSView {
   /// Changes animated so far, for the state log (checks record motion app-side).
   static var changesAnimated = 0
 
-  /// A folder row's icon, in `view`'s coordinates (where Change Icon's panel points), nil when it isn't showing.
-  func iconFrame(of folder: SidebarEntry, in view: NSView) -> NSRect? {
+  /// A row's icon (a folder's, a tab's, a favorite tile's), in `view`'s coordinates (where Change Icon's panel and
+  /// Share Folder's picker point), nil when it isn't showing.
+  func iconFrame(of entry: SidebarEntry, in view: NSView) -> NSRect? {
     layoutSubtreeIfNeeded()
-    guard let row = zip(pinnedRows + todayRows, pinned + today).first(where: { $0.1 === folder })?.0, !row.isHidden else { return nil }
+    if let index = favorites.firstIndex(where: { $0 === entry }), index < tiles.count {
+      let tile = tiles[index]
+      return tile.isHidden ? nil : tile.iconView.convert(tile.iconView.bounds, to: view)
+    }
+    guard let row = zip(pinnedRows + todayRows, pinned + today).first(where: { $0.1 === entry })?.0, !row.isHidden else { return nil }
     row.scrollToVisible(row.bounds)
-    return row.folderIcon.convert(row.folderIcon.bounds, to: view)
+    return row.iconView.convert(row.iconView.bounds, to: view)
   }
 
   /// Starts renaming a folder or a tab in place (a new folder starts this way; rows' menus have Rename…, and a tab's
   /// title takes a double click). A favorite's name is edited in a lifted row under its tile.
   func beginRename(_ entry: SidebarEntry) {
+    beginEditing(entry, text: nil) { [weak self] name in
+      guard let self else { return }
+      if entry.isFolder {
+        self.delegate?.sidebar(self, rename: entry, to: name)
+      } else {
+        self.delegate?.sidebar(self, name: entry, as: name)
+      }
+    }
+  }
+
+  /// Edit Pinned Page › Edit…: the pinned address in the same inline field rename uses (Arc's pinned page editor).
+  func beginEditPinnedURL(_ entry: SidebarEntry) {
+    guard let pinnedURL = entry.pinnedURL else { return }
+    beginEditing(entry, text: pinnedURL) { [weak self] text in
+      guard let self else { return }
+      self.delegate?.sidebar(self, perform: .setPinnedURL(text), on: entry)
+    }
+  }
+
+  /// The row's (or a favorite's lifted row's) field, starting on `text` (nil: the title), committing what's typed.
+  private func beginEditing(_ entry: SidebarEntry, text: String?, _ done: @escaping (String) -> Void) {
     pendingRename = entry.id
     DispatchQueue.main.async { [weak self] in
       guard let self, self.pendingRename == entry.id else { return }
       self.pendingRename = nil
       self.layoutSubtreeIfNeeded()
-      let commit: (String?) -> Void = { [weak self] name in
-        guard let self, let name else { return }
-        if entry.isFolder {
-          self.delegate?.sidebar(self, rename: entry, to: name)
-        } else {
-          self.delegate?.sidebar(self, name: entry, as: name)
-        }
+      let commit: (String?) -> Void = { name in
+        if let name { done(name) }
       }
       if let index = self.favorites.firstIndex(where: { $0 === entry }), index < self.tiles.count {
-        self.beginTileRename(entry, under: self.tiles[index], commit)
+        self.beginTileRename(entry, under: self.tiles[index], text: text, commit)
         return
       }
       guard let row = zip(self.pinnedRows + self.todayRows, self.pinned + self.today).first(where: { $0.1 === entry })?.0,
             !row.isHidden else { return }
       row.scrollToVisible(row.bounds)
-      row.beginRename(commit)
+      row.beginRename(text: text, commit)
     }
   }
 
-  private func beginTileRename(_ entry: SidebarEntry, under tile: FavoriteTileView, _ commit: @escaping (String?) -> Void) {
+  private func beginTileRename(_ entry: SidebarEntry, under tile: FavoriteTileView, text: String?,
+                               _ commit: @escaping (String?) -> Void) {
     tileEditor?.row.removeFromSuperview()
     let row = SidebarRowView()
     row.show(entry, icon: delegate?.sidebarIcon(for: entry), selected: false)
@@ -677,7 +711,7 @@ final class SidebarView: NSView {
     row.setLifted(true)
     addSubview(row)
     tileEditor = (row, entry)
-    row.beginRename { [weak self, weak row] name in
+    row.beginRename(text: text) { [weak self, weak row] name in
       if let self, let row, self.tileEditor?.row === row { self.tileEditor = nil }
       row?.removeFromSuperview()
       commit(name)
@@ -1214,46 +1248,32 @@ final class SidebarView: NSView {
   private func showSelection() {
     for (row, entry) in zip(pinnedRows + todayRows, pinned + today) where !entry.isFolder {
       row.setSelected(isSelected(entry))
-      row.menu = menu(for: entry)
     }
     delegate?.sidebarSelectionChanged(self)
   }
 
-  /// The menu for a right-click on one of several selected tabs: what applies to all of them.
+  /// The menu for a right-click on one of several selected tabs: what applies to all of them, in the single tab's
+  /// menu's order.
   private func selectionMenu(_ entries: [SidebarEntry]) -> NSMenu {
     let menu = NSMenu()
-    func add(_ title: String, _ action: SidebarRowAction) {
+    func item(_ title: String, _ action: SidebarRowAction) -> NSMenuItem {
       let item = NSMenuItem(title: title, action: #selector(selectionAction(_:)), keyEquivalent: "")
       item.target = self
       item.representedObject = SelectionChoice(action: action, entries: entries)
-      menu.addItem(item)
+      return item
     }
     let count = entries.count
-    add("New Folder with \(count) Tabs", .newFolder)
-    let folders = NSMenu()
-    let sections = [("Today", today.filter(\.isFolder)), ("Pinned", pinned.filter(\.isFolder))].filter { !$0.1.isEmpty }
-    for (index, (name, choices)) in sections.enumerated() {
-      if index > 0 { folders.addItem(.separator()) }
-      if sections.count > 1 { folders.addItem(.sectionHeader(title: name)) }
-      for folder in choices {
-        let item = NSMenuItem(title: folderName(folder), action: #selector(selectionAction(_:)), keyEquivalent: "")
-        item.target = self
-        item.image = FolderLook.swatch(folder.color)
-        item.indentationLevel = min(depthOf(folder), 8)
-        item.representedObject = SelectionChoice(action: .moveToFolder(folder.id), entries: entries)
-        folders.addItem(item)
-      }
-    }
-    if !sections.isEmpty {
-      let holder = NSMenuItem(title: "Add to Folder", action: nil, keyEquivalent: "")
-      holder.submenu = folders
-      menu.addItem(holder)
-    }
-    if entries.contains(where: { $0.kind == .today }) { add("Pin \(count) Tabs", .pin) }
-    if entries.allSatisfy({ $0.kind == .pinned }) { add("Unpin \(count) Tabs", .unpin) }
-    add("Copy \(count) Links", .copyLinks)
+    let copy = item("Copy \(count) Links", .copyLinks)
+    copyLinkKey(copy)
+    menu.addItem(copy)
     menu.addItem(.separator())
-    add("Close \(count) Tabs", .close)
+    menu.addItem(item("New Folder with \(count) Tabs", .newFolder))
+    menu.addItem(item("Duplicate \(count) Tabs", .duplicate))
+    let move = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
+    move.submenu = moveMenu(for: entries, item)
+    menu.addItem(move)
+    menu.addItem(.separator())
+    menu.addItem(item("Close \(count) Tabs", .close))
     return menu
   }
 
@@ -1263,107 +1283,165 @@ final class SidebarView: NSView {
     delegate?.sidebar(self, perform: choice.action, onAll: choice.entries)
   }
 
+  // MARK: Row menus
+
+  /// A row's menu, in Arc's order and words: the link (Copy Link, Share), the row itself (icon, name, sound, its
+  /// pinned page), copies and moves (Duplicate, Move to), then what removes it. A folder's: Share Folder…, what it
+  /// holds, its look, Duplicate and Move to, Delete. Ray's own items sit where Arc would put them: Add to Favorites
+  /// by Duplicate, Close Tab under Remove Pin, Colour by Rename (Today folders are Chrome tab groups), New Tab in
+  /// Folder and Close Tabs on Today folders.
   private func menu(for entry: SidebarEntry) -> NSMenu {
     if selection.count > 1, selection.contains(where: { $0 === entry }) { return selectionMenu(selection) }
     let menu = NSMenu()
-    func add(_ title: String, _ action: SidebarRowAction) {
+    menu.autoenablesItems = false
+    func item(_ title: String, _ action: SidebarRowAction, enabled: Bool = true) -> NSMenuItem {
       let item = NSMenuItem(title: title, action: #selector(menuAction(_:)), keyEquivalent: "")
       item.target = self
+      item.isEnabled = enabled
       item.representedObject = RowMenuChoice(action: action, entry: entry)
-      menu.addItem(item)
+      return item
     }
-    func addFolderMenu() {
-      let folders = NSMenu()
-      let fresh = NSMenuItem(title: "New Folder", action: #selector(menuAction(_:)), keyEquivalent: "")
-      fresh.target = self
-      fresh.representedObject = RowMenuChoice(action: .newFolder, entry: entry)
-      folders.addItem(fresh)
-      // Today's folders, then the pinned ones (choosing one pins the tab there).
-      let sections = [("Today", today.filter { $0.isFolder && $0.id != entry.parentID }),
-                      ("Pinned", pinned.filter { $0.isFolder && $0.id != entry.parentID })].filter { !$0.1.isEmpty }
-      for (name, choices) in sections {
-        folders.addItem(.separator())
-        if sections.count > 1 { folders.addItem(.sectionHeader(title: name)) }
-        for folder in choices {
-          let item = NSMenuItem(title: folderName(folder), action: #selector(menuAction(_:)), keyEquivalent: "")
-          item.target = self
-          item.image = FolderLook.swatch(folder.color)
-          item.indentationLevel = min(depthOf(folder), 8)
-          item.representedObject = RowMenuChoice(action: .moveToFolder(folder.id), entry: entry)
-          folders.addItem(item)
-        }
-      }
-      let holder = NSMenuItem(title: "Add to Folder", action: nil, keyEquivalent: "")
-      holder.submenu = folders
+    @discardableResult
+    func add(_ title: String, _ action: SidebarRowAction, enabled: Bool = true) -> NSMenuItem {
+      let made = item(title, action, enabled: enabled)
+      menu.addItem(made)
+      return made
+    }
+    func addSubmenu(_ title: String, _ submenu: NSMenu) {
+      let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+      holder.submenu = submenu
       menu.addItem(holder)
     }
-    func addRename() {
-      add("Rename…", .renameFolder)
-      if entry.customTitle != nil {
-        let item = NSMenuItem(title: "Use Page Title", action: #selector(usePageTitle(_:)), keyEquivalent: "")
-        item.target = self
-        item.representedObject = entry
-        menu.addItem(item)
-      }
-      menu.addItem(.separator())
-    }
-    switch entry.kind {
-    case .today:
-      addRename()
-      add("Pin Tab", .pin)
-      add("Add to Favorites", .addToFavorites)
-      addFolderMenu()
-      menu.addItem(.separator())
-      add("Close Tab", .close)
-    case .pinned:
-      addRename()
-      if entry.isAwayFromPinned { add("Back to Pinned URL", .backToPinned) }
-      add("Add to Favorites", .addToFavorites)
-      addFolderMenu()
-      if entry.parentID != nil { add("Remove from Folder", .removeFromFolder) }
-      add("Unpin Tab", .unpin)
-      if entry.isLive {
-        menu.addItem(.separator())
-        add("Close Tab", .unload)
-      }
-    case .folder:
+    func addMove() { addSubmenu("Move to", moveMenu(for: [entry]) { item($0, $1) }) }
+
+    if entry.isFolder {
       let inToday = today.contains { $0 === entry }
-      add("Rename…", .renameFolder)
+      let links = contents(of: entry).filter { !$0.isFolder && !$0.currentURL.isEmpty }
+      add("Share Folder…", .shareFolder, enabled: !links.isEmpty)
+      menu.addItem(.separator())
+      if inToday { add("New Tab in Folder", .newTabInFolder) } else { add("New Nested Folder…", .newNestedFolder) }
+      add("Copy All Links", .copyLinks, enabled: !links.isEmpty)
+      menu.addItem(.separator())
       add("Change Icon…", .changeIcon)
+      add("Rename…", .renameFolder)
       let colours = NSMenu()
       for color in [nil] + FolderLook.colors.map(Optional.some) {
-        let item = NSMenuItem(title: FolderLook.title(color), action: #selector(menuAction(_:)), keyEquivalent: "")
-        item.target = self
-        item.image = FolderLook.swatch(color)
-        item.state = entry.color == color ? .on : .off
-        item.representedObject = RowMenuChoice(action: .setColor(color), entry: entry)
-        colours.addItem(item)
+        let choice = item(FolderLook.title(color), .setColor(color))
+        choice.image = FolderLook.swatch(color)
+        choice.state = entry.color == color ? .on : .off
+        colours.addItem(choice)
       }
-      let holder = NSMenuItem(title: "Colour", action: nil, keyEquivalent: "")
-      holder.submenu = colours
-      menu.addItem(holder)
+      addSubmenu("Colour", colours)
       menu.addItem(.separator())
-      if inToday {
-        add("New Tab in Folder", .newTabInFolder)
-        add("Pin Folder", .pinFolder)
-      } else {
-        add("New Nested Folder", .newNestedFolder)
-        if entry.parentID != nil { add("Remove from Folder", .removeFromFolder) }
-        add("Unpin Folder", .unpinFolder)
-      }
+      add("Duplicate", .duplicate)
+      addMove()
       menu.addItem(.separator())
-      add("Delete Folder", .deleteFolder)
       if inToday { add("Close Tabs", .closeFolderTabs) }
+      add("Delete", .deleteFolder)
+      return menu
+    }
+
+    let copy = add("Copy Link", .copyLinks, enabled: !entry.currentURL.isEmpty)
+    copyLinkKey(copy)
+    menu.addItem(shareItem(for: [entry]))
+    menu.addItem(.separator())
+    add("Change Icon…", .changeIcon)
+    add("Rename…", .renameFolder)
+    if entry.customTitle != nil {
+      let item = NSMenuItem(title: "Use Page Title", action: #selector(usePageTitle(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = entry
+      menu.addItem(item)
+    }
+    // Arc's Mute: greyed while the tab is silent, Unmute while it's muted.
+    let muted = entry.isLive && entry.tab?.muted == true
+    add(muted ? "Unmute" : "Mute", .toggleMute, enabled: muted || entry.isLive && entry.tab?.audible == true)
+    if entry.kind != .today {
+      let word = entry.kind == .favorite ? "Favorite" : "Pinned"
+      let page = NSMenu()
+      page.autoenablesItems = false
+      if entry.isAwayFromPinned { page.addItem(item("Back to \(word) URL", .backToPinned)) }
+      page.addItem(item("Replace \(word) URL with Current", .replacePinnedURL,
+                        enabled: entry.isLive && !entry.currentURL.isEmpty && entry.currentURL != entry.pinnedURL))
+      page.addItem(item("Edit…", .editPinnedURL))
+      addSubmenu("Edit \(word) Page", page)
+    }
+    menu.addItem(.separator())
+    add("Duplicate", .duplicate)
+    if entry.kind != .favorite { add("Add to Favorites", .addToFavorites) }
+    addMove()
+    menu.addItem(.separator())
+    switch entry.kind {
+    case .pinned:
+      add("Remove Pin", .unpin)
+      if entry.isLive { add("Close Tab", .unload) }
     case .favorite:
-      addRename()
-      if entry.isAwayFromPinned { add("Back to Favorite URL", .backToPinned) }
       add("Remove from Favorites", .removeFromFavorites)
-      if entry.isLive {
-        menu.addItem(.separator())
-        add("Close Tab", .unload)
+      if entry.isLive { add("Close Tab", .unload) }
+    default:
+      add("Close Tab", .close)
+    }
+    return menu
+  }
+
+  /// Copy Link answers to Copy URL's key as the main menu has it now (⇧⌘C by default; Settings › Shortcuts moves it).
+  private func copyLinkKey(_ item: NSMenuItem) {
+    guard let main = MenuShortcuts.command("copyURL")?.item else { return }
+    item.keyEquivalent = main.keyEquivalent
+    item.keyEquivalentModifierMask = main.keyEquivalentModifierMask
+  }
+
+  /// Share ›: macOS's share menu for the tabs' links.
+  private func shareItem(for entries: [SidebarEntry]) -> NSMenuItem {
+    let urls = entries.compactMap { URL(string: $0.currentURL) }.filter { $0.scheme != nil }
+    guard !urls.isEmpty else {
+      let item = NSMenuItem(title: "Share", action: nil, keyEquivalent: "")
+      item.isEnabled = false
+      return item
+    }
+    let item = NSSharingServicePicker(items: urls).standardShareMenuItem
+    item.title = "Share"
+    return item
+  }
+
+  /// Move to ›: Pinned and Today (each unless it's already there, at the top), a new folder (tabs), then every
+  /// folder it can go into, Today's then the pinned ones with nested ones indented, as the old Add to Folder did.
+  private func moveMenu(for entries: [SidebarEntry], _ item: (String, SidebarRowAction) -> NSMenuItem) -> NSMenu {
+    let menu = NSMenu()
+    let single = entries.count == 1 ? entries[0] : nil
+    let folder = single?.isFolder == true
+    let topPinned = single.map { one in one.parentID == nil && pinned.contains { $0 === one } } ?? false
+    let topToday = single.map { one in one.parentID == nil && today.contains { $0 === one } } ?? false
+    if !topPinned {
+      menu.addItem(item("Pinned", .moveToPinned))
+    }
+    if !topToday {
+      menu.addItem(item("Today", .moveToToday))
+    }
+    if single != nil, !folder { menu.addItem(item("New Folder", .newFolder)) }
+    // Today folders are one level: only tabs go into one.
+    let todayChoices = folder ? [] : today.filter { $0.isFolder && $0.id != single?.parentID }
+    let pinnedChoices = pinned.filter { candidate in
+      candidate.isFolder && candidate.id != single?.parentID
+        && single.map { $0 !== candidate && !isInside(candidate, $0) } ?? true
+    }
+    let sections = [("Today", todayChoices), ("Pinned", pinnedChoices)].filter { !$0.1.isEmpty }
+    for (name, choices) in sections {
+      menu.addItem(.separator())
+      if sections.count > 1 { menu.addItem(.sectionHeader(title: name)) }
+      for choice in choices {
+        let made = item(folderName(choice), .moveToFolder(choice.id))
+        made.image = FolderLook.swatch(choice.color)
+        made.indentationLevel = min(depthOf(choice), 8)
+        menu.addItem(made)
       }
     }
     return menu
+  }
+
+  /// Everything inside a folder, nested folders' contents too, in sidebar order.
+  private func contents(of folder: SidebarEntry) -> [SidebarEntry] {
+    (today.contains { $0 === folder } ? today : pinned).filter { isInside($0, folder) }
   }
 
   @objc private func usePageTitle(_ item: NSMenuItem) {
@@ -1371,13 +1449,33 @@ final class SidebarView: NSView {
     delegate?.sidebar(self, name: entry, as: "")
   }
 
-  /// For tests: the titles of an entry's context menu, separators as "-", a submenu's after its title as "a > b|c".
+  /// For tests: the titles of an entry's context menu, separators as "-", a submenu's after its title as "a > b|c",
+  /// a greyed item with "~" before it, an item's key after it in brackets ("Copy Link [shift+cmd+c]").
   func debugMenuTitles(for entry: SidebarEntry) -> [String] {
-    menu(for: entry).items.map { item in
+    func title(_ item: NSMenuItem) -> String {
       if item.isSeparatorItem { return "-" }
-      guard let sub = item.submenu else { return item.title }
-      return item.title + " > " + sub.items.map { $0.isSeparatorItem ? "-" : $0.title }.joined(separator: "|")
+      var text = (item.isEnabled ? "" : "~") + item.title
+      if let key = KeyCombo(item: item) { text += " [\(key.text)]" }
+      return text
     }
+    return menu(for: entry).items.map { item in
+      guard let sub = item.submenu, item.title != "Share" else { return title(item) }
+      return title(item) + " > " + sub.items.map(title).joined(separator: "|")
+    }
+  }
+
+  /// For tests: what a context menu item does, as choosing it would (`rowmenu <id> press <title>`; a submenu's item
+  /// as "Move to > Today"). Returns whether there was such an item.
+  func debugPressMenuItem(_ path: String, for entry: SidebarEntry) -> Bool {
+    var items = menu(for: entry).items
+    var found: NSMenuItem?
+    for part in path.components(separatedBy: " > ") {
+      guard let item = items.first(where: { $0.title == part && !$0.isSeparatorItem }) else { return false }
+      found = item
+      items = item.submenu?.items ?? []
+    }
+    guard let found, found.isEnabled, let action = found.action, found.submenu == nil else { return false }
+    return NSApp.sendAction(action, to: found.target, from: found)
   }
 
   /// A folder's name as rows and menus show it: an unnamed one (a tab group an extension didn't name) by its tabs.
@@ -1710,7 +1808,10 @@ final class AddressPill: NSView {
 final class FavoriteTileView: NSView, Liftable {
   var onClick: (() -> Void)?
   var onPointer: ((NSEvent) -> Void)?
+  /// Its context menu, made at the right-click.
+  var menuProvider: (() -> NSMenu?)?
   private let icon = NSImageView()
+  var iconView: NSView { icon }
   var iconFaded: Bool { icon.alphaValue < 1 }
   private var selected = false
   private var lifted = false
@@ -1802,6 +1903,7 @@ final class FavoriteTileView: NSView, Liftable {
 
   override func mouseDragged(with event: NSEvent) { onPointer?(event) }
   override func mouseUp(with event: NSEvent) { onPointer?(event) }
+  override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() ?? super.menu(for: event) }
 
   let residency = TabResidency()
 
@@ -1826,6 +1928,8 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   /// A double click on the title (not the icon); nil for rows that don't take one.
   var onDoubleClick: (() -> Void)?
   var onPointer: ((NSEvent) -> Void)?
+  /// Its context menu, made at the right-click.
+  var menuProvider: (() -> NSMenu?)?
   private var lifted = false
   private let chevron = NSImageView()
   private(set) var isFolderRow = false
@@ -1997,6 +2101,11 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     if event.buttonNumber == 2, closable { onClose?() }
   }
 
+  override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() ?? super.menu(for: event) }
+
+  /// The folder's icon or the tab's: where Change Icon's panel points.
+  var iconView: NSView { isFolderRow ? folderIcon : icon }
+
   @objc private func close() { onClose?() }
 
   func setSelected(_ selected: Bool) {
@@ -2140,10 +2249,10 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     layer.add(animation, forKey: "fold.opacity")
   }
 
-  /// Edits the title in place: Return keeps it, Escape or an empty name keeps the old one.
-  func beginRename(_ done: @escaping (String?) -> Void) {
+  /// Edits the title (or `text`: Edit Pinned Page's address) in place: Return keeps it, Escape keeps the old one.
+  func beginRename(text: String? = nil, _ done: @escaping (String?) -> Void) {
     editor?.removeFromSuperview()
-    let field = NSTextField(string: title.stringValue)
+    let field = NSTextField(string: text ?? title.stringValue)
     field.font = title.font
     field.isBordered = false
     field.drawsBackground = false

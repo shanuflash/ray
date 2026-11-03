@@ -65,11 +65,13 @@ export const areas = {
     "folder-rename", "favorites", "pin-unload-restore", "tile-hover", "clear", "reopen-closed-tab", "arc-import",
     "import-browser", "private-window", "close-last-window"],
   // When a pinned tab or favorite counts as away from its page.
-  "Host/SidebarModel.swift#Pinned page": ["pin-unload-restore", "reopen-closed-tab", "favorites"],
+  "Host/SidebarModel.swift#Pinned page": ["pin-unload-restore", "reopen-closed-tab", "favorites", "row-menus"],
+  // Duplicate's copy of an entry.
+  "Host/SidebarModel.swift#Duplicate": ["row-menus"],
   // Today folders as Chrome tab groups (the engine's tab strip events, `ac_tabs_group`).
   "Host/TabGroups.swift": [...folders, "extensions", "clear", "reopen-closed-tab"],
   // The folder icon's layers and Change Icon's panel.
-  "Host/FolderIcon.swift": [...folders, ...drag],
+  "Host/FolderIcon.swift": [...folders, ...drag, "row-menus"],
   "Host/FolderIconPicker.swift": [...folders, "panels"],
   "Host/EngineCalls.swift": "all",
   "Host/TestEnvironment.swift": "all",
@@ -117,9 +119,18 @@ export const areas = {
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Site controls": ["panels", "site-controls", "extensions", "copy-url", "find-in-page", "settings-privacy"],
   "Host/BrowserWindowController.swift#Entries": "all",
+  // What a row's menu items, close buttons and the `rowaction` test command do (pin, move, folders, close…).
+  "Host/BrowserWindowController.swift#Row actions": [...drag, ...folders, "row-menus", "favorites", "pin-unload-restore",
+    "tab-rename", "reopen-closed-tab", "tile-hover", "peek-zones", "clear", "copy-url", "bar-actions", "bar-ranking",
+    "settings-fade-unloaded", "settings-new-tab-position", "warn-before-quitting"],
+  // File › New Folder, ⌘D, Back to Pinned URL, Clear Today, tab cycling and ⌘1–9: the rest of Entries.
+  "Host/BrowserWindowController.swift#Sidebar commands": [...folders, "clear", "peek-zones", "pin-unload-restore", "favorites",
+    "settings-recent-tab-cycling", "settings-shortcut-editor", "folder-rename", "row-menus"],
   "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename", "warn-before-quitting"],
   // A tab's own name: Rename…, the double click, the test command's `rename` (folders too).
   "Host/BrowserWindowController.swift#Tab names": ["tab-rename", "folder-rename"],
+  // The rows' menu items: Duplicate, Share Folder…, Edit Pinned Page.
+  "Host/BrowserWindowController.swift#Row menus": ["row-menus", "folders", "multi-select"],
   "Host/BrowserWindowController.swift#Page toolbar": ["page-toolbar", "address-fragment", "page-loading", "load-sweep-once", "site-controls",
     "sidebar-toggle", "settings-page-address-bar"],
   "Host/BrowserWindowController.swift#Sidebar visibility": [...sidebarMotion, "page-toolbar", "downloads"],
@@ -139,12 +150,15 @@ export const areas = {
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
   "Host/SidebarView.swift": [...drag, ...folders, "tile-hover", "favorites", "pin-unload-restore",
     "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment", "tab-rename",
-    "settings-sidebar-button", "settings-fade-unloaded"],
+    "settings-sidebar-button", "settings-fade-unloaded", "row-menus"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
-  "Host/SidebarView.swift#Folder motion": [...folders, ...drag],
+  // Also where Change Icon… points, and the inline field for Rename… and Edit Pinned Page › Edit….
+  "Host/SidebarView.swift#Folder motion": [...folders, ...drag, "tab-rename", "row-menus"],
+  // Tabs', favorites' and folders' context menus (Arc's), and the test hooks that read and press them.
+  "Host/SidebarView.swift#Row menus": ["row-menus", "folders", "multi-select", "tab-rename"],
   "Host/BrowserWindowController.swift#Folder icon": folders,
-  "Host/SidebarView.swift#Selection": [...folders, ...drag, "copy-url"],
-  "Host/BrowserWindowController.swift#Selection": [...folders, ...drag, "copy-url"],
+  "Host/SidebarView.swift#Selection": [...folders, ...drag, "copy-url", "row-menus"],
+  "Host/BrowserWindowController.swift#Selection": [...folders, ...drag, "copy-url", "row-menus"],
   // Also the rows' menus and the test hooks for renaming (the field, its Done button).
   "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder", "folder-rename", "tab-rename",
     "settings-reorder-haptics"],
@@ -237,7 +251,8 @@ export const areas = {
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
   "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
-    "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes"],
+    "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes",
+    "row-menus", "multi-select", "folders"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

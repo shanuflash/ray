@@ -1382,7 +1382,8 @@ const checks = {
     await command(`rowclick ${t2} cmd`);
     assert(same(await selection(), [t1, t3]), `⌘-click drops one: ${state().sidebar.selection}`);
     const menu = JSON.parse(await commandResult(`rowmenu ${t3}`));
-    for (const item of ["New Folder with 2 Tabs", "Pin 2 Tabs", "Copy 2 Links", "Close 2 Tabs"]) assert(menu.includes(item), `selection menu ${menu}`);
+    for (const item of ["New Folder with 2 Tabs", "Duplicate 2 Tabs", "Close 2 Tabs"]) assert(menu.includes(item), `selection menu ${menu}`);
+    assert(menu[0].startsWith("Copy 2 Links") && menu.some((t) => t.startsWith("Move to > Pinned|Today")), `selection menu ${menu}`);
     await command("menu copyURL");
     await until("both links copied", async () => { await command("state"); const p = state().pasteboard ?? ""; return p.split("\n").length === 2 && p.includes("/c?n="); });
     await command(`rowclick ${t0} plain`);
@@ -1490,7 +1491,7 @@ const checks = {
     // The user makes one: New Folder from a tab's menu, named in place (the row's field, with Done), its tab sliding in.
     const third = entryOfTab(tabs[2]);
     const menu = JSON.parse(await commandResult(`rowmenu ${third.id}`));
-    assert(menu.some((t) => t.startsWith("Add to Folder > New Folder") && t.includes("Agents")), `tab menu ${menu}`);
+    assert(menu.some((t) => t.startsWith("Move to > Pinned|New Folder") && t.includes("Agents")), `tab menu ${menu}`);
     const motion = (await live()).sidebar.changesAnimated;
     await command(`rowaction newfolder ${third.id}`);
     const fresh = await until("renaming the new folder", async () => {
@@ -1516,7 +1517,7 @@ const checks = {
     assert(state().sidebar.iconPickerAnimations >= panels + 2 || state().sidebarFrames.reduceMotion === "1", "the icon panel didn't animate in and out");
     await until("Chrome has the user's folder", async () => (await chromeGroups()).some((g) => g.title === "Mine" && g.color === "green" && g.tabs.includes(tabs[2])));
     const folderMenu = JSON.parse(await commandResult(`rowmenu ${mine.id}`));
-    for (const item of ["Rename…", "Change Icon…", "New Tab in Folder", "Pin Folder", "Delete Folder", "Close Tabs"]) {
+    for (const item of ["Rename…", "Change Icon…", "New Tab in Folder", "Move to > Pinned", "Delete", "Close Tabs"]) {
       assert(folderMenu.some((t) => t === item || t.startsWith(item)), `folder menu lacks ${item}: ${folderMenu}`);
     }
     assert(folderMenu.some((t) => t.startsWith("Colour > None|Blue")), `colour menu ${folderMenu}`);
@@ -1560,7 +1561,7 @@ const checks = {
     });
     await until("its group gone", async () => !(await chromeGroups()).some((g) => g.title === "Mine"));
     assert((await run(`return (await chrome.tabs.get(${tabs[2]})).groupId`)) === -1, "a pinned tab is still in a group");
-    assert(JSON.parse(await commandResult(`rowmenu ${mine.id}`)).includes("Unpin Folder"), "no Unpin Folder on a pinned folder");
+    assert(JSON.parse(await commandResult(`rowmenu ${mine.id}`)).some((t) => t.startsWith("Move to > Today")), "no Move to › Today on a pinned folder");
     await command(`rowaction unpinfolder ${mine.id}`);
     await until("back in Today, a group again", async () => {
       const s = await live();
@@ -5552,7 +5553,7 @@ const checks = {
     await until("favorite", () => entry(f)?.kind === "favorite");
     for (const id of [t, p, f]) {
       const items = JSON.parse(await commandResult(`rowmenu ${id}`));
-      assert(items[0] === "Rename…" && !items.includes("Use Page Title"), `${entry(id).kind} menu: ${items}`);
+      assert(items.includes("Rename…") && !items.includes("Use Page Title"), `${entry(id).kind} menu: ${items}`);
     }
     assert(entry(t).customTitle === null && entry(t).title === "Page A", `before renaming: ${JSON.stringify(entry(t))}`);
 
@@ -5668,6 +5669,171 @@ const checks = {
       return saved.pinned.some((e) => e.id === p && e.customTitle === "Work stuff") && saved.today.some((e) => e.id === t && e.customTitle === "Reading")
         && saved.favorites.some((e) => e.id === f && e.customTitle === undefined);
     }, 4000);
+  },
+  async "row-menus"() {
+    // Arc's right-click menus for tabs, favorites and folders: order, words, greyed items and Copy Link's key, then
+    // what each new item does (Copy Link, Copy All Links, Share Folder…, Mute, Change Icon…, Edit Pinned Page,
+    // Duplicate, Move to, Remove Pin).
+    const all = () => ["favorites", "pinned", "today"].flatMap((k) => state().sidebar[k]);
+    const entry = (id) => all().find((e) => e.id === id);
+    const live = async () => { await command("state"); return state(); };
+    const fresh = async (path) => {
+      const before = new Set(allEntries().map((e) => e.id));
+      await send("Target.createTarget", { url: `${origin}${path}` });
+      return until(`tab ${path}`, async () => {
+        await command("state");
+        return allEntries().find((e) => !before.has(e.id) && e.url.includes(path) && e.live && e.pageTitle?.startsWith("Page"));
+      });
+    };
+    const menu = async (id) => JSON.parse(await commandResult(`rowmenu ${id}`));
+    const press = async (id, path) => assert(await commandResult(`rowmenu ${id} press ${path}`) === "ok", `no ${path} on ${id}`);
+    const tops = (items) => items.map((t) => t.replace(/ > .*$/, ""));
+    const same = (items, want, what) => assert(JSON.stringify(tops(items)) === JSON.stringify(want), `${what} menu: ${JSON.stringify(items)}`);
+    const sub = (items, title) => items.find((t) => t.startsWith(`${title} > `))?.slice(title.length + 3).split("|");
+    const made = [];
+    try {
+      const t = (await fresh("/a?menus-today")).id;
+      const p = (await fresh("/b?menus-pinned")).id;
+      const f = (await fresh("/c?menus-favorite")).id;
+      made.push(t, p, f);
+      await command(`rowaction pin ${p}`);
+      await command(`rowaction favorite ${f}`);
+      await until("pinned and favorite", async () => (await live()) && entry(p)?.kind === "pinned" && entry(f)?.kind === "favorite");
+
+      // The menus, as Arc lays them out. Mute is greyed while the tab is silent.
+      const copy = "Copy Link [shift+cmd+c]";
+      same(await menu(t), [copy, "Share", "-", "Change Icon…", "Rename…", "~Mute", "-", "Duplicate", "Add to Favorites",
+        "Move to", "-", "Close Tab"], "today tab");
+      let items = await menu(p);
+      same(items, [copy, "Share", "-", "Change Icon…", "Rename…", "~Mute", "Edit Pinned Page", "-", "Duplicate",
+        "Add to Favorites", "Move to", "-", "Remove Pin", "Close Tab"], "pinned tab");
+      assert(JSON.stringify(sub(items, "Edit Pinned Page")) === JSON.stringify(["~Replace Pinned URL with Current", "Edit…"]), `pinned page: ${items}`);
+      assert(sub(items, "Move to")[0] === "Today" && sub(items, "Move to")[1] === "New Folder", `pinned move to: ${items}`);
+      items = await menu(f);
+      same(items, [copy, "Share", "-", "Change Icon…", "Rename…", "~Mute", "Edit Favorite Page", "-", "Duplicate", "Move to",
+        "-", "Remove from Favorites", "Close Tab"], "favorite");
+      assert(JSON.stringify(sub(items, "Move to").slice(0, 3)) === JSON.stringify(["Pinned", "Today", "New Folder"]), `favorite move to: ${items}`);
+
+      // Copy Link: that tab's link, whichever tab is active.
+      await press(t, "Copy Link");
+      await until("link copied", async () => (await live()).pasteboard === entry(t).url);
+
+      // Mute and Unmute (the menu says which; a silent tab's Mute is greyed, so the row action stands in for it).
+      await command(`rowaction mute ${t}`);
+      await until("muted", async () => (await live()) && entry(t).muted === true);
+      assert((await menu(t)).includes("Unmute"), "a muted tab's menu has no Unmute");
+      await command(`rowaction mute ${t}`);
+      await until("unmuted", async () => (await live()) && entry(t).muted === false);
+
+      // Change Icon… on a tab: the panel at its icon; the pick replaces the favicon, the trash button brings it back.
+      await press(t, "Change Icon…");
+      await until("icon panel", async () => (await live()).sidebar.iconPicker, 3000);
+      await command("iconpicker pick sf:bolt.fill");
+      await until("tab icon", async () => (await live()) && entry(t).icon === "sf:bolt.fill" && !state().sidebar.iconPicker);
+      await command(`rowaction changeicon ${f}`);
+      await until("icon panel on a favorite", async () => (await live()).sidebar.iconPicker?.chosen === null, 3000);
+      await command("iconpicker pick sf:star.fill");
+      await until("favorite icon", async () => (await live()) && entry(f).icon === "sf:star.fill");
+      await command(`rowaction changeicon ${t}`);
+      await until("icon panel again", async () => (await live()).sidebar.iconPicker?.chosen === "sf:bolt.fill", 3000);
+      await command("iconpicker clear");
+      await until("favicon back", async () => (await live()) && entry(t).icon === null);
+      const saved = () => JSON.parse(readFileSync(join(dataDir, "Sidebar.json"), "utf8"));
+      await until("icon saved", () => saved().favorites.some((e) => e.id === f && e.icon === "sf:star.fill"), 4000);
+
+      // Edit Pinned Page: away from it, Back and Replace light up; Replace makes this page the pinned one.
+      const { sessionId } = await session("menus-pinned");
+      await evaluate(sessionId, `location.href = ${JSON.stringify(origin + "/a?menus-moved")}`);
+      await until("away", async () => (await live()) && entry(p).away);
+      items = await menu(p);
+      assert(JSON.stringify(sub(items, "Edit Pinned Page")) === JSON.stringify(["Back to Pinned URL", "Replace Pinned URL with Current", "Edit…"]), `away: ${items}`);
+      await press(p, "Edit Pinned Page > Replace Pinned URL with Current");
+      await until("replaced", async () => (await live()) && entry(p).pinnedURL === `${origin}/a?menus-moved` && !entry(p).away);
+      // Edit…: the pinned address in the row's field; a tab on its pinned page follows the new one.
+      await press(p, "Edit Pinned Page > Edit…");
+      await until("editing", async () => (await live()).sidebarFrames.renaming === p, 3000);
+      await command(`type ${origin}/b?menus-edited`);
+      await command("enter");
+      await until("edited and followed", async () => (await live()) && entry(p).pinnedURL === `${origin}/b?menus-edited` && entry(p).url === `${origin}/b?menus-edited`);
+      assert(entry(p).customTitle === null, `editing the address named the tab: ${JSON.stringify(entry(p))}`);
+      // Never a script, a file or data as a pinned page.
+      for (const bad of ["javascript:alert(1)", "file:///etc/hosts", "data:text/html,hi"]) {
+        await command(`rowaction pinurl ${p} ${bad}`);
+      }
+      await command("state");
+      assert(entry(p).pinnedURL === `${origin}/b?menus-edited`, `pinned URL became ${entry(p).pinnedURL}`);
+
+      // Duplicate: a live tab's copy is the engine's duplicate, right after it, and becomes the active tab.
+      const before = new Set(all().map((e) => e.id));
+      await press(t, "Duplicate");
+      const twin = await until("duplicated", async () => {
+        const s = await live();
+        const copy = all().find((e) => !before.has(e.id));
+        return copy && copy.live && copy.url === entry(t).url && s.activeEntry === copy.id ? copy : null;
+      });
+      made.push(twin.id);
+      const today = state().sidebar.today.map((e) => e.id);
+      assert(today.indexOf(twin.id) === today.indexOf(t) + 1, `the copy isn't right after it: ${today}`);
+      await press(p, "Duplicate");
+      const pinTwin = await until("pinned tab duplicated", async () => {
+        await live();
+        return state().sidebar.pinned.find((e) => !before.has(e.id) && e.pinnedURL === entry(p).pinnedURL);
+      });
+      made.push(pinTwin.id);
+      const pinnedIds = state().sidebar.pinned.map((e) => e.id);
+      assert(pinnedIds.indexOf(pinTwin.id) === pinnedIds.indexOf(p) + 1 && pinTwin.kind === "pinned", `pinned copy: ${JSON.stringify(pinTwin)}`);
+
+      // A pinned folder: Arc's menu; Copy All Links, Share Folder…, Duplicate copies it with what's inside.
+      await command(`rowaction newfolder ${p}`);
+      const folder = await until("folder", async () => (await live()).sidebar.pinned.find((e) => e.kind === "folder" && e.id === entry(p).parent));
+      await command(`rename ${folder.id} Menus`);
+      await until("named", async () => (await live()).sidebar.pinned.some((e) => e.id === folder.id && e.title === "Menus"));
+      items = await menu(folder.id);
+      same(items, ["Share Folder…", "-", "New Nested Folder…", "Copy All Links", "-", "Change Icon…", "Rename…", "Colour", "-",
+        "Duplicate", "Move to", "-", "Delete"], "pinned folder");
+      assert(sub(items, "Move to")[0] === "Today", `folder move to: ${items}`);
+      await press(folder.id, "Copy All Links");
+      await until("folder links copied", async () => (await live()).pasteboard === `${origin}/b?menus-edited`);
+      await press(folder.id, "Share Folder…");
+      await until("shared", async () => (await live()).sharedLinks === 1);
+      await press(folder.id, "Duplicate");
+      const folderTwin = await until("folder duplicated", async () => {
+        const s = await live();
+        const copy = s.sidebar.pinned.find((e) => e.kind === "folder" && e.title === "Menus" && e.id !== folder.id);
+        const inside = copy && s.sidebar.pinned.find((e) => e.parent === copy.id);
+        return inside && inside.pinnedURL === `${origin}/b?menus-edited` && !inside.live ? { copy, inside } : null;
+      });
+      made.push(folderTwin.inside.id);
+
+      // A Today folder: Ray's New Tab in Folder and Close Tabs where Arc would have them.
+      await command(`rowaction newfolder ${t}`);
+      const group = await until("today folder", async () => (await live()).sidebar.today.find((e) => e.kind === "folder" && e.id === entry(t).parent));
+      await command(`rename ${group.id} Group`);
+      same(await menu(group.id), ["Share Folder…", "-", "New Tab in Folder", "Copy All Links", "-", "Change Icon…", "Rename…",
+        "Colour", "-", "Duplicate", "Move to", "-", "Close Tabs", "Delete"], "today folder");
+      await command(`rowaction deletefolder ${group.id}`);
+
+      // Move to: a favorite to Pinned, then Today; Remove Pin sends a pinned tab to Today.
+      await press(f, "Move to > Pinned");
+      await until("favorite pinned", async () => (await live()) && entry(f).kind === "pinned" && state().sidebar.pinned.at(-1).id === f);
+      await press(f, "Move to > Today");
+      await until("then in Today", async () => (await live()) && entry(f).kind === "today" && state().sidebar.today[0].id === f);
+      await press(pinTwin.id, "Remove Pin");
+      await until("pin removed", async () => (await live()) && entry(pinTwin.id)?.kind === "today");
+
+      // Folders go (their tabs move up), then the tabs.
+      for (const id of [folderTwin.copy.id, folder.id]) await command(`rowaction deletefolder ${id}`);
+    } finally {
+      await command("state");
+      for (const id of made) {
+        const e = entry(id);
+        if (!e) continue;
+        if (e.kind === "favorite") await command(`rowaction unfavorite ${id}`);
+        if (e.kind === "pinned") await command(`rowaction unpin ${id}`);
+        await command(`rowaction close ${id}`);
+      }
+      await until("cleaned up", async () => (await live()) && made.every((id) => !entry(id)), 6000).catch(() => {});
+    }
   },
   async "settings-general"() {
     // Settings › General: the default-browser strip, open at login, quitting and closing, downloads, updates, import.

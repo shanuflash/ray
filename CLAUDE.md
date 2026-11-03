@@ -212,8 +212,8 @@ publicly or create accounts.
   `FolderIconPicker` (`Host/FolderIconPicker.swift`): Change Icon…, Arc's icon panel as a `Panels` panel under the
   folder's icon (over the sidebar, no arrow): "Icon" with a trash button and Arc's 24 filled symbols;
   a pick applies and closes it, as do a click elsewhere, Escape and a tab switch. New folders start in the row's
-  rename field (with Done), as tabs do. Menus: Rename…, Change Icon…, Colour ▸, New Tab in Folder / New Nested
-  Folder, Pin / Unpin Folder, Delete Folder (tabs move up, ungrouped), Close Tabs (Today). Moves that reshape the
+  rename field (with Done), as tabs do. Menus: see Row menus below; Delete moves the tabs up a level (ungrouped).
+  Moves that reshape the
   list (`SidebarView` `// MARK: Folder motion`, `animateNextChange`) slide rows from where they were and drop new
   ones in. A closed folder takes a drop on most of its row and springs open after 0.6 s of a tab held over it.
   Test commands `rowaction changeicon|pinfolder|unpinfolder|newtabin|closetabs <id>`, `rowaction color <id>
@@ -224,11 +224,30 @@ publicly or create accounts.
 - Multi-select (`SidebarView` `// MARK: Selection`, Arc's): ⌘-click picks or drops a tab (the active one counts),
   ⇧-click picks the shown tabs from the anchor (the last ⌘-click, else the active tab), ⌘⇧ adds a range; neither
   switches tabs, a plain click ends it (on a selected tab, only at the release, so the selection can be dragged).
-  Picked rows take the active highlight. Right-click one: New Folder with N Tabs, Add to Folder ▸, Pin / Unpin N
-  Tabs, Copy N Links, Close N Tabs (`sidebar(_:perform:onAll:)`); ⇧⌘C copies every link, one per line
+  Picked rows take the active highlight. Right-click one: Copy N Links | New Folder with N Tabs, Duplicate N Tabs,
+  Move to ▸ | Close N Tabs (`sidebar(_:perform:onAll:)`); ⇧⌘C copies every link, one per line
   (`copyLinks`); dragging one moves them all, the rest right after the held one (`sidebar(_:move:to:)` with a list).
   Never saved. Test commands `rowclick <id> cmd|shift|cmdshift|plain`, `selaction newfolder|pin|unpin|close|
-  copylinks|infolder <id>`; state log `sidebar.selection`; check `multi-select`.
+  copylinks|duplicate|topinned|totoday|infolder <id>`; state log `sidebar.selection`; check `multi-select`.
+- Row menus (`SidebarView` `// MARK: Row menus`, built at the right-click through rows' and tiles' `menuProvider`;
+  actions in `BrowserWindowController` `// MARK: Row actions` and `// MARK: Row menus`): Arc's order and words.
+  Tab: Copy Link (Copy URL's live key, ⇧⌘C by default), Share ▸ (`standardShareMenuItem`) | Change Icon…, Rename…,
+  Use Page Title (once named), Mute / Unmute (`tab.muted`; greyed while silent, as Arc), Edit Pinned Page ▸ (Edit
+  Favorite Page for favorites: Back to Pinned URL when away, Replace Pinned URL with Current, Edit…) | Duplicate,
+  Add to Favorites, Move to ▸ | Remove Pin and Close Tab (pinned), Remove from Favorites and Close Tab (favorite),
+  Close Tab (Today). Folder: Share Folder… (macOS's share picker at the icon) | New Nested Folder… or New Tab in
+  Folder (Today), Copy All Links | Change Icon…, Rename…, Colour ▸ | Duplicate, Move to ▸ | Close Tabs (Today),
+  Delete. Move to ▸: Pinned and Today (unless already at that top level), New Folder (tabs), then each folder it can
+  go into (Today's only take tabs). Change Icon… on a tab or favorite reuses `FolderIconPicker`; the entry's `icon`
+  (`FolderLook.tabIcon`, a template symbol or an emoji) replaces its favicon, the trash button brings it back.
+  Duplicate: a live tab through the engine's `duplicate(_:profile:foreground:)` (history kept) right after it and
+  active; unloaded ones and folders (with everything inside, `SidebarEntry.duplicate()`) as unloaded copies. Edit…
+  edits the pinned address in the row's rename field; what's typed goes through `AddressInput.url(for:)` and only
+  http(s), chrome and about pin (`isPinnable`); a tab on its pinned page follows it. Leftovers in docs/MISSING.md.
+  Test commands `rowmenu <id>` (titles: "~" greyed, "[shift+cmd+c]" keys, "a > b|c" submenus), `rowmenu <id> press
+  <title>` ("Move to > Today"), `rowaction copylink|share|duplicate|mute|topinned|totoday|replacepin|editpin <id>`,
+  `rowaction pinurl <id> <url>`; state log `muted` per entry and `sharedLinks` (test builds never show the picker).
+  Check `row-menus`.
 - Tab names (Arc's Rename): `SidebarEntry.customTitle` (Sidebar.json `customTitle`, optional; `name(from:)` makes
   it one plain line of at most 200 characters), which `displayTitle` prefers over `pageTitle`; page title updates
   only ever write `title`. Rows' menus (tiles too) have Rename… (the `.renameFolder` action, for tabs as well) and,

@@ -95,6 +95,22 @@ final class SidebarEntry: Codable {
     if !tab.title.isEmpty { title = tab.title }
   }
 
+  // MARK: Duplicate
+
+  /// Duplicate's copy: a new id in the same place, with the page it's on, its pinned page, name and look; never
+  /// the tab (the caller gives it the engine's duplicate) or a Chrome group.
+  func duplicate() -> SidebarEntry {
+    let copy = SidebarEntry(kind: kind, url: isFolder ? url : currentURL, title: title)
+    if let tab, !tab.closed, !tab.title.isEmpty { copy.title = tab.title }
+    copy.pinnedURL = pinnedURL
+    copy.parentID = parentID
+    copy.isOpen = isOpen
+    copy.color = color
+    copy.icon = icon
+    copy.customTitle = customTitle
+    return copy
+  }
+
   // MARK: Pinned page
 
   /// Whether a pinned tab or favorite shows another page than its own (the row's "/", Back to Pinned URL). Arc's

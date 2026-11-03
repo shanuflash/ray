@@ -1142,11 +1142,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
   }
 
+  // MARK: Row actions
+
+  /// What a row's menu item (or its close button, or a test's `rowaction`) does to an entry.
   func perform(_ action: SidebarRowAction, on entry: SidebarEntry) {
     // Changes that move rows around slide them there (and drop new ones in) rather than jump.
     switch action {
     case .newFolder, .moveToFolder, .removeFromFolder, .deleteFolder, .pinFolder, .unpinFolder, .pin, .unpin,
-         .closeFolderTabs, .newNestedFolder:
+         .closeFolderTabs, .newNestedFolder, .moveToPinned, .moveToToday, .duplicate:
       sidebar.animateNextChange()
     default: break
     }
@@ -1162,7 +1165,27 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       }
       return
     case .copyLinks:
-      copyLinks([entry])
+      copyLinks(entry.isFolder ? state.block(of: entry) : [entry])
+      return
+    case .shareFolder:
+      shareLinks(of: entry)
+      return
+    case .duplicate:
+      duplicate(entry)
+      return
+    case .toggleMute:
+      guard let tab = entry.tab, entry.isLive else { return }
+      tab.muted = !tab.muted
+      logState("mute")
+      return
+    case .moveToPinned:
+      move(entry, to: .pinned(state.pinned.count, parent: nil))
+      return
+    case .moveToToday:
+      move(entry, to: .today(0, parent: nil))
+      return
+    case .replacePinnedURL, .editPinnedURL, .setPinnedURL:
+      editPinnedPage(entry, action)
       return
     case .backToPinned:
       if let target = entry.pinnedURL, let tab = entry.tab, entry.isLive {
@@ -1189,14 +1212,13 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       sidebar.beginRename(entry)
       return
     case .changeIcon:
-      guard entry.isFolder else { return }
       showIconPicker(for: entry)
       return
     case .setColor(let color):
       guard entry.isFolder else { return }
       entry.color = color.flatMap { FolderLook.colors.contains($0) ? $0 : nil }
     case .setIcon(let icon):
-      guard entry.isFolder else { return }
+      // A folder's glyph on its flap; a tab's in place of its favicon (nil: the favicon again).
       entry.icon = FolderLook.validIcon(icon)
     case .toggleFolder:
       guard entry.isFolder else { return }
@@ -1369,6 +1391,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state.pinned.insert(contentsOf: block, at: min(index, state.pinned.count))
     state.normalizePinned()
   }
+
+  // MARK: Sidebar commands
 
   /// File › New Folder: an empty folder at the end of the pinned tabs, named and ready to rename.
   func newFolder() {
@@ -1602,6 +1626,102 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// For tests: an entry's context menu, as its titles.
   func menuTitles(for entry: SidebarEntry) -> [String] { sidebar.debugMenuTitles(for: entry) }
 
+
+  // MARK: Row menus
+
+  /// Duplicate: a copy right after it in the same place. A live tab's copy is the engine's duplicate (its history
+  /// too, as Chrome's Duplicate) and becomes the active tab; an unloaded one's opens on its page when clicked.
+  func duplicate(_ entry: SidebarEntry, select: Bool = true) {
+    guard state.entry(id: entry.id) === entry else { return }
+    if entry.isFolder { return duplicateFolder(entry) }
+    let copy = entry.duplicate()
+    switch entry.kind {
+    case .favorite:
+      state.favorites.insert(copy, at: (state.favorites.firstIndex { $0 === entry } ?? state.favorites.count - 1) + 1)
+    case .pinned:
+      state.pinned.insert(copy, at: (state.pinned.firstIndex { $0 === entry } ?? state.pinned.count - 1) + 1)
+      state.normalizePinned()
+    case .today, .folder:
+      state.today.insert(copy, at: (state.today.firstIndex { $0 === entry } ?? -1) + 1)
+    }
+    if let tab = entry.tab, entry.isLive {
+      loadingEntry = copy
+      let made = coreWindow.duplicate(tab, profile: profile, foreground: select)
+      loadingEntry = nil
+      if let made, copy.tab !== made { bind(copy, made) }
+      if select { self.select(copy) }
+    }
+    changed("duplicate")
+  }
+
+  /// A folder's copy, right after it: the same name, look and tabs (unloaded), nested folders too.
+  private func duplicateFolder(_ folder: SidebarEntry) {
+    let block = state.block(of: folder)
+    var ids: [UUID: UUID] = [:]
+    let copies = block.map { item -> SidebarEntry in
+      let copy = item.duplicate()
+      ids[item.id] = copy.id
+      return copy
+    }
+    for copy in copies.dropFirst() { copy.parentID = copy.parentID.map { ids[$0] ?? $0 } }
+    if state.isTodayFolder(folder) {
+      state.today.insert(contentsOf: copies, at: (state.today.firstIndex { $0 === folder } ?? 0) + block.count)
+    } else {
+      state.pinned.insert(contentsOf: copies, at: (state.pinned.firstIndex { $0 === folder } ?? 0) + block.count)
+      state.normalizePinned()
+    }
+    changed("duplicate")
+  }
+
+  /// Share Folder…: macOS's share picker with the folder's links, beside its icon.
+  private func shareLinks(of folder: SidebarEntry) {
+    let urls = state.block(of: folder).filter { !$0.isFolder }.compactMap { URL(string: $0.currentURL) }
+    guard !urls.isEmpty, let frame = sidebar.iconFrame(of: folder, in: root) else { return }
+    lastShared = urls.count
+    logState("share")
+    // Test instances record it only: a picker over the hidden window would wait for a click no check makes.
+    if TestEnvironment.isTestBuild, TestEnvironment["RAY_TEST_COMMANDS"] != nil { return }
+    NSSharingServicePicker(items: urls).show(relativeTo: frame, of: root, preferredEdge: .maxX)
+  }
+
+  /// For tests: how many links the last Share Folder… offered.
+  private(set) var lastShared = 0
+
+  /// Edit Pinned Page ›: Replace Pinned URL with Current (the page it's on now), and Edit…, the pinned address in
+  /// the row's field. What's typed goes through `AddressInput` as the address bar's does, and only a web page or one
+  /// of the engine's own (never a file, data or script) can be pinned. A tab that was on its pinned page follows it
+  /// there; an unloaded one opens there next.
+  private func editPinnedPage(_ entry: SidebarEntry, _ action: SidebarRowAction) {
+    guard !entry.isFolder, entry.kind != .today, entry.pinnedURL != nil, state.entry(id: entry.id) === entry else { return }
+    switch action {
+    case .replacePinnedURL:
+      guard entry.isLive, Self.isPinnable(entry.currentURL), entry.currentURL != entry.pinnedURL else { return }
+      entry.pinnedURL = entry.currentURL
+    case .editPinnedURL:
+      sidebar.beginEditPinnedURL(entry)
+      return
+    case .setPinnedURL(let text):
+      guard let url = AddressInput.url(for: text), Self.isPinnable(url), url != entry.pinnedURL else { return }
+      let wasHome = !entry.isAwayFromPinned
+      entry.pinnedURL = url
+      if !entry.isLive {
+        entry.url = url
+      } else if wasHome {
+        entry.tab?.userLoad(url)
+      }
+    default:
+      return
+    }
+    changed("pinnedURL")
+  }
+
+  static func isPinnable(_ url: String) -> Bool {
+    guard let scheme = URLComponents(string: url)?.scheme?.lowercased() else { return false }
+    return ["http", "https", "chrome", "about"].contains(scheme)
+  }
+
+  /// For tests: a row menu item chosen by its title (`rowmenu <id> press <title>`).
+  func pressMenuItem(_ path: String, for entry: SidebarEntry) -> Bool { sidebar.debugPressMenuItem(path, for: entry) }
 
   // MARK: Page toolbar
 
@@ -1968,9 +2088,16 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       guard let folder = first.parentID else { return }
       sidebar.animateNextChange()
       for tab in tabs.dropFirst() { move(tab, to: .folder(folder)) }
-    case .moveToFolder, .pin, .unpin:
+    case .moveToFolder, .pin, .unpin, .moveToPinned:
       sidebar.animateNextChange()
       for tab in tabs { perform(action, on: tab) }
+    case .moveToToday:
+      // Each goes to Today's top: the last first, so they keep their order.
+      sidebar.animateNextChange()
+      for tab in tabs.reversed() { perform(action, on: tab) }
+    case .duplicate:
+      sidebar.animateNextChange()
+      for tab in tabs { duplicate(tab, select: tab === tabs.last) }
     case .close:
       for tab in tabs.reversed() { perform(.close, on: tab) }
     case .copyLinks:
@@ -2030,7 +2157,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// Change Icon…'s panel, while it's open.
   private(set) var iconPicker: FolderIconPicker?
 
-  /// Right-click a folder › Change Icon…: Arc's icon panel under the folder's icon, over the sidebar and page.
+  /// Right-click a folder, tab or favorite › Change Icon…: Arc's icon panel under its icon, over the sidebar and page.
   func showIconPicker(for folder: SidebarEntry) {
     iconPicker?.close()
     guard sidebar.iconFrame(of: folder, in: root) != nil else { return }
@@ -2073,6 +2200,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func sidebarReload(_ sidebar: SidebarView) { activeTab?.userReload() }
 
   func sidebarIcon(for entry: SidebarEntry) -> NSImage? {
+    // Change Icon…'s pick stands in for the favicon.
+    if let icon = FolderLook.tabIcon(entry.icon) { return icon }
     if entry.isLive, let icon = entry.tab?.favicon { return icon }
     let page = entry.pinnedURL ?? entry.url
     if let icon = favicons.image(for: page) ?? favicons.image(for: entry.url) { return icon }
@@ -2463,12 +2592,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         "away": entry.isAwayFromPinned, "tab": entry.isLive ? Int(entry.tab!.tabId) : NSNull(),
         "parent": entry.parentID?.uuidString ?? NSNull(), "open": entry.isOpen ?? NSNull(),
         "color": entry.color ?? NSNull(), "icon": entry.icon ?? NSNull(), "group": entry.groupToken ?? NSNull(),
+        "muted": entry.isLive && entry.tab?.muted == true,
       ]
     }
     var state: [String: Any] = [
       "event": event,
       "active": activeTab.map { Int($0.tabId) } ?? NSNull(),
       "activeEntry": self.state.activeEntryID?.uuidString ?? NSNull(),
+      "sharedLinks": lastShared,
       "address": sidebar.addressText,
       "addressField": sidebar.addressDebug,
       "sidebarAddressShown": sidebar.addressShown,
