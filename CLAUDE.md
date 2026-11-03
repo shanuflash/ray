@@ -414,7 +414,15 @@ publicly or create accounts.
   is the EdDSA public key `build-app.sh` writes into `SUPublicEDKey`.
 - `Host/Updater.swift`: Ray › Check for Updates… (`SPUStandardUpdaterController`). It starts only in the real app and
   only with a real `SUPublicEDKey`; the test app never creates it (state log `updater`, check `updater-config`).
-- `scripts/release.sh <version> [--notes file]`: builds, zips, signs and writes the appcast under `build/release/`.
+- `scripts/release.sh <version> [--notes file]`: builds, zips, signs and writes the appcast under `build/release/`,
+  then the DMG (`scripts/make-dmg.sh`), and points the Homebrew cask (`Casks/ray.rb`) at it.
+- `scripts/make-dmg.sh <Ray.app> <out.dmg>`: the first-install DMG. Built-in tools only: `hdiutil` (HFS+, LZFSE),
+  `tools/dmg-window.swift` (the background, drawn at 1x and 2x, joined by `tiffutil`; and the `.DS_Store`, written
+  directly: window size, icon view, icon spots, the background's alias record, which it resolves before writing),
+  Ray's .icns as the volume icon. Signed with the app's own certificate (its leaf by SHA-1), then mounted hidden
+  (`-nobrowse`, a private mount point) to verify the app (`codesign --verify --deep --strict`), the Team IDs and the
+  window's files. The background is a mid-tone lavender because Finder draws icon names in black or white by
+  appearance, straight on the picture: keep the band under the icons near luminance 0.18 (4.5:1 for both).
 - `third_party/ardia/`: read-only reference clone of Ardia at `ardia_tag` (gitignored). Read it for behaviour; don't
   build from it.
 - `third_party/crest/`: read-only reference clone of Crest (gitignored), another native-Mac Chromium browser.
@@ -446,9 +454,12 @@ publicly or create accounts.
 ## Shipping to friends
 Ray updates itself with Sparkle 2: the feed is `https://github.com/shanuflash/ray/releases/latest/download/appcast.xml`
 (each release carries its own `appcast.xml` next to `Ray-<version>.zip`, and GitHub's `latest` redirect serves the
-newest release's). The app is ad-hoc signed (no Developer ID), so trust comes from Sparkle's EdDSA signature: the
-archive must verify against the `SUPublicEDKey` baked into the *installed* Ray (Sparkle's `SUUpdateValidator`; an
-ad-hoc code signature changes every build and isn't what's trusted, it only has to be valid and not removed).
+newest release's). No Developer ID and no notarization (the owner decided on 2026-11-03 not to pay for the Apple
+Developer Program): the app is signed with the owner's free Apple Development certificate (below), and trust for
+updates comes from Sparkle's EdDSA signature: the archive must verify against the `SUPublicEDKey` baked into the
+*installed* Ray (Sparkle's `SUUpdateValidator`; the code signature isn't what's trusted, it only has to be valid
+and not removed). First installs come from a DMG or the owner's Homebrew tap; homebrew/cask itself is out, since it
+takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
 - **One-time key setup:** run `build/sparkle/<version>/bin/generate_keys` (after any build). The private key goes into
   your login keychain (item "Private key for signing Sparkle updates"); it prints the public key, which you put in
   `Branding/sparkle-public-key.txt`. The private key never leaves the keychain: not in the repo, not in logs, not in
@@ -457,13 +468,23 @@ ad-hoc code signature changes every build and isn't what's trusted, it only has 
   stays off.
 - **Cut a release:** commit everything, then `scripts/release.sh 0.2.0 --notes notes.md`. It bumps `VERSION`, builds
   `build/Ray.app`, zips it with `ditto` (a zip serves both first installs and Sparkle), signs it from the keychain,
-  writes and checks `build/release/0.2.0/appcast.xml` and prints the `git commit` and `gh release create …` commands.
-  It publishes nothing; run those yourself after trying the zip.
-- **First install is not notarized:** friends unzip, drag Ray to Applications (not run from Downloads: macOS runs
-  unmoved apps translocated, read-only, and Sparkle can't replace them), then right-click › Open (macOS 14), or on
-  macOS 15+ try to open it once and use System Settings › Privacy & Security › Open Anyway. Updates after that
-  install without the prompt. Each update changes the ad-hoc signature, so macOS may ask again for camera, microphone
-  and location.
+  writes and checks `build/release/0.2.0/appcast.xml`, then makes and checks `Ray-0.2.0.dmg` and sets
+  `Casks/ray.rb`'s version and sha256 to it, and prints the `git commit` (VERSION), `gh release create …` (zip,
+  appcast and DMG) and, after the release is up, the cask's commit. It publishes nothing; run those yourself after
+  trying the DMG (open it once: the window's layout and background are only visible in Finder).
+- **Homebrew tap:** this repo is the tap (`Casks/ray.rb`); friends run `brew tap shanuflash/ray
+  https://github.com/shanuflash/ray && brew install --cask shanuflash/ray/ray`. The URL is needed because the short
+  form only finds repos named `homebrew-*`; the full cask name is needed because homebrew/cask has its own `ray`
+  (Spatie's debugger, which plain `brew install --cask ray` installs), and naming the tap makes Homebrew 7 trust
+  it (`brew tap` alone doesn't). Commit the cask only after its GitHub release exists, or installs fetch a 404.
+  The cask has `auto_updates true` (Sparkle updates Ray; `brew upgrade` leaves it), arm64 and Sonoma, a `zap` for
+  the data dir, caches and prefs, and the Open Anyway caveat. Lint a change in a throwaway local tap: `brew tap-new
+  --no-git <you>/check`, copy the cask in, `brew trust --tap`, `brew style` and `brew audit --cask --strict`, then
+  `brew untap` and `brew untrust --tap`.
+- **First install is not notarized:** friends open the DMG and drag Ray to Applications (not run from the DMG or
+  Downloads: macOS runs those translocated, read-only, and Sparkle can't replace them), or use the tap; then
+  right-click › Open (macOS 14), or on macOS 15+ try to open it once and use System Settings › Privacy & Security ›
+  Open Anyway. The DMG's window and the cask's caveat say so. Updates after that install without the prompt.
 - From the Phase B engine on, cookies and passwords are under "Ray Safe Storage" in the login keychain.
 - **Signing identity:** builds are signed with the owner's **Apple Development** certificate ("Apple Development:
   shanuflash@gmail.com (945WS636RB)", free Personal Team, Team ID `96AWMN4CQ6`, created in Xcode › Settings › Apple

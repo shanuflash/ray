@@ -8,9 +8,15 @@ Arc's sidebar on real, de-Googled Chromium. A native Mac browser for when Arc sh
 
 macOS 14 or later, Apple Silicon.
 
-1. Download `Ray-<version>.zip` from the [latest release](https://github.com/shanuflash/ray/releases/latest).
-2. Unzip it and drag Ray to Applications. Don't run it from Downloads, or it can't update itself.
-3. Open it. Ray isn't notarized yet, so the first time:
+1. Download `Ray-<version>.dmg` from the [latest release](https://github.com/shanuflash/ray/releases/latest), open it
+   and drag Ray to Applications. Or with Homebrew (the full name matters: plain `ray` is a different app):
+
+   ```sh
+   brew tap shanuflash/ray https://github.com/shanuflash/ray
+   brew install --cask shanuflash/ray/ray
+   ```
+
+2. Open it. Ray isn't notarized (no paid Apple developer account), so the first time:
    - **macOS 15 and later:** open it once, then System Settings › Privacy & Security › **Open Anyway**.
    - **macOS 14:** right-click Ray › Open.
 
@@ -51,7 +57,6 @@ Ray updates itself after that (Ray › Check for Updates…).
 - Split View
 - Little Arc
 - Installing your imported extensions
-- A notarized DMG and Homebrew
 
 Full list: [docs/MISSING.md](docs/MISSING.md).
 

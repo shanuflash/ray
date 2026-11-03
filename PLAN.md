@@ -33,7 +33,10 @@ window. Every decision serves three things:
    bookmarks, passwords, cookies and autofill from Arc and eight other browsers. Left: Arc's Spaces as Spaces (they
    land as pinned folders until Spaces exist), installing imported extensions (the engine installs only from a
    file), Arc's archive and link routes (Cra's importer reads both).
-4. **Distribution:** Developer ID signing, a notarized DMG, Sparkle updates, a Homebrew cask.
+4. **Distribution:** Sparkle + GitHub Releases, self-signed (Apple Development, free Personal Team), no
+   notarization: a DMG with first-open instructions and the owner's own Homebrew tap in shanuflash/ray (owner,
+   2026-11-03: no paid Apple Developer Program). **Done 2026-11-03:** `scripts/release.sh` makes the zip, appcast
+   and DMG and updates `Casks/ray.rb`.
 5. **Launch prep:** a README that opens with a short motion video/GIF, a one-line pitch and the install command; a
    side-by-side video with Arc; CONTRIBUTING and good-first-issue labels; regular tagged releases with readable
    notes.
@@ -61,7 +64,7 @@ Recorded for the owner to decide. Don't act on them until they do.
 |---|---|
 | Platform | macOS 14 Sonoma or later, Apple Silicon only |
 | Spaces | Arc-style: many Spaces per Profile |
-| Distribution | Friends through GitHub Releases + Sparkle, ad-hoc signed (0.1.0 on 2026-10-28); Developer ID and a notarized DMG before launch |
+| Distribution | Sparkle + GitHub Releases, self-signed (Apple Development, free Personal Team), no notarization: a DMG with first-open instructions and the owner's own Homebrew tap in shanuflash/ray (`Casks/ray.rb`). Owner, 2026-11-03: no paid Apple Developer Program |
 | Engine | Ardia's engine, renamed and built from source (Phase B, since 0.2.0). Phase A (Ardia's prebuilt) is over |
 | Import | Ardia's import core (`Importer/`, Apache-2.0) for reading; Ray writes through the engine's `ac_*` calls; never another browser's settings |
 | Onboarding | Once per profile (new ones, and every profile from 0.2.0 and earlier on its next launch), as an overlay in the browser window in Ray's own style; Arc first and recommended |
@@ -279,11 +282,11 @@ Iframes only reach the first check; `main`'s body compiles only in top frames.
 
 ### M4: Ship (weeks 13–16)
 - Phase B engine build (section 6) or, if staying on the prebuilt for personal use, skip it.
-- Developer ID signing, notarization, DMG, Sparkle auto-updates.
+- Sparkle auto-updates, a DMG and a Homebrew tap; no Developer ID or notarization (owner, 2026-11-03).
 - Arc import: Arc stops working on 2026-12-22. Done 2026-10-29 for everything but Spaces and extensions (see the
   roadmap): first-run onboarding and File › Import from Browser…, cookies and passwords included now that Phase B
   stores them under "Ray Safe Storage".
-- **Exit:** a notarized DMG that installs, updates itself and imports an Arc profile.
+- **Exit:** a DMG that installs (Open Anyway once), updates itself and imports an Arc profile.
 
 ### M5: Ongoing
 - Engine updates every 4 weeks (Phase A: move to Ardia's next engine tag; Phase B: our own bump).
@@ -340,7 +343,8 @@ Targets, measured with `xbench.mjs` against Chrome, Helium and our previous rele
    keeps camera/microphone/location permissions across builds, but macOS still asked for "Ray Safe Storage" once per
    new build: without a Team ID the keychain's partition list holds each build's cdhash. Since 2026-10-29 builds are
    signed with the owner's free Apple Development certificate (Team ID), which stops that.
-   Gatekeeper still treats Ray as unidentified until Developer ID and notarization.
+   Gatekeeper treats Ray as unidentified for good (no Developer ID or notarization, owner 2026-11-03): the first open
+   needs right-click › Open or Open Anyway, which the DMG's window and the cask's caveat explain.
    (The prebuilt engine's limits and the mock keychain ended with Phase B in 0.2.0; 0.1 data is migrated.)
 5. **No Widevine:** streaming sites with DRM won't play.
 6. **Build hardware** for Phase B: fine on this Mac (M3 Pro, 36 GB). A first build takes about 3 h and 44 GB;

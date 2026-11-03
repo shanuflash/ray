@@ -197,8 +197,9 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     `ac_cookies_import` keeps cookies Ray already has, and `ac_site_data_clear` is the only delete); the visible
     fallback still shows a second Google Chrome in the Dock while it runs; a Chrome policy that turns off remote
     debugging (`RemoteDebuggingAllowed`) makes it say Chrome didn't answer, and one that turns off headless mode
-    (`HeadlessMode`) costs a fallback. Real fix: Developer ID signing (roadmap step 4),
-    settle the bundle id, then ask JumpCloud to add Ray's identifier and team to the host's list. Found 2026-10-29.
+    (`HeadlessMode`) costs a fallback. Real fix: settle the bundle id, then ask JumpCloud to add Ray's identifier and
+    team to the host's list (Ray's team is the free Apple Development one, 96AWMN4CQ6: no Developer ID, owner
+    2026-11-03, so they may refuse; the relay stays). Found 2026-10-29.
 16. **Tab rename details.** Arc's row tip says "Double-click to rename" once (Cra copies it); Ray shows no hint. A
     favorite's name is typed in a lifted row under its tile (Ardia and Crest use a sheet): worth a look by hand. A
     double click on an unloaded tab loads it and keeps the field focused in the hidden test window; not yet tried in
@@ -212,7 +213,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 18. **Keychain prompt on every new build or update.** "Ray Safe Storage" asks for the login password once per build
     (and per Sparkle update for friends), "Always Allow" included: the item's partition list keys apps without a
     Team ID by cdhash, and "Ray Code Signing" is self-signed, so it has none. Fix: an Apple-issued certificate
-    (Developer ID, roadmap step 4; or the owner's Apple Development certificate for their own builds), then one last
+    (the owner's Apple Development certificate, since 2026-10-29; no Developer ID, owner 2026-11-03), then one last
     prompt. Found 2026-10-29.
 
 19. **Search pane gaps.** Only a built-in engine can be the default (Chrome and Ardia allow a custom one); no
@@ -285,6 +286,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | What | When |
 |---|---|
 | Ray's own engine (Phase B) and "Ray Safe Storage" | 2026-10-28, 0.2.0 |
+| First installs without notarization: a DMG whose window shows the drag and the first open (Open Anyway), and a cask in this repo as the owner's tap (`brew tap shanuflash/ray https://github.com/shanuflash/ray && brew install --cask shanuflash/ray/ray`), both from `scripts/release.sh` | 2026-11-03, `feat: dmg and homebrew tap` |
 | Notes: six spots on the page, one each, glass or solid (Settings › Appearance), the sidebar's spring; downloads note with progress | 2026-10-31, `cb92326` |
 | Panels: one framework for site controls (with a "…" page), the notes' glass or solid look on prompts and downloads, Settings › Appearance › Panels and notes | 2026-10-31, `6a326c5` |
 | Panels everywhere: sidebar sliders button (no puzzle menu), permission choices and Clear Site Data as pages, extension install and quit/close warnings as panel questions, folder icon picker on Panels, find bar on the shared surface; tab group push off Chrome's notification (crash) | 2026-10-31, `cd08553` |

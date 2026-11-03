@@ -253,6 +253,10 @@ export const areas = {
   "scripts/test.sh": [],
   "scripts/relaunch.sh": [],
   "scripts/release.sh": [],
+  // Release-only: the DMG and the Homebrew cask (no check runs them; release.sh and make-dmg.sh verify their output).
+  "scripts/make-dmg.sh": [],
+  "Casks/": [],
+  "tools/dmg-window.swift": [],
   "scripts/run-hidden.sh": [],
   "scripts/fetch-engine.sh": [],
   "CLAUDE.md": [],
