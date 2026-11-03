@@ -149,12 +149,12 @@ enum FolderLook {
 
 // MARK: Folder icon
 
-/// A folder's icon in the sidebar, 18 × 16 pt: a back panel with a tab, two sheets of paper and a front flap in the
+/// A folder's icon in the sidebar, 20 × 18 pt (taller than the first mock's 18 × 16, which read squat): a back panel with a tab, two sheets of paper and a front flap in the
 /// folder's colour (an optional symbol or emoji on it), all CALayers. Opening, the sheets rise out of it fanning apart
 /// and the flap leans back on a spring; hover lifts the sheets a touch; a tab dragged over opens it wider and pulses it.
 /// Not flipped: the layers are y-up, and the flap hinges at its bottom edge. Clicks go to the row under it.
 final class FolderIconView: NSView {
-  static let size = NSSize(width: 18, height: 16)
+  static let size = NSSize(width: 20, height: 18)
   /// Springs added since launch, for checks (recorded app-side, not polled).
   static var springsStarted = 0
 
@@ -203,37 +203,37 @@ final class FolderIconView: NSView {
     CATransaction.commit()
   }
 
-  /// The layers at the mock's geometry, turned y-up (CSS y is 16 minus ours).
+  /// The layers at the mock's geometry scaled to 20 × 18 with a taller body and flap, turned y-up.
   private func build() {
     quietly {
       root.bounds = CGRect(origin: .zero, size: Self.size)
       layer?.addSublayer(root)
 
       let body = CGMutablePath()
-      body.move(to: CGPoint(x: 1, y: 8))
-      body.addArc(tangent1End: CGPoint(x: 1, y: 14.5), tangent2End: CGPoint(x: 6.7, y: 14.5), radius: 1.7)
-      body.addLine(to: CGPoint(x: 6.7, y: 14.5))
-      body.addLine(to: CGPoint(x: 8.3, y: 12.8))
-      body.addArc(tangent1End: CGPoint(x: 17, y: 12.8), tangent2End: CGPoint(x: 17, y: 0), radius: 1.7)
-      body.addArc(tangent1End: CGPoint(x: 17, y: 0), tangent2End: CGPoint(x: 1, y: 0), radius: 1.7)
-      body.addArc(tangent1End: CGPoint(x: 1, y: 0), tangent2End: CGPoint(x: 1, y: 14.5), radius: 1.7)
+      body.move(to: CGPoint(x: 1, y: 9))
+      body.addArc(tangent1End: CGPoint(x: 1, y: 17), tangent2End: CGPoint(x: 7.4, y: 17), radius: 1.9)
+      body.addLine(to: CGPoint(x: 7.4, y: 17))
+      body.addLine(to: CGPoint(x: 9.2, y: 15.2))
+      body.addArc(tangent1End: CGPoint(x: 19, y: 15.2), tangent2End: CGPoint(x: 19, y: 0), radius: 1.9)
+      body.addArc(tangent1End: CGPoint(x: 19, y: 0), tangent2End: CGPoint(x: 1, y: 0), radius: 1.9)
+      body.addArc(tangent1End: CGPoint(x: 1, y: 0), tangent2End: CGPoint(x: 1, y: 17), radius: 1.9)
       body.closeSubpath()
       back.frame = root.bounds
       back.path = body
       root.addSublayer(back)
 
-      for (paper, x, width) in [(paper2, 4.5, 11.5), (paper1, 3, 12)] as [(CALayer, CGFloat, CGFloat)] {
-        paper.bounds = CGRect(x: 0, y: 0, width: width, height: 9)
-        paper.position = CGPoint(x: x + width / 2, y: 2.5 + 4.5)
+      for (paper, x, width) in [(paper2, 5, 12.8), (paper1, 3.3, 13.4)] as [(CALayer, CGFloat, CGFloat)] {
+        paper.bounds = CGRect(x: 0, y: 0, width: width, height: 11)
+        paper.position = CGPoint(x: x + width / 2, y: 2.5 + 5.5)
         paper.cornerRadius = 1.5
         paper.borderWidth = 0.4
         root.addSublayer(paper)
       }
 
-      let flapSize = CGSize(width: 18, height: 11)
+      let flapSize = CGSize(width: 20, height: 13)
       front.anchorPoint = CGPoint(x: 0.5, y: 0)
       front.bounds = CGRect(origin: .zero, size: flapSize)
-      front.position = CGPoint(x: 9, y: 0)
+      front.position = CGPoint(x: 10, y: 0)
       let shape = Self.flapPath(flapSize)
       front.shadowPath = shape
       front.shadowColor = NSColor.black.cgColor
@@ -253,7 +253,7 @@ final class FolderIconView: NSView {
       front.addSublayer(flap)
 
       // Centred on the flap, 0.3 pt low, as the mock's glyph.
-      symbol.position = CGPoint(x: 9, y: 5.5 - 0.3)
+      symbol.position = CGPoint(x: 10, y: 6.5 - 0.3)
       front.addSublayer(symbol)
       emoji.alignmentMode = .center
       emoji.position = symbol.position
@@ -350,15 +350,15 @@ final class FolderIconView: NSView {
         symbol.isHidden = true
         emoji.isHidden = true
         if let name = FolderLook.symbolName(icon),
-           let image = FolderLook.symbolImage(name, size: 7.5, weight: .semibold, color: ink) {
+           let image = FolderLook.symbolImage(name, size: 9.5, weight: .bold, color: ink) {
           symbol.bounds = CGRect(origin: .zero, size: image.size)
           symbol.contents = image.layerContents(forContentsScale: scale)
           symbol.isHidden = false
         } else if let icon {
-          let font = NSFont.systemFont(ofSize: 8)
+          let font = NSFont.systemFont(ofSize: 10)
           let text = NSAttributedString(string: icon, attributes: [.font: font])
           let height = ceil(font.ascender - font.descender + font.leading)
-          emoji.bounds = CGRect(x: 0, y: 0, width: 14, height: height)
+          emoji.bounds = CGRect(x: 0, y: 0, width: 16, height: height)
           emoji.string = text
           emoji.isHidden = false
         }

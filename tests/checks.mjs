@@ -1537,6 +1537,7 @@ const checks = {
       return f && !s.sidebar.iconPicker && f.color === "green" && f.icon === "sf:star.fill" && entryOfTab(tabs[2]).parent === f.id ? f : null;
     });
     assert(state().sidebar.folderIcons.rows[mine.id]?.icon === "sf:star.fill", `folder icon ${JSON.stringify(state().sidebar.folderIcons.rows[mine.id])}`);
+    if (process.env.SNAP_DIR) await command(`sidebarsnap ${join(process.env.SNAP_DIR, "folder-icons.png")}`);
     assert(state().sidebar.iconPickerAnimations >= panels + 2 || state().sidebarFrames.reduceMotion === "1", "the icon panel didn't animate in and out");
     await until("Chrome has the user's folder", async () => (await chromeGroups()).some((g) => g.title === "Mine" && g.color === "green" && g.tabs.includes(tabs[2])));
     const folderMenu = JSON.parse(await commandResult(`rowmenu ${mine.id}`));

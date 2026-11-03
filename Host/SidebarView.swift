@@ -2364,7 +2364,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     let mid = bounds.height / 2
     let iconSize: CGFloat = isNewTab ? 14 : 16
     icon.frame = NSRect(x: 17 - iconSize / 2, y: mid - iconSize / 2, width: iconSize, height: iconSize)
-    folderIcon.frame = NSRect(x: 8, y: (mid - 8).rounded(), width: 18, height: 16)
+    folderIcon.frame = NSRect(x: 7, y: (mid - 9).rounded(), width: 20, height: 18)
     residency.placeDot(at: CGPoint(x: 3.5, y: mid))
     slash.frame = NSRect(x: 28, y: mid - 11, width: 10, height: 22)
     let textX: CGFloat = away ? 41 : 35
