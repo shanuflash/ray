@@ -2260,7 +2260,7 @@ const checks = {
       await it.ok("settings open passwords");
       const exported = join(files, "Ray Passwords.csv");
       await it.ok(`passwords export ${exported}`);
-      await it.until("export warning", (s) => pane(s).confirming === "exportPasswords" && pane(s).moreOpen);
+      await it.until("export warning", (s) => pane(s).confirming === "exportPasswords");
       await it.ok("passwords confirm yes");
       await it.until("exported", (s) => pane(s).export === "succeeded");
       const csv = readFileSync(exported, "utf8");
@@ -3592,8 +3592,9 @@ const checks = {
     assert(rows.tabs.join() === "newTabNextToActive,recentTabCycling,showSidebarButton,showClearButton,hideAddressBarWhileScrolling,fadeUnloadedTabs,tabReorderHaptics,sidebarMediaControls,autoPictureInPicture" && rows.shortcuts.join() === "copyLinkShortcut,sidebarShortcut,undoReopensClosedTab,shortcuts", `rows ${JSON.stringify(rows)}`);
     assert(rows.about.includes("about.version") && rows.general.includes("onQuit"), `rows ${JSON.stringify(rows)}`);
     assert((await commandResult("settings open nonsense")) === "no such pane", "a pane that isn't there opened");
-    // The new controls: segmented (scroll bars, a rare row under "More") and picture choices (light or dark).
-    assert(win().more.appearance.page === false, `More is open: ${JSON.stringify(win().more)}`);
+    // The new controls: segmented (scroll bars, a rare row) and picture choices (light or dark). No "More" line:
+    // every row shows.
+    assert(win().hiddenRows === undefined || Object.keys(win().hiddenRows).length === 0, `rows hidden: ${JSON.stringify(win().hiddenRows)}`);
     await command("settings press scrollBars 2");
     await until("segment chose Always", async () => { await command("state"); return state().settings.scrollBars === "always" && win().controls.scrollBars === "Always"; });
     assert(win().controls.scrollBarsOptions.join() === "Automatic,When scrolling,Always", `segments ${win().controls.scrollBarsOptions}`);
@@ -3674,11 +3675,11 @@ const checks = {
     assert(flashed.pane === "appearance" && flashed.flashVisible, `flash ${JSON.stringify({ pane: flashed.pane, visible: flashed.flashVisible })}`);
     await until("flash over", async () => { await command("state"); return win().flashing === null; }, 4000);
     assert(win().lastFlash === "defaultZoom", `last flash ${win().lastFlash}`);
-    // A rare row: its group's "More" opens first.
+    // A rare row shows like any other.
     await command("settings search scroll bars");
     await until("scroll bars", async () => { await command("state"); return search().results[0]?.id === "scrollBars"; });
     await command("settings choose 0");
-    await until("rare row flashed", async () => { await command("state"); return win().lastFlash === "scrollBars" && win().more.appearance.page === true; });
+    await until("rare row flashed", async () => { await command("state"); return win().lastFlash === "scrollBars"; });
     // Pane names, and a pane's own section (About Ray's version).
     await command("settings search shortcuts");
     await until("pane result", async () => { await command("state"); return search().results.some((r) => r.kind === "pane" && r.pane === "shortcuts"); });
@@ -5024,10 +5025,9 @@ const checks = {
     await command("settings open extensions");
     await until("extensions pane", async () => { await command("state"); return win().open && win().pane === "extensions"; });
     await until("list loaded", async () => (await pane()).loaded);
-    // Load unpacked sits under More; Add from a link isn't built (test builds show it).
-    await command("extpane more");
+    // Load unpacked shows (no "More" line); Add from a link isn't built (test builds show it).
     const more = await pane();
-    assert(more.more && more.linkRow, `More: ${JSON.stringify(more)}`);
+    assert(more.linkRow, `link row: ${JSON.stringify(more)}`);
     await command(`extpane unpacked ${dir}`);
     const item = await until("installed and listed", async () => fixture(), 15000);
     const id = item.id;

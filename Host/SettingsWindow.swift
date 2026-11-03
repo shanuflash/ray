@@ -118,7 +118,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   /// Scrolls the current pane to a row (or section) and flashes it.
   private func flash(_ anchor: String) {
     guard let root, let pane, let view = paneViews[pane] else { return }
-    // A rare row's "More" opens before the pane is measured.
     guard let target = view.anchorView(anchor) else { return }
     root.fitDocument()
     root.layoutSubtreeIfNeeded()
@@ -203,14 +202,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   var debug: [String: Any] {
     var controls: [String: Any] = ["allSettingsLink": root?.sidebar.linkTitle ?? ""]
     var rows: [String: Any] = [:]
-    var more: [String: Any] = [:]
+    var hidden: [String: Any] = [:]
     var pictures: [String: Any] = [:]
     for pane in SettingPane.allCases {
       guard let view = paneViews[pane] else { continue }
       controls.merge(view.controlsDebug) { a, _ in a }
       pictures.merge(view.picturesDebug) { a, _ in a }
       if pane.isShown { rows[pane.rawValue] = view.anchors }
-      if !view.moreOpen.isEmpty { more[pane.rawValue] = view.moreOpen }
+      if !view.hiddenRows.isEmpty { hidden[pane.rawValue] = view.hiddenRows }
     }
     let colours: [String: Any] = [
       "fill": ProfileColor.hex(of: SettingsColors.selectedFill),
@@ -230,7 +229,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
       "panes": SettingPane.shown.map(\.rawValue), "sidebarPanes": root?.sidebar.listedPanes ?? [],
       "windows": NSApp.windows.filter { $0.title == "Settings" && $0.isVisible }.count,
       "frame": window.map { NSStringFromRect($0.frame) } ?? "", "title": window?.title ?? "",
-      "controls": controls, "rows": rows, "more": more, "pictures": pictures,
+      "controls": controls, "rows": rows, "hiddenRows": hidden, "pictures": pictures,
       "search": root?.sidebar.searchDebug ?? NSNull(),
       "flashing": flashing ?? NSNull(), "lastFlash": lastFlash ?? NSNull(),
       "flashVisible": lastFlash.map(anchorVisible) ?? false,

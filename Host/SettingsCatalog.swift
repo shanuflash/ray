@@ -401,7 +401,7 @@ struct SettingUI {
   /// Other words settings search matches besides the title and detail.
   let keywords: [String]
   let control: SettingControl
-  /// Rarely changed: sits under its group's "More" line.
+  /// Rarely changed: sits at the end of its group.
   let rare: Bool
 
   init(pane: SettingPane, group: SettingGroup, title: String, detail: String, about: String = "", keywords: [String] = [],

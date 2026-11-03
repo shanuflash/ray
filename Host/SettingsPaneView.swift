@@ -2,7 +2,7 @@ import AppKit
 
 /// One pane of the Settings window, the scroll view's document: the pane's name large, a grey line saying what it is
 /// for, its call to action, then its groups. Rows come from the catalog (`SettingPane.shownSettings`, grouped by
-/// `group`, rare ones under a "More" line at the end of their group); the pane's `SettingsPaneContent` adds sections,
+/// `group`, rare ones at the end of their group); the pane's `SettingsPaneContent` adds sections,
 /// header controls, custom controls and live pictures. One column, at most 600 pt wide with 24 pt sides; 44 pt rows
 /// split by hairlines, no boxes. Every control sets its setting through `RaySettings.apply`, as the test command
 /// `setting` does.
@@ -34,7 +34,7 @@ final class SettingsPaneView: NSView {
   private var blocks: [Block] = []
   private(set) var controls: [(key: AnySettingKey, control: Control)] = []
   private var settingsObservation: SettingsObservation?
-  /// Called when the pane's height changes (a "More" line opened).
+  /// Called when the pane's height changes.
   var onResize: (() -> Void)?
 
   override var isFlipped: Bool { true }
@@ -81,11 +81,7 @@ final class SettingsPaneView: NSView {
       let rows = keys.map { (key: $0, row: row(for: $0)) }
       let view = SettingsGroupView(
         group: group, accessory: content?.headerAccessory(for: group),
-        rows: rows.filter { !$0.key.ui.rare }.map(\.row), rare: rows.filter { $0.key.ui.rare }.map(\.row))
-      view.onToggle = { [weak self] in
-        self?.needsLayout = true
-        self?.onResize?()
-      }
+        rows: rows.filter { !$0.key.ui.rare }.map(\.row) + rows.filter { $0.key.ui.rare }.map(\.row))
       add(.group(view))
       addSections { if case .after(let id) = $0 { return id == group.id } else { return false } }
     }
@@ -192,15 +188,11 @@ final class SettingsPaneView: NSView {
   // MARK: Anchors
 
   /// The view a search result or `ray://settings/<pane>` names: a setting's row by its id, or a section by its id.
-  /// A rare row's "More" opens first.
   func anchorView(_ id: String) -> NSView? {
     for block in blocks {
       switch block {
       case .group(let group):
-        if let row = group.row(anchored: id) {
-          group.expandIfHidden(row)
-          return row
-        }
+        if let row = group.row(anchored: id) { return row }
       case .section(let sectionID, _, let view) where sectionID == id: return view
       default: continue
       }
@@ -208,7 +200,7 @@ final class SettingsPaneView: NSView {
     return nil
   }
 
-  /// Every row and section the pane shows, by id; rare rows behind a closed "More" too.
+  /// Every row and section the pane shows, by id.
   var anchors: [String] {
     blocks.flatMap { block -> [String] in
       switch block {
@@ -287,13 +279,12 @@ final class SettingsPaneView: NSView {
     return out
   }
 
-  /// Which groups' "More" lines are open.
-  var moreOpen: [String: Bool] {
-    var out: [String: Bool] = [:]
-    for block in blocks {
-      if case .group(let group) = block, group.hasRare { out[group.group.id] = group.expanded }
+  /// Rows the pane has but doesn't show (none: every row shows, rare ones last).
+  var hiddenRows: [String] {
+    blocks.flatMap { block -> [String] in
+      guard case .group(let group) = block else { return [] }
+      return group.allRows.filter(\.isHidden).compactMap(\.anchor)
     }
-    return out
   }
 
   // MARK: Colour panel
@@ -393,40 +384,28 @@ func sizedHeight(_ view: NSView, width: CGFloat) -> CGFloat {
 // MARK: Group
 
 /// A group of rows: its header (13 pt semibold, 8 pt above the rows, with room for one control on the right), its
-/// rows with hairlines between them, and its rare rows under a "More" line at the end.
+/// rows with hairlines between them (rare ones last).
 final class SettingsGroupView: NSView {
   let group: SettingGroup
   private let header: NSTextField?
   private let accessory: NSView?
   private let rows: [SettingsRowView]
-  private let rare: [SettingsRowView]
-  private let more: MoreLine?
   private var lines: [NSView] = []
-  private(set) var expanded = false
-  var onToggle: (() -> Void)?
 
-  var hasRare: Bool { !rare.isEmpty }
-  var allRows: [SettingsRowView] { rows + rare }
+  var allRows: [SettingsRowView] { rows }
   var anchors: [String] { allRows.compactMap(\.anchor) }
 
-  init(group: SettingGroup, accessory: NSView?, rows: [SettingsRowView], rare: [SettingsRowView]) {
+  init(group: SettingGroup, accessory: NSView?, rows: [SettingsRowView]) {
     self.group = group
     header = group.title.map { settingsLabel($0, size: 13, weight: .semibold) }
     self.accessory = accessory
     self.rows = rows
-    self.rare = rare
-    more = rare.isEmpty ? nil : MoreLine()
     super.init(frame: .zero)
     if let header { addSubview(header) }
     if let accessory { addSubview(accessory) }
-    for row in rows + rare { addSubview(row) }
-    for row in rare { row.isHidden = true }
-    if let more {
-      more.onClick = { [weak self] in self?.toggle() }
-      addSubview(more)
-    }
-    // A hairline between each two things in the list (rows, the More line).
-    for _ in 0..<max(0, rows.count + rare.count + (more == nil ? 0 : 1) - 1) {
+    for row in rows { addSubview(row) }
+    // A hairline between each two rows.
+    for _ in 0..<max(0, rows.count - 1) {
       let line = Hairline()
       lines.append(line)
       addSubview(line)
@@ -439,25 +418,8 @@ final class SettingsGroupView: NSView {
 
   func row(anchored id: String) -> SettingsRowView? { allRows.first { $0.anchor == id } }
 
-  func expandIfHidden(_ row: SettingsRowView) {
-    if rare.contains(where: { $0 === row }), !expanded { toggle() }
-  }
-
-  func toggle() {
-    expanded.toggle()
-    for row in rare { row.isHidden = !expanded }
-    more?.expanded = expanded
-    needsLayout = true
-    onToggle?()
-  }
-
   /// What the list shows, in order.
-  private var listed: [NSView] {
-    var out: [NSView] = rows
-    if expanded { out += rare }
-    if let more { out.append(more) }
-    return out
-  }
+  private var listed: [NSView] { rows }
 
   private var headerHeight: CGFloat {
     guard let header else { return 0 }
@@ -510,54 +472,6 @@ final class Hairline: NSView {
     super.layout()
     // One device pixel.
     layer?.contentsScale = window?.backingScaleFactor ?? 2
-  }
-}
-
-/// "More" at the end of a group with rare rows; "Less" once they show.
-final class MoreLine: NSView, SettingsSizing {
-  var onClick: (() -> Void)?
-  var expanded = false { didSet { update() } }
-  private let label = settingsLabel("More", size: 13, color: .secondaryLabelColor)
-  private let chevron = NSImageView()
-
-  override init(frame: NSRect) {
-    super.init(frame: frame)
-    chevron.symbolConfiguration = .init(pointSize: 10, weight: .semibold)
-    chevron.contentTintColor = .secondaryLabelColor
-    addSubview(label)
-    addSubview(chevron)
-    setAccessibilityElement(true)
-    setAccessibilityRole(.disclosureTriangle)
-    update()
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override var isFlipped: Bool { true }
-  override var mouseDownCanMoveWindow: Bool { false }
-
-  private func update() {
-    label.stringValue = expanded ? "Less" : "More"
-    chevron.image = NSImage(systemSymbolName: expanded ? "chevron.up" : "chevron.down", accessibilityDescription: nil)
-    setAccessibilityLabel(label.stringValue)
-    needsLayout = true
-  }
-
-  func height(forWidth width: CGFloat) -> CGFloat { 36 }
-
-  override func layout() {
-    super.layout()
-    let height = ceil(label.intrinsicContentSize.height)
-    let width = ceil(label.intrinsicContentSize.width) + 4
-    label.frame = NSRect(x: 0, y: ((bounds.height - height) / 2).rounded(), width: width, height: height)
-    chevron.frame = NSRect(x: width + 4, y: ((bounds.height - 14) / 2).rounded(), width: 12, height: 14)
-  }
-
-  override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-  override func mouseDown(with event: NSEvent) { onClick?() }
-  override func accessibilityPerformPress() -> Bool {
-    onClick?()
-    return true
   }
 }
 

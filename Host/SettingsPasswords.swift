@@ -66,7 +66,7 @@ final class PasswordsPaneContent: SettingsPaneContent {
   // MARK: Tests
 
   /// `passwords unlock|lock|idle|search <text>|open <n>|close|reveal|revealcheck <i>|copy user|password|pasteboard <i>|
-  /// clearnow|add <i>|edit <i>|remove|confirm yes|no|more|export <path>|importcsv <path>`: the pane driven as clicks and
+  /// clearnow|add <i>|edit <i>|remove|confirm yes|no|export <path>|importcsv <path>`: the pane driven as clicks and
   /// typing would. `<i>` is a fixture login (`RAY_TEST_SECRETS`), so no secret is in the line. Nil: answered later.
   func test(_ line: String, _ argument: String) -> String? {
     let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -103,7 +103,6 @@ final class PasswordsPaneContent: SettingsPaneContent {
     case "remove": return saved.pressDelete() ? "ok" : "no row open"
     case "confirm":
       guard rest == "yes" || rest == "no", SettingsRecordConfirm.answer(rest == "yes") else { return "no sheet" }
-    case "more": more.toggleMore()
     case "export":
       guard rest.hasPrefix("/") else { return "usage: passwords export <absolute path>" }
       return more.pressExport(testPath: rest) ? "ok" : "no window"
@@ -111,7 +110,7 @@ final class PasswordsPaneContent: SettingsPaneContent {
       guard rest.hasPrefix("/") else { return "usage: passwords importcsv <absolute path>" }
       more.importCSV(URL(fileURLWithPath: rest))
     default:
-      return "usage: passwords unlock|lock|idle|search|open|close|reveal|revealcheck|copy|pasteboard|clearnow|add|edit|remove|confirm|more|export|importcsv"
+      return "usage: passwords unlock|lock|idle|search|open|close|reveal|revealcheck|copy|pasteboard|clearnow|add|edit|remove|confirm|export|importcsv"
     }
     return "ok"
   }
@@ -707,10 +706,9 @@ private final class PasswordsLockedView: NSView, SettingsSizing {
 
 // MARK: Other apps and files
 
-/// Password manager apps (a note), then under "More": import from a CSV file and export to one.
+/// Password manager apps (a note), then import from a CSV file and export to one.
 final class PasswordsMoreView: NSView, SettingsSizing {
   private let stack = SettingsStack()
-  private let more = SettingsMoreToggle()
   private var importStatus: String?
   private var exportStatus: String?
   /// For tests: what the last export and import came to (`succeeded`, `reauthFailed`…; counts).
@@ -723,7 +721,6 @@ final class PasswordsMoreView: NSView, SettingsSizing {
   override init(frame: NSRect) {
     super.init(frame: frame)
     addSubview(stack)
-    more.onToggle = { [weak self] _ in self?.render() }
     render()
   }
 
@@ -749,7 +746,7 @@ final class PasswordsMoreView: NSView, SettingsSizing {
 
   private func render() {
     var items: [SettingsStack.Item] = [.init(view: SettingsRowView(title: "Password manager apps", detail: Self.managerNote))]
-    if more.expanded {
+    do {
       let importRow = SettingsRowView(
         title: "Import passwords",
         detail: importStatus ?? "From a CSV file.",
@@ -760,12 +757,9 @@ final class PasswordsMoreView: NSView, SettingsSizing {
         control: SettingsPushButton("Export…") { [weak self] in _ = self?.pressExport(testPath: nil) })
       items += [.init(view: importRow, line: true), .init(view: exportRow, line: true)]
     }
-    items.append(.init(view: more, line: true))
     stack.set(items)
     settingsContentDidResize(self)
   }
-
-  func toggleMore() { more.toggle() }
 
   // MARK: Export
 
@@ -773,7 +767,6 @@ final class PasswordsMoreView: NSView, SettingsSizing {
   /// `testPath` (tests) stands for the save panel's answer.
   func pressExport(testPath: String?) -> Bool {
     guard window != nil else { return false }
-    if !more.expanded { more.toggle() }
     SettingsRecordConfirm.ask(
       "exportPasswords", title: "Export your passwords?",
       message: "The file holds every saved password as plain text. Anyone who can open it can read them, so delete it once you're done with it.",
@@ -851,7 +844,6 @@ final class PasswordsMoreView: NSView, SettingsSizing {
     importing = true
     importStatus = "Importing…"
     importResult = [:]
-    if !more.expanded { more.toggle() }
     render()
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       let read = Result { try PasswordsCSV.load(url) }
@@ -901,6 +893,6 @@ final class PasswordsMoreView: NSView, SettingsSizing {
   }
 
   var debug: [String: Any] {
-    ["moreOpen": more.expanded, "export": exportResult, "importing": importing, "imported": importResult]
+    ["export": exportResult, "importing": importing, "imported": importResult]
   }
 }
