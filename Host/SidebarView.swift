@@ -360,6 +360,12 @@ final class SidebarView: NSView {
     }
   }
   var addressShown: Bool { showsAddress }
+  /// The address field's sliders button: only while the page's own address bar is off, where site controls hang from
+  /// it. Peeking over that bar, the panel would hang from the bar's right end, far from the button.
+  var showsSiteButton: Bool {
+    get { addressPill.showsSiteButton }
+    set { addressPill.showsSiteButton = newValue }
+  }
   /// Where the sidebar's content starts: below the address field, or where it would be.
   private var contentTop: CGFloat {
     showsAddress ? addressPill.frame.maxY + 8 : trafficLightsCenterY + 24
@@ -1652,6 +1658,15 @@ final class AddressPill: NSView {
 
   @objc private func showSiteControls() { onSiteControls?() }
 
+  private var empty = true
+  var showsSiteButton = true {
+    didSet {
+      guard oldValue != showsSiteButton else { return }
+      siteButton.isHidden = empty || !showsSiteButton
+      needsLayout = true
+    }
+  }
+
   var debug: [String: Any] {
     layoutSubtreeIfNeeded()
     return ["look": "\(look)", "icon": !securityIcon.isHidden, "textOffset": label.frame.midY - bounds.midY]
@@ -1667,7 +1682,8 @@ final class AddressPill: NSView {
     label.lineBreakMode = hasHost ? .byTruncatingHead : .byTruncatingTail
     label.textColor = empty ? .tertiaryLabelColor : .secondaryLabelColor
     searchIcon.isHidden = !empty
-    siteButton.isHidden = empty
+    self.empty = empty
+    siteButton.isHidden = empty || !showsSiteButton
     let look = ConnectionLook.of(level: security, url: url)
     securityIcon.image = look.symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: look.label) }
     securityIcon.contentTintColor = look.tint

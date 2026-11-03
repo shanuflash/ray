@@ -2643,6 +2643,7 @@ const checks = {
     await until("bar off", async () => { await command("state"); return state().toolbar === null; });
     assert(cardTop() > withBar, `the page didn't grow into the bar's room (${withBar} -> ${cardTop()})`);
     assert(state().sidebarAddressShown === true, "no address field anywhere with the page's bar off");
+    assert(state().sidebarSiteButton === true, "no sliders button in the sidebar's field with the page's bar off");
     await command("menu toggleToolbar");
     await until("bar on", async () => { await command("state"); return state().toolbar !== null; });
     // Peeking, the sidebar covers the bar's address, so it shows its own.
@@ -2651,6 +2652,8 @@ const checks = {
     await command("peek on");
     await until("peeking", async () => { await command("state"); return state().sidebar.peeking; });
     assert(state().sidebarAddressShown === true, "a peeking sidebar has no address field");
+    // Its sliders button stays off: site controls hang from the bar's right end, far from it.
+    assert(state().sidebarSiteButton === false, "a peeking sidebar shows sliders over the page's bar");
     await command("peek off");
     await until("peek ended", async () => { await command("state"); return !state().sidebar.peeking; });
     await command("menu toggleSidebar");
