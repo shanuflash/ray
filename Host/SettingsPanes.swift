@@ -1,6 +1,6 @@
 import AppKit
 
-// A Settings pane is its catalog rows (generated: grouped by `group`, rare rows under a "More" line at the end of
+// A Settings pane is its catalog rows (generated: grouped by `group`, rare rows at the end of
 // their group) plus, optionally, UI of its own from a `SettingsPaneContent`. Adding a pane's own UI is one new file
 // (`Host/SettingsPrivacy.swift`: a class conforming to `SettingsPaneContent`) and one line in `content(for:)` below;
 // the window's layout code doesn't change. A pane with no visible rows and no content of its own is hidden in Ray.app.

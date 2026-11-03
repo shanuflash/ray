@@ -1,7 +1,7 @@
 import AppKit
 
 /// Settings › Extensions: what's installed in the normal profile (`ac_extensions_list`), each with its switch and, opened,
-/// its site access, private windows, options, reload and Remove; then the Chrome Web Store and, under "More", loading
+/// its site access, private windows, options, reload and Remove; then the Chrome Web Store and loading
 /// an unpacked folder. Chrome's own chrome://extensions page stays as it is (it isn't a settings page);
 /// `ray://settings/extensions` opens this pane. Installing from a Web Store link isn't built: the engine installs only
 /// from the store's page or a file.
@@ -33,7 +33,6 @@ final class ExtensionsPaneContent: SettingsPaneContent {
   private(set) var items: [Item]?
   private var opened: Set<String> = []
   private var problems: [String: String] = [:]
-  private var moreShown = false
   private var generation = 0
   private var lastInstall: String?
 
@@ -278,16 +277,8 @@ final class ExtensionsPaneContent: SettingsPaneContent {
     var rows: [NSView] = [SettingsItemRow(
       key: "store", icon: nil, title: "Chrome Web Store",
       detail: "Add to Chrome installs in Ray.", controls: [store], showsIcon: false)]
-    let more = MoreLine()
-    more.expanded = moreShown
-    more.onClick = { [weak self] in
-      guard let self else { return }
-      self.moreShown.toggle()
-      self.showAdd()
-    }
-    rows.append(more)
     linkRowShown = false
-    if moreShown {
+    do {
       let choose = SettingsButton("Choose Folder…") { [weak self, weak addList] in self?.chooseFolder(in: addList?.window) }
       rows.append(SettingsItemRow(
         key: "unpacked", icon: nil, title: "Load unpacked extension",
@@ -350,7 +341,7 @@ final class ExtensionsPaneContent: SettingsPaneContent {
   // MARK: Tests
 
   /// `extpane list|reload|open <id>|toggle <id>|access <id> <onClick|specificSites|allSites>|private <id>|options <id>|
-  /// reload <id>|remove <id>|confirm accept|cancel|store|more|unpacked <path>`: the list as JSON, or a press as a click
+  /// reload <id>|remove <id>|confirm accept|cancel|store|unpacked <path>`: the list as JSON, or a press as a click
   /// would make it (`unpacked` stands for the folder picker's answer).
   static func test(_ argument: String) -> String {
     guard let pane = SettingsPanes.content(for: .extensions) as? ExtensionsPaneContent else { return "no pane" }
@@ -379,15 +370,10 @@ final class ExtensionsPaneContent: SettingsPaneContent {
       guard words.count == 2 else { return SettingsPages.json(SettingsConfirm.debug ?? [:]) }
       return SettingsConfirm.answer(accept: words[1] == "accept")
     case "store": return ok(pane.storeButton?.press() ?? false)
-    case "more":
-      if !pane.moreShown {
-        pane.moreShown = true
-        pane.showAdd()
-      }
     case "unpacked":
       guard words.count >= 2 else { return "usage: extpane unpacked <path>" }
       pane.install(words.dropFirst().joined(separator: " "))
-    default: return "usage: extpane list|refresh|open|toggle|access|private|options|reload|remove|confirm|store|more|unpacked"
+    default: return "usage: extpane list|refresh|open|toggle|access|private|options|reload|remove|confirm|store|unpacked"
     }
     return "ok"
   }
@@ -408,7 +394,7 @@ final class ExtensionsPaneContent: SettingsPaneContent {
         ]
       },
       "empty": empty ?? NSNull(),
-      "more": moreShown, "linkRow": linkRowShown, "lastInstall": lastInstall ?? NSNull(),
+      "linkRow": linkRowShown, "lastInstall": lastInstall ?? NSNull(),
       "confirm": SettingsConfirm.debug ?? NSNull(),
     ]
   }

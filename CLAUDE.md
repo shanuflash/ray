@@ -74,8 +74,8 @@ publicly or create accounts.
   in its `all` list): id (also its Settings.json key and the test command's name; a rename goes through `aliases`),
   default, `validate` (clamp or refuse), scope (app; profile and Space later), `built` (an unbuilt one's row shows only
   in test builds), and its UI: pane, group, title, detail, search keywords, control (toggle, choice as a pop-up,
-  `segmented` for 2–3 options, `picture` options drawn by a view builder, colour, custom) and `rare` (under its group's
-  "More" line). Values are `SettingValue`s: Bool, Double, Int, String, String?, `SiteSearchList` (a struct, so another
+  `segmented` for 2–3 options, `picture` options drawn by a view builder, colour, custom) and `rare` (last in its group;
+  no "More" line, every row shows: owner 2026-11-03). Values are `SettingValue`s: Bool, Double, Int, String, String?, `SiteSearchList` (a struct, so another
   list type can conform too). A `.custom` control's entry passes `customTests` (samples, refusals) for the check. The window's rows, its search, the
   command bar's "Settings: …" rows, `setting <id> <value>`, `settings catalog` and the state log's `settings` dump
   are generated from it. `SettingPane` (same file) lists the panes in sidebar order with title, subtitle, SF Symbol
@@ -93,7 +93,7 @@ publicly or create accounts.
   not settings: the hosts the user zoomed (see Page zoom below), `zoomAdopted`, the Settings window's frame and
   `onboarded`. Private windows read it, never write to it (their zoomed hosts stay in memory).
 - `SettingsWindow`: Ray's own Settings window, direction G (PLAN.md §13): ⌘, (the pane last shown, else General),
-  `ray://settings/<pane>`, or a command bar row. 780×560, full-size content, the traffic lights over a 210 pt
+  `ray://settings/<pane>`, or a command bar row. 880×600 (at least 760×480; a saved frame below that opens at the default), full-size content, the traffic lights over a 210 pt
   sidebar in Ray's sidebar colour: a search field, the panes as 34 pt rows (icon and name; the selected one in
   `SettingsColors.selectedFill`/`selectedInk`, a wash and a legible tint of the profile's colour), and "All Chrome
   Settings…" (chrome://settings) at the bottom. Searching (`SettingsSearch`, after Ardia's `searchMatch.ts`: titles,
@@ -101,7 +101,7 @@ publicly or create accounts.
   opens its pane, scrolls to its row and flashes it (`SettingsFlash`: 120 ms in, 900 ms held, 700 ms out, on a
   layer). `SettingsPaneView` is one pane: title (22 pt; the pane's subtitle is search-only), an optional call-to-action strip, then
   groups (13 pt semibold headers with room for one trailing control, 44 pt rows split by hairlines, no boxes, rare
-  rows under "More") in a column of at most 600 pt with 24 pt sides, scrolling with an overlay scroller.
+  rows last) in a column of at most 600 pt with 24 pt sides, scrolling with an overlay scroller.
   `SettingsControls`: `RaySwitch`, `RaySegmentedControl`, `PictureChoiceControl` (2.5 pt ring and a check, in the
   profile's colour), `SwatchRow`, `SettingsCallToAction` (General's Make Default; a hidden one takes no room), `AccentButton`, `LinkButton`.
   `MiniRayWindow`: a tiny layer-drawn Ray window (sidebar rows, one active or new, the page with or without its
@@ -145,13 +145,13 @@ publicly or create accounts.
   of their own (`ac_site_settings_origins` + `_get`, sorted by registrable domain; a row opens to each permission's
   pop-up, Reset Permissions and Clear Site Data…), the sites you zoomed (`RaySettings.zoomedHosts` with
   `ac_zoom_list` levels; Reset un-marks the host and sets the default with `ac_zoom_set`, as Site controls' does),
-  apps sites may open (`ac_external_apps_*`), Clear browsing data (Chrome's dialog) and, under More, Chrome's
+  apps sites may open (`ac_external_apps_*`), Clear browsing data (Chrome's dialog) and Chrome's
   per-category defaults. Follows `siteSettings.changed` / `zoom.changed`. Chrome's Site settings pages
   (`/content`, `/content/all`, `/content/siteDetails`, `/content/zoomLevels`) and `ray://settings/privacy`
   (`AddressInput.raySettingsAliases`: Chrome's `/privacy` page stays Chrome's) open it; Site controls' Site
   Settings… opens it at the site. `SettingsExtensions` (Settings › Extensions): `ac_extensions_list` rows (manifest
   icon, version, description, switch) that open to site access, private windows, Options, Reload (unpacked),
-  Remove…; the Web Store; Load unpacked under More; Add from a link unbuilt (test builds only).
+  Remove…; the Web Store; Load unpacked; Add from a link unbuilt (test builds only).
   `ray://settings/extensions` opens it; chrome://extensions stays Chrome's. `SettingsDataRows`: what both share
   (`SettingsDynamicList`, `SettingsItemRow`, `SettingsConfirm`: a `PanelQuestion` over the Settings window
   (`SettingsWindowController.askQuestion`, a pass-through `PanelPassThroughView` layer), Cancel by default, the action dead for 0.5 s, the
@@ -165,7 +165,7 @@ publicly or create accounts.
   `SettingsDataGuard` locks it (and hides a shown card number) when the Settings window closes, after 5 min without a
   click or key in it (Chrome's `kPasswordManagerAuthValidity`), on sleep or a user switch. Unlocked: search, a row
   opens its details (show/copy through `ac_passwords_reveal`, edit through `ac_passwords_update`, both re-authing per
-  the engine; delete after a sheet), Add…, Never saved; under More, CSV import (the importer's `PasswordsCSV` +
+  the engine; delete after a sheet), Add…, Never saved; CSV import (the importer's `PasswordsCSV` +
   `ac_passwords_add`) and Export… (a warning, a save panel, `ac_passwords_export`, which always re-auths). A copied
   password or card number is concealed (`org.nspasteboard.ConcealedType`) and cleared after 120 s if unchanged
   (Chrome's `kClipboardClearDelay`). Autofill: addresses (edit inline, country by name or code) and cards (number
@@ -389,7 +389,7 @@ publicly or create accounts.
   opaque for screenshots: the check `surfaces-snap` (only with `SNAP_DIR`) photographs every note, panel and question
   into that folder with `screencapture -l` of the state log's `windowNumber`. The state log
   has `settings`, `settingsWindow` (pane, panes listed, rows per pane by id, search results, `flashing` /
-  `lastFlash` / `flashVisible`, the selected row's colours and contrast, live pictures, open "More" lines),
+  `lastFlash` / `flashVisible`, the selected row's colours and contrast, live pictures, `hiddenRows` (none expected)),
   `menuKeys`, `recentOrder`, `tabCycle`, `looks` (app and window appearance, scroller style), `undo` (Edit › Undo's
   target, what ⌘Z would do, the focus), `hapticTicks`, `sidebarFrames.toggleShown` / `fadedIcons`, each tab's `zoom`
   and `pages.switches`

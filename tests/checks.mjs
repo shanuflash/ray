@@ -147,12 +147,14 @@ function launch() {
   child.stdin.on("error", () => {});
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => {
-    stderr += chunk;
     const lines = (partial + chunk).split("\n");
     partial = lines.pop();
     for (const line of lines) {
       const at = line.indexOf(stateMarker);
+      // State lines go to `states` only: kept in `stderr` too, a long run (settings-catalog logs thousands) passed
+      // V8's 512 MB string limit and crashed the runner.
       if (at >= 0) states.push(JSON.parse(line.slice(at + stateMarker.length)));
+      else stderr += line + "\n";
     }
   });
   exited = new Promise((r) => child.on("exit", (code, signal) => r((exitCode = code ?? signal))));
@@ -1211,6 +1213,18 @@ const checks = {
     await command("state");
     assert(state().sidebarFrames.renaming === "", `a double click started renaming ${state().sidebarFrames.renaming}`);
     assert(!("renameDone" in state().sidebarFrames), "a Done button showed without a rename");
+    // Rows round their corners as Arc's do.
+    assert(state().sidebarFrames.rowRadius === "10", `row corners ${state().sidebarFrames.rowRadius}`);
+    // A closed folder's tab count hides while renaming (it showed through Done).
+    await command(`rowaction togglefolder ${folder}`);
+    await until("closed for rename", async () => { await command("state"); return folderRow().open === false; });
+    await command(`rowaction renamefolder ${folder}`);
+    await until("renaming closed", async () => { await command("state"); return state().sidebarFrames.renaming === folder; }, 3000);
+    assert(state().sidebarFrames.renameLook === "0,0.0,0.0", `closed folder rename look ${state().sidebarFrames.renameLook}`);
+    await command("escape");
+    await until("closed rename cancelled", async () => { await command("state"); return state().sidebarFrames.renaming === ""; });
+    await command(`rowaction togglefolder ${folder}`);
+    await until("open for rename", async () => { await command("state"); return folderRow().open === true; });
     // Rename comes from the row's menu; Done commits.
     await command(`rowaction renamefolder ${folder}`);
     await until("renaming", async () => { await command("state"); return state().sidebarFrames.renaming === folder; }, 3000);
@@ -2248,7 +2262,7 @@ const checks = {
       await it.ok("settings open passwords");
       const exported = join(files, "Ray Passwords.csv");
       await it.ok(`passwords export ${exported}`);
-      await it.until("export warning", (s) => pane(s).confirming === "exportPasswords" && pane(s).moreOpen);
+      await it.until("export warning", (s) => pane(s).confirming === "exportPasswords");
       await it.ok("passwords confirm yes");
       await it.until("exported", (s) => pane(s).export === "succeeded");
       const csv = readFileSync(exported, "utf8");
@@ -2631,6 +2645,7 @@ const checks = {
     await until("bar off", async () => { await command("state"); return state().toolbar === null; });
     assert(cardTop() > withBar, `the page didn't grow into the bar's room (${withBar} -> ${cardTop()})`);
     assert(state().sidebarAddressShown === true, "no address field anywhere with the page's bar off");
+    assert(state().sidebarSiteButton === true, "no sliders button in the sidebar's field with the page's bar off");
     await command("menu toggleToolbar");
     await until("bar on", async () => { await command("state"); return state().toolbar !== null; });
     // Peeking, the sidebar covers the bar's address, so it shows its own.
@@ -2639,6 +2654,8 @@ const checks = {
     await command("peek on");
     await until("peeking", async () => { await command("state"); return state().sidebar.peeking; });
     assert(state().sidebarAddressShown === true, "a peeking sidebar has no address field");
+    // Its sliders button stays off: site controls hang from the bar's right end, far from it.
+    assert(state().sidebarSiteButton === false, "a peeking sidebar shows sliders over the page's bar");
     await command("peek off");
     await until("peek ended", async () => { await command("state"); return !state().sidebar.peeking; });
     await command("menu toggleSidebar");
@@ -3160,7 +3177,7 @@ const checks = {
     assert(win().title === "Settings" && win().pane === "general", `window ${JSON.stringify(win())}`);
     assert(state().menuKeys.settings === ",", `Settings… answers to ${state().menuKeys.settings}`);
     const [, , width, height] = win().frame.match(/-?[\d.]+/g).map(Number);
-    assert(width === 780 && height >= 560 && height < 620, `the window is ${width} x ${height}`);
+    assert(width === 880 && height >= 600 && height < 660, `the window is ${width} x ${height}`);
     // The defaults, as the controls show them.
     assert(c().minimalURL === false && c().loadingProgress === true && c().newTabNextToActive === "At the top" &&
       c().recentTabCycling === true && c().copyLinkShortcut === true && c().sidebarShortcut === true, `switches ${JSON.stringify(c())}`);
@@ -3580,8 +3597,9 @@ const checks = {
     assert(rows.tabs.join() === "newTabNextToActive,recentTabCycling,showSidebarButton,showClearButton,hideAddressBarWhileScrolling,fadeUnloadedTabs,tabReorderHaptics,sidebarMediaControls,autoPictureInPicture" && rows.shortcuts.join() === "copyLinkShortcut,sidebarShortcut,undoReopensClosedTab,shortcuts", `rows ${JSON.stringify(rows)}`);
     assert(rows.about.includes("about.version") && rows.general.includes("onQuit"), `rows ${JSON.stringify(rows)}`);
     assert((await commandResult("settings open nonsense")) === "no such pane", "a pane that isn't there opened");
-    // The new controls: segmented (scroll bars, a rare row under "More") and picture choices (light or dark).
-    assert(win().more.appearance.page === false, `More is open: ${JSON.stringify(win().more)}`);
+    // The new controls: segmented (scroll bars, a rare row) and picture choices (light or dark). No "More" line:
+    // every row shows.
+    assert(win().hiddenRows === undefined || Object.keys(win().hiddenRows).length === 0, `rows hidden: ${JSON.stringify(win().hiddenRows)}`);
     await command("settings press scrollBars 2");
     await until("segment chose Always", async () => { await command("state"); return state().settings.scrollBars === "always" && win().controls.scrollBars === "Always"; });
     assert(win().controls.scrollBarsOptions.join() === "Automatic,When scrolling,Always", `segments ${win().controls.scrollBarsOptions}`);
@@ -3662,11 +3680,11 @@ const checks = {
     assert(flashed.pane === "appearance" && flashed.flashVisible, `flash ${JSON.stringify({ pane: flashed.pane, visible: flashed.flashVisible })}`);
     await until("flash over", async () => { await command("state"); return win().flashing === null; }, 4000);
     assert(win().lastFlash === "defaultZoom", `last flash ${win().lastFlash}`);
-    // A rare row: its group's "More" opens first.
+    // A rare row shows like any other.
     await command("settings search scroll bars");
     await until("scroll bars", async () => { await command("state"); return search().results[0]?.id === "scrollBars"; });
     await command("settings choose 0");
-    await until("rare row flashed", async () => { await command("state"); return win().lastFlash === "scrollBars" && win().more.appearance.page === true; });
+    await until("rare row flashed", async () => { await command("state"); return win().lastFlash === "scrollBars"; });
     // Pane names, and a pane's own section (About Ray's version).
     await command("settings search shortcuts");
     await until("pane result", async () => { await command("state"); return search().results.some((r) => r.kind === "pane" && r.pane === "shortcuts"); });
@@ -5012,10 +5030,9 @@ const checks = {
     await command("settings open extensions");
     await until("extensions pane", async () => { await command("state"); return win().open && win().pane === "extensions"; });
     await until("list loaded", async () => (await pane()).loaded);
-    // Load unpacked sits under More; Add from a link isn't built (test builds show it).
-    await command("extpane more");
+    // Load unpacked shows (no "More" line); Add from a link isn't built (test builds show it).
     const more = await pane();
-    assert(more.more && more.linkRow, `More: ${JSON.stringify(more)}`);
+    assert(more.linkRow, `link row: ${JSON.stringify(more)}`);
     await command(`extpane unpacked ${dir}`);
     const item = await until("installed and listed", async () => fixture(), 15000);
     const id = item.id;

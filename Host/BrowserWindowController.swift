@@ -209,6 +209,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     var top = (bounds.height - edge).rounded()
     toolbar.isHidden = !toolbarShown
     sidebar.showsAddress = !toolbarShown || sidebar.superview === floating
+    sidebar.showsSiteButton = !toolbarShown
     toolbar.showsFullAddress = fullAddressShown
     toolbar.showsLoadingWash = RaySettings.shared[.loadingProgress]
     // One load indicator: the page's own line only when the address bar above it is off, and neither when Settings
@@ -2471,6 +2472,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "address": sidebar.addressText,
       "addressField": sidebar.addressDebug,
       "sidebarAddressShown": sidebar.addressShown,
+      "sidebarSiteButton": !sidebar.siteButton.isHidden,
       "pages": pages.debugState,
       "cardFrame": NSStringFromRect(pages.frame),
       "windowFrame": NSStringFromRect(window.frame),

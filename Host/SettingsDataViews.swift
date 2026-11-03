@@ -527,60 +527,6 @@ final class SettingsIconButton: NSButton {
   @objc private func clicked() { onClick?() }
 }
 
-/// "More" and "Less" under a section's usual rows, opening its rare ones (as a group's "More" line does).
-final class SettingsMoreToggle: NSView, SettingsSizing {
-  var onToggle: ((Bool) -> Void)?
-  private(set) var expanded = false
-  private let label = settingsLabel("More", size: 13, color: .secondaryLabelColor)
-  private let chevron = NSImageView()
-
-  override init(frame: NSRect) {
-    super.init(frame: frame)
-    chevron.symbolConfiguration = .init(pointSize: 10, weight: .semibold)
-    chevron.contentTintColor = .secondaryLabelColor
-    addSubview(label)
-    addSubview(chevron)
-    setAccessibilityElement(true)
-    setAccessibilityRole(.disclosureTriangle)
-    update()
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override var isFlipped: Bool { true }
-  override var mouseDownCanMoveWindow: Bool { false }
-
-  func toggle() {
-    expanded.toggle()
-    update()
-    onToggle?(expanded)
-  }
-
-  private func update() {
-    label.stringValue = expanded ? "Less" : "More"
-    chevron.image = NSImage(systemSymbolName: expanded ? "chevron.up" : "chevron.down", accessibilityDescription: nil)
-    setAccessibilityLabel(label.stringValue)
-    needsLayout = true
-  }
-
-  func height(forWidth width: CGFloat) -> CGFloat { 36 }
-
-  override func layout() {
-    super.layout()
-    let height = ceil(label.intrinsicContentSize.height)
-    let width = settingsLabelWidth(label)
-    label.frame = NSRect(x: 0, y: ((bounds.height - height) / 2).rounded(), width: width, height: height)
-    chevron.frame = NSRect(x: width, y: ((bounds.height - 14) / 2).rounded(), width: 12, height: 14)
-  }
-
-  override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-  override func mouseDown(with event: NSEvent) { toggle() }
-  override func accessibilityPerformPress() -> Bool {
-    toggle()
-    return true
-  }
-}
-
 // MARK: Confirmation
 
 /// "Delete …?" as a panel over the Settings window: Cancel is the default (Return cancels something that destroys),

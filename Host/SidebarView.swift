@@ -360,6 +360,12 @@ final class SidebarView: NSView {
     }
   }
   var addressShown: Bool { showsAddress }
+  /// The address field's sliders button: only while the page's own address bar is off, where site controls hang from
+  /// it. Peeking over that bar, the panel would hang from the bar's right end, far from the button.
+  var showsSiteButton: Bool {
+    get { addressPill.showsSiteButton }
+    set { addressPill.showsSiteButton = newValue }
+  }
   /// Where the sidebar's content starts: below the address field, or where it would be.
   private var contentTop: CGFloat {
     showsAddress ? addressPill.frame.maxY + 8 : trafficLightsCenterY + 24
@@ -1088,6 +1094,7 @@ final class SidebarView: NSView {
     frames["collapsing"] = zip(pinnedRows, pinned).filter { $0.0.collapsing }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["folding"] = foldLink == nil ? "0" : "1"
     frames["toggleShown"] = toggleButton.isHidden ? "0" : "1"
+    frames["rowRadius"] = String(format: "%.0f", SidebarRowView.fillRadius)
     frames["fadedIcons"] = shownViews.filter { view, _ in
       (view as? SidebarRowView)?.iconFaded ?? (view as? FavoriteTileView)?.iconFaded ?? false
     }.map { $0.1.id.uuidString }.joined(separator: ",")
@@ -1652,6 +1659,15 @@ final class AddressPill: NSView {
 
   @objc private func showSiteControls() { onSiteControls?() }
 
+  private var empty = true
+  var showsSiteButton = true {
+    didSet {
+      guard oldValue != showsSiteButton else { return }
+      siteButton.isHidden = empty || !showsSiteButton
+      needsLayout = true
+    }
+  }
+
   var debug: [String: Any] {
     layoutSubtreeIfNeeded()
     return ["look": "\(look)", "icon": !securityIcon.isHidden, "textOffset": label.frame.midY - bounds.midY]
@@ -1667,7 +1683,8 @@ final class AddressPill: NSView {
     label.lineBreakMode = hasHost ? .byTruncatingHead : .byTruncatingTail
     label.textColor = empty ? .tertiaryLabelColor : .secondaryLabelColor
     searchIcon.isHidden = !empty
-    siteButton.isHidden = empty
+    self.empty = empty
+    siteButton.isHidden = empty || !showsSiteButton
     let look = ConnectionLook.of(level: security, url: url)
     securityIcon.image = look.symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: look.label) }
     securityIcon.contentTintColor = look.tint
@@ -1837,6 +1854,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   /// How many tabs a folder row's folder holds (set by the sidebar before `show`): a closed one shows it.
   var folderCount = 0
   private let countLabel = NSTextField(labelWithString: "")
+  private var showsCount = false
   private var folderIsOpen = true
   var onClose: (() -> Void)?
   private let icon = NSImageView()
@@ -1852,11 +1870,13 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   private var closable = false
   private let fill = CALayer()
   static let fillInset: CGFloat = 3
+  /// Arc's row corners (Ardia's `radius.card`).
+  static let fillRadius: CGFloat = 10
 
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    fill.cornerRadius = 8
+    fill.cornerRadius = Self.fillRadius
     fill.cornerCurve = .continuous
     layer?.addSublayer(fill)
     icon.imageScaling = .scaleProportionallyUpOrDown
@@ -1917,7 +1937,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     fill.borderWidth = dropTarget ? 1 : 0
     doneButton.layer?.backgroundColor = SidebarColors.fill.cgColor
     fill.borderColor = ProfileColor.accent.withAlphaComponent(0.65).cgColor
-    Lift.shadow(fill, lifted, radius: 8)
+    Lift.shadow(fill, lifted, radius: Self.fillRadius)
     CATransaction.commit()
   }
 
@@ -2049,7 +2069,8 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     title.stringValue = entry.title.isEmpty ? (folderCount == 1 ? "1 tab" : "\(folderCount) tabs") : entry.title
     title.textColor = entry.title.isEmpty ? .secondaryLabelColor : .labelColor
     countLabel.stringValue = String(folderCount)
-    countLabel.isHidden = open || folderCount == 0 || entry.title.isEmpty
+    showsCount = !open && folderCount > 0 && !entry.title.isEmpty
+    updateCount()
     subtitle.isHidden = true
     chevron.isHidden = editor != nil
     setChevron(open: open, animated: turns)
@@ -2136,6 +2157,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     title.isHidden = true
     chevron.isHidden = true
     updateClose()
+    updateCount()
     addSubview(doneButton)
     needsLayout = true
     layoutSubtreeIfNeeded()
@@ -2148,10 +2170,11 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   /// The Done button's frame in window coordinates (top-left origin is the caller's job), nil when not renaming.
   var doneButtonFrame: NSRect? { editor == nil ? nil : doneButton.convert(doneButton.bounds, to: nil) }
 
-  /// For tests: "close,dx,dy" while renaming: whether the close button shows, and the field's offset from the label.
+  /// For tests: "close,dx,dy" while renaming: whether the close button or a folder's count shows, and the field's
+  /// offset from the label.
   var renameLook: String? {
     guard let editor else { return nil }
-    return String(format: "%d,%.1f,%.1f", closeButton.isHidden ? 0 : 1, editor.frame.minX - title.frame.minX,
+    return String(format: "%d,%.1f,%.1f", closeButton.isHidden && countLabel.isHidden ? 0 : 1, editor.frame.minX - title.frame.minX,
                   editor.frame.minY - title.frame.minY)
   }
 
@@ -2171,6 +2194,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     title.isHidden = false
     chevron.isHidden = !isFolderRow
     updateClose()
+    updateCount()
     needsLayout = true
     let done = onRenamed
     onRenamed = nil
@@ -2195,6 +2219,11 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
 
   private func updateClose() {
     closeButton.isHidden = isNewTab || !closable || !(hovered || selected) || editor != nil
+  }
+
+  /// A closed folder's tab count, hidden under the rename field's Done button (it showed through).
+  private func updateCount() {
+    countLabel.isHidden = !isFolderRow || !showsCount || editor != nil
   }
 
   override func layout() {
@@ -2294,7 +2323,7 @@ final class DropHintView: NSView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     let rect = bounds.insetBy(dx: 0.5, dy: inset + 0.5)
-    let radius: CGFloat = inset == 0 ? 10 : 8
+    let radius: CGFloat = inset == 0 ? 10 : SidebarRowView.fillRadius
     outline.frame = bounds
     outline.path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
     CATransaction.commit()

@@ -33,7 +33,6 @@ final class PrivacyPaneContent: SettingsPaneContent {
   private var icons: [String: NSImage] = [:]
   private var generation = 0
   private var reloadWork: DispatchWorkItem?
-  private var defaultsShown = false
   private var revealing: String?
 
   // What tests press, by origin or host.
@@ -192,15 +191,7 @@ final class PrivacyPaneContent: SettingsPaneContent {
         key: "empty", icon: nil, title: sites == nil ? " " : "No sites yet",
         detail: sites == nil ? " " : "Sites you allow or block show here.", showsIcon: false))
     }
-    let more = MoreLine()
-    more.expanded = defaultsShown
-    more.onClick = { [weak self] in
-      guard let self else { return }
-      self.defaultsShown.toggle()
-      self.showSites()
-    }
-    rows.append(more)
-    if defaultsShown { rows.append(defaultsRow()) }
+    rows.append(defaultsRow())
     sitesList.setRows(rows)
     if let revealing, let row = siteRows[revealing] {
       self.revealing = nil
@@ -428,14 +419,11 @@ final class PrivacyPaneContent: SettingsPaneContent {
       guard words.count == 3 else { return "usage: privacy appremove <origin> <scheme>" }
       return ok(pane.appButtons["\(words[1]) \(words[2])"]?.press() ?? false)
     case "clearbrowsing": return ok(pane.clearDataButton?.press() ?? false)
-    case "defaults":
-      pane.defaultsShown = true
-      pane.showSites()
     case "reveal":
       guard words.count == 2 else { return "usage: privacy reveal <origin>" }
       pane.reveal(words[1])
     default:
-      return "usage: privacy list|reload|open|set|reset|clear|confirm|zoomreset|appremove|clearbrowsing|defaults|reveal"
+      return "usage: privacy list|reload|open|set|reset|clear|confirm|zoomreset|appremove|clearbrowsing|reveal"
     }
     return "ok"
   }
@@ -457,7 +445,6 @@ final class PrivacyPaneContent: SettingsPaneContent {
       "zoom": (zooms ?? []).map { ["host": $0.host, "percent": Int(($0.factor * 100).rounded())] },
       "apps": (apps ?? []).map { ["origin": $0.origin, "scheme": $0.scheme, "app": ($0.app as Any?) ?? NSNull()] as [String: Any] },
       "empty": ["sites": emptyText(sitesList), "zoom": emptyText(zoomList), "apps": emptyText(appsList)],
-      "defaultsShown": defaultsShown,
       "cleared": lastCleared,
       "confirm": SettingsConfirm.debug ?? NSNull(),
     ]
