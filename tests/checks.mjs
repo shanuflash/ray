@@ -1213,6 +1213,16 @@ const checks = {
     await command("state");
     assert(state().sidebarFrames.renaming === "", `a double click started renaming ${state().sidebarFrames.renaming}`);
     assert(!("renameDone" in state().sidebarFrames), "a Done button showed without a rename");
+    // A closed folder's tab count hides while renaming (it showed through Done).
+    await command(`rowaction togglefolder ${folder}`);
+    await until("closed for rename", async () => { await command("state"); return folderRow().open === false; });
+    await command(`rowaction renamefolder ${folder}`);
+    await until("renaming closed", async () => { await command("state"); return state().sidebarFrames.renaming === folder; }, 3000);
+    assert(state().sidebarFrames.renameLook === "0,0.0,0.0", `closed folder rename look ${state().sidebarFrames.renameLook}`);
+    await command("escape");
+    await until("closed rename cancelled", async () => { await command("state"); return state().sidebarFrames.renaming === ""; });
+    await command(`rowaction togglefolder ${folder}`);
+    await until("open for rename", async () => { await command("state"); return folderRow().open === true; });
     // Rename comes from the row's menu; Done commits.
     await command(`rowaction renamefolder ${folder}`);
     await until("renaming", async () => { await command("state"); return state().sidebarFrames.renaming === folder; }, 3000);

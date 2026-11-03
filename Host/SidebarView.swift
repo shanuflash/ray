@@ -1837,6 +1837,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   /// How many tabs a folder row's folder holds (set by the sidebar before `show`): a closed one shows it.
   var folderCount = 0
   private let countLabel = NSTextField(labelWithString: "")
+  private var showsCount = false
   private var folderIsOpen = true
   var onClose: (() -> Void)?
   private let icon = NSImageView()
@@ -2049,7 +2050,8 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     title.stringValue = entry.title.isEmpty ? (folderCount == 1 ? "1 tab" : "\(folderCount) tabs") : entry.title
     title.textColor = entry.title.isEmpty ? .secondaryLabelColor : .labelColor
     countLabel.stringValue = String(folderCount)
-    countLabel.isHidden = open || folderCount == 0 || entry.title.isEmpty
+    showsCount = !open && folderCount > 0 && !entry.title.isEmpty
+    updateCount()
     subtitle.isHidden = true
     chevron.isHidden = editor != nil
     setChevron(open: open, animated: turns)
@@ -2136,6 +2138,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     title.isHidden = true
     chevron.isHidden = true
     updateClose()
+    updateCount()
     addSubview(doneButton)
     needsLayout = true
     layoutSubtreeIfNeeded()
@@ -2148,10 +2151,11 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   /// The Done button's frame in window coordinates (top-left origin is the caller's job), nil when not renaming.
   var doneButtonFrame: NSRect? { editor == nil ? nil : doneButton.convert(doneButton.bounds, to: nil) }
 
-  /// For tests: "close,dx,dy" while renaming: whether the close button shows, and the field's offset from the label.
+  /// For tests: "close,dx,dy" while renaming: whether the close button or a folder's count shows, and the field's
+  /// offset from the label.
   var renameLook: String? {
     guard let editor else { return nil }
-    return String(format: "%d,%.1f,%.1f", closeButton.isHidden ? 0 : 1, editor.frame.minX - title.frame.minX,
+    return String(format: "%d,%.1f,%.1f", closeButton.isHidden && countLabel.isHidden ? 0 : 1, editor.frame.minX - title.frame.minX,
                   editor.frame.minY - title.frame.minY)
   }
 
@@ -2171,6 +2175,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     title.isHidden = false
     chevron.isHidden = !isFolderRow
     updateClose()
+    updateCount()
     needsLayout = true
     let done = onRenamed
     onRenamed = nil
@@ -2195,6 +2200,11 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
 
   private func updateClose() {
     closeButton.isHidden = isNewTab || !closable || !(hovered || selected) || editor != nil
+  }
+
+  /// A closed folder's tab count, hidden under the rename field's Done button (it showed through).
+  private func updateCount() {
+    countLabel.isHidden = !isFolderRow || !showsCount || editor != nil
   }
 
   override func layout() {
