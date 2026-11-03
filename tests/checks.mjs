@@ -427,6 +427,8 @@ const checks = {
     const { sessionId } = await session("/a");
     await clickElement(sessionId, "#plain", 4);
     await until("background tab", () => state().tabs.length === before + 1);
+    // A note says where it went.
+    await until("background note", async () => { await command("state"); return state().noteText === "Opened in Background Tab"; }, 3000);
     await sleep(300);
     assert(state().active === active, "⌘-click changed the active tab");
     assert(oneVisibleActive(), "a background tab became visible");

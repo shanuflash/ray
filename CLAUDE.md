@@ -261,7 +261,8 @@ publicly or create accounts.
   `lasts` `.auto` (2.4–6 s by length, 6 s with a button, 1.4 s for a figure), `.seconds`, `.held`; hovering holds.
   `asks`: buttons ignore clicks for 0.5 s, the last one is the primary (profile colour). Look: Settings › Appearance ›
   Panels and notes (`surfaceStyle`, `SurfaceBackdrop`).
-  Spots in use: ⇧⌘C's "Copied Current URL" (3 s, Share) and the zoom level (never when Ray applies the default zoom)
+  Spots in use: ⇧⌘C's "Copied Current URL" (3 s, Share), "Opened in Background Tab" (a link the page opened
+  behind it, key `backgroundTab`) and the zoom level (never when Ray applies the default zoom)
   top right, below the find bar while it's open; downloads bottom left (progress, then "Downloaded", Show); Cast
   errors bottom; Cleared Site Data and JumpCloud (key `jumpcloud`, each replacing the last) top. State log `notes`
   (`spots` with text, frame, target size, style, truncated; `steps` entered/reshaped/rolled/madeWay/left;

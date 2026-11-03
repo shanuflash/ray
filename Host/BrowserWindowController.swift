@@ -2094,6 +2094,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     insertToday(entry, after: opener.flatMap(state.entry(for:)))
     if disposition == "background_tab" {
       changed("insert")
+      // A link the page opened behind it (⌘-click, a middle click) says so, as Crest does; another one updates the note.
+      if opener != nil {
+        notes.show(Note("Opened in Background Tab", icon: .symbol("plus.square.on.square"), key: "backgroundTab"))
+      }
     } else {
       select(entry)
     }
