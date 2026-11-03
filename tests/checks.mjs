@@ -1213,6 +1213,8 @@ const checks = {
     await command("state");
     assert(state().sidebarFrames.renaming === "", `a double click started renaming ${state().sidebarFrames.renaming}`);
     assert(!("renameDone" in state().sidebarFrames), "a Done button showed without a rename");
+    // Rows round their corners as Arc's do.
+    assert(state().sidebarFrames.rowRadius === "10", `row corners ${state().sidebarFrames.rowRadius}`);
     // A closed folder's tab count hides while renaming (it showed through Done).
     await command(`rowaction togglefolder ${folder}`);
     await until("closed for rename", async () => { await command("state"); return folderRow().open === false; });

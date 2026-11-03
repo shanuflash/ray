@@ -1094,6 +1094,7 @@ final class SidebarView: NSView {
     frames["collapsing"] = zip(pinnedRows, pinned).filter { $0.0.collapsing }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["folding"] = foldLink == nil ? "0" : "1"
     frames["toggleShown"] = toggleButton.isHidden ? "0" : "1"
+    frames["rowRadius"] = String(format: "%.0f", SidebarRowView.fillRadius)
     frames["fadedIcons"] = shownViews.filter { view, _ in
       (view as? SidebarRowView)?.iconFaded ?? (view as? FavoriteTileView)?.iconFaded ?? false
     }.map { $0.1.id.uuidString }.joined(separator: ",")
@@ -1869,11 +1870,13 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   private var closable = false
   private let fill = CALayer()
   static let fillInset: CGFloat = 3
+  /// Arc's row corners (Ardia's `radius.card`).
+  static let fillRadius: CGFloat = 10
 
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    fill.cornerRadius = 8
+    fill.cornerRadius = Self.fillRadius
     fill.cornerCurve = .continuous
     layer?.addSublayer(fill)
     icon.imageScaling = .scaleProportionallyUpOrDown
@@ -1934,7 +1937,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     fill.borderWidth = dropTarget ? 1 : 0
     doneButton.layer?.backgroundColor = SidebarColors.fill.cgColor
     fill.borderColor = ProfileColor.accent.withAlphaComponent(0.65).cgColor
-    Lift.shadow(fill, lifted, radius: 8)
+    Lift.shadow(fill, lifted, radius: Self.fillRadius)
     CATransaction.commit()
   }
 
@@ -2320,7 +2323,7 @@ final class DropHintView: NSView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     let rect = bounds.insetBy(dx: 0.5, dy: inset + 0.5)
-    let radius: CGFloat = inset == 0 ? 10 : 8
+    let radius: CGFloat = inset == 0 ? 10 : SidebarRowView.fillRadius
     outline.frame = bounds
     outline.path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
     CATransaction.commit()
