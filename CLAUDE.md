@@ -62,7 +62,9 @@ publicly or create accounts.
   (a `Panels` panel): quick actions, extension tiles, the site's permissions (`ac_site_settings_*`, keyed by the
   tab's `committedOrigin`), the connection state and a "…" page (Site Settings, Reset Permissions, Clear Site Data,
   Developer Tools; `PanelKit` rows, back to the first page) in the same panel.
-- `ConnectionLook` (in `AddressInput.swift`): the security icon for both address fields and the panel's footer.
+- `ConnectionLook` (in `AddressInput.swift`): the security icon for both address fields and the panel's footer. Read a
+  tab's level with `ConnectionLook.level(tab.securityInfo)`, never `securityInfo["level"]`: the engine calls a pending
+  https page (no certificate yet) a certificate error, which flashed the broken lock on every new tab (MISSING #35).
 - `ProfileColor`: the profile's colour, which every accent in Ray's UI uses (loading wash, progress, drop targets,
   selection, "on" states, Settings' switches). Default: Dia's lavender; Settings › Theme sets it (`apply(hex:)`,
   posts `didChange`, and each window redraws its views and re-tints the wash, page line and downloads ring).
@@ -228,7 +230,7 @@ publicly or create accounts.
   ⇧-click picks the shown tabs from the anchor (the last ⌘-click, else the active tab), ⌘⇧ adds a range; neither
   switches tabs, a plain click ends it (on a selected tab, only at the release, so the selection can be dragged).
   Picked rows take the active highlight. Right-click one: Copy N Links | New Folder with N Tabs, Duplicate N Tabs,
-  Move to ▸ | Close N Tabs (`sidebar(_:perform:onAll:)`); ⇧⌘C copies every link, one per line
+  Move to ▸ | Close N Tabs (`sidebar(_:perform:onAll:)`); ⌘W closes them all (`// MARK: Closing`); ⇧⌘C copies every link, one per line
   (`copyLinks`); dragging one moves them all, the rest right after the held one (`sidebar(_:move:to:)` with a list).
   Never saved. Test commands `rowclick <id> cmd|shift|cmdshift|plain`, `selaction newfolder|pin|unpin|close|
   copylinks|duplicate|topinned|totoday|infolder <id>`; state log `sidebar.selection`; check `multi-select`.

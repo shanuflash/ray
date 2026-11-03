@@ -155,6 +155,10 @@ enum FolderLook {
 /// Not flipped: the layers are y-up, and the flap hinges at its bottom edge. Clicks go to the row under it.
 final class FolderIconView: NSView {
   static let size = NSSize(width: 20, height: 18)
+  /// The body below its tab (y 0…15.2): what the eye centres. The icon centres this on its frame, to the half point,
+  /// and the tab rises above it, as Finder's folders sit; centring the whole art read 1.5 pt low.
+  static let bodyHeight: CGFloat = 15.2
+  private static let opticalLift = ((size.height - bodyHeight) / 2 * 2).rounded() / 2
   /// Springs added since launch, for checks (recorded app-side, not polled).
   static var springsStarted = 0
 
@@ -278,7 +282,7 @@ final class FolderIconView: NSView {
 
   override func layout() {
     super.layout()
-    quietly { root.position = CGPoint(x: bounds.midX.rounded(), y: bounds.midY.rounded()) }
+    quietly { root.position = CGPoint(x: bounds.midX.rounded(), y: bounds.midY.rounded() + Self.opticalLift) }
   }
 
   // MARK: Look
@@ -458,5 +462,10 @@ final class FolderIconView: NSView {
       "dropTarget": isDropTarget, "pulsing": root.animation(forKey: "pulse") != nil,
       "glyphShown": !symbol.isHidden || !emoji.isHidden,
     ]
+  }
+
+  /// For tests: the body's middle (tab left out) in this view's coordinates.
+  var bodyCenter: CGPoint {
+    CGPoint(x: bounds.midX, y: root.position.y - Self.size.height / 2 + Self.bodyHeight / 2)
   }
 }

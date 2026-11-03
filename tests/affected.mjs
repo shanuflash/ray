@@ -120,6 +120,8 @@ export const areas = {
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Site controls": ["panels", "site-controls", "extensions", "copy-url", "find-in-page", "settings-privacy"],
   "Host/BrowserWindowController.swift#Entries": "all",
+  "Host/BrowserWindowController.swift#Closing": ["multi-select", "close-last-window", "reopen-closed-tab",
+    "settings-undo-reopens", "address-fragment", "page-commands", "bar-actions"],
   // What a row's menu items, close buttons and the `rowaction` test command do (pin, move, folders, close…).
   "Host/BrowserWindowController.swift#Row actions": [...drag, ...folders, "row-menus", "favorites", "pin-unload-restore",
     "tab-rename", "reopen-closed-tab", "tile-hover", "peek-zones", "clear", "copy-url", "bar-actions", "bar-ranking",
@@ -132,14 +134,14 @@ export const areas = {
   "Host/BrowserWindowController.swift#Tab names": ["tab-rename", "folder-rename"],
   // The rows' menu items: Duplicate, Share Folder…, Edit Pinned Page.
   "Host/BrowserWindowController.swift#Row menus": ["row-menus", "folders", "multi-select"],
-  "Host/BrowserWindowController.swift#Page toolbar": ["page-toolbar", "address-fragment", "page-loading", "load-sweep-once", "site-controls",
+  "Host/BrowserWindowController.swift#Page toolbar": ["pending-security", "page-toolbar", "address-fragment", "page-loading", "load-sweep-once", "site-controls",
     "sidebar-toggle", "settings-page-address-bar"],
   "Host/BrowserWindowController.swift#Sidebar visibility": [...sidebarMotion, "page-toolbar", "downloads"],
   "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Pages": pageSurface,
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",
   "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "private-window", "close-last-window", "warn-before-closing-window"],
-  "Host/BrowserWindowController.swift#RayCoreTabDelegate": [...pages, ...permissions, "page-toolbar", "page-loading",
+  "Host/BrowserWindowController.swift#RayCoreTabDelegate": [...pages, ...permissions, "pending-security", "page-toolbar", "page-loading",
     "load-sweep-once", "site-controls", "find-in-page", "settings-zoom", "settings-routes", "settings-trimmed",
     "address-fragment", "jumpcloud-relay"],
   "Host/BrowserWindowController.swift#Settings": [...settings, "page-toolbar", "page-loading"],
@@ -164,7 +166,7 @@ export const areas = {
   "Host/SidebarView.swift#Drag and drop": [...drag, "folder-drag-in", "folder-drag-folder", "folder-rename", "tab-rename",
     "settings-reorder-haptics"],
 
-  "Host/AddressInput.swift": [...commandBar, "page-toolbar", "site-controls", "settings-routes", "settings-trimmed",
+  "Host/AddressInput.swift": ["pending-security", ...commandBar, "page-toolbar", "site-controls", "settings-routes", "settings-trimmed",
     "address-fragment", "settings-privacy", "settings-extensions"],
   // How the page address bar splits an address (lead, host, rest), and which URL a view-source: one is about.
   "Host/AddressInput.swift#Address display": ["address-fragment", "page-toolbar", "settings-minimal-url", "site-controls",
@@ -229,7 +231,7 @@ export const areas = {
   "Host/PageContainerView.swift": pageSurface,
   // When a page that was just shown has drawn (the tab switch holds the page left until then).
   "Host/PageFrameWatch.swift": pageSurface,
-  "Host/PageToolbar.swift": ["page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle",
+  "Host/PageToolbar.swift": ["pending-security", "page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle",
     "top-strip-click", "settings-sidebar-button"],
   // Which loads the address field sweeps for.
   "Host/LoadSweep.swift": ["page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar"],
