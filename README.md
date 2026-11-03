@@ -5,6 +5,29 @@ framework; no Electron, no WebKit, no React Native.
 
 Early and personal. Expect rough edges.
 
+## Install
+
+Apple Silicon, macOS 14 or later.
+
+- **DMG:** download `Ray-<version>.dmg` from the [latest release](https://github.com/shanuflash/ray/releases/latest),
+  open it and drag Ray to Applications.
+- **Homebrew:**
+
+  ```sh
+  brew tap shanuflash/ray https://github.com/shanuflash/ray
+  brew install --cask shanuflash/ray/ray
+  ```
+
+  (The full name matters: plain `ray` is a different app in Homebrew.)
+
+Ray isn't notarized by Apple (no paid developer account), so macOS blocks the first open:
+
+- **macOS 14:** right-click Ray in Applications, choose Open, then Open.
+- **macOS 15 and later:** open Ray once and close the warning, then System Settings › Privacy & Security ›
+  Open Anyway.
+
+After that Ray updates itself.
+
 ## What works
 
 - Arc-style sidebar: pinned tiles, pinned tabs (closing one unloads it and resets it to its pinned URL, `/` when you've
@@ -78,7 +101,8 @@ with real accounts:
   profile), drives it over a private pipe (no network port), and copies only jumpcloud.com cookies into Ray. Never
   from a private window.
 - **No Safe Browsing**: Helium compiles it out.
-- **Self-signed** ("Ray Code Signing"), no hardened runtime, not notarized.
+- **Signed with a free Apple Development certificate**, no hardened runtime, not notarized: macOS asks you to
+  allow the first open (Install, above). Updates are trusted by Sparkle's EdDSA signature, not by Apple.
 
 ## License
 
