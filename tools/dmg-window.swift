@@ -11,126 +11,93 @@ import AppKit
 // MARK: Layout
 
 let windowSize = CGSize(width: 640, height: 420)
+/// Finder's title bar (macOS 26+), which its window bounds include.
+let titleBarHeight: CGFloat = 32
 let iconSize: CGFloat = 128
 /// Icon centres, from the window's top left (what Finder's Iloc holds).
-let appSpot = CGPoint(x: 170, y: 150)
-let applicationsSpot = CGPoint(x: 470, y: 150)
+let appSpot = CGPoint(x: 160, y: 102)
+let applicationsSpot = CGPoint(x: 480, y: 102)
 /// Where Finder mounts the image for the people who open it.
 func mountPoint(_ volumeName: String) -> String { "/Volumes/" + volumeName }
 
 // MARK: Background
 
+/// "Here comes the sun": warm paper, the icon's sun rising from the bottom edge as 70s bands with its five rays, a
+/// hand-drawn loop from Ray to Applications and the first-open note. Finder picks its icon names' colour from the
+/// picture (black on this one, in dark mode too). Keep the bottom 50 pt decorative: Finder's status and path bars
+/// cover it for people who show them.
 func drawBackground(scale: CGFloat) -> NSBitmapImageRep {
-  let rep = NSBitmapImageRep(
-    bitmapDataPlanes: nil, pixelsWide: Int(windowSize.width * scale), pixelsHigh: Int(windowSize.height * scale),
-    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .calibratedRGB,
-    bytesPerRow: 0, bitsPerPixel: 0)!
-  rep.size = windowSize
+  let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+  let cg = CGContext(data: nil, width: Int(windowSize.width * scale), height: Int(windowSize.height * scale),
+                     bitsPerComponent: 8, bytesPerRow: 0, space: srgb,
+                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+  // Points, top-left origin, as Finder's icon spots.
+  cg.scaleBy(x: scale, y: scale)
+  cg.translateBy(x: 0, y: windowSize.height)
+  cg.scaleBy(x: 1, y: -1)
   NSGraphicsContext.saveGraphicsState()
-  let context = NSGraphicsContext(bitmapImageRep: rep)!
-  NSGraphicsContext.current = context
-  // Top-left origin, as Finder's icon spots.
-  context.cgContext.translateBy(x: 0, y: windowSize.height)
-  context.cgContext.scaleBy(x: 1, y: -1)
-  NSGraphicsContext.current = NSGraphicsContext(cgContext: context.cgContext, flipped: true)
-
-  let cg = context.cgContext
-  let space = CGColorSpace(name: CGColorSpace.sRGB)!
-  func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
+  NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: true)
+  func rgb(_ hex: UInt32) -> CGColor {
     CGColor(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255,
-            blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
-  }
-  func gradient(_ stops: [(CGFloat, CGColor)]) -> CGGradient {
-    CGGradient(colorsSpace: space, colors: stops.map(\.1) as CFArray, locations: stops.map(\.0))!
+            blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
   }
 
-  // Dia's lavender, top to bottom. Finder draws the icons' names in black (light mode) or white (dark mode) straight
-  // on the picture, so the band under the icons stays at a luminance of about 0.18, where both read at 4.5:1.
-  cg.drawLinearGradient(gradient([(0, rgb(0x9A6CF2)), (0.38, rgb(0x8160EE)), (0.6, rgb(0x7558E6)),
-                                  (1, rgb(0x3E2A9E))]),
-                        start: .zero, end: CGPoint(x: 0, y: windowSize.height), options: [])
-  // Light from above: a warm glow behind Ray, a cool one behind Applications, faded out before the names.
-  for (centre, color, radius) in [(CGPoint(x: appSpot.x - 20, y: 40), rgb(0xFF8FD8, 0.45), 230.0),
-                                  (CGPoint(x: applicationsSpot.x + 40, y: 20), rgb(0x8FE3FF, 0.35), 240.0)] {
-    cg.drawRadialGradient(gradient([(0, color), (1, color.copy(alpha: 0)!)]), startCenter: centre, startRadius: 0,
-                          endCenter: centre, endRadius: radius, options: [])
-  }
+  cg.setFillColor(rgb(0xFFF5EA))
+  cg.fill(CGRect(origin: .zero, size: windowSize))
 
-  // The move: a swoosh from Ray over to Applications that fades in from its start, with a glow and a few speed
-  // marks behind it.
-  let start = CGPoint(x: appSpot.x + iconSize / 2 + 26, y: appSpot.y + 8)
-  let end = CGPoint(x: applicationsSpot.x - iconSize / 2 - 22, y: applicationsSpot.y + 8)
-  let lift = CGPoint(x: (start.x + end.x) / 2, y: appSpot.y - 46)
-  let swoosh = CGMutablePath()
-  swoosh.move(to: start)
-  swoosh.addQuadCurve(to: end, control: lift)
-  // The curve's direction at its end, for the head.
-  let angle = atan2(end.y - lift.y, end.x - lift.x)
-  func head(_ length: CGFloat, spread: CGFloat) -> CGPath {
-    let p = CGMutablePath()
-    p.move(to: CGPoint(x: end.x - length * cos(angle - spread), y: end.y - length * sin(angle - spread)))
-    p.addLine(to: end)
-    p.addLine(to: CGPoint(x: end.x - length * cos(angle + spread), y: end.y - length * sin(angle + spread)))
-    return p
+  // The sun: the icon's orange to pink (Branding/Ray.icon), its pink at the core.
+  let sun = CGPoint(x: 320, y: 460)
+  for (radius, color) in [(140.0, 0xFFE1BC), (116, 0xFFB45C), (92, 0xFF8A45), (68, 0xFF6A5C), (44, 0xFF4F7B)] as [(CGFloat, UInt32)] {
+    cg.setFillColor(rgb(color))
+    cg.fillEllipse(in: CGRect(x: sun.x - radius, y: sun.y - radius, width: 2 * radius, height: 2 * radius))
   }
-  let stroke = CGMutablePath()
-  stroke.addPath(swoosh.copy(strokingWithWidth: 5, lineCap: .round, lineJoin: .round, miterLimit: 10))
-  stroke.addPath(head(17, spread: 0.6).copy(strokingWithWidth: 5, lineCap: .round, lineJoin: .round, miterLimit: 10))
-  cg.saveGState()
-  cg.setShadow(offset: .zero, blur: 18, color: rgb(0xFFFFFF, 0.9))
-  cg.addPath(stroke)
-  cg.setFillColor(rgb(0xFFFFFF, 0.35))
-  cg.fillPath()
-  cg.restoreGState()
-  cg.saveGState()
-  cg.addPath(stroke)
-  cg.clip()
-  cg.drawLinearGradient(gradient([(0, rgb(0xFFFFFF, 0)), (0.45, rgb(0xFFFFFF, 0.75)), (1, rgb(0xFFFFFF))]),
-                        start: CGPoint(x: start.x - 4, y: 0), end: CGPoint(x: end.x, y: 0), options: [])
-  cg.restoreGState()
-  for (i, dy) in [-11.0, 0, 11].enumerated() {
-    let y = start.y + dy, length: CGFloat = i == 1 ? 22 : 13
-    let x = start.x - 9 - length
-    cg.saveGState()
-    cg.addPath(CGPath(roundedRect: CGRect(x: x, y: y - 1.5, width: length, height: 3), cornerWidth: 1.5,
-                      cornerHeight: 1.5, transform: nil))
-    cg.clip()
-    cg.drawLinearGradient(gradient([(0, rgb(0xFFFFFF, 0)), (1, rgb(0xFFFFFF, 0.55))]),
-                          start: CGPoint(x: x, y: 0), end: CGPoint(x: x + length, y: 0), options: [])
-    cg.restoreGState()
+  // The glyph's rays, at its angles.
+  for degrees in [90.0, 54, 126, 18, 162] as [CGFloat] {
+    let t = degrees * .pi / 180
+    cg.move(to: CGPoint(x: sun.x + 154 * cos(t), y: sun.y - 154 * sin(t)))
+    cg.addLine(to: CGPoint(x: sun.x + 176 * cos(t), y: sun.y - 176 * sin(t)))
   }
-
-  let centred = NSMutableParagraphStyle()
-  centred.alignment = .center
-  let shadow = NSShadow()
-  shadow.shadowColor = NSColor(white: 0, alpha: 0.25)
-  shadow.shadowOffset = NSSize(width: 0, height: -1)
-  shadow.shadowBlurRadius = 6
-  func line(_ text: String, top: CGFloat, size: CGFloat, weight: NSFont.Weight, alpha: CGFloat, kern: CGFloat = 0) {
-    NSAttributedString(string: text, attributes: [
-      .font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: NSColor(white: 1, alpha: alpha),
-      .paragraphStyle: centred, .shadow: shadow, .kern: kern,
-    ]).draw(in: CGRect(x: 24, y: top, width: windowSize.width - 48, height: size * 1.6))
-  }
-  line("Drag Ray to Applications", top: 254, size: 20, weight: .bold, alpha: 1, kern: -0.2)
-
-  // The first open, on a frosted card.
-  let card = CGRect(x: 28, y: 298, width: windowSize.width - 56, height: 92)
-  let cardPath = CGPath(roundedRect: card, cornerWidth: 16, cornerHeight: 16, transform: nil)
-  cg.addPath(cardPath)
-  cg.setFillColor(rgb(0xFFFFFF, 0.12))
-  cg.fillPath()
-  cg.addPath(cardPath)
-  cg.setStrokeColor(rgb(0xFFFFFF, 0.28))
-  cg.setLineWidth(1)
+  cg.setStrokeColor(rgb(0xFFB45C))
+  cg.setLineWidth(12)
+  cg.setLineCap(.round)
   cg.strokePath()
-  line("OPENING IT THE FIRST TIME", top: card.minY + 13, size: 10.5, weight: .bold, alpha: 0.7, kern: 1.2)
-  line("macOS 14: right-click Ray in Applications, then Open", top: card.minY + 36, size: 13, weight: .medium,
-       alpha: 0.95)
-  line("macOS 15+: open Ray once, then System Settings › Privacy & Security › Open Anyway",
-       top: card.minY + 58, size: 13, weight: .medium, alpha: 0.95)
+
+  // The loop, in the sunrise from Ray's side to Applications', level with the icons.
+  let loop = CGMutablePath()
+  loop.move(to: CGPoint(x: 236, y: 116))
+  loop.addCurve(to: CGPoint(x: 306, y: 102), control1: CGPoint(x: 262, y: 136), control2: CGPoint(x: 300, y: 130))
+  loop.addCurve(to: CGPoint(x: 279, y: 90), control1: CGPoint(x: 311, y: 78), control2: CGPoint(x: 284, y: 70))
+  loop.addCurve(to: CGPoint(x: 352, y: 118), control1: CGPoint(x: 273, y: 114), control2: CGPoint(x: 318, y: 130))
+  loop.addCurve(to: CGPoint(x: 398, y: 102), control1: CGPoint(x: 372, y: 111), control2: CGPoint(x: 386, y: 106))
+  cg.saveGState()
+  cg.addPath(loop.copy(strokingWithWidth: 4.5, lineCap: .round, lineJoin: .round, miterLimit: 10))
+  cg.clip()
+  let sunrise = CGGradient(colorsSpace: srgb, colors: [rgb(0xFF9A3C), rgb(0xFF4F7B)] as CFArray, locations: [0, 1])!
+  cg.drawLinearGradient(sunrise, start: CGPoint(x: 236, y: 0), end: CGPoint(x: 398, y: 0), options: [])
+  cg.restoreGState()
+  cg.move(to: CGPoint(x: 386, y: 93))
+  cg.addLine(to: CGPoint(x: 399, y: 102))
+  cg.addLine(to: CGPoint(x: 387, y: 113))
+  cg.setStrokeColor(rgb(0xFF4F7B))
+  cg.setLineWidth(4.5)
+  cg.setLineJoin(.round)
+  cg.strokePath()
+
+  // The note, in SF Rounded, centred on baselines.
+  func line(_ text: String, baseline: CGFloat, size: CGFloat, weight: NSFont.Weight, color: UInt32) {
+    let plain = NSFont.systemFont(ofSize: size, weight: weight)
+    let font = plain.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? plain
+    let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor(cgColor: rgb(color))!])
+    string.draw(at: CGPoint(x: (windowSize.width - string.size().width) / 2, y: baseline - font.ascender))
+  }
+  line("First time opening it?", baseline: 222, size: 13, weight: .bold, color: 0x3B2A22)
+  line("macOS 14: right-click Ray › Open", baseline: 240, size: 12, weight: .medium, color: 0x7A6156)
+  line("macOS 15+: open it once, then Settings › Privacy & Security › Open Anyway", baseline: 256, size: 12,
+       weight: .medium, color: 0x7A6156)
 
   NSGraphicsContext.restoreGraphicsState()
+  let rep = NSBitmapImageRep(cgImage: cg.makeImage()!)
+  rep.size = windowSize
   return rep
 }
 
@@ -321,7 +288,7 @@ func writeLayout(volume: String, volumeName: String, appName: String) throws {
   let window: [String: Any] = [
     "ContainerShowSidebar": false, "ShowPathbar": false, "ShowSidebar": false, "ShowStatusBar": false,
     "ShowTabView": false, "ShowToolbar": false, "SidebarWidth": 0,
-    "WindowBounds": "{{200, 160}, {\(Int(windowSize.width)), \(Int(windowSize.height))}}",
+    "WindowBounds": "{{200, 160}, {\(Int(windowSize.width)), \(Int(windowSize.height + titleBarHeight))}}",
   ]
   let iconView: [String: Any] = [
     "arrangeBy": "none", "backgroundColorBlue": 1.0, "backgroundColorGreen": 1.0, "backgroundColorRed": 1.0,
@@ -338,6 +305,11 @@ func writeLayout(volume: String, volumeName: String, appName: String) throws {
     Record(name: "Applications", code: "Iloc", value: iconSpot(applicationsSpot)),
   ])
   try store.write(to: URL(fileURLWithPath: volume + "/.DS_Store"))
+  // "Ray", not "Ray.app", for people who show all file extensions.
+  var app = URL(fileURLWithPath: volume + "/" + appName)
+  var hidden = URLResourceValues()
+  hidden.hasHiddenExtension = true
+  try app.setResourceValues(hidden)
 }
 
 // MARK: Main

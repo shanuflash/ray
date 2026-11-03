@@ -421,8 +421,11 @@ publicly or create accounts.
   directly: window size, icon view, icon spots, the background's alias record, which it resolves before writing),
   Ray's .icns as the volume icon. Signed with the app's own certificate (its leaf by SHA-1), then mounted hidden
   (`-nobrowse`, a private mount point) to verify the app (`codesign --verify --deep --strict`), the Team IDs and the
-  window's files. The background is a mid-tone lavender because Finder draws icon names in black or white by
-  appearance, straight on the picture: keep the band under the icons near luminance 0.18 (4.5:1 for both).
+  window's files. The window is "Here comes the sun" (the icon's sun rising as bands, a loop from Ray to
+  Applications, the first-open note); its design lives in that file. Finder picks icon names' colour from the
+  picture (black on a light one, dark mode included; checked on macOS 27). Its window bounds include the 32 pt
+  title bar, its status and path bars (when shown) cover the bottom 50 pt, and "Show all filename extensions"
+  overrides the app's hidden extension. Look at a change in real Finder: `open` a test image, `screencapture -l`.
 - `third_party/ardia/`: read-only reference clone of Ardia at `ardia_tag` (gitignored). Read it for behaviour; don't
   build from it.
 - `third_party/crest/`: read-only reference clone of Crest (gitignored), another native-Mac Chromium browser.
