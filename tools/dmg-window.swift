@@ -305,11 +305,6 @@ func writeLayout(volume: String, volumeName: String, appName: String) throws {
     Record(name: "Applications", code: "Iloc", value: iconSpot(applicationsSpot)),
   ])
   try store.write(to: URL(fileURLWithPath: volume + "/.DS_Store"))
-  // "Ray", not "Ray.app", for people who show all file extensions.
-  var app = URL(fileURLWithPath: volume + "/" + appName)
-  var hidden = URLResourceValues()
-  hidden.hasHiddenExtension = true
-  try app.setResourceValues(hidden)
 }
 
 // MARK: Main

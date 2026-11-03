@@ -424,8 +424,9 @@ publicly or create accounts.
   window's files. The window is "Here comes the sun" (the icon's sun rising as bands, a loop from Ray to
   Applications, the first-open note); its design lives in that file. Finder picks icon names' colour from the
   picture (black on a light one, dark mode included; checked on macOS 27). Its window bounds include the 32 pt
-  title bar, its status and path bars (when shown) cover the bottom 50 pt, and "Show all filename extensions"
-  overrides the app's hidden extension. Look at a change in real Finder: `open` a test image, `screencapture -l`.
+  title bar, and its status and path bars (when shown) cover the bottom 50 pt. Never mark Ray.app's extension hidden:
+  that writes Finder info on the bundle, which `codesign --strict` rejects (Finder hides ".app" by default anyway).
+  Look at a change in real Finder: `open` a test image, `screencapture -l`.
 - `third_party/ardia/`: read-only reference clone of Ardia at `ardia_tag` (gitignored). Read it for behaviour; don't
   build from it.
 - `third_party/crest/`: read-only reference clone of Crest (gitignored), another native-Mac Chromium browser.
