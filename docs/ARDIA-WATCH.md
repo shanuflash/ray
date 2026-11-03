@@ -8,8 +8,8 @@ Last reviewed: v0.2.44-nightly.3 (engine-7ad5405dbe6d), 2026-11-02
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac on
 chromiumdash, checked 2026-11-02: 156.0.8078.80 (.76/.79 before it) and 157.0.8103.26. Ardia moved to
-156.0.8078.79 on Helium 0.20.3 in engine-1982453a46fe (v0.2.43). `docs/CHROMIUM-WATCH.md` doesn't exist yet in this
-checkout, so this file is the only record of the gap for now.
+156.0.8078.79 on Helium 0.20.3 in engine-1982453a46fe (v0.2.43). Chrome's own security releases are tracked in
+`docs/CHROMIUM-WATCH.md`.
 
 ## Ray should
 
@@ -69,6 +69,52 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
 14. **Look:** Ardia went flat, then back to glass, and v0.2.43 ships a Glass / Classic choice (Glass on pinned
     tiles, address field, buttons, Downloads and site controls, tintable). Ray's Panels and notes setting already
     offers Glass / Solid on its surfaces; nothing to take beyond watching what users pick.
+15. **Sidebar on the right** (MISSING, Arc #15): Ardia's main has it, unreleased (below). Its commit lists every
+    place a left edge was assumed; use it as Ray's checklist when this is built.
+
+## Unreleased on main (6cb71745 "Nightly 0.2.44-nightly.4", 2026-11-02)
+
+Read from Ardia's `main` on 2026-11-03, before a release: the commit is there, the tag and release aren't. The daily
+task reviews it again when it ships. No change under `engine/`, so nothing for Ray's engine. Range
+`v0.2.44-nightly.3..6cb71745`: 157 files, mostly the `ardia browse` CLI and Ardia's React app.
+
+**App** (for Ray to copy or answer):
+- **Sidebar on the right** (`4844d5a1`, Ardia #216): `sidebarSide` Left/Right, in the sidebar layout only (tabs on
+  top and Little Ardia ignore it). Mirrored: the card's padding, the dock slide, the hidden sidebar's peek (slides in
+  from the right; the edge watcher watches either edge), the resize handle (left edge, drag inverted), hover cards
+  and popovers beside the sidebar (open leftward), drops onto the sidebar, the command bar from the sidebar's field,
+  the downloads panel, the tour card. Traffic lights stay at the window's top left, as in Arc; with no toolbar the
+  page card leaves a 30 pt strip above it for them. Chosen in onboarding, Settings › Tabs, View › Sidebar on Right
+  and the sidebar's background menu. Ray: item 15. In Ray the pieces to mirror are `layout()`'s dock and peek
+  frames, `pointer(at:appActive:)`'s edge, `Panels` anchors beside the sidebar (downloads, folder icon picker), and
+  the lights, which Ray draws in the sidebar (`WindowLightButton`) and would have to leave behind on the left.
+- **Little Ardia: "Open new-tab links inside Little Ardia"** (`0f82079a`, `0680c90e`, `9da89bc1`; off by default).
+  A `target=_blank` click in Little Ardia normally opens behind, in the main window, which reads as a dead click.
+  The page script notes a trusted, uncancelled primary click on an http(s) link with a new-context target (read
+  after dispatch, so a handler that rewrites `href` or `target` is honoured); Chrome's new foreground tab whose URL
+  matches a note under 2 s old is closed and the link loads in Little Ardia's own tab. ⌘-clicks, forms,
+  `window.open()` and sized popups still go to the main window. Ray: design input for Little Arc (MISSING, Arc #4).
+- **Moved tabs land where a new tab opens** (`221b27c1`, `3461c31f`, `09651f55`, `80f2c113`, `e17ba09b`): a tab
+  moved into a window goes where "New tabs open at" puts a new one, as one block, joining the current tab's group only
+  if every moved tab may. Ray has no move-between-windows yet; follow `insertToday` when it does.
+- Group box's last row rounds with the box (`6f2762d0`); New Tab search box, emoji picker and click-away name fixes
+  filmed. Ardia's React layout only.
+
+**Fixes:**
+- **Expand mid-redirect stranded the tab on about:blank** (`193b45a5`, Ardia #550): a tab moved while loading
+  reported its initial about:blank, and the receiving view loaded it, cancelling the real navigation. Ray has no tab
+  moves yet; when Little Arc or Move to Window lands, never load a handed-over tab's reported URL (and never
+  about:blank) over its live page.
+- **Traffic lights in the peeked sidebar** (`2b92e041`, `954d7ab5`, Ardia #770): AppKit's lights moved below their
+  titlebar container took no clicks or hover. Not Ray's problem: Ray hides the system lights and draws its own.
+
+**Not for Ray:** `ardia browse` (`20e2d458` and three follow-ups), agent-browser 0.35's commands driving the running
+Ardia over CDP through a per-session daemon (0600 socket, peer uid checked, refs that go stale on navigation, a
+password vault in the login Keychain); Ray left the `ardia` CLI out on purpose. uBlock Origin 1.75.0 → 1.75.2 for
+Ardia's built-in blocker (`53884d2a`); Ray has none (open decision).
+
+**Competitive:** Ardia now lets AI agents drive the user's own browser with a tool they already know
+(agent-browser). Ray has no equivalent and left Ardia's CLI out on purpose; the owner may want to revisit that.
 
 ## v0.2.44-nightly.3 (2026-11-02), engine-7ad5405dbe6d
 
