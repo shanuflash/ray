@@ -147,12 +147,14 @@ function launch() {
   child.stdin.on("error", () => {});
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => {
-    stderr += chunk;
     const lines = (partial + chunk).split("\n");
     partial = lines.pop();
     for (const line of lines) {
       const at = line.indexOf(stateMarker);
+      // State lines go to `states` only: kept in `stderr` too, a long run (settings-catalog logs thousands) passed
+      // V8's 512 MB string limit and crashed the runner.
       if (at >= 0) states.push(JSON.parse(line.slice(at + stateMarker.length)));
+      else stderr += line + "\n";
     }
   });
   exited = new Promise((r) => child.on("exit", (code, signal) => r((exitCode = code ?? signal))));
