@@ -1153,7 +1153,10 @@ final class SidebarView: NSView {
   var debugFolderIcons: [String: Any] {
     var icons: [String: Any] = [:]
     for (row, entry) in zip(pinnedRows + todayRows, pinned + today) where entry.isFolder {
-      icons[entry.id.uuidString] = row.folderIcon.debug.merging(["title": row.debugTitle]) { first, _ in first }
+      // How far the icon's body sits from the row's middle, in points (the row is flipped, the icon isn't).
+      let body = row.folderIcon.convert(row.folderIcon.bodyCenter, to: row)
+      let offset = ((body.y - row.bounds.midY) * 100).rounded() / 100
+      icons[entry.id.uuidString] = row.folderIcon.debug.merging(["title": row.debugTitle, "bodyOffset": offset]) { first, _ in first }
     }
     return ["rows": icons, "springs": FolderIconView.springsStarted]
   }
@@ -2364,7 +2367,8 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     let mid = bounds.height / 2
     let iconSize: CGFloat = isNewTab ? 14 : 16
     icon.frame = NSRect(x: 17 - iconSize / 2, y: mid - iconSize / 2, width: iconSize, height: iconSize)
-    folderIcon.frame = NSRect(x: 7, y: (mid - 9).rounded(), width: 20, height: 18)
+    // To the half point: rows are 41 pt, so a whole-point frame put the icon 0.5 pt off their middle.
+    folderIcon.frame = NSRect(x: 7, y: ((mid - 9) * 2).rounded() / 2, width: 20, height: 18)
     residency.placeDot(at: CGPoint(x: 3.5, y: mid))
     slash.frame = NSRect(x: 28, y: mid - 11, width: 10, height: 22)
     let textX: CGFloat = away ? 41 : 35

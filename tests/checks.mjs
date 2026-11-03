@@ -1196,6 +1196,9 @@ const checks = {
     await command(`rowaction newfolder ${a.id}`);
     const folder = await until("folder", () => state().sidebar.pinned.find((e) => e.kind === "folder" && state().sidebar.pinned.find((x) => x.id === a.id)?.parent === e.id));
     assert(folder.title === "New Folder", `folder named ${folder.title}`);
+    // The icon's body (its tab left out) sits on the row's middle, as the eye reads it.
+    const bodyOffset = state().sidebar.folderIcons.rows[folder.id]?.bodyOffset;
+    assert(Math.abs(bodyOffset) <= 0.25, `folder icon body ${bodyOffset} pt off the row's middle`);
     const order = state().sidebar.pinned.map((e) => e.id);
     assert(order.indexOf(a.id) === order.indexOf(folder.id) + 1, "the tab isn't right after its folder");
     await until("renaming the new folder", async () => { await command("state"); return state().sidebarFrames.renaming === folder.id; }, 3000);
