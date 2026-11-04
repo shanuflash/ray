@@ -305,6 +305,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     (Chrome: standard), which also blocks link prefetch and Chrome's own preconnects. Fix: an engine call
     (`ac_preconnect(url)`, `engine-ray` fixup) that the bar calls for its top row's host as you type, and network
     prediction on by default (an owner decision: Helium turned it off for privacy).
+37. **Full-screen Ray once hid some menu bar items** (2026-11-04): with Ray full screen, Stats' RAM and CPU, Maccy and
+    one more status item were gone while Ray was in front (Chrome and Arc full screen showed them), though the menu bar
+    had room. Leaving and re-entering full screen fixed it. Not reproduced. Lead: a window restored into full screen at
+    launch (a relaunch or update) before AppKit's launch finished; check Ray's window restoration and full-screen entry
+    against Chrome's next time it happens.
 
 ## Done
 
