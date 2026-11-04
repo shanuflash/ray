@@ -4,7 +4,7 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.44-nightly.3 (engine-7ad5405dbe6d), 2026-11-02
+Last reviewed: v0.2.44-nightly.6 (engine-2da3ca19a224), 2026-11-04
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac on
 chromiumdash, checked 2026-11-02: 156.0.8078.80 (.76/.79 before it) and 157.0.8103.26. Ardia moved to
@@ -22,7 +22,7 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    `chromium-extension-omaha-attributes`: ungoogled's safebrowsing fix deletes a variable the patch now restores).
    Taking Ardia's engine (item 2) brings all of it. Xcode 27.2 needs the Metal Toolchain downloaded once
    (ANGLE's Metal shaders; Ardia's `docs/engine-build.md`).
-2. **Take engine-7ad5405dbe6d** (includes 1982453a, 4d8c6403 and 2f172eb5) through `sync-engine.sh`, then
+2. **Take engine-2da3ca19a224** (includes b2c15dac, 7ad5405d, 1982453a, 4d8c6403 and 2f172eb5) through `sync-engine.sh`, then
    re-check `engine-ray/`'s fixups against the reorganised `ac_*.cc` files (4d8c64 rewrites every call's prelude
    and drops 15 export headers; see its section), move `Downloads` to `ac_downloads_command`, and diff `ArdiaCore.h`
    against `RayCore.h`: new delegate methods `engine:extensionInstallFailed:tab:` (or a failed .crx drop says
@@ -30,7 +30,9 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    answers it, so Ray can leave it out at first). Brings: Chromium .79, install by dropping a .crx, bookmarks export
    (`ac_bookmarks_export_html`), the "Allow User Scripts" switch, Memory Saver calls, Picture in Picture reopening
    where it was left, Obsidian Web Clipper's app links, Dia's page menu order, engine-side private-window gating and
-   secret zeroing, and a host-shown page menu that runs the picked item before tearing the menu down (7ad5405).
+   secret zeroing, and a host-shown page menu that runs the picked item before tearing the menu down (7ad5405);
+   from 2da3ca19: a finished download's `sha256` in `downloads.changed`, `committedHTTPStatus` /
+   `committedDocumentCount` on a tab and a `committed` flag per `navigationEntries` row (item 16).
 3. **Decide Memory Saver.** Ray has no tab sleeping of its own: Ardia's 20-minute sleep lived in Ardia's app, which
    Ray never copied. But Ray's engine still skips Helium's `memory-saving-by-default.patch` with the reason "would
    fight Ray's own tab sleeping", so Memory Saver is off unless the user turns it on in chrome://settings/performance
@@ -69,13 +71,66 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
 14. **Look:** Ardia went flat, then back to glass, and v0.2.43 ships a Glass / Classic choice (Glass on pinned
     tiles, address field, buttons, Downloads and site controls, tintable). Ray's Panels and notes setting already
     offers Glass / Solid on its surfaces; nothing to take beyond watching what users pick.
-15. **Sidebar on the right** (MISSING, Arc #15): Ardia's main has it, unreleased (below). Its commit lists every
-    place a left edge was assumed; use it as Ray's checklist when this is built.
+15. **Sidebar on the right** (MISSING, Arc #15): shipped in Ardia 0.2.44-nightly.4–6. Its commits list every
+    place a left edge was assumed (`4844d5a1`), then the traffic lights riding the sidebar (`1544dabc`; Ray draws
+    its own in the sidebar, so they come along) and a right-hand peek that stays open under the pointer
+    (`d47b7dee`). Use them as Ray's checklist when this is built.
+16. **Back and Forward history lists** (new, MISSING Chrome gap): Ray's back/forward buttons have no list at all
+    (no hold or right-click menu, no two-finger swipe-and-hold). Ardia 0.2.44-nightly.6 copies Dia's swipe-and-hold
+    list (opens upward from the swipe, nearest page at the bottom under the fingers, 38 pt rows, the list slides per
+    step; `a97d6db7`). Ray's engine already exports `navigationEntries`; start with Chrome's hold-Back menu as a
+    `Panels` panel, then the swipe.
 
-## Unreleased on main (6cb71745 "Nightly 0.2.44-nightly.4", 2026-11-02)
+## v0.2.44-nightly.6 (2026-11-04), engine-2da3ca19a224
 
-Read from Ardia's `main` on 2026-11-03, before a release: the commit is there, the tag and release aren't. The daily
-task reviews it again when it ships. No change under `engine/`, so nothing for Ray's engine. Range
+**Engine** (tree `2da3ca19`, from `b2c15dac`; no Chromium bump, still 156.0.8078.79 on Helium 0.20.3; no Chrome
+security fixes):
+- `chromium-devtools-control-token.patch` + `ac_cli_token_policy_*.cc` (`fd6880c1`): with an `ardia browse` session
+  on, any service worker starting crashed the browser (a `GetForId` temporary ref freed a half-built agent host).
+  Not Ray's: Ray drops that patch (`engine-ray/fixups/0002-drop-devtools-control-token.patch`) and its files.
+
+**App:** profiles sharing browsing data share their Top Apps, one live page across profiles (`9237009b`, PR #136;
+Arc's spaces sharing Favorites); a pull-request live folder can hide repos (`fb5b3846`); swipe back and hold opens
+Dia's upward history list (`a97d6db7`; Ray: item 16); Top Apps tiles share one glass pass, so pages scroll smoothly
+with the sidebar open (`ec32cab4`: each separate `NSGlassEffectView` costs WindowServer a pass every composited
+frame while a page scrolls; grouped in an `NSGlassEffectContainerView`); the right-hand peek stays open
+(`d47b7dee`); PiP's Back to Tab from a split view stays on the video (`497d66d5`).
+
+**Fixes Ray shares or should check:** the glass cost. Ray's Glass surfaces are `NSVisualEffectView`s (not
+`NSGlassEffectView`) and only over the page while a note or panel shows; the sidebar has none per row. Nothing to
+take, but never give sidebar rows or tiles their own glass view each: group them.
+
+**Competitive:** shared Top Apps is the Spaces-sharing-Favorites behaviour Ray will need once Spaces and Profiles
+land (MISSING Arc #1, #2). Ray's favorites are one set today, so it already behaves this way with one profile.
+
+## v0.2.44-nightly.5 (2026-11-03), engine-b2c15dac6771
+
+**Engine** (tree `b2c15dac`, from `7ad5405d`; no Chromium bump, no security fixes):
+- `ac_downloads.cc` (`4d9a3713`): a completed download carries the engine's own SHA-256 (`DownloadItem::GetHash`)
+  as `sha256`. Ardia's download mover checks it after claiming the file into a 0700 staging folder, so a same-user
+  process can't swap the file before a hook moves it. Ray has no mover; comes with item 2.
+- `TabBridge` counts main-frame document commits and keeps the last HTTP status (`committedHTTPStatus`,
+  `committedDocumentCount`), and `navigationEntries` marks the committed entry (`8ed4ec56`, for Ardia's hooks).
+  Ray: the `committed` flag helps item 16's list.
+
+**App:** hooks (`~/.config/ardia/hooks.json`: rewrite or block links, route links from an app to a profile, file
+downloads, deny camera/mic, run commands on launch, idle or wake; anything reaching outside the page waits for
+approval in Settings › Advanced › Automation); address bar rows from config (fixed lists, URL templates, suggest
+endpoints, behind a keyword or mixed in; endpoints off until approved); Picture in Picture in WebKit tabs; with the
+sidebar on the right, the window buttons ride it and it sits 9 pt from the window edge (`1544dabc`); uBlock Origin
+1.75.4.
+
+**Not for Ray:** hooks and config-file address rows sit on the `ardia` config file and CLI, left out on purpose
+(MISSING). Their link rules are Air Traffic Control by another name (MISSING Arc #12); Ray's version, if built, is a
+Settings UI, not a dotfile. WebKit tabs: Ray has no WebKit (decided).
+
+**Competitive:** Ardia is turning into a scriptable browser (hooks, CLI, agent control). Ray answers with Arc's feel
+and a native Settings window; its Site searches (keyword + Tab) already cover the keyword half of config rows.
+
+## v0.2.44-nightly.4 (2026-11-03)
+
+Read first from Ardia's `main` on 2026-11-03 (`6cb71745`), before the release; the tag is that commit. No change
+under `engine/` (still engine-7ad5405dbe6d), so nothing for Ray's engine. Range
 `v0.2.44-nightly.3..6cb71745`: 157 files, mostly the `ardia browse` CLI and Ardia's React app.
 
 **App** (for Ray to copy or answer):

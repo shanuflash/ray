@@ -24,7 +24,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 3. **Split View**: two or more pages side by side in one window.
 4. **Little Arc**: the small window for links opened from other apps (⌥⌘N). Links from other apps would open there;
    today they open as a Today tab in the normal window (`Host/LinksFromApps.swift`). Ardia's design notes for its
-   Little Ardia (new-tab links kept inside it, a tab moved mid-load): `docs/ARDIA-WATCH.md`, "Unreleased on main".
+   Little Ardia (new-tab links kept inside it, a tab moved mid-load): `docs/ARDIA-WATCH.md`, "v0.2.44-nightly.4".
 5. **Archive view**: Ray archives stale Today tabs but has no way to browse or restore them.
 
 6. **Peek**: Arc's preview of a link in a floating card over the page (open it fully or dismiss). Ray dropped the
@@ -47,8 +47,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 12. Air Traffic Control: rules for which Space a link opens in (Cra's `LinkRouting`).
 13. Capture (Arc's screenshot tool).
 14. Easels, Notes, Library.
-15. Sidebar on the right. Ardia has it on main (unreleased, 2026-11-02); its list of what mirrors is in
-    `docs/ARDIA-WATCH.md`, "Unreleased on main".
+15. Sidebar on the right. Ardia shipped it in 0.2.44-nightly.4–6 (traffic lights ride the sidebar, the peek comes
+    from the right edge); its list of what mirrors is in `docs/ARDIA-WATCH.md`, "v0.2.44-nightly.4" and ".5".
 16. Sync between Macs.
 17. Collapse the pinned section: a "Pinned" toggle on the divider above Today; collapsed, only the entry holding
     the active tab shows (Ardia 0.2.43-nightly.4, its most-asked issue).
@@ -88,6 +88,10 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
     engine-7ad5405dbe6d (`ac_context_menu_share`); Ray implements `tab:shareFromContextMenu:` (Ardia
     0.2.44-nightly.3, `docs/ARDIA-WATCH.md`).
 
+19. Back and Forward history lists: no hold or right-click menu on the back/forward buttons, and no two-finger
+    swipe-and-hold list (Dia's opens upward under the fingers; Ardia 0.2.44-nightly.6). The engine exports
+    `navigationEntries`; see `docs/ARDIA-WATCH.md` "Ray should" 16.
+
 **Default browser**
 17. **Ask to be the default browser** outside Settings: a step in the onboarding (after the import, "Open links from
     other apps in Ray?") and a gentle note when Ray isn't the default (Chrome's infobar, Arc's prompt). Settings ›
@@ -102,7 +106,8 @@ items above. The revamp that gives these a home is PLAN.md section 13.
 
 **Big**
 1. **Live Folders** (Arc had them): folders that refresh on their own, GitHub/Bitbucket pull requests,
-   Notion/Confluence/Google Drive documents.
+   Notion/Confluence/Google Drive documents. A pull-request folder's menu can hide repos (Arc's Repositories
+   submenu; Ardia 0.2.44-nightly.6).
 2. **Live Calendar** (Arc's calendar preview): hover a pinned calendar tab to see the day, a badge counting down to
    the next meeting, an alert with a Join button.
 3. **Theme as a gradient** (Arc's Space themes): several colours, intensity, grain, direction. Ray has one accent
