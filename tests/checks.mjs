@@ -5367,8 +5367,12 @@ const checks = {
     await sleep(200);
     await command("state");
     assert(!state().sidebar.peeking, "30 pt in shouldn't reveal");
-    await command("pointer 12 300");
-    await until("inside strip reveals", () => state().sidebar.peeking);
+    await command("pointer 8 300");
+    await sleep(200);
+    await command("state");
+    assert(!state().sidebar.peeking, "8 pt in shouldn't reveal: only the edge strip does, as Arc");
+    await command("pointer 4 300");
+    await until("the edge reveals", () => state().sidebar.peeking);
     await command("pointer 280 300");
     await sleep(250);
     await command("state");

@@ -52,7 +52,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     [weak self] _ in self?.layout()
   }
   private static let fullScreenRowCenter: CGFloat = 24
-  private static let revealWidth: CGFloat = 14
+  // Near the window's edge only, as Arc (Crest's 14 pt strip opened it reaching for the page's left side).
+  private static let revealWidth: CGFloat = 5
   private static let outsideReach: CGFloat = 24
   private static let holdSlack: CGFloat = 24
   private static let peekInset: CGFloat = 5
@@ -1851,6 +1852,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if point.x < 0 {
       let under = NSWindow.windowNumber(at: screenPoint, belowWindowWithWindowNumber: 0)
       if under != window.windowNumber, NSApp.window(withWindowNumber: under) != nil { return }
+      // Past the edge counts on this window's screen only, not a display beside it (Ardia's LeftEdgeWatcher).
+      guard let screen = window.screen, screenPoint.x >= screen.frame.minX else {
+        if peeking { schedulePeekEnd() }
+        return
+      }
     }
     pointer(at: point, appActive: NSApp.isActive)
   }

@@ -414,6 +414,8 @@ publicly or create accounts.
 - Tab-modal dialogs (print preview…) are centred on the page with rounded corners: `engine-ray/fixups/0004`
   (raycore's `DialogPositionInHostView`, and `chromium-web-dialog-rounded-corners.patch`).
 - `Spring`: a CADisplayLink spring. `dockSpring` (⌘S) and `peekSpring` drive `layout()` every frame.
+  A hidden sidebar peeks only at the window's edge (its first 5 pt, or up to 24 pt past it on the same screen
+  while Ray is active; Arc's and Ardia's, check `peek-zones`), and stays out to 24 pt past its own edge.
 - `Branding/Ray.icon` (Icon Composer; `actool` builds Assets.car + Ray.icns) and `tools/rebrand-pak.py` (renames
   "Ardia" to "Ray" and swaps Ardia's logos in the engine's .pak files at build time) and
   `tools/trim-settings-pak.py` (takes Profiles, Appearance and behavior and Search engine out of the engine's chrome://settings page in
