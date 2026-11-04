@@ -27,7 +27,7 @@ const otherApps = ["open-from-other-apps", "open-from-other-apps-launch"];
 const settingFeatures = ["settings-appearance-mode", "settings-scroll-bars", "settings-page-address-bar",
   "settings-sidebar-button", "settings-fade-unloaded", "settings-reorder-haptics", "settings-undo-reopens"];
 const settings = ["settings-window", "settings-catalog", "settings-minimal-url", "settings-loading-progress", "settings-theme",
-  "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling",
+  "settings-zoom", "settings-private-zoom", "settings-new-tab-position", "settings-recent-tab-cycling", "tab-switcher",
   "settings-shortcuts", "settings-shortcut-editor", "settings-routes", "settings-trimmed", "settings-persist", "settings-panes", "settings-search",
   "settings-bar", "settings-colours", ...settingFeatures,
   "search-engine", "search-suggestions-off", "site-search", "jumpcloud-relay"];
@@ -129,6 +129,8 @@ export const areas = {
   // File › New Folder, ⌘D, Back to Pinned URL, Clear Today, tab cycling and ⌘1–9: the rest of Entries.
   "Host/BrowserWindowController.swift#Sidebar commands": [...folders, "clear", "peek-zones", "pin-unload-restore", "favorites",
     "settings-recent-tab-cycling", "settings-shortcut-editor", "folder-rename", "row-menus"],
+  // Arc's ⌃Tab switcher: the walk, its panel and the page pictures.
+  "Host/BrowserWindowController.swift#Tab switcher": ["settings-recent-tab-cycling", "tab-switcher"],
   "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename", "warn-before-quitting"],
   // A tab's own name: Rename…, the double click, the test command's `rename` (folders too).
   "Host/BrowserWindowController.swift#Tab names": ["tab-rename", "folder-rename"],
@@ -238,6 +240,7 @@ export const areas = {
   "Host/PermissionPrompt.swift": permissions,
   "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
+  "Host/TabSwitcher.swift": ["settings-recent-tab-cycling", "tab-switcher"],
   "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay"],
   "Host/Panels.swift": ["panels", "site-controls", "extensions", "extension-prompt", "settings-privacy", "warn-before-quitting", "warn-before-closing-window", ...folders],
   "Host/Surface.swift": ["surfaces-snap", "panels", "notes", "site-controls", "permission", "permission-allow", "downloads"],

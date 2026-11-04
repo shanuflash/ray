@@ -49,11 +49,13 @@ enum TestCommands {
 
   private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53, "tab": 48, ",": 43, "=": 24, "-": 27,
                                                      "0": 29, "p": 35, "u": 32, "y": 16, "z": 6, "k": 40, "j": 38, "q": 12, "h": 4, "m": 46,
-                                                     "e": 14, "o": 31, "space": 49, "delete": 51, "fwddelete": 117, "f5": 96, "3": 20]
+                                                     "e": 14, "o": 31, "space": 49, "left": 123, "right": 124, "return": 36, "delete": 51, "fwddelete": 117, "f5": 96, "3": 20]
 
   /// What a key types when it isn't its own name.
   private static let typedCharacters: [String: String] = [
-    "tab": "\t", "esc": "\u{1b}", "space": " ", "delete": "\u{7f}",
+    "tab": "\t", "esc": "\u{1b}", "space": " ", "delete": "\u{7f}", "return": "\r",
+    "left": String(Character(UnicodeScalar(UInt32(NSLeftArrowFunctionKey))!)),
+    "right": String(Character(UnicodeScalar(UInt32(NSRightArrowFunctionKey))!)),
     "fwddelete": String(Character(UnicodeScalar(UInt32(NSDeleteFunctionKey))!)),
     "f5": String(Character(UnicodeScalar(UInt32(NSF5FunctionKey))!)),
   ]
@@ -643,7 +645,19 @@ enum TestCommands {
         result = chain.joined(separator: " < ")
       }
     case "key":
-      result = argument == "ctrlup" ? releaseControl(in: window) : key(argument, in: window)
+      switch argument {
+      case "ctrlup": result = releaseControl(in: window)
+      case "ctrltap":
+        // ⌃Tab and Control let go at once, as a quick tap (the switcher never shows).
+        result = key("tab ctrl keywin", in: window) == "ok" ? releaseControl(in: window) : "no event"
+      default: result = key(argument, in: window)
+      }
+    case "tabswitcher":
+      // `tabswitcher hover|click <n>`: the pointer over the switcher's card n, or a click on it.
+      let parts = argument.split(separator: " ").map(String.init)
+      guard parts.count == 2, let card = Int(parts[1]), let switcher = AppController.shared.current?.tabSwitcher,
+            switcher.shown else { result = "usage: tabswitcher hover|click <n> (while it shows)"; break }
+      if parts[0] == "hover" { switcher.hover(card, force: true) } else { switcher.click(card) }
     case "setting":
       result = setting(argument)
     case "settings":

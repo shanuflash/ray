@@ -151,8 +151,8 @@ extension AnySettingKey {
     "recentTabCycling", default: true,
     ui: SettingUI(
       pane: .tabs, group: .switching, title: "Switch tabs in recently used order with ⌃Tab",
-      detail: "", about: "Hold Control and press Tab again to go further back. Off: in the order of the sidebar.",
-      keywords: ["control tab", "ctrl tab", "switch tabs", "recent", "cycle"], control: .toggle))
+      detail: "", about: "Hold Control to see your recent tabs; press Tab again to go further back. Off: in the order of the sidebar.",
+      keywords: ["control tab", "ctrl tab", "switch tabs", "recent", "cycle", "switcher"], control: .toggle))
 
   /// The sidebar button in the sidebar's top row and the page's address bar.
   static let showSidebarButton = SettingKey<Bool>(

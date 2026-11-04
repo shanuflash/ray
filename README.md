@@ -38,6 +38,7 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Arc's right-click menus: duplicate, mute, move, tab icons
   - Folder colours and icons
   - Select several tabs
+  - ⌃Tab switcher with page previews, like Arc
   - Pinned tabs reset when closed
   - Today tabs archive after 12 hours
 - **Moving in**
