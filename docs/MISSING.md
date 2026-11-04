@@ -296,6 +296,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
+| Arc's ⌃Tab switcher: recent tabs as cards with page pictures, switching on Control's release, Tab/⇧Tab/arrows/pointer, Escape cancels, a quick tap just switches | 2026-11-04, `feat: arc ctrl-tab switcher` |
 | Ray's own engine (Phase B) and "Ray Safe Storage" | 2026-10-28, 0.2.0 |
 | First installs without notarization: a DMG whose window shows the drag and the first open (Open Anyway), and a cask for the owner's tap (`brew install shanuflash/tap/ray`), both from `scripts/release.sh` | 2026-11-03, `feat: dmg and homebrew tap` |
 | Notes: six spots on the page, one each, glass or solid (Settings › Appearance), the sidebar's spring; downloads note with progress | 2026-10-31, `cb92326` |

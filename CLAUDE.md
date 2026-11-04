@@ -123,8 +123,7 @@ publicly or create accounts.
   Autofill are Ray's panes too (below). Passwords also holds the JumpCloud Go relay's
   row (`SettingsJumpCloud.swift`).
   Settings that act elsewhere: minimal URL and loading progress (`PageToolbar`, `PageContainerView.showsProgress`),
-  new tab position (`insertToday`), ⌃Tab in recent order (`cycleTabWithControl`, settled by a `flagsChanged` monitor
-  when Control is released), ⇧⌘C and ⌘S (`MenuShortcuts.defaultKey` drops their key equivalents so the page
+  new tab position (`insertToday`), ⌃Tab in recent order (the switcher, below), ⇧⌘C and ⌘S (`MenuShortcuts.defaultKey` drops their key equivalents so the page
   gets the keys), page zoom, light or dark and scroll bars (`AppLook`), the sidebar button (`SidebarView.showsToggle`,
   `PageToolbarView.showsSidebarButton`), faded unloaded tabs (`SidebarView.iconAlpha`), the reorder haptic
   (`retarget` in the sidebar's drag) and ⌘Z (`UndoCloseTab`).
@@ -275,6 +274,22 @@ publicly or create accounts.
   on `SurfaceBackdrop`, dropping in on the panels' spring),
   `PermissionPrompt` (site permissions, only over their own tab), `ArcImport` (the old Import from Arc…, sidebar
   only; its action still exists without a menu item).
+- `TabSwitcher` (`Host/TabSwitcher.swift`, `BrowserWindowController` `// MARK: Tab switcher`): Arc's ⌃Tab switcher
+  (sizes from Cra's measurements of Arc 1.170 and the owner's recording; look B of the mocks, owner 2026-11-04). With
+  `recentTabCycling` on, ⌃Tab opens a walk over the up to 5 most recent tabs (current first, as many as fit the
+  window) on card 1 (⌃⇧Tab: the last); the panel (`TabSwitcherView`, on `SurfaceBackdrop`, 22 pt corners, 180×158
+  cards on a 182 pitch, 158×105 pictures, the selected card a 22 % wash of the profile colour with a 45 % hairline)
+  shows after 0.15 s, centred on the whole window, below `floating`, with no animation (Arc has none). Tab / ⇧Tab and
+  ← → move and wrap; the pointer picks a card (once it has moved since the panel showed); releasing Control (the
+  `flagsChanged` monitor's `endTabCycle`), Return or a click switch through `select`; Escape, a click outside, any
+  other key, another switch or the window resigning cancel. The page never changes during the walk, and a quick tap
+  switches with no panel. One press can arrive by the switcher's key monitor, the menu's ⌃Tab and Chrome's redispatch
+  of an unused key: `tabPressed` moves once per event timestamp. Off, ⌃Tab walks the sidebar at once (`cycleTab`).
+  `TabPictures`: the tab left is pictured in `select` and the current one when a walk starts (engine
+  `copyPicture`, only a shown page has a surface; scaled to 316×210 px, top of the page); tabs never shown this run
+  get Arc's empty card. Test commands `key ctrltap`, `key left|right|return`, `tabswitcher hover|click <n>`; state log
+  `tabSwitcher` (`open`, `shown`, `items`, `titles`, `pictures`, `index`, `style`, `last` with `how`/`chosen`);
+  checks `tab-switcher` (photos with `SNAP_DIR`), `settings-recent-tab-cycling`.
 - `Notes` (`Host/Notes.swift`): short messages on the page at one of six `NoteSpot`s (corners, top and bottom
   centre), one note per spot, never stacked; notes in different spots show together. Any feature:
   `controller.notes.show(Note(text, detail:, icon:, figure:, actions:, spot:, lasts:, key:, asks:))`, which returns a
@@ -423,7 +438,7 @@ publicly or create accounts.
   into that folder with `screencapture -l` of the state log's `windowNumber`. The state log
   has `settings`, `settingsWindow` (pane, panes listed, rows per pane by id, search results, `flashing` /
   `lastFlash` / `flashVisible`, the selected row's colours and contrast, live pictures, `hiddenRows` (none expected)),
-  `menuKeys`, `recentOrder`, `tabCycle`, `looks` (app and window appearance, scroller style), `undo` (Edit › Undo's
+  `menuKeys`, `recentOrder`, `tabSwitcher`, `looks` (app and window appearance, scroller style), `undo` (Edit › Undo's
   target, what ⌘Z would do, the focus), `hapticTicks`, `sidebarFrames.toggleShown` / `fadedIcons`, each tab's `zoom`
   and `pages.switches`
   (per display frame of each tab switch: `o` old page, `n` new page drawn, `b` both, `-` blank; check

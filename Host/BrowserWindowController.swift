@@ -37,16 +37,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private var loadingEntry: SidebarEntry?
   private var peeking = false
   private var peekEndWork: DispatchWorkItem?
-  /// Ctrl+Tab through recently used tabs: the order when it began (most recent first), where it is, and each tab's
-  /// `lastActive` from before, so stepping through tabs doesn't reorder them.
-  private struct TabCycle {
-    var order: [SidebarEntry]
-    var index: Int
-    var lastActive: [UUID: Date]
-  }
-  private var tabCycle: TabCycle?
-  /// The cycle is moving the selection itself (so `select` doesn't take that for the user going elsewhere).
-  private var cycling = false
+  /// ⌃Tab through recently used tabs (`TabSwitcher.swift`), and the pictures of pages its cards show.
+  private(set) lazy var tabSwitcher = makeTabSwitcher()
+  private let tabPictures = TabPictures()
+  /// The switcher is switching itself (so `select` doesn't take that for the user going elsewhere).
+  private var switcherChoosing = false
   /// Page zoom: the host each tab was last settled for, by tab id, and the hosts zoomed in this private window
   /// (nothing a private window does goes to Settings.json).
   private var zoomHosts: [Int32: String] = [:]
@@ -233,6 +228,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
                              width: size.width, height: size.height)
     }
     layoutNotes()
+    layoutTabSwitcher()
     updateTrafficLights()
   }
 
@@ -1089,11 +1085,13 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     load(entry, foreground: true)
     guard let tab = entry.tab, !tab.closed else { return }
+    // The page left, pictured while it's still shown, for the ⌃Tab switcher's card.
+    if let left = activeEntry, left !== entry { tabPictures.capture(left) }
     pages.show(tab)
     coreWindow.activate(tab)
     let switched = state.activeEntryID != entry.id
     // Going to a tab by any other way ends a Ctrl+Tab in progress.
-    if switched, !cycling { tabCycle = nil }
+    if switched, !switcherChoosing { tabSwitcher.cancel("other switch") }
     if switched, findTab != nil, findTab !== tab { closeFind() }
     if switched { panels.tabSwitched() }
     if switched { iconPicker?.close() }
@@ -1442,61 +1440,72 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     select(live[(index + step + live.count) % live.count])
   }
 
-  /// ⌃Tab and ⌃⇧Tab. With Settings › Cycle through tabs in most recently used order on, each press goes one tab
-  /// further back (or forward) through the tabs by when they were last used, as Chrome's tab search and Firefox do;
-  /// holding Control keeps one walk going, and releasing it (`endTabCycle`) makes the tab it reached the most
-  /// recently used. Off, it's the sidebar's order, like ⇧⌘] and ⇧⌘[.
-  func cycleTabWithControl(by step: Int) {
-    guard RaySettings.shared[.recentTabCycling] else { return cycleTab(by: step) }
-    var cycle: TabCycle
-    if let running = tabCycle {
-      cycle = running
-      // A tab closed in the middle of the walk drops out of it.
-      cycle.order.removeAll { !$0.isLive }
-    } else {
-      let live = state.allEntries.filter { $0.isLive && !$0.isFolder }
-      // Most recently used first, the current tab on top; ties keep the sidebar's order.
-      var order = live.enumerated().sorted { ($0.element.lastActive, $1.offset) > ($1.element.lastActive, $0.offset) }.map(\.element)
-      if let active = activeEntry, let at = order.firstIndex(where: { $0 === active }) {
-        order.remove(at: at)
-        order.insert(active, at: 0)
-      }
-      cycle = TabCycle(order: order, index: 0, lastActive: Dictionary(order.map { ($0.id, $0.lastActive) }, uniquingKeysWith: { first, _ in first }))
-    }
-    guard cycle.order.count > 1 else {
-      tabCycle = cycle
-      return
-    }
-    cycle.index = cycle.order.firstIndex { $0.id == state.activeEntryID } ?? 0
-    cycle.index = (cycle.index + step + cycle.order.count) % cycle.order.count
-    let target = cycle.order[cycle.index]
-    cycling = true
-    select(target)
-    cycling = false
-    // Passing through a tab doesn't make it recent; only where the walk ends does.
-    if let before = cycle.lastActive[target.id] { target.lastActive = before }
-    tabCycle = cycle
-    logState("tabCycle")
-  }
-
-  /// Control was let go (or the window lost focus): the walk through recent tabs is over.
-  func endTabCycle() {
-    guard let cycle = tabCycle else { return }
-    tabCycle = nil
-    if let active = activeEntry, cycle.order.contains(where: { $0 === active }) {
-      active.lastActive = Date()
-      store.save(state)
-    }
-    logState("tabCycleEnd")
-  }
-
-  @objc private func windowResignedKey() { endTabCycle() }
-
   func selectTab(number: Int) {
     let entries = state.allEntries.filter { !$0.isFolder }
     guard !entries.isEmpty else { return }
     select(number >= 9 ? entries[entries.count - 1] : entries[min(number, entries.count) - 1])
   }
+
+  // MARK: Tab switcher
+
+  /// ⌃Tab and ⌃⇧Tab. With Settings › Switch tabs in recently used order on, Arc's switcher (`TabSwitcher`): the
+  /// recently used tabs as cards while Control is held, switching when it's let go. Off, it's the sidebar's order,
+  /// like ⇧⌘] and ⇧⌘[, with no switcher.
+  func cycleTabWithControl(by step: Int) {
+    guard RaySettings.shared[.recentTabCycling] else { return cycleTab(by: step) }
+    if tabSwitcher.isOpen { return tabSwitcher.step(step, order: [], cards: 0, held: true) }
+    let live = state.allEntries.filter { $0.isLive && !$0.isFolder }
+    // Most recently used first, the current tab on top; ties keep the sidebar's order.
+    var order = live.enumerated().sorted { ($0.element.lastActive, $1.offset) > ($1.element.lastActive, $0.offset) }.map(\.element)
+    if let active = activeEntry, let at = order.firstIndex(where: { $0 === active }) {
+      order.remove(at: at)
+      order.insert(active, at: 0)
+    }
+    tabPictures.keep(Set(live.map(\.id)))
+    if let active = activeEntry { tabPictures.capture(active) }
+    // From a menu click nothing is held, and the walk switches at once.
+    let event = NSApp.currentEvent
+    let held = event?.type == .keyDown && event?.modifierFlags.contains(.control) == true
+    tabSwitcher.step(step, order: order, cards: TabSwitcherView.cards(fitting: root.bounds.width), held: held)
+  }
+
+  /// Control was let go: the switcher switches to the card it reached.
+  func endTabCycle() { tabSwitcher.commit("release") }
+
+  @objc private func windowResignedKey() { tabSwitcher.cancel("resigned") }
+
+  private func makeTabSwitcher() -> TabSwitcher {
+    let switcher = TabSwitcher()
+    switcher.describe = { [weak self] entry in
+      TabSwitcherView.Card(title: entry.displayTitle, icon: self?.sidebarIcon(for: entry),
+                           picture: self?.tabPictures.picture(of: entry))
+    }
+    switcher.onShow = { [weak self, weak switcher] in
+      guard let self, let view = switcher?.view else { return }
+      // Over the page and the docked sidebar, under a peeking one, centred on the whole window as Arc's.
+      self.root.addSubview(view, positioned: .below, relativeTo: self.floating)
+      self.layoutTabSwitcher()
+    }
+    switcher.onHide = { [weak switcher] in switcher?.view.removeFromSuperview() }
+    switcher.onChange = { [weak self] in self?.logState("tabSwitcher") }
+    switcher.onCommit = { [weak self] entry in
+      guard let self else { return }
+      self.switcherChoosing = true
+      self.select(entry)
+      self.switcherChoosing = false
+    }
+    tabPictures.onChange = { [weak switcher] id in switcher?.pictureChanged(id) }
+    return switcher
+  }
+
+  private func layoutTabSwitcher() {
+    let view = tabSwitcher.view
+    guard view.superview === root else { return }
+    let size = view.frame.size
+    view.setFrameOrigin(NSPoint(x: ((root.bounds.width - size.width) / 2).rounded(.down),
+                                y: ((root.bounds.height - size.height) / 2).rounded(.down)))
+  }
+
 
   // MARK: Recently closed
 
@@ -2740,7 +2749,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     ]) { _, new in new }
     state["undo"] = UndoCloseTab.shared.debug
     state["hapticTicks"] = SidebarView.hapticTicks
-    state["tabCycle"] = tabCycle.map { ["order": $0.order.map(tabID), "index": $0.index] as [String: Any] } ?? NSNull()
+    state["tabSwitcher"] = tabSwitcher.debug
     guard let data = try? JSONSerialization.data(withJSONObject: state),
           let json = String(data: data, encoding: .utf8) else { return }
     FileHandle.standardError.write("[ray-state] \(json)\n".data(using: .utf8)!)

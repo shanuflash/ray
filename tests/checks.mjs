@@ -246,6 +246,18 @@ async function todayTabs(count) {
   }
   await settle();
 }
+// Four Today tabs, used in a known order (the last most recent); returns them oldest first.
+async function usedTabs() {
+  await todayTabs(4);
+  const tabs = state().sidebar.today.filter((e) => e.live).slice(0, 4);
+  assert(tabs.length === 4, "need four open tabs in Today");
+  for (const t of tabs) {
+    await command(`row ${t.id}`);
+    await until("tab active", () => state().activeEntry === t.id);
+    await sleep(30);
+  }
+  return tabs;
+}
 async function settle() {
   await sleep(250);
   await command("state");
@@ -3721,47 +3733,99 @@ const checks = {
   async "settings-recent-tab-cycling"() {
     await resetSettings();
     // Four tabs, used in a known order: T1, T2, T3, T4 (T4 most recent).
-    await todayTabs(4);
-    const tabs = state().sidebar.today.filter((e) => e.live).slice(0, 4);
-    assert(tabs.length === 4, "need four open tabs in Today");
-    const [t1, t2, t3, t4] = tabs;
-    for (const t of [t1, t2, t3, t4]) {
-      await command(`row ${t.id}`);
-      await until("tab active", () => state().activeEntry === t.id);
-      await sleep(30);
-    }
-    const key = async (extra, expect) => {
-      await command(`key tab ctrl ${extra}keywin`.replace("  ", " "));
-      await until(`tab ${expect.title}`, async () => { await command("state"); return state().activeEntry === expect.id; }, 4000);
-    };
-    // Holding Control, each press goes one further back, and ⇧ goes the other way.
-    await key("", t3);
-    await key("", t2);
-    await key("", t1);
-    await command("state");
-    // (Every live tab is in the walk; earlier checks can leave more open than these four.)
-    assert(state().tabCycle?.order.length >= 4, "no walk in progress while Control is held");
-    await key("shift ", t2);
+    const [t1, t2, t3, t4] = await usedTabs();
+    // Holding Control, each press goes one further back, and ⇧ goes the other way; the page stays until it's let go.
+    for (const extra of ["", "", "", "shift "]) await command(`key tab ctrl ${extra}keywin`.replace("  ", " "));
+    await until("walk in progress", async () => { await command("state"); return state().tabSwitcher.open && state().tabSwitcher.index === 2; });
+    assert(state().activeEntry === t4.id, "the page changed during the walk");
     await command("key ctrlup");
-    await until("walk settled", async () => { await command("state"); return state().tabCycle === null; });
+    await until("walk settled on T2", async () => { await command("state"); return !state().tabSwitcher.open && state().activeEntry === t2.id; }, 4000);
     // Settled on T2: it is now the most recent; the rest keep their order (T4, T3, T1).
     const ids = (list) => list.map((e) => e.tab);
     assert(JSON.stringify(state().recentOrder.slice(0, 4)) === JSON.stringify(ids([t2, t4, t3, t1])), `recent order ${state().recentOrder}, wanted ${ids([t2, t4, t3, t1])} first`);
-    // A quick press and release goes back to the tab you were just on.
-    await key("", t4);
-    await command("key ctrlup");
-    await until("walk settled", async () => { await command("state"); return state().tabCycle === null; });
-    await key("", t2);
-    await command("key ctrlup");
-    await until("walk settled again", async () => { await command("state"); return state().tabCycle === null; });
-    // Off: the sidebar's order.
+    // A quick tap goes back to the tab you were just on, and back again, with no panel.
+    await command("key ctrltap");
+    await until("tapped to T4", async () => { await command("state"); return state().activeEntry === t4.id; }, 4000);
+    assert(state().tabSwitcher.last?.shown === false, "a quick tap showed the switcher");
+    await command("key ctrltap");
+    await until("tapped back to T2", async () => { await command("state"); return state().activeEntry === t2.id; }, 4000);
+    // Off: the sidebar's order, at once, with no switcher.
     await setSetting("recentTabCycling", "off");
     const order = allEntries().filter((e) => e.live);
     const at = order.findIndex((e) => e.id === state().activeEntry);
     const next = order[(at + 1) % order.length];
-    await key("", next);
+    await command("key tab ctrl keywin");
+    await until("next in the sidebar", async () => { await command("state"); return state().activeEntry === next.id; }, 4000);
+    assert(!state().tabSwitcher.open, "a walk started with recently used order off");
     await command("key ctrlup");
-    assert(state().tabCycle === null, "a walk started with recently used order off");
+    await resetSettings();
+  },
+  async "tab-switcher"() {
+    // Arc's ⌃Tab switcher: what it showed, what was chosen and how (state log `tabSwitcher`).
+    await resetSettings();
+    // Chrome draws (and so can picture) a page only in a window on screen.
+    await command("onscreen on");
+    const [t1, t2, t3, t4] = await usedTabs();
+    const sw = () => state().tabSwitcher;
+    const open = async (extra = "") => {
+      await command(`key tab ctrl ${extra}keywin`.replace("  ", " "));
+      await until("switcher shown", async () => { await command("state"); return sw().shown; }, 4000);
+    };
+    const closed = async (what) => until(what, async () => { await command("state"); return !sw().open; }, 4000);
+    // With SNAP_DIR, a photo of the window with the switcher up (onscreen show: opaque, still never activated).
+    const snap = async (name) => {
+      if (!process.env.SNAP_DIR) return;
+      await command("onscreen show");
+      await sleep(300);
+      spawnSync("screencapture", ["-x", "-o", `-l${state().windowNumber}`, join(process.env.SNAP_DIR, `tab-switcher-${name}.png`)]);
+      await command("onscreen on");
+    };
+    await open();
+    await snap("glass");
+    // The five (or fewer) most recent tabs, the current one first, opened on the next one; the page stays.
+    const s = sw();
+    assert(s.items[0] === t4.id && s.items[1] === t3.id && s.items[2] === t2.id && s.items[3] === t1.id, `cards ${s.items}`);
+    assert(s.items.length <= 5 && s.titles.length === s.items.length, `${s.items.length} cards, ${s.titles.length} titles`);
+    assert(s.index === 1, `opened on card ${s.index}`);
+    assert(s.style === "glass", `surface ${s.style}`);
+    // Each tab left was pictured; the current one when the switcher opened.
+    await until("pictures", async () => { await command("state"); return sw().pictures.slice(0, 4).every(Boolean); }, 4000);
+    assert(state().activeEntry === t4.id, "the page changed when the switcher opened");
+    // Tab, ⇧Tab and the arrows move and wrap.
+    await command("key right keywin");
+    await command("key tab ctrl shift keywin");
+    await command("key left keywin");
+    await command("key left keywin");
+    await until("wrapped to the last card", async () => { await command("state"); return sw().index === s.items.length - 1; });
+    // Escape cancels: the tab stays.
+    await command("key esc keywin");
+    await closed("closed by Escape");
+    assert(sw().last.how === "escape" && state().activeEntry === t4.id, `escape: ${JSON.stringify(sw().last)}`);
+    await command("key ctrlup");
+    // The pointer picks a card; a click switches to it.
+    await open();
+    await commandResult("tabswitcher hover 3");
+    await until("hovered card", async () => { await command("state"); return sw().index === 3; });
+    await commandResult("tabswitcher click 2");
+    await closed("closed by a click");
+    assert(sw().last.how === "click" && sw().last.chosen === t2.id, `click: ${JSON.stringify(sw().last)}`);
+    await until("clicked tab active", () => state().activeEntry === t2.id);
+    await command("key ctrlup");
+    // Return switches too.
+    await open();
+    await command("key return keywin");
+    await closed("closed by Return");
+    assert(sw().last.how === "return" && state().activeEntry === sw().last.chosen, `return: ${JSON.stringify(sw().last)}`);
+    await command("key ctrlup");
+    // Solid follows Panels and notes.
+    await setSetting("surfaceStyle", "solid");
+    await open();
+    assert(sw().style === "solid", `surface ${sw().style}`);
+    await snap("solid");
+    await command("key ctrlup");
+    await closed("closed on release");
+    assert(sw().last.how === "release" && sw().last.shown, `release: ${JSON.stringify(sw().last)}`);
+    await command("onscreen off");
     await resetSettings();
   },
   async "settings-panes"() {
