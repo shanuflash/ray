@@ -7,7 +7,45 @@ touches engine files or builds. Moving the engine is the owner's call. Ardia's s
 Ray's engine: Chromium 156.0.8078.47 (`engine.lock`), Helium helium-chromium 0.20.1 / helium-macos 0.20.1.1
 (`engine/patches/build/helium-pins.ini`).
 
-Last checked: Chrome 156.0.8078.80 (Mac stable and extended), 2026-11-02
+Last checked: Chrome 157.0.8103.39 (Mac stable), 156.0.8078.88 (Mac extended), 2026-11-04
+
+## 2026-11-04
+
+**Chrome 157 is stable (213 security fixes, 7 Critical, 77 High). Ray's .47 now also misses 156.0.8078.88's
+extended backports. Helium has nothing past 0.20.3 (156.0.8078.79), so only the M156 bump is ready.**
+
+Chrome for Mac (chromiumdash):
+- **157.0.8103.38 / .39**, stable, 2026-11-03 (blog: "Stable Channel Update for Desktop", 2026-11-03). M157
+  promoted to stable for everyone, rolling out over days/weeks. 213 security fixes: 7 Critical, 77 High, 75
+  Medium, 54 Low.
+  - Critical: CVE-2026-121156 and -121247 (buffer overflow in Dawn), -121229 (ANGLE memory corruption),
+    -121246 (WebGL UAF), -121035 (Prerender UAF), -121203 (Geometry UAF), -121126 (Core UAF).
+  - High includes V8 type confusion (CVE-2026-121082, -121228, -121210, -121057), PDFium (-121166 type
+    confusion, -121113 overflow, -121179 UAF), ANGLE (-121197, -121037 OOB write, -121148 UAF), WebGPU UAF
+    (-121089), GPU (-121074, -121052 UAF, -121098), Skia (-121086, -121032), Media overflows (-121047, -121180),
+    Extensions UAF (-121250), BackgroundFetch authorization (-121107, -121174), FileSystem authorization
+    (-121071), Navigation privilege (-121090), and UAFs in SVG, Layout, DOM, Editing, Codecs, Compositing,
+    WebAudio, Animation, PictureInPicture, PerformanceAPIs.
+- **156.0.8078.88**, extended stable, 2026-11-03 (blog: "Extended Stable Update for Desktop"). 55 security fixes
+  (3 Critical, 49 High, 2 Medium, 1 Low): everything in .79/.80 plus M157 fixes backported to M156, among them
+  Critical CVE-2026-121156 (Dawn) and Highs -121032, -121057, -121071, -121086, -121127, -121148, -121201,
+  -121210, -121250 and ~20 more.
+- 156.0.8078.81, stable, 2026-11-03: a respin next to the M157 release; no blog post of its own.
+- None of these posts says an exploit exists in the wild.
+
+How far behind: Ray is on 156.0.8078.47. Same milestone: .47 against .88 (extended), missing every fix since
+2026-10-27 (5 Critical in .73–.80, plus .88's backports). New milestone: M157 is now what Chrome stable users
+run, with 213 fixes Ray lacks; moving to it is a bigger patch refresh and a longer build than an M156 bump.
+
+Helium:
+- No new release since 2026-10-30: helium-chromium **0.20.3** (156.0.8078.79) and helium-macos **0.20.3.1** are
+  still latest. Nothing for 156.0.8078.88 or M157 yet.
+
+What moving would take: unchanged from 2026-11-02 for M156 (`helium-pins.ini` to 0.20.3 / 0.20.3.1,
+`engine.lock` to 156.0.8078.79, re-sync, rebuild; Ardia's engine-1982453a46fe already did this bump and is in
+engine-2da3ca19a224, see `docs/ARDIA-WATCH.md`). That still lacks .88's backports (incl. Critical
+CVE-2026-121156); getting those needs Helium on .88 or M157. M157 waits for a Helium 0.21-ish release. Not
+started: owner decides.
 
 ## 2026-11-02
 
