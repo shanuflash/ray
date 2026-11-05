@@ -1,7 +1,7 @@
 import AppKit
 
 // A tab whose page crashed (`rendererGone`): Ray's own view in the page's place, "This page crashed" with Reload
-// (docs/mocks/page-prompts.html, look A). Out of memory and a second crash within 10 s (Chrome's rule) get their own
+// (docs/mocks/page-prompts.html, look A); Return does nothing, as in Ray's other page prompts. Out of memory and a second crash within 10 s (Chrome's rule) get their own
 // words. A tab that lost its page while it wasn't shown (macOS short of memory, say) reloads when it's next shown, as
 // Crest does and as a sleeping tab would, with no view.
 
@@ -122,8 +122,9 @@ final class CrashedPageView: NSView {
     glyph.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)?
       .withSymbolConfiguration(.init(pointSize: 34, weight: .light))
     glyph.contentTintColor = .secondaryLabelColor
-    title.font = .systemFont(ofSize: 17, weight: .semibold)
-    message.font = .systemFont(ofSize: 12.5)
+    // A page-sized heading (Settings' pane titles), then body text.
+    title.font = .systemFont(ofSize: 22, weight: .medium)
+    message.font = .systemFont(ofSize: 13)
     message.textColor = .secondaryLabelColor
     for label in [title, message] {
       label.alignment = .center
@@ -137,7 +138,6 @@ final class CrashedPageView: NSView {
 
   override var isFlipped: Bool { true }
   override var wantsUpdateLayer: Bool { true }
-  override var acceptsFirstResponder: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
 
   override func updateLayer() {
@@ -177,10 +177,5 @@ final class CrashedPageView: NSView {
     y += messageHeight + 16
     reloadButton.frame = NSRect(x: ((bounds.width - buttonSize.width) / 2).rounded(), y: y,
                                 width: buttonSize.width, height: buttonSize.height)
-  }
-
-  // Return reloads (the view takes the keys while it shows).
-  override func keyDown(with event: NSEvent) {
-    if event.keyCode == 36 || event.keyCode == 76 { onReload?() } else { super.keyDown(with: event) }
   }
 }

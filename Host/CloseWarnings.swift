@@ -117,7 +117,8 @@ enum CloseWarnings {
   }
 
   /// The engine's `confirmCloseWithDownloads`: quitting (or closing the last private window) would cancel `count`
-  /// downloads. "Quit and cancel N downloads?" over the window; Keep Downloading is Return's answer and Escape's.
+  /// downloads. "Quit and cancel N downloads?" over the window: Keep Downloading, then Quit in red (dead for 0.5 s);
+  /// Return and Escape keep the downloads.
   static func confirmDownloads(_ count: Int, quitting: Bool, on controller: BrowserWindowController,
                                then completion: @escaping (Bool) -> Void) {
     let noun = count == 1 ? "download" : "\(count) downloads"
@@ -137,16 +138,17 @@ enum CloseWarnings {
       return
     }
     show(.downloads, title: title, message: "", check: nil, confirm: confirm, cancel: "Keep Downloading",
-         cancelIsDefault: true, on: controller) { confirmed in completion(confirmed) }
+         destructive: true, on: controller) { confirmed in completion(confirmed) }
   }
 
   // MARK: The panel
 
   /// The question as a panel that asks, over `controller`'s page: Cancel and the confirming answer (primary), "Don't
   /// ask again". Its answer comes once, whichever way it's given (a button, Return, ⌘Q again, Escape, closing it).
-  /// `cancelIsDefault`: the cancelling answer is the primary and Return's (a download question); else the confirming one.
+  /// Buttons are [cancel, confirm]. `destructive`: the confirming one is red, it and Return wait (Return keeps the
+  /// cancelling answer, a download question's Keep Downloading); else Return confirms.
   private static func show(_ kind: Kind, title: String, message: String, check: String? = "Don't ask again",
-                           confirm: String, cancel: String = "Cancel", cancelIsDefault: Bool = false,
+                           confirm: String, cancel: String = "Cancel", destructive: Bool = false,
                            on controller: BrowserWindowController, done: @escaping (Bool) -> Void) {
     var answered = false
     var close: (() -> Void)?
@@ -158,23 +160,20 @@ enum CloseWarnings {
       done(finish(kind, confirmed: confirmed, suppressed: confirmed && suppressed))
     }
     var question: PanelQuestion!
-    // Buttons in order: [cancel, confirm], or [confirm, cancel] with the cancelling one as the primary.
-    let confirmIndex = cancelIsDefault ? 0 : 1
-    let answers: [(title: String, primary: Bool, destructive: Bool)] = cancelIsDefault
-      ? [(confirm, false, false), (cancel, true, false)] : [(cancel, false, false), (confirm, true, false)]
-    question = PanelQuestion(title: title, message: message, check: check, answers: answers,
-                             wait: kind == .downloads ? 0.5 : 0) { index in
-      answer(index == confirmIndex, question.check?.state == .on)
+    question = PanelQuestion(title: title, message: message, check: check,
+                             answers: [(cancel, false, false), (confirm, !destructive, destructive)],
+                             wait: destructive ? 0.5 : 0) { index in
+      answer(index == 1, question.check?.state == .on)
     }
     showing = (kind, question, answer)
-    confirmButton = question.buttons[confirmIndex]
-    cancelButton = question.buttons[1 - confirmIndex]
+    confirmButton = question.buttons[1]
+    cancelButton = question.buttons[0]
     last = ["kind": kind.rawValue, "title": title, "message": message, "answer": NSNull()]
     log()
     let handle = controller.panels.open(PanelSpec(
       name: kind == .quit ? "quitWarning" : kind == .close ? "closeWarning" : "downloadsWarning", content: question,
       anchor: controller.questionAnchor, closesOn: kind == .downloads ? [.escape] : [.escape, .windowInactive], asks: true,
-      onReturn: { answer(!cancelIsDefault, question.check?.state == .on) }, onClose: { answer(false, false) }))
+      onReturn: { answer(!destructive, question.check?.state == .on) }, onClose: { answer(false, false) }))
     close = { handle.close() }
   }
 

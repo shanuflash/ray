@@ -324,8 +324,8 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 41. **Page prompt gaps** (2026-11-05). Quitting from the Dock, at logout or for an update goes through
     `applicationShouldTerminate`, which answers "now": whether the engine still asks about running downloads there is
     untried. A dismissed "Pop-up blocked" note can't be brought back for that page (Chrome keeps an omnibox icon; Ray
-    has none). "Exit Page" and "Quit" in the questions are plain buttons, not the mock's red text (`PanelButton` has
-    no red-text style). The hang check waits for the engine's real 15 s monitor (no shorter test switch).
+    has none). "Exit Page" and "Quit" are filled red (`PanelButton`'s destructive look), not the mock's red text. The
+    hang check waits for the engine's real 15 s monitor (no shorter test switch).
 
 ## Done
 

@@ -133,16 +133,15 @@ final class PageQuestions {
       view = PanelQuestion(
         title: "Page not responding",
         message: "\(site ?? "This page") stopped responding. Wait for it, or close the page.",
-        icon: icon, answers: [("Exit Page", false, false), ("Wait", true, false)], wait: 0.5) { [weak self] index in
-          self?.answer(question, open: index == 1)
+        icon: icon, answers: [("Wait", false, false), ("Exit Page", false, true)], wait: 0.5) { [weak self] index in
+          self?.answer(question, open: index == 0)
         }
     }
     let handle = controller.panels.open(PanelSpec(
       name: question.kind == .app ? "appLink" : "notResponding", content: view, anchor: controller.questionAnchor,
       closesOn: question.kind == .app ? [.escape, .tabSwitch, .otherSite] : [.escape, .tabSwitch],
       origin: question.site, asks: true,
-      // A link's question has no default; a stuck page's is Wait, as Chrome's.
-      onReturn: question.kind == .hang ? { [weak self] in self?.answer(question, open: true) } : nil,
+      // Return answers neither (as permission and password prompts).
       onClose: { [weak self, weak view] in
         guard let self, let view, self.shown?.view === view else { return }
         self.shown = nil

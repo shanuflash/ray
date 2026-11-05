@@ -2588,8 +2588,8 @@ const checks = {
   },
 
   async "page-unresponsive"() {
-    // A page stuck for the engine's 15 s asks "Page not responding" over its own tab (the full origin, Exit Page and
-    // Wait, buttons dead 0.5 s); Exit Page ends it and the crashed view shows. Slow: the engine's hang monitor is 15 s.
+    // A page stuck for the engine's 15 s asks "Page not responding" over its own tab (the full origin, Wait and a red
+    // Exit Page, buttons dead 0.5 s, Return answers neither); Exit Page ends it and the crashed view shows. Slow: the engine's hang monitor is 15 s.
     const url = `${origin}/c?hang`;
     // Chrome's hang monitor watches only a shown page: the hidden window joins the shown Space.
     await command("onscreen on");
@@ -2605,9 +2605,13 @@ const checks = {
     // A key the stuck page never answers.
     await command("key j keywin");
     const q = (await until("not responding", async () => { await command("state"); return state().pageQuestion.open?.kind === "hang" && state().pageQuestion; }, 40000, 500)).open;
-    assert(q.origin === origin && JSON.stringify(q.buttons) === `["Exit Page","Wait"]`, `question ${JSON.stringify(q)}`);
+    assert(q.origin === origin && JSON.stringify(q.buttons) === `["Wait","Exit Page"]`, `question ${JSON.stringify(q)}`);
     await until("ready", async () => { await command("state"); return state().pageQuestion.open?.ready; }, 3000);
-    await command("pagequestion press 0");
+    await command("key return keywin");
+    await sleep(300);
+    await command("state");
+    assert(state().pageQuestion.open?.kind === "hang", `Return answered it: ${JSON.stringify(state().pageQuestion)}`);
+    await command("pagequestion press 1");
     await until("exited", async () => { await command("state"); return state().pageQuestion.last?.answer === "exit" && state().crashedPage.shown !== null; }, 10000);
     await command("crashed reload");
     await until("back", async () => { await command("state"); return state().crashedPage.shown === null; });
@@ -2617,8 +2621,8 @@ const checks = {
 
   async "quit-with-downloads"() {
     // On an instance of its own (it quits). Quitting while a download runs asks "Quit and cancel download?" instead of
-    // ⌘Q's own warning (on here): Keep Downloading (the primary) keeps Ray and the download going; asking again and
-    // Quit quits.
+    // ⌘Q's own warning (on here): Keep Downloading keeps Ray and the download going; asking again and Quit (red, dead
+    // for 0.5 s) quits.
     const dir = mkdtempSync(join(tmpdir(), "ray-dlquit-"));
     writeFileSync(join(dir, "Settings.json"), JSON.stringify({ warnBeforeQuitting: true }));
     const it = ownInstance("quit-with-downloads", { RAY_DATA_DIR: dir, RAY_DOWNLOADS_DIR: join(dir, "Downloads") });

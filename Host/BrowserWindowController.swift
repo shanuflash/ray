@@ -759,12 +759,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     return pages
   }()
 
-  /// The crashed page's view goes right over the page card, under the toolbar, panels and notes, and takes the keys.
+  /// The crashed page's view goes right over the page card, under the toolbar, panels and notes.
   func placeCrashedPage(_ view: CrashedPageView) {
     if view.superview !== root { root.addSubview(view, positioned: .above, relativeTo: pages) }
     view.frame = pages.frame
     view.layer?.cornerRadius = pages.cornerRadius
-    if window.isKeyWindow, commandBar == nil { window.makeFirstResponder(view) }
   }
 
   func tab(_ tab: RayCoreTab, externalAppRequest request: [String: Any]) {
