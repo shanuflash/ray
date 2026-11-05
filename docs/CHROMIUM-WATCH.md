@@ -7,7 +7,33 @@ touches engine files or builds. Moving the engine is the owner's call. Ardia's s
 Ray's engine: Chromium 156.0.8078.47 (`engine.lock`), Helium helium-chromium 0.20.1 / helium-macos 0.20.1.1
 (`engine/patches/build/helium-pins.ini`).
 
-Last checked: Chrome 157.0.8103.39 (Mac stable), 156.0.8078.88 (Mac extended), 2026-11-04
+Last checked: Chrome 158.0.8127.18 (Mac early stable), 157.0.8103.39 (Mac stable), 156.0.8078.88 (Mac extended), 2026-11-05
+
+## 2026-11-05
+
+**Chrome 158 started its early stable rollout (no security notes yet). Helium-chromium 0.21.1 moved to M157
+(157.0.8103.38), but helium-macos has no 0.21 release yet, so M157 isn't buildable for Ray from Helium alone.**
+
+Chrome for Mac (chromiumdash):
+- **158.0.8127.18 / .19**, early stable, 2026-11-04 (blog: "Early Stable Update for Desktop"): a small
+  percentage of users, Mac "coming shortly". The post lists no security fixes; those come with M158's full
+  stable post. Same build as today's Beta.
+- 156.0.8078.82, stable, 2026-11-04: another M156 respin next to the early stable; no post of its own.
+- Extended stable unchanged at 156.0.8078.88. Nothing exploited in the wild reported.
+
+How far behind: unchanged in substance from yesterday. Ray's 156.0.8078.47 misses M156's fixes through .88
+(5 Critical in .73–.80 plus .88's backports, incl. Critical CVE-2026-121156) and all of M157's 213; M158 is
+now one milestone further out.
+
+Helium:
+- helium-chromium **0.21.1** (2026-11-04): Chromium 157.0.8103.38, patches refreshed, ungoogled-chromium
+  157.0.8103.38, uBlock 1.75.4.
+- helium-macos: still **0.20.3.1** (2026-10-30). No macOS release for 0.21.1 yet.
+
+What moving would take: M156 bump still ready (0.20.3 / 0.20.3.1, Chromium 156.0.8078.79). M157 needs a
+helium-macos 0.21.1.x first; then `helium-pins.ini` and `engine.lock` to 157.0.8103.38, re-sync, refresh
+Ray's and Ardia's fixups for M157, full rebuild (new milestone, longer). Watch `docs/ARDIA-WATCH.md` for an
+Ardia M157 engine. Not started: owner decides.
 
 ## 2026-11-04
 
