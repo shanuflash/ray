@@ -34,7 +34,7 @@ const settings = ["settings-window", "settings-catalog", "settings-minimal-url",
 // Settings › General (SettingsGeneral.swift, CloseWarnings.swift): its pane, the two warnings and Start fresh.
 settings.push("settings-general", "warn-before-quitting", "warn-before-closing-window");
 settings.push("settings-privacy", "settings-extensions");
-settings.push("settings-passwords", "settings-autofill");
+settings.push("settings-passwords", "settings-autofill", "password-prompt");
 // What a setting's value or its change notice reaches: the settings checks, the welcome (theme, keys), and the
 // features they drive (address bar, loading, site controls' zoom reset, ⇧⌘C, ⌘S, menu keys in the command bar).
 const settingReaders = [...settings, "onboarding", "page-toolbar", "page-loading", "load-sweep-once", "address-fragment",
@@ -115,6 +115,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Browser import": ["import-browser", "arc-import", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Onboarding": ["onboarding"],
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
+  "Host/BrowserWindowController.swift#Password prompts": ["password-prompt"],
   "Host/BrowserWindowController.swift#Panels": ["panels", "site-controls"],
   "Host/BrowserWindowController.swift#Notes": ["notes", "copy-url", "page-commands", "find-in-page"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
@@ -201,7 +202,7 @@ export const areas = {
   "Host/SettingsExtensions.swift": ["settings-extensions", "settings-panes", "settings-search", "extensions"],
   "Host/SettingsDataRows.swift": ["settings-privacy", "settings-extensions"],
   // Settings › Passwords and › Autofill (on the engine's ac_passwords_* and ac_autofill_*), and their shared pieces.
-  "Host/SettingsPasswords.swift": ["settings-passwords", "settings-panes", "settings-search", "jumpcloud-relay"],
+  "Host/SettingsPasswords.swift": ["settings-passwords", "settings-panes", "settings-search", "jumpcloud-relay", "password-prompt"],
   "Host/SettingsAutofill.swift": ["settings-autofill", "settings-panes", "settings-search"],
   "Host/SettingsDataViews.swift": ["settings-passwords", "settings-autofill"],
   // Settings › Search: its rows and controls, and the engines and site searches the command bar searches with.
@@ -237,7 +238,9 @@ export const areas = {
     "top-strip-click", "settings-sidebar-button"],
   // Which loads the address field sweeps for.
   "Host/LoadSweep.swift": ["new-tab-sweep", "page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar"],
-  "Host/PermissionPrompt.swift": permissions,
+  "Host/PermissionPrompt.swift": [...permissions, "password-prompt"],
+  // "Save password?" (its panel, the setting that drives Chrome's switch) and the fill dropdown's report.
+  "Host/PasswordPrompt.swift": ["password-prompt", "panels"],
   "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/TabSwitcher.swift": ["settings-recent-tab-cycling", "tab-switcher"],
@@ -258,7 +261,7 @@ export const areas = {
   "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
     "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes",
-    "row-menus", "multi-select", "folders"],
+    "row-menus", "multi-select", "folders", "password-prompt"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

@@ -176,8 +176,9 @@ publicly or create accounts.
   (Chrome's `kClipboardClearDelay`). Autofill: addresses (edit inline, country by name or code) and cards (number
   shown only through `ac_autofill_card_number`'s re-auth, Luhn-checked on add). Secrets go to the engine only as
   `SecretJSON` through `EngineCalls.callWithSecret`; the state log (`passwordsPane`, `autofillPane`) has counts and
-  ids, and its `pasteboard` says `<concealed>` for them. "Offer to save passwords" and "Save and fill
-  addresses/cards" are unbuilt (no prompts yet). Routes: chrome://settings/passwords, /autofill, /addresses,
+  ids, and its `pasteboard` says `<concealed>` for them. "Offer to save passwords" is Chrome's
+  `credentials_enable_service` (`PasswordPrompts.followSetting`); "Save and fill addresses/cards" are unbuilt (no
+  prompts yet). Routes: chrome://settings/passwords, /autofill, /addresses,
   /payments and chrome://password-manager (any path; `AddressInput.nativePages`). Checks `settings-passwords`,
   `settings-autofill`.
 - `MenuShortcuts`: every menu command's key, decided in one place (`apply`, at launch and on each change): the user's
@@ -272,7 +273,13 @@ publicly or create accounts.
   `Downloads` (button in the sidebar footer, ⌥⌘L; the list is a `Panels` panel above that button, over the sidebar,
   a peeking sidebar kept out while it's open), `FindBar` (⌘F,
   on `SurfaceBackdrop`, dropping in on the panels' spring),
-  `PermissionPrompt` (site permissions, only over their own tab), `ArcImport` (the old Import from Arc…, sidebar
+  `PermissionPrompt` (site permissions, only over their own tab), `PasswordPrompts` (`Host/PasswordPrompt.swift`,
+  `BrowserWindowController` `// MARK: Password prompts`: the engine's `passwordPrompt` as a `Panels` panel at the
+  page's top right, Ardia's spot; one per tab, put away on a tab switch or another panel and shown again on return,
+  Escape or a click outside is "not now", buttons dead 0.5 s, Return does nothing; "saved" is a note; the fill
+  dropdown and generation are Chrome's own popups, `autofillSuggestions` in the state log; test command
+  `pwprompt press save|never|notnow|update|nope|close`, state log `passwordPrompt` (shape only); check
+  `password-prompt`), `ArcImport` (the old Import from Arc…, sidebar
   only; its action still exists without a menu item).
 - `TabSwitcher` (`Host/TabSwitcher.swift`, `BrowserWindowController` `// MARK: Tab switcher`): Arc's ⌃Tab switcher
   (sizes from Cra's measurements of Arc 1.170 and the owner's recording; look B of the mocks, owner 2026-11-04). With

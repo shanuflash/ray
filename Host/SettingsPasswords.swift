@@ -18,10 +18,10 @@ extension SettingGroup {
 }
 
 extension AnySettingKey {
-  /// Chrome's "Offer to save passwords". Not built: Ray has no save or fill prompt yet (docs/MISSING.md, Chrome #2).
-  /// Its id says "logins": Settings.json never names passwords (the `settings-persist` check looks).
+  /// Chrome's "Offer to save passwords" (`PasswordPrompts.followSetting`: Chrome's `credentials_enable_service`, and the
+  /// prompt itself). Its id says "logins": Settings.json never names passwords (the `settings-persist` check looks).
   static let offerToSavePasswords = SettingKey<Bool>(
-    "offerToSaveLogins", default: true, built: false,
+    "offerToSaveLogins", default: true,
     ui: SettingUI(
       pane: .passwords, group: .passwordsSaving, title: "Offer to save passwords",
       detail: "", about: "Ray asks to save a password when you sign in to a site, and fills it in next time.",

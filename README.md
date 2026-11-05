@@ -49,6 +49,7 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Edge-to-edge full screen
   - Settings in the command bar
   - Your own colour and shortcuts
+  - Offers to save passwords when you sign in
   - JumpCloud Go sign-in
 
 ## Coming

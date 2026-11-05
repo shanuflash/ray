@@ -2408,6 +2408,143 @@ const checks = {
       rmSync(files, { recursive: true, force: true });
     }
   },
+  async "password-prompt"() {
+    // "Save password?" on an instance of its own (re-auth answered at once, fixture logins in RAY_TEST_SECRETS): a sign-in
+    // on the fixture form asks over its own tab with the site's full origin, its buttons wait 0.5 s, Save saves it
+    // (Settings › Passwords lists it, the same password), Escape is "not now", Never stops asking on that site, the
+    // switch in Settings stops the engine asking, and no password, username or site reaches the logs.
+    const hex = () => Math.random().toString(16).slice(2, 10);
+    const secrets = [`Pw-${hex()}-one`, `Pw-${hex()}-two`, `Pw-${hex()}-three`, `Pw-${hex()}-four`];
+    const users = ["prompt.one@example.test", "prompt.two@example.test", "prompt.three@example.test", "prompt.four@example.test"];
+    const logins = users.map((username, i) => ({ origin, username, password: secrets[i] }));
+    // A sign-in form: submitting it goes to /welcome, a sign-in that worked.
+    pages["/login"] = `<title>Sign in</title><form action="/welcome" method="post"><input id=user name=user autocomplete=username>
+      <input id=pass name=pass type=password autocomplete=current-password><button id=go>Sign in</button></form>`;
+    pages["/welcome"] = `<title>Welcome</title><p>signed in</p>`;
+    const it = ownInstance("password-prompt", { RAY_REAUTH: "granted", RAY_TEST_SECRETS: JSON.stringify({ logins }),
+      RAY_START_URL: `${origin}/login` });
+    let socket;
+    try {
+      await until("window", async () => (await it.cmd("state", 20000)) === "ok" && it.states.length > 0, 25000);
+      const version = await until("DevTools", async () => {
+        try { return await (await fetch(`http://127.0.0.1:${it.port}/json/version`)).json(); } catch { return null; }
+      }, 20000);
+      socket = new WebSocket(version.webSocketDebuggerUrl);
+      await new Promise((r, j) => ((socket.onopen = r), (socket.onerror = j)));
+      let id = 0;
+      const waiting = new Map();
+      socket.onmessage = (m) => {
+        const msg = JSON.parse(m.data);
+        if (msg.id && waiting.has(msg.id)) { waiting.get(msg.id)(msg); waiting.delete(msg.id); }
+      };
+      const cdp = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
+        const n = ++id;
+        waiting.set(n, (msg) => (msg.error ? reject(new Error(`${method}: ${msg.error.message}`)) : resolve(msg.result)));
+        socket.send(JSON.stringify({ id: n, method, params, sessionId }));
+      });
+      const prompt = (s) => s.passwordPrompt;
+      // Signs in on the active tab's form at `site` with fixture login `i`, typed as keys would be.
+      const signIn = async (site, i) => {
+        const pages = (await cdp("Target.getTargets")).targetInfos.filter((t) => t.type === "page");
+        let target = pages.find((t) => t.url.startsWith(`${site}/`));
+        if (!target) throw new Error(`no page on ${site}: ${pages.map((t) => t.url).join(" ")}`);
+        const { sessionId } = await cdp("Target.attachToTarget", { targetId: target.targetId, flatten: true });
+        const run = async (expression) => (await cdp("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, sessionId)).result?.value;
+        if (!(await run("location.pathname")).startsWith("/login")) {
+          await cdp("Page.navigate", { url: `${site}/login` }, sessionId);
+        }
+        await until("the form", async () => (await run("!!document.querySelector('#go') && document.readyState === 'complete'")));
+        for (const [field, text] of [["#user", users[i]], ["#pass", secrets[i]]]) {
+          await run(`(() => { const f = document.querySelector(${JSON.stringify(field)}); f.value = ""; f.focus(); })()`);
+          await cdp("Input.insertText", { text }, sessionId);
+        }
+        const box = await run(`(() => { const r = document.querySelector('#go').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+        for (const type of ["mousePressed", "mouseReleased"])
+          await cdp("Input.dispatchMouseEvent", { type, x: box[0], y: box[1], button: "left", clickCount: 1 }, sessionId);
+        await until("signed in", async () => { try { return (await run("location.pathname")) === "/welcome"; } catch { return false; } });
+        await cdp("Target.detachFromTarget", { sessionId }).catch(() => {});
+      };
+      // Signs in, then waits for the prompt, which appears with its buttons waiting (the first state showing it).
+      const asked = async (what, site, i) => {
+        const from = it.states.length;
+        await signIn(site, i);
+        const s = await it.until(what, (s) => prompt(s).open !== null && prompt(s).open.ready, 15000);
+        // It appeared with its buttons waiting: the first state that showed it says not ready.
+        const first = it.states.slice(from).find((x) => x.passwordPrompt?.open);
+        assert(first && first.passwordPrompt.open.ready === false, "the prompt's buttons took clicks at once");
+        return s;
+      };
+
+      // Save.
+      let s = await asked("save prompt", origin, 0);
+      let open = prompt(s).open;
+      assert(open.state === "save" && open.originShown && open.sameOrigin && open.activeTab, `the prompt: ${JSON.stringify(open)}`);
+      assert(open.buttons.join() === "Never,Not Now,Save" && open.hasUsername && open.dots === secrets[0].length,
+        `the prompt's content: ${JSON.stringify(open)}`);
+      assert(s.panels.open?.name === "passwordPrompt" && s.panels.open.align === "trailing", `its panel: ${JSON.stringify(s.panels.open)}`);
+      if (process.env.SNAP_DIR) {
+        await it.ok("onscreen show");
+        await sleep(400);
+        execFileSync("screencapture", ["-x", "-o", "-l", String(s.windowNumber), join(process.env.SNAP_DIR, "password-prompt.png")]);
+        await it.ok("onscreen off");
+      }
+      await it.ok("pwprompt press save");
+      s = await it.until("saved", (s) => prompt(s).last === "save" && prompt(s).open === null);
+      await it.ok("settings open passwords");
+      await it.ok("passwords unlock");
+      s = await it.until("listed", (s) => !s.passwordsPane.locked && s.passwordsPane.count === 1, 15000);
+      await it.ok("passwords open 0");
+      await it.ok("passwords reveal");
+      await it.until("revealed", (s) => s.passwordsPane.revealed);
+      assert((await it.cmd("passwords revealcheck 0")) === "match", "Save didn't save the typed password");
+      await it.ok("settings close");
+      await it.until("settings closed", (s) => !s.settingsWindow.open);
+
+      // Escape is "not now": nothing saved.
+      await asked("second prompt", origin, 1);
+      await it.ok("key esc keywin");
+      s = await it.until("dismissed", (s) => prompt(s).last === "dismiss" && prompt(s).open === null);
+      assert(s.panels.lastClosedBy === "escape", `closed by ${s.panels.lastClosedBy}`);
+
+      // Never on this site: no prompt after the next sign-in.
+      await asked("third prompt", origin, 2);
+      await it.ok("pwprompt press never");
+      s = await it.until("never", (s) => prompt(s).last === "never");
+      const offered = prompt(s).offered;
+      await signIn(origin, 3);
+      await sleep(2500);
+      s = await it.now();
+      assert(prompt(s).offered === offered && prompt(s).open === null, "Never still asked on that site");
+      await it.ok("settings open passwords");
+      await it.ok("passwords unlock");
+      s = await it.until("one saved, one never", (s) => !s.passwordsPane.locked && s.passwordsPane.count === 1 && s.passwordsPane.exceptions === 1, 15000);
+      await it.ok("settings close");
+
+      // Offer to save passwords off: the engine doesn't ask (another site, localhost); on again, it does.
+      await it.ok("setting offerToSaveLogins off");
+      await it.ok("menu focusAddress");
+      await it.ok(`type ${localOrigin}/login`);
+      await it.ok("enter");
+      await signIn(localOrigin, 0);
+      await sleep(2500);
+      s = await it.now();
+      assert(prompt(s).offered === offered && prompt(s).open === null && prompt(s).last === "never", "the switch off still asked");
+      await it.ok("setting offerToSaveLogins on");
+      await sleep(300);
+      await asked("prompt with the switch on", localOrigin, 1);
+      await it.ok("pwprompt press notnow");
+      await it.until("not now", (s) => prompt(s).last === "dismiss");
+
+      // Nothing secret in the logs.
+      for (const secret of secrets) assert(!it.log.includes(secret), "a password is in stderr");
+      const logged = JSON.stringify(it.states.map((x) => ({ passwordPrompt: x.passwordPrompt, autofill: x.autofillSuggestions, pane: x.passwordsPane })));
+      for (const word of [...users, "127.0.0.1", "localhost"]) assert(!logged.includes(word), `the state log names "${word}"`);
+      for (const user of users) assert(!it.log.includes(user), "a username is in stderr");
+    } finally {
+      socket?.close();
+      await it.stop().catch(() => it.proc.kill("SIGKILL"));
+    }
+  },
   async "settings-autofill"() {
     // Settings › Autofill on instances of its own (RAY_REAUTH): addresses and cards added, edited and deleted (asked
     // first), a card's number shown only through the engine's re-auth, and no number, name or address in the logs.

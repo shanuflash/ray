@@ -708,6 +708,30 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     return prompts
   }()
 
+  // MARK: Password prompts
+
+  /// "Save password?" and "Update password?" (`PasswordPrompt.swift`), one per tab, shown over its own tab.
+  private(set) lazy var passwords: PasswordPrompts = {
+    let prompts = PasswordPrompts(controller: self)
+    prompts.onChange = { [weak self] in self?.logState("passwordPrompt") }
+    return prompts
+  }()
+
+  /// The page card's frame in the root view, for prompts that hang from its corners.
+  var pageFrame: NSRect { pages.frame }
+
+  /// The last fill dropdown Chrome showed (its own popup), for tests: how many rows of which kinds, never their text.
+  private var autofillSuggestions: [String: Any]?
+
+  func window(_ window: RayCoreWindow, passwordPrompt prompt: [String: Any], for tab: RayCoreTab) {
+    passwords.add(prompt, tab: tab)
+  }
+
+  func tab(_ tab: RayCoreTab, didShowAutofillSuggestions items: [[String: String]]) {
+    autofillSuggestions = ["count": items.count, "types": items.map { $0["type"] ?? "" }, "tab": Int(tab.tabId)]
+    logState("autofillSuggestions")
+  }
+
   // MARK: Panels
 
   /// This window's panel over the page (`Panels.swift`): one at a time, from a button.
@@ -1100,6 +1124,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if switched { extensions.closePopup() }
     state.activeEntryID = entry.id
     if switched { permissions.update() }
+    if switched { passwords.update() }
     entry.lastActive = Date()
     if commandBar == nil { focusPage(tab) }
     if switched { changed("activate") }
@@ -2419,6 +2444,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// Every window follows the one set of settings.
   private func observeSettings() {
     let settings = RaySettings.shared
+    PasswordPrompts.followSetting()
     settingObservations = [
       settings.observe([.minimalURL, .loadingProgress]) { [weak self] in
         guard let self else { return }
@@ -2655,6 +2681,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "arcImport": arcImportShown ?? NSNull(),
       "import": importLog ?? NSNull(),
       "permission": permissions.shown ?? NSNull(),
+      "passwordPrompt": passwords.state,
+      "autofillSuggestions": autofillSuggestions ?? NSNull(),
       "find": findBar.map { bar -> [String: Any] in
         let frame = bar.convert(bar.bounds, to: nil)
         let height = window.contentView?.bounds.height ?? 0

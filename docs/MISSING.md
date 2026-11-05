@@ -61,8 +61,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 1. Bookmarks UI: ⌘D pins; imported bookmarks live in Chrome's model (`chrome://bookmarks`), with no Ray view.
 
 **Prompts the engine asks Ray to show (delegate hooks Ray doesn't implement)**
-2. Passwords: the "save password?" prompt, the fill dropdown, password generation (`passwordSavePromptForTab`,
-   `passwordPrompt`, `didShowAutofillSuggestions`).
+2. ~~Passwords: the "save password?" prompt~~ (Done). The fill dropdown and "Suggest strong password" are Chrome's own
+   popups (the engine draws them); see Known limitations 40.
 3. Autofill for addresses and cards (`autofillPrompt`, `showAutofillSuggestions`).
 4. Links that open other apps: `mailto:`, Zoom, Slack… (`externalAppRequest`) (?).
 5. Device pickers: WebUSB, Bluetooth, HID, Serial (`deviceChooser`); requests get nothing.
@@ -233,8 +233,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     from `resources.pak`, only routed to the pane.
 21. **Passwords pane gaps.** "Never saved" can't gain entries from Settings (no engine call to add an exception); the
     real Touch ID prompt, save and open panels and 1Password's "Add browser" with the signed Ray aren't tried by
-    hand; "Offer to save passwords" and "Save and fill addresses/cards" stay unbuilt until Ray has the prompts
-    (Chrome features #2, #3).
+    hand; "Save and fill addresses/cards" stay unbuilt until Ray has the prompts (Chrome features #3).
 22. **Two sets of Settings data rows.** `SettingsDataRows` (Privacy, Extensions) and `SettingsDataViews` (Passwords,
     Autofill) were built in parallel and overlap (item rows, confirm sheets; the latter's are `SettingsRecordRow` and
     `SettingsRecordConfirm`). Fold into one.
@@ -317,11 +316,17 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 39. **macOS 27: the green button's Move & Resize / Fill & Arrange may crash** (not tried): a submenu's parent item
     targets NSMenu with `submenuAction:`, which macOS 27's NSMenu no longer implements (Ardia 0.2.44, `9e5b115b`).
     Fix: add an empty `submenuAction:` to NSMenu at launch when it's missing. Found 2026-11-05.
+40. **Password prompt gaps** (2026-11-05). The fill dropdown and "Suggest strong password" are Chrome's popups,
+    drawn by the engine; no hidden test instance ever got one (`didShowAutofillSuggestions` never fired, by manual
+    fallback, a click or with the window key and on screen), so whether they show in Ray is untried by hand. The
+    prompt can't show the password (the engine gives only its length) and there's no key icon to bring a dismissed
+    prompt back (Chrome's omnibox has one). No "Passwords" manual fallback (Ardia's `autofill passwords` command).
 
 ## Done
 
 | What | When |
 |---|---|
+| "Save password?" and "Update password?" after a sign-in (Never, Not Now, Save; username editable), "Password saved" for a suggested one; Settings › Passwords › Offer to save passwords | 2026-11-05, `feat: save password prompt` |
 | Arc's ⌃Tab switcher: recent tabs as cards with page pictures, switching on Control's release, Tab/⇧Tab/arrows/pointer, Escape cancels, a quick tap just switches | 2026-11-04, `feat: arc ctrl-tab switcher` |
 | Ray's own engine (Phase B) and "Ray Safe Storage" | 2026-10-28, 0.2.0 |
 | First installs without notarization: a DMG whose window shows the drag and the first open (Open Anyway), and a cask for the owner's tap (`brew install shanuflash/tap/ray`), both from `scripts/release.sh` | 2026-11-03, `feat: dmg and homebrew tap` |
