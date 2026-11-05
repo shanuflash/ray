@@ -617,6 +617,14 @@ enum TestCommands {
       if numbers.count == 2 { AppController.shared.current?.hoverSidebar(at: NSPoint(x: numbers[0], y: numbers[1])) } else {
         result = "usage: hover x y"
       }
+    case "pixelscale":
+      // Lay the sidebar out as on a display of this scale ("off": the window's own).
+      PixelGrid.scaleOverride = argument == "off" ? nil : Double(argument).map { CGFloat($0) }
+      func relayout(_ view: NSView) {
+        view.needsLayout = true
+        view.subviews.forEach(relayout)
+      }
+      for window in NSApp.windows { window.contentView.map(relayout) }
     case "renamedone":
       if AppController.shared.current?.pressRenameDone() != true { result = "not renaming" }
     case "pointer":

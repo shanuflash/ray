@@ -1211,6 +1211,25 @@ const checks = {
     const away = frameOf(active.id);
     await command(`hover ${away.cx} ${away.cy}`);
   },
+  async "icons-on-pixels"() {
+    // On a 1x monitor a 16 pt favicon at a 41 pt row's half-point middle straddled two pixels and drew smeared:
+    // sidebar icons sit on whole device pixels at any scale.
+    await todayTabs(2);
+    const [fav] = state().sidebar.today;
+    await command(`rowaction favorite ${fav.id}`);
+    await until("favorited", () => state().sidebar.favorites.some((e) => e.id === fav.id));
+    try {
+      for (const scale of ["1", "2", "3"]) {
+        await command(`pixelscale ${scale}`);
+        await command("state");
+        assert(state().sidebarFrames.iconsOffGrid === "", `at ${scale}x icons off the pixel grid: ${state().sidebarFrames.iconsOffGrid}`);
+      }
+    } finally {
+      await command("pixelscale off");
+      await command(`rowaction unfavorite ${fav.id}`);
+    }
+    await until("unfavorited", () => !state().sidebar.favorites.some((e) => e.id === fav.id));
+  },
   async "tile-hover"() {
     await todayTabs(2);
     const [fav, other] = state().sidebar.today;

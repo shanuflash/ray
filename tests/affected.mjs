@@ -156,7 +156,7 @@ export const areas = {
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
   "Host/SidebarView.swift": [...drag, ...folders, "tile-hover", "row-hover-close", "favorites", "pin-unload-restore",
     "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment", "tab-rename",
-    "settings-sidebar-button", "settings-fade-unloaded", "row-menus"],
+    "settings-sidebar-button", "settings-fade-unloaded", "row-menus", "icons-on-pixels"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
   // Also where Change Icon… points, and the inline field for Rename… and Edit Pinned Page › Edit….
   "Host/SidebarView.swift#Folder motion": [...folders, ...drag, "tab-rename", "row-menus"],
@@ -258,7 +258,7 @@ export const areas = {
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
-  "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
+  "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "icons-on-pixels", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
     "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes",
     "row-menus", "multi-select", "folders", "password-prompt"],

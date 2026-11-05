@@ -229,7 +229,10 @@ publicly or create accounts.
   Checks `folders` (an unpacked extension's service worker drives `chrome.tabGroups`), `folders-relaunch`.
 - `TileSelection` (`Host/TileSelection.swift`, from Ardia's `DockSelection`, Apache-2.0): Arc's selected favorite, a
   3 pt ring and a 22 % wash, both the tile's favicon blurred (`BlurredIcon`, cached per image); none for the globe.
-  Favorite icons are 16 pt. State log `sidebarFrames.tileRing`; check `tile-hover`.
+  Favorite icons are 16 pt. State log `sidebarFrames.tileRing`; check `tile-hover`. Sidebar icons (rows, tiles, folder
+  icons, drop hints) go through `PixelGrid.align` (whole device pixels for the window's scale; a 41 pt row's half-point
+  middle smeared favicons on a 1x monitor) and lay out again on a backing change; test command `pixelscale 1|2|off`,
+  state log `sidebarFrames.iconsOffGrid`, check `icons-on-pixels`.
 - Multi-select (`SidebarView` `// MARK: Selection`, Arc's): ⌘-click picks or drops a tab (the active one counts),
   ⇧-click picks the shown tabs from the anchor (the last ⌘-click, else the active tab), ⌘⇧ adds a range; neither
   switches tabs, a plain click ends it (on a selected tab, only at the release, so the selection can be dragged).

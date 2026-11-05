@@ -1132,6 +1132,11 @@ final class SidebarView: NSView {
     frames["closeOverTitle"] = zip(pinnedRows + todayRows, pinned + today).filter { $0.0.closeOverlapsTitle }
       .map { $0.1.id.uuidString }.joined(separator: ",")
     frames["rowRadius"] = String(format: "%.0f", SidebarRowView.fillRadius)
+    frames["iconsOffGrid"] = shownViews.filter { view, _ in
+      guard !view.isHidden else { return false }
+      let icon = (view as? SidebarRowView)?.iconView ?? (view as? FavoriteTileView)?.iconView
+      return icon.map { PixelGrid.offGrid($0) > 0.01 } ?? false
+    }.map { $0.1.id.uuidString }.joined(separator: ",")
     frames["fadedIcons"] = shownViews.filter { view, _ in
       (view as? SidebarRowView)?.iconFaded ?? (view as? FavoriteTileView)?.iconFaded ?? false
     }.map { $0.1.id.uuidString }.joined(separator: ",")
@@ -1816,6 +1821,11 @@ final class AddressPill: NSView {
 }
 
 final class FavoriteTileView: NSView, Liftable {
+  // Moved to a display of another scale: the icon goes back on its pixels.
+  override func viewDidChangeBackingProperties() {
+    super.viewDidChangeBackingProperties()
+    needsLayout = true
+  }
   var onClick: (() -> Void)?
   var onPointer: ((NSEvent) -> Void)?
   /// Its context menu, made at the right-click.
@@ -1877,7 +1887,7 @@ final class FavoriteTileView: NSView, Liftable {
     CATransaction.commit()
     updateSelection()
     // Arc's 16 pt favicon.
-    icon.frame = NSRect(x: (bounds.width - 16) / 2, y: (bounds.height - 16) / 2, width: 16, height: 16)
+    icon.frame = PixelGrid.align(NSRect(x: (bounds.width - 16) / 2, y: (bounds.height - 16) / 2, width: 16, height: 16), in: self)
     residency.placeDot(at: CGPoint(x: bounds.midX, y: 6))
   }
 
@@ -1949,6 +1959,10 @@ final class FavoriteTileView: NSView, Liftable {
 }
 
 final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
+  override func viewDidChangeBackingProperties() {
+    super.viewDidChangeBackingProperties()
+    needsLayout = true
+  }
   enum Part { case icon, body }
 
   let residency = TabResidency()
@@ -2377,9 +2391,9 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     CATransaction.commit()
     let mid = bounds.height / 2
     let iconSize: CGFloat = isNewTab ? 14 : 16
-    icon.frame = NSRect(x: 17 - iconSize / 2, y: mid - iconSize / 2, width: iconSize, height: iconSize)
+    icon.frame = PixelGrid.align(NSRect(x: 17 - iconSize / 2, y: mid - iconSize / 2, width: iconSize, height: iconSize), in: self)
     // To the half point: rows are 41 pt, so a whole-point frame put the icon 0.5 pt off their middle.
-    folderIcon.frame = NSRect(x: 7, y: ((mid - 9) * 2).rounded() / 2, width: 20, height: 18)
+    folderIcon.frame = PixelGrid.align(NSRect(x: 7, y: ((mid - 9) * 2).rounded() / 2, width: 20, height: 18), in: self)
     residency.placeDot(at: CGPoint(x: 3.5, y: mid))
     slash.frame = NSRect(x: 28, y: mid - 11, width: 10, height: 22)
     let textX: CGFloat = away ? 41 : 35
@@ -2418,6 +2432,35 @@ private enum Lift {
 
 /// Where a drag would land in favorites, lit Arc's way (accent tint and border): all of them, or the one tile that
 /// opens when there are none.
+/// Icons on whole device pixels: a 16 pt favicon at a half point (a 41 pt row's middle) is a whole pixel on a Retina
+/// display but straddles two on a 1x monitor, where it drew smeared.
+enum PixelGrid {
+  /// Tests (`pixelscale`): lay out as on a display of this scale.
+  static var scaleOverride: CGFloat?
+
+  static func scale(of view: NSView) -> CGFloat {
+    if let scale = scaleOverride { return scale }
+    return view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+  }
+
+  /// `rect` (in `view`) moved by under a pixel so its corner sits on the window's pixel grid; its size is kept.
+  static func align(_ rect: NSRect, in view: NSView) -> NSRect {
+    let scale = scale(of: view)
+    let corner = view.convert(rect.origin, to: nil)
+    let snapped = NSPoint(x: (corner.x * scale).rounded() / scale, y: (corner.y * scale).rounded() / scale)
+    // Back through the view so a flipped one moves the right way.
+    let origin = view.convert(snapped, from: nil)
+    return NSRect(origin: origin, size: rect.size)
+  }
+
+  /// For tests: how far `view`'s frame sits off the pixel grid, in pixels.
+  static func offGrid(_ view: NSView) -> CGFloat {
+    let scale = scale(of: view)
+    let frame = view.convert(view.bounds, to: nil)
+    return max(abs(frame.minX * scale - (frame.minX * scale).rounded()), abs(frame.minY * scale - (frame.minY * scale).rounded()))
+  }
+}
+
 final class DropHintView: NSView {
   private let outline = CAShapeLayer()
   private let label: NSTextField
@@ -2473,15 +2516,15 @@ final class DropHintView: NSView {
     CATransaction.commit()
     let mid = bounds.height / 2
     if label.stringValue.isEmpty {
-      icon.frame = NSRect(x: (bounds.width - 16) / 2, y: mid - 8, width: 16, height: 16)
+      icon.frame = PixelGrid.align(NSRect(x: (bounds.width - 16) / 2, y: mid - 8, width: 16, height: 16), in: self)
     } else if inset == 0 {
       // A tile: icon and title centred together.
       let width = min(ceil(label.intrinsicContentSize.width), bounds.width - 40)
       let x = (bounds.width - width - 22) / 2
-      icon.frame = NSRect(x: x, y: mid - 8, width: 16, height: 16)
+      icon.frame = PixelGrid.align(NSRect(x: x, y: mid - 8, width: 16, height: 16), in: self)
       label.frame = NSRect(x: x + 22, y: mid - 10, width: width, height: 20)
     } else {
-      icon.frame = NSRect(x: 9, y: mid - 8, width: 16, height: 16)
+      icon.frame = PixelGrid.align(NSRect(x: 9, y: mid - 8, width: 16, height: 16), in: self)
       label.frame = NSRect(x: 35, y: mid - 10, width: bounds.width - 45, height: 20)
     }
   }
