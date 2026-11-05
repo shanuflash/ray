@@ -2545,6 +2545,175 @@ const checks = {
       await it.stop().catch(() => it.proc.kill("SIGKILL"));
     }
   },
+  async "autofill-prompt"() {
+    // "Save address?", "Update address?" and "Save card?" on an instance of its own: a form sent with a new address
+    // asks over its own tab with the site's full origin and Chrome's address lines, its buttons wait 0.5 s, Save saves
+    // it (Settings › Autofill lists it), Escape is "not now", a tab switch ends an address prompt (Chrome closes it),
+    // Not Now on a card saves nothing and Save saves it, the switches in Settings stop the engine asking, and no
+    // address, card digits or site reaches the logs.
+    const field = (id, autocomplete, label) => `<label>${label} <input id=${id} name=${id} autocomplete=${autocomplete}></label>`;
+    pages["/address"] = `<title>Address</title><form action="/sent" method="post">${field("name", "name", "Name")}
+      ${field("email", "email", "Email")}${field("street", "street-address", "Street")}${field("city", "address-level2", "City")}
+      ${field("state", "address-level1", "State")}${field("zip", "postal-code", "ZIP")}${field("country", "country-name", "Country")}
+      <button id=go>Save</button></form>`;
+    pages["/card"] = `<title>Card</title><form action="/sent" method="post">${field("ccname", "cc-name", "Name on card")}
+      ${field("ccnumber", "cc-number", "Number")}${field("ccmonth", "cc-exp-month", "Month")}${field("ccyear", "cc-exp-year", "Year")}
+      <button id=go>Pay</button></form>`;
+    pages["/sent"] = `<title>Sent</title><p>sent</p>`;
+    const address = (street, email = "") => [["name", "Jane Fixture"], ["email", email], ["street", street], ["city", "Springfield"],
+      ["state", "IL"], ["zip", "62701"], ["country", "United States"]];
+    const card = (number) => [["ccname", "Card Fixture"], ["ccnumber", number], ["ccmonth", "12"], ["ccyear", "2031"]];
+    const numbers = ["4111111111111111", "5555555555554444"];
+    const words = ["Jane Fixture", "Meadow", "Springfield", "62701", "fixture.mail@example.test", "Card Fixture", "1111", "4444",
+      ...numbers];
+    const it = ownInstance("autofill-prompt", { RAY_REAUTH: "granted", RAY_START_URL: `${secureOrigin}/address`,
+      RAY_HOST_RULES: "MAP ray.test 127.0.0.1", RAY_IGNORE_CERT_ERRORS: "1" });
+    let socket;
+    try {
+      await until("window", async () => (await it.cmd("state", 20000)) === "ok" && it.states.length > 0, 25000);
+      const version = await until("DevTools", async () => {
+        try { return await (await fetch(`http://127.0.0.1:${it.port}/json/version`)).json(); } catch { return null; }
+      }, 20000);
+      socket = new WebSocket(version.webSocketDebuggerUrl);
+      await new Promise((r, j) => ((socket.onopen = r), (socket.onerror = j)));
+      let id = 0;
+      const waiting = new Map();
+      socket.onmessage = (m) => {
+        const msg = JSON.parse(m.data);
+        if (msg.id && waiting.has(msg.id)) { waiting.get(msg.id)(msg); waiting.delete(msg.id); }
+      };
+      const cdp = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
+        const n = ++id;
+        waiting.set(n, (msg) => (msg.error ? reject(new Error(`${method}: ${msg.error.message}`)) : resolve(msg.result)));
+        socket.send(JSON.stringify({ id: n, method, params, sessionId }));
+      });
+      const prompt = (s) => s.autofillPrompt;
+      // Fills the form at `path` on the page that's on `secureOrigin`, typed as keys would be, and sends it.
+      const send = async (path, values) => {
+        const targets = (await cdp("Target.getTargets")).targetInfos.filter((t) => t.type === "page" && t.url.startsWith(secureOrigin));
+        if (!targets.length) throw new Error("no page on the fixture");
+        const { sessionId } = await cdp("Target.attachToTarget", { targetId: targets[0].targetId, flatten: true });
+        const run = async (expression) => (await cdp("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, sessionId)).result?.value;
+        await cdp("Page.navigate", { url: `${secureOrigin}${path}` }, sessionId);
+        await until("the form", async () => { try { return await run("!!document.querySelector('#go') && document.readyState === 'complete'"); } catch { return false; } });
+        for (const [field, text] of values) {
+          if (!text) continue;
+          await run(`document.getElementById(${JSON.stringify(field)}).focus()`);
+          await cdp("Input.insertText", { text }, sessionId);
+        }
+        const box = await run(`(() => { const r = document.querySelector('#go').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+        for (const type of ["mousePressed", "mouseReleased"])
+          await cdp("Input.dispatchMouseEvent", { type, x: box[0], y: box[1], button: "left", clickCount: 1 }, sessionId);
+        await until("sent", async () => { try { return (await run("location.pathname")) === "/sent"; } catch { return false; } });
+        await cdp("Target.detachFromTarget", { sessionId }).catch(() => {});
+      };
+      // Sends the form, then waits for the prompt, which appears with its buttons waiting.
+      const asked = async (what, kind, path, values) => {
+        const from = it.states.length;
+        await send(path, values);
+        const s = await it.until(what, (s) => prompt(s).open?.kind === kind && prompt(s).open.ready, 15000);
+        const first = it.states.slice(from).find((x) => x.autofillPrompt?.open);
+        assert(first && first.autofillPrompt.open.ready === false, "the prompt's buttons took clicks at once");
+        const open = prompt(s).open;
+        assert(open.originShown && open.sameOrigin && open.activeTab && !open.message === (kind !== "updateAddress"),
+          `the ${kind} prompt: ${JSON.stringify(open)}`);
+        assert(s.panels.open?.name === "autofillPrompt" && s.panels.open.align === "trailing", `its panel: ${JSON.stringify(s.panels.open)}`);
+        return s;
+      };
+      // Settings › Autofill lists `addresses` and `cards`. The pane stays in the window between visits and reloads when
+      // the window becomes key, which a hidden test window never does: `autofill load` is that reload.
+      const listed = async (what, addresses, cards) => {
+        await it.ok("settings open autofill");
+        await it.ok("autofill load");
+        await it.until(what, (s) => s.settingsWindow.pane === "autofill" && s.autofillPane?.addresses === addresses
+          && s.autofillPane.cards === cards, 15000);
+        await it.ok("settings close");
+        await it.until("settings closed", (s) => !s.settingsWindow.open);
+      };
+
+      // Save address.
+      let s = await asked("save-address prompt", "saveAddress", "/address", address("1 Meadow Lane"));
+      let open = prompt(s).open;
+      assert(open.buttons.join() === "Not Now,Save" && open.lines.length === 1 && open.lines[0] >= 2, `the prompt's content: ${JSON.stringify(open)}`);
+      assert((await it.cmd("afprompt has Springfield")) === "yes", "the prompt doesn't show the address sent");
+      if (process.env.SNAP_DIR) {
+        await it.ok("onscreen show");
+        await sleep(400);
+        execFileSync("screencapture", ["-x", "-o", "-l", String(s.windowNumber), join(process.env.SNAP_DIR, "autofill-prompt-address.png")]);
+        await it.ok("onscreen off");
+      }
+      await it.ok("afprompt press accept");
+      s = await it.until("saved", (s) => prompt(s).last === "accept" && prompt(s).open === null && prompt(s).waiting === 0);
+      await listed("address listed", 1, 0);
+
+      // Update address: Escape is "not now"; then a tab switch ends it, and it doesn't come back.
+      s = await asked("update-address prompt", "updateAddress", "/address", address("1 Meadow Lane", "fixture.mail@example.test"));
+      assert(prompt(s).open.lines.length >= 1, `the update's lines: ${JSON.stringify(prompt(s).open)}`);
+      if (process.env.SNAP_DIR) {
+        await it.ok("onscreen show");
+        await sleep(400);
+        execFileSync("screencapture", ["-x", "-o", "-l", String(s.windowNumber), join(process.env.SNAP_DIR, "autofill-prompt-update.png")]);
+        await it.ok("onscreen off");
+      }
+      await it.ok("key esc keywin");
+      s = await it.until("dismissed", (s) => prompt(s).last === "dismiss" && prompt(s).open === null);
+      assert(s.panels.lastClosedBy === "escape", `closed by ${s.panels.lastClosedBy}`);
+      await asked("update prompt again", "updateAddress", "/address", address("1 Meadow Lane", "fixture.mail@example.test"));
+      await it.ok("menu newTab");
+      await it.ok(`type ${origin}/b`);
+      await it.ok("enter");
+      s = await it.until("closed by the tab switch", (s) => prompt(s).open === null && prompt(s).waiting === 0, 10000);
+      await it.ok("menu nextTab");
+      await sleep(1500);
+      s = await it.now();
+      assert(prompt(s).open === null && s.panels.open === null, `the prompt came back after the tab switch: ${JSON.stringify(prompt(s))}`);
+      await listed("no address added by an update", 1, 0);
+
+      // Save card: Save saves it, Not Now on another saves nothing.
+      s = await asked("save-card prompt", "saveCard", "/card", card(numbers[0]));
+      open = prompt(s).open;
+      assert(open.buttons.length === 2 && open.buttons[0] === "Not Now" && open.lines.join() === "1", `the card prompt: ${JSON.stringify(open)}`);
+      assert((await it.cmd("afprompt has 1111")) === "yes", "the card prompt doesn't show the card's last digits");
+      if (process.env.SNAP_DIR) {
+        await it.ok("onscreen show");
+        await sleep(400);
+        execFileSync("screencapture", ["-x", "-o", "-l", String(s.windowNumber), join(process.env.SNAP_DIR, "autofill-prompt-card.png")]);
+        await it.ok("onscreen off");
+      }
+      await it.ok("afprompt press accept");
+      await it.until("card saved", (s) => prompt(s).last === "accept" && prompt(s).open === null);
+      await listed("card listed", 1, 1);
+      await asked("second card prompt", "saveCard", "/card", card(numbers[1]));
+      await it.ok("afprompt press decline");
+      await it.until("declined", (s) => prompt(s).last === "decline" && prompt(s).open === null);
+      await sleep(1000);
+      await listed("no card after Not Now", 1, 1);
+
+      // The switches off: the engine doesn't ask; on again, it does.
+      await it.ok("setting autofillAddresses off");
+      await it.ok("setting autofillCards off");
+      await sleep(300);
+      let offered = prompt(await it.now()).offered;
+      await send("/address", address("9 Other Road"));
+      await send("/card", card(numbers[1]));
+      await sleep(2500);
+      s = await it.now();
+      assert(prompt(s).offered === offered && prompt(s).open === null, `the switches off still asked: ${JSON.stringify(prompt(s))}`);
+      await it.ok("setting autofillAddresses on");
+      await sleep(300);
+      await asked("prompt with the switch on", "saveAddress", "/address", address("9 Other Road"));
+      await it.ok("afprompt press close");
+      await it.until("closed is not now", (s) => prompt(s).last === "dismiss" && prompt(s).open === null);
+
+      // Nothing from the forms in the logs.
+      const logged = JSON.stringify(it.states.map((x) => ({ autofillPrompt: x.autofillPrompt, autofill: x.autofillSuggestions, pane: x.autofillPane })));
+      for (const word of [...words, "127.0.0.1", "ray.test"]) assert(!logged.includes(word), `the state log names "${word}"`);
+      for (const word of words) assert(!it.log.replace(/\[ray-test\] afprompt has \S+/g, "").includes(word), `stderr has "${word}"`);
+    } finally {
+      socket?.close();
+      await it.stop().catch(() => it.proc.kill("SIGKILL"));
+    }
+  },
   async "settings-autofill"() {
     // Settings › Autofill on instances of its own (RAY_REAUTH): addresses and cards added, edited and deleted (asked
     // first), a card's number shown only through the engine's re-auth, and no number, name or address in the logs.

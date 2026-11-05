@@ -63,7 +63,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 **Prompts the engine asks Ray to show (delegate hooks Ray doesn't implement)**
 2. ~~Passwords: the "save password?" prompt~~ (Done). The fill dropdown and "Suggest strong password" are Chrome's own
    popups (the engine draws them); see Known limitations 40.
-3. Autofill for addresses and cards (`autofillPrompt`, `showAutofillSuggestions`).
+3. ~~Autofill for addresses and cards: the save prompts~~ (Done). The fill dropdown is Chrome's own popup (the engine
+   draws it); see Known limitations 41.
 4. Links that open other apps: `mailto:`, Zoom, Slack… (`externalAppRequest`) (?).
 5. Device pickers: WebUSB, Bluetooth, HID, Serial (`deviceChooser`); requests get nothing.
 6. Screen-share picker (`allowDesktopCapture`, "share this tab instead").
@@ -233,7 +234,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     from `resources.pak`, only routed to the pane.
 21. **Passwords pane gaps.** "Never saved" can't gain entries from Settings (no engine call to add an exception); the
     real Touch ID prompt, save and open panels and 1Password's "Add browser" with the signed Ray aren't tried by
-    hand; "Save and fill addresses/cards" stay unbuilt until Ray has the prompts (Chrome features #3).
+    hand.
 22. **Two sets of Settings data rows.** `SettingsDataRows` (Privacy, Extensions) and `SettingsDataViews` (Passwords,
     Autofill) were built in parallel and overlap (item rows, confirm sheets; the latter's are `SettingsRecordRow` and
     `SettingsRecordConfirm`). Fold into one.
@@ -321,11 +322,16 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     fallback, a click or with the window key and on screen), so whether they show in Ray is untried by hand. The
     prompt can't show the password (the engine gives only its length) and there's no key icon to bring a dismissed
     prompt back (Chrome's omnibox has one). No "Passwords" manual fallback (Ardia's `autofill passwords` command).
+41. **Autofill prompt gaps** (2026-11-05). The address and card fill dropdown is Chrome's popup, drawn by the engine,
+    untried by hand (as 40). Only cards saved on this Mac are asked about: the engine drops Google Payments' upload,
+    IBAN and offer bubbles, so IBANs are never saved. No icon brings a dismissed prompt back, the address prompt can't
+    be edited before saving (Chrome's has Edit), and a card's explanation ("To pay faster…") is left out.
 
 ## Done
 
 | What | When |
 |---|---|
+| "Save address?", "Update address?" and "Save card?" after a form is sent (Not Now, Save); Settings › Autofill › Save and fill addresses / cards | 2026-11-05, `feat: autofill save prompts` |
 | "Save password?" and "Update password?" after a sign-in (Never, Not Now, Save; username editable), "Password saved" for a suggested one; Settings › Passwords › Offer to save passwords | 2026-11-05, `feat: save password prompt` |
 | Arc's ⌃Tab switcher: recent tabs as cards with page pictures, switching on Control's release, Tab/⇧Tab/arrows/pointer, Escape cancels, a quick tap just switches | 2026-11-04, `feat: arc ctrl-tab switcher` |
 | Ray's own engine (Phase B) and "Ray Safe Storage" | 2026-10-28, 0.2.0 |

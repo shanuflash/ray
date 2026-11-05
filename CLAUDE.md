@@ -174,11 +174,12 @@ publicly or create accounts.
   `ac_passwords_add`) and Export… (a warning, a save panel, `ac_passwords_export`, which always re-auths). A copied
   password or card number is concealed (`org.nspasteboard.ConcealedType`) and cleared after 120 s if unchanged
   (Chrome's `kClipboardClearDelay`). Autofill: addresses (edit inline, country by name or code) and cards (number
-  shown only through `ac_autofill_card_number`'s re-auth, Luhn-checked on add). Secrets go to the engine only as
+  shown only through `ac_autofill_card_number`'s re-auth, Luhn-checked on add; both lists reload when the window
+  becomes key, so what a save prompt saved shows). Secrets go to the engine only as
   `SecretJSON` through `EngineCalls.callWithSecret`; the state log (`passwordsPane`, `autofillPane`) has counts and
   ids, and its `pasteboard` says `<concealed>` for them. "Offer to save passwords" is Chrome's
-  `credentials_enable_service` (`PasswordPrompts.followSetting`); "Save and fill addresses/cards" are unbuilt (no
-  prompts yet). Routes: chrome://settings/passwords, /autofill, /addresses,
+  `credentials_enable_service` (`PasswordPrompts.followSetting`); "Save and fill addresses/cards" are Chrome's
+  `autofill.profile_enabled` / `autofill.credit_card_enabled` (`AutofillPrompts.followSettings`). Routes: chrome://settings/passwords, /autofill, /addresses,
   /payments and chrome://password-manager (any path; `AddressInput.nativePages`). Checks `settings-passwords`,
   `settings-autofill`.
 - `MenuShortcuts`: every menu command's key, decided in one place (`apply`, at launch and on each change): the user's
@@ -279,7 +280,14 @@ publicly or create accounts.
   Escape or a click outside is "not now", buttons dead 0.5 s, Return does nothing; "saved" is a note; the fill
   dropdown and generation are Chrome's own popups, `autofillSuggestions` in the state log; test command
   `pwprompt press save|never|notnow|update|nope|close`, state log `passwordPrompt` (shape only); check
-  `password-prompt`), `ArcImport` (the old Import from Arc…, sidebar
+  `password-prompt`; `PromptCardView` in that file is the card all the save prompts share: icon tile, title over the
+  full origin, a line, a well, a footnote, answers), `AutofillPrompts` (`Host/AutofillPrompt.swift`,
+  `BrowserWindowController` `// MARK: Autofill prompts`: the engine's `autofillPrompt` (`saveAddress`,
+  `updateAddress`, `saveCard`; local cards only, the engine skips Payments upload, IBAN and offers) as the same card in
+  the same spot, Chrome's title, lines and accept label, "Not Now" is `decline`, Escape or a click outside `dismiss`;
+  Chrome closes it when its tab is hidden (`closed`) and asks again on return; no card number reaches Ray; test
+  command `afprompt press accept|decline|close`, `afprompt has <text>`, state log `autofillPrompt` (shape only); check
+  `autofill-prompt`, whose card form is on the HTTPS fixture), `ArcImport` (the old Import from Arc…, sidebar
   only; its action still exists without a menu item).
 - `TabSwitcher` (`Host/TabSwitcher.swift`, `BrowserWindowController` `// MARK: Tab switcher`): Arc's ⌃Tab switcher
   (sizes from Cra's measurements of Arc 1.170 and the owner's recording; look B of the mocks, owner 2026-11-04). With

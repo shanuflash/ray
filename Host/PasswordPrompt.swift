@@ -35,9 +35,10 @@ final class PasswordPrompts {
   private static var observation: SettingsObservation?
 
   /// Settings › Passwords › Offer to save passwords is Chrome's own switch for it, so the engine stops asking (and
-  /// still fills what's saved). From the first window on; later calls do nothing.
+  /// still fills what's saved). From the first window on; later calls do nothing. The autofill prompts' switches too.
   static func followSetting() {
     guard observation == nil else { return }
+    AutofillPrompts.followSettings()
     let apply = { (on: Bool) in
       RayCoreEngine.shared?.defaultProfile.setBoolPreference("credentials_enable_service", value: on)
     }
@@ -89,7 +90,7 @@ final class PasswordPrompts {
     var handle: PanelHandle?
     view.onAnswer = { [weak self] action in self?.answer(action, from: view, handle: handle) }
     handle = controller.panels.open(PanelSpec(
-      name: "passwordPrompt", content: view, anchor: anchor(in: controller),
+      name: "passwordPrompt", content: view, anchor: Self.anchor(in: controller),
       closesOn: [.outsideClick, .escape, .tabSwitch], origin: prompt.origin,
       onClose: { [weak self, weak view] in
         guard let self, let view, self.shown?.view === view else { return }
@@ -105,8 +106,8 @@ final class PasswordPrompts {
     onChange?()
   }
 
-  /// The page's top right, under the address bar: where Ardia (and Arc) put it.
-  private func anchor(in controller: BrowserWindowController) -> PanelAnchor {
+  /// The page's top right, under the address bar: where Ardia (and Arc) put it. The autofill prompts hang there too.
+  static func anchor(in controller: BrowserWindowController) -> PanelAnchor {
     PanelAnchor(rect: { [weak controller] in
       guard let pages = controller?.pageFrame else { return .zero }
       return NSRect(x: pages.maxX - 10, y: pages.maxY - 10 + Panels.gap, width: 0, height: 0)
@@ -130,6 +131,7 @@ final class PasswordPrompts {
     prompt.tab?.resolvePasswordPrompt(action, username: username, password: nil)
     last = action
     onChange?()
+    controller?.showPagePrompts()
   }
 
   // MARK: Password prompt tests
@@ -168,91 +170,78 @@ final class PasswordPrompts {
   }
 }
 
-// MARK: Password prompt view
+// MARK: Prompt card
 
-/// The prompt's content: a key, "Save password?" and the site, the username (editable, or a choice of the saved ones
-/// when updating) over the password's dots, then the answers.
-final class PasswordPromptView: NSView {
+/// What the save prompts share ("Save password?", "Save address?", "Save card?"): an icon tile, the title over the site's
+/// full origin, an optional line, a well with what's saved (the subclass's), an optional footnote, then the answers (the
+/// last one primary), which wait half a second each time the card appears.
+class PromptCardView: NSView {
   static let width: CGFloat = 320
   var onAnswer: ((String) -> Void)?
-  private let prompt: PasswordPrompts.Prompt
   private let icon = NSImageView()
   private let title: NSTextField
   private let origin: NSTextField
-  private let well = NSView()
-  private let field = NSTextField()
-  private let secret = NSTextField(labelWithString: "")
-  private var choices: [NSView] = []
-  private var chosen: String?
-  private let buttons: [(action: String, button: PanelButton)]
+  private let message: NSTextField
+  private let footnote: NSTextField
+  let well = NSView()
+  let buttons: [(action: String, button: PanelButton)]
   private(set) var ready = false
 
-  init(prompt: PasswordPrompts.Prompt) {
-    self.prompt = prompt
-    let update = prompt.state == "update"
-    title = NSTextField(labelWithString: update ? "Update password?" : "Save password?")
-    origin = NSTextField(wrappingLabelWithString: PermissionPromptView.display(prompt.origin))
-    var answers: [(String, PanelButton)] = []
-    if !update { answers.append(("never", PanelButton(title: "Never"))) }
-    answers.append((update ? "nope" : "dismiss", PanelButton(title: "Not Now")))
-    answers.append((update ? "update" : "save", PanelButton(title: update ? "Update" : "Save", primary: true)))
+  init(symbol: String, title: String, origin: String, message: String = "", footnote: String = "",
+       answers: [(String, PanelButton)]) {
+    self.title = NSTextField(labelWithString: title)
+    self.origin = NSTextField(wrappingLabelWithString: PermissionPromptView.display(origin))
+    self.message = NSTextField(wrappingLabelWithString: message)
+    self.footnote = NSTextField(wrappingLabelWithString: footnote)
     buttons = answers.map { (action: $0.0, button: $0.1) }
     super.init(frame: .zero)
 
-    icon.image = NSImage(systemSymbolName: "key.fill", accessibilityDescription: nil)
+    icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
     icon.symbolConfiguration = .init(pointSize: 14, weight: .semibold)
     icon.contentTintColor = .secondaryLabelColor
     icon.wantsLayer = true
     icon.layer?.cornerRadius = 8
     icon.layer?.cornerCurve = .continuous
     addSubview(icon)
-    title.font = .systemFont(ofSize: 13.5, weight: .semibold)
-    origin.font = .systemFont(ofSize: 12)
-    origin.textColor = .secondaryLabelColor
-    origin.lineBreakMode = .byCharWrapping
-    origin.isSelectable = false
-    addSubview(title)
-    addSubview(origin)
+    self.title.font = .systemFont(ofSize: 13.5, weight: .semibold)
+    self.title.lineBreakMode = .byTruncatingTail
+    self.origin.font = .systemFont(ofSize: 12)
+    self.origin.textColor = .secondaryLabelColor
+    self.origin.lineBreakMode = .byCharWrapping
+    self.origin.isSelectable = false
+    addSubview(self.title)
+    addSubview(self.origin)
+    for text in [self.message, self.footnote] {
+      text.font = .systemFont(ofSize: 12)
+      text.textColor = .secondaryLabelColor
+      text.isSelectable = false
+      text.isHidden = text.stringValue.isEmpty
+      addSubview(text)
+    }
 
     well.wantsLayer = true
     well.layer?.cornerRadius = 8
     well.layer?.cornerCurve = .continuous
     addSubview(well)
-    if update && prompt.usernames.count > 1 {
-      choose(prompt.username)
-    } else {
-      field.stringValue = prompt.username
-      field.placeholderString = prompt.federation.isEmpty
-        ? "Username" : "Signed in with \(URL(string: prompt.federation)?.host ?? prompt.federation)"
-      field.font = .systemFont(ofSize: 12.5, weight: .medium)
-      field.isBordered = false
-      field.drawsBackground = false
-      field.focusRingType = .none
-      field.isEditable = !update
-      field.isSelectable = !update
-      field.lineBreakMode = .byTruncatingTail
-      field.cell?.isScrollable = true
-      field.setAccessibilityLabel("Username")
-      addSubview(field)
-      secret.stringValue = String(repeating: "•", count: min(prompt.passwordLength, 16))
-      secret.font = .systemFont(ofSize: 12)
-      secret.textColor = .secondaryLabelColor
-      secret.isHidden = prompt.passwordLength == 0
-      secret.setAccessibilityLabel("Password, hidden")
-      addSubview(secret)
-    }
     for (action, button) in buttons {
       button.isEnabled = false
       button.onClick = { [weak self] in self?.onAnswer?(action) }
       addSubview(button)
     }
-    frame = NSRect(x: 0, y: 0, width: Self.width, height: layoutContent(apply: false))
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
   override var isFlipped: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
+
+  /// Sizes the card to its content: call once the subclass's well views are in.
+  func sizeToContent() {
+    frame = NSRect(x: 0, y: 0, width: Self.width, height: layoutContent(apply: false))
+  }
+
+  /// Lays out the well's content at `y`, `width` wide (when `apply`) and returns the well's height.
+  func layoutWell(x: CGFloat, y: CGFloat, width: CGFloat, apply: Bool) -> CGFloat { 0 }
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
@@ -285,37 +274,39 @@ final class PasswordPromptView: NSView {
     _ = layoutContent(apply: true)
   }
 
+  private func height(of text: NSTextField, width: CGFloat) -> CGFloat {
+    text.preferredMaxLayoutWidth = width
+    return ceil(text.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: 1000)).height ?? 16)
+  }
+
   private func layoutContent(apply: Bool) -> CGFloat {
     let pad: CGFloat = 16
     let left = pad + 44
     let textWidth = Self.width - left - pad
+    let fullWidth = Self.width - pad * 2
     var y = pad
     let titleHeight = ceil(title.intrinsicContentSize.height)
-    origin.preferredMaxLayoutWidth = textWidth
-    let originHeight = ceil(origin.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: textWidth, height: 1000)).height ?? 16)
+    let originHeight = height(of: origin, width: textWidth)
     if apply {
       icon.frame = NSRect(x: pad, y: pad, width: 32, height: 32)
       title.frame = NSRect(x: left - 2, y: y, width: textWidth + 4, height: titleHeight)
       origin.frame = NSRect(x: left - 2, y: y + titleHeight + 2, width: textWidth + 4, height: originHeight)
     }
     y = max(y + titleHeight + 2 + originHeight, pad + 32) + 12
-    let wellWidth = Self.width - pad * 2
-    var wellHeight: CGFloat
-    if choices.isEmpty {
-      let fieldHeight = ceil(field.intrinsicContentSize.height)
-      wellHeight = 10 + fieldHeight + (secret.isHidden ? 0 : 2 + 15) + 10
-      if apply {
-        field.frame = NSRect(x: pad + 10, y: y + 10, width: wellWidth - 20, height: fieldHeight)
-        secret.frame = NSRect(x: pad + 12, y: y + 10 + fieldHeight + 2, width: wellWidth - 24, height: 15)
-      }
-    } else {
-      wellHeight = 6 + CGFloat(choices.count) * 36 + 6
-      for (index, row) in choices.enumerated() where apply {
-        row.frame = NSRect(x: pad + 4, y: y + 6 + CGFloat(index) * 36, width: wellWidth - 8, height: 36)
-      }
+    if !message.isHidden {
+      let messageHeight = height(of: message, width: fullWidth)
+      if apply { message.frame = NSRect(x: pad - 2, y: y, width: fullWidth + 4, height: messageHeight) }
+      y += messageHeight + 8
     }
-    if apply { well.frame = NSRect(x: pad, y: y, width: wellWidth, height: wellHeight) }
-    y += wellHeight + 14
+    let wellHeight = layoutWell(x: pad, y: y, width: fullWidth, apply: apply)
+    if apply { well.frame = NSRect(x: pad, y: y, width: fullWidth, height: wellHeight) }
+    y += wellHeight
+    if !footnote.isHidden {
+      let footnoteHeight = height(of: footnote, width: fullWidth)
+      if apply { footnote.frame = NSRect(x: pad - 2, y: y + 8, width: fullWidth + 4, height: footnoteHeight) }
+      y += 8 + footnoteHeight
+    }
+    y += 14
     var right = Self.width - pad
     for (_, button) in buttons.reversed() {
       let width = button.intrinsicContentSize.width
@@ -324,6 +315,81 @@ final class PasswordPromptView: NSView {
       right -= 6
     }
     return y + 28 + pad
+  }
+
+  var originText: String { origin.stringValue }
+  var buttonTitles: [String] { buttons.map { $0.button.accessibilityLabel() ?? "" } }
+
+  /// A click on an answer, as the mouse would make it: nothing while its buttons wait.
+  func press(_ action: String) -> Bool {
+    guard let button = buttons.first(where: { $0.action == action })?.button, button.isEnabled else { return false }
+    button.performClick(nil)
+    return true
+  }
+}
+
+// MARK: Password prompt view
+
+/// The prompt's content: a key, "Save password?" and the site, the username (editable, or a choice of the saved ones
+/// when updating) over the password's dots, then the answers.
+final class PasswordPromptView: PromptCardView {
+  private let prompt: PasswordPrompts.Prompt
+  private let field = NSTextField()
+  private let secret = NSTextField(labelWithString: "")
+  private var choices: [NSView] = []
+  private var chosen: String?
+
+  init(prompt: PasswordPrompts.Prompt) {
+    self.prompt = prompt
+    let update = prompt.state == "update"
+    var answers: [(String, PanelButton)] = []
+    if !update { answers.append(("never", PanelButton(title: "Never"))) }
+    answers.append((update ? "nope" : "dismiss", PanelButton(title: "Not Now")))
+    answers.append((update ? "update" : "save", PanelButton(title: update ? "Update" : "Save", primary: true)))
+    super.init(symbol: "key.fill", title: update ? "Update password?" : "Save password?", origin: prompt.origin,
+               answers: answers)
+
+    if update && prompt.usernames.count > 1 {
+      choose(prompt.username)
+    } else {
+      field.stringValue = prompt.username
+      field.placeholderString = prompt.federation.isEmpty
+        ? "Username" : "Signed in with \(URL(string: prompt.federation)?.host ?? prompt.federation)"
+      field.font = .systemFont(ofSize: 12.5, weight: .medium)
+      field.isBordered = false
+      field.drawsBackground = false
+      field.focusRingType = .none
+      field.isEditable = !update
+      field.isSelectable = !update
+      field.lineBreakMode = .byTruncatingTail
+      field.cell?.isScrollable = true
+      field.setAccessibilityLabel("Username")
+      addSubview(field)
+      secret.stringValue = String(repeating: "•", count: min(prompt.passwordLength, 16))
+      secret.font = .systemFont(ofSize: 12)
+      secret.textColor = .secondaryLabelColor
+      secret.isHidden = prompt.passwordLength == 0
+      secret.setAccessibilityLabel("Password, hidden")
+      addSubview(secret)
+    }
+    sizeToContent()
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override func layoutWell(x: CGFloat, y: CGFloat, width: CGFloat, apply: Bool) -> CGFloat {
+    if choices.isEmpty {
+      let fieldHeight = ceil(field.intrinsicContentSize.height)
+      if apply {
+        field.frame = NSRect(x: x + 10, y: y + 10, width: width - 20, height: fieldHeight)
+        secret.frame = NSRect(x: x + 12, y: y + 10 + fieldHeight + 2, width: width - 24, height: 15)
+      }
+      return 10 + fieldHeight + (secret.isHidden ? 0 : 2 + 15) + 10
+    }
+    for (index, row) in choices.enumerated() where apply {
+      row.frame = NSRect(x: x + 4, y: y + 6 + CGFloat(index) * 36, width: width - 8, height: 36)
+    }
+    return 6 + CGFloat(choices.count) * 36 + 6
   }
 
   /// The saved username to update: its row ticked (the rows are made again, as site controls' choices are).
@@ -343,15 +409,9 @@ final class PasswordPromptView: NSView {
     set { if chosen != nil { choose(newValue) } else { field.stringValue = newValue } }
   }
 
-  var originText: String { origin.stringValue }
   var dots: Int { secret.isHidden ? 0 : secret.stringValue.count }
-  var buttonTitles: [String] { buttons.map { $0.button.accessibilityLabel() ?? "" } }
 
-  /// A click on an answer, as the mouse would make it: nothing while its buttons wait.
-  func press(_ action: String) -> Bool {
-    let wanted = action == "notnow" ? (prompt.state == "update" ? "nope" : "dismiss") : action
-    guard let button = buttons.first(where: { $0.action == wanted })?.button, button.isEnabled else { return false }
-    button.performClick(nil)
-    return true
+  override func press(_ action: String) -> Bool {
+    super.press(action == "notnow" ? (prompt.state == "update" ? "nope" : "dismiss") : action)
   }
 }

@@ -16,17 +16,18 @@ extension SettingGroup {
 }
 
 extension AnySettingKey {
-  /// Chrome's "Save and fill addresses". Not built: Ray has no autofill prompt or dropdown yet (MISSING Chrome #3).
+  /// Chrome's "Save and fill addresses" (`AutofillPrompts.followSettings`: Chrome's `autofill.profile_enabled`, and the
+  /// prompt itself).
   static let autofillAddresses = SettingKey<Bool>(
-    "autofillAddresses", default: true, built: false,
+    "autofillAddresses", default: true,
     ui: SettingUI(
       pane: .autofill, group: .autofillSaving, title: "Save and fill addresses",
       detail: "", about: "Ray offers to save the addresses you type into forms, and fills them in next time.",
       keywords: ["addresses", "autofill", "forms", "shipping", "phone", "email"], control: .toggle))
 
-  /// Chrome's "Save and fill payment methods". Not built, as above.
+  /// Chrome's "Save and fill payment methods" (`autofill.credit_card_enabled`, as above).
   static let autofillCards = SettingKey<Bool>(
-    "autofillCards", default: true, built: false,
+    "autofillCards", default: true,
     ui: SettingUI(
       pane: .autofill, group: .autofillSaving, title: "Save and fill cards",
       detail: "", about: "Ray offers to save the cards you pay with, and fills them in next time. It asks for Touch ID first.",
@@ -167,8 +168,15 @@ final class AutofillAddressesView: NSView, SettingsSizing {
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
-    if window != nil { load() }
+    if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
+    keyObserver = nil
+    guard let window else { return }
+    load()
+    // The pane stays in the window between visits: back in Settings (after a save prompt, say), the list again.
+    keyObserver = NotificationCenter.default.addObserver(
+      forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in self?.load() }
   }
+  private var keyObserver: NSObjectProtocol?
 
   func load() {
     guard let profile = settingsDataProfile else { return }
@@ -418,8 +426,15 @@ final class AutofillCardsView: NSView, SettingsSizing {
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
-    if window != nil { load() }
+    if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
+    keyObserver = nil
+    guard let window else { return }
+    load()
+    // The pane stays in the window between visits: back in Settings (after a save prompt, say), the list again.
+    keyObserver = NotificationCenter.default.addObserver(
+      forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in self?.load() }
   }
+  private var keyObserver: NSObjectProtocol?
 
   func load() {
     guard let profile = settingsDataProfile else { return }

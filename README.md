@@ -50,6 +50,7 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Settings in the command bar
   - Your own colour and shortcuts
   - Offers to save passwords when you sign in
+  - Offers to save addresses and cards from forms
   - JumpCloud Go sign-in
 
 ## Coming

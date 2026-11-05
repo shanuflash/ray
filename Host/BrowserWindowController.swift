@@ -727,6 +727,27 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     passwords.add(prompt, tab: tab)
   }
 
+  // MARK: Autofill prompts
+
+  /// "Save address?", "Update address?" and "Save card?" (`AutofillPrompt.swift`), one per tab, over its own tab.
+  private(set) lazy var autofill: AutofillPrompts = {
+    let prompts = AutofillPrompts(controller: self)
+    prompts.onChange = { [weak self] in self?.logState("autofillPrompt") }
+    return prompts
+  }()
+
+  func window(_ window: RayCoreWindow, autofillPrompt prompt: [String: Any], for tab: RayCoreTab) {
+    autofill.add(prompt, tab: tab)
+  }
+
+  /// After a prompt is answered (its panel closing), the active tab's other one, if it has one waiting.
+  func showPagePrompts() {
+    DispatchQueue.main.async { [weak self] in
+      self?.passwords.update()
+      self?.autofill.update()
+    }
+  }
+
   func tab(_ tab: RayCoreTab, didShowAutofillSuggestions items: [[String: String]]) {
     autofillSuggestions = ["count": items.count, "types": items.map { $0["type"] ?? "" }, "tab": Int(tab.tabId)]
     logState("autofillSuggestions")
@@ -2682,6 +2703,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "import": importLog ?? NSNull(),
       "permission": permissions.shown ?? NSNull(),
       "passwordPrompt": passwords.state,
+      "autofillPrompt": autofill.state,
       "autofillSuggestions": autofillSuggestions ?? NSNull(),
       "find": findBar.map { bar -> [String: Any] in
         let frame = bar.convert(bar.bounds, to: nil)
