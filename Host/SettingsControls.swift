@@ -16,8 +16,8 @@ enum SettingsColors {
   static let track = SidebarColors.fill
   static let hover = SidebarColors.hover
 
-  /// The selected sidebar row: a soft wash of the profile's colour over the sidebar.
-  static let selectedFill = ProfileColor.mix(NSColor(name: nil) { _ in ProfileColor.accent }, over: sidebar, 0.17, dark: 0.26)
+  /// The selected sidebar row: `SelectedRow`'s wash over the sidebar.
+  static let selectedFill = SelectedRow.fill(over: sidebar)
   /// Its icon and name: a tint of the profile's colour (darker in light mode, lighter in dark), moved just far enough
   /// to read on the wash (4.5:1).
   static let selectedInk = ProfileColor.legible(
@@ -668,6 +668,47 @@ private final class SwatchButton: NSControl {
     return true
   }
   override func accessibilityValue() -> Any? { NSNumber(value: isSelected ? 1 : 0) }
+}
+
+// MARK: Text field
+
+/// Settings' one text field: a line of text on a rounded fill, as the window's search field is, with no bezel and no
+/// system focus ring. `secure` never shows what it holds. On a card (`SettingsCard`) it takes the content's colour.
+final class EditorField: NSView {
+  let field: NSTextField
+  var fill: NSColor = SettingsColors.track { didSet { needsDisplay = true } }
+
+  init(placeholder: String = "", secure: Bool = false) {
+    field = secure ? NSSecureTextField() : NSTextField()
+    super.init(frame: .zero)
+    wantsLayer = true
+    layer?.cornerRadius = 7
+    layer?.cornerCurve = .continuous
+    field.isBezeled = false
+    field.isBordered = false
+    field.drawsBackground = false
+    field.focusRingType = .none
+    field.font = .systemFont(ofSize: 13)
+    field.placeholderString = placeholder
+    field.cell?.isScrollable = true
+    field.cell?.wraps = false
+    field.cell?.usesSingleLineMode = true
+    addSubview(field)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+  override var mouseDownCanMoveWindow: Bool { false }
+  override func updateLayer() { layer?.backgroundColor = fill.cgColor }
+  override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
+
+  override func layout() {
+    super.layout()
+    let height = ceil(field.intrinsicContentSize.height)
+    field.frame = NSRect(x: 9, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 18, height: height)
+  }
 }
 
 // MARK: Link

@@ -100,10 +100,9 @@ final class FolderIconPicker: NSView {
 
   override func updateLayer() {
     effectiveAppearance.performAsCurrentDrawingAppearance {
-      let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
       CATransaction.begin()
       CATransaction.setDisableActions(true)
-      selection.backgroundColor = (dark ? NSColor(white: 1, alpha: 0.16) : NSColor(white: 0, alpha: 0.08)).cgColor
+      selection.backgroundColor = SelectedRow.fill(over: SurfaceBackdrop.solidFill).cgColor
       CATransaction.commit()
     }
   }

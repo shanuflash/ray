@@ -201,7 +201,7 @@ final class AutofillAddressesView: NSView, SettingsSizing {
     for (index, address) in list.enumerated() {
       let id = address["id"] ?? ""
       let title = [address["name"], address["organization"]].compactMap { $0 }.first { !$0.isEmpty } ?? "Address"
-      let row = SettingsRecordRow(symbol: "house.fill", title: title, detail: Self.summary(of: address))
+      let row = SettingsItemRow(symbol: "house.fill", title: title, detail: Self.summary(of: address))
       row.expanded = id == openID
       row.onClick = { [weak self] in self?.toggle(id) }
       items.append(.init(view: row, line: index > 0))
@@ -277,7 +277,7 @@ final class AutofillAddressesView: NSView, SettingsSizing {
           self?.render()
           settingsDataChanged("autofill")
         },
-        SettingsButton("Save") { [weak self] in self?.save() },
+        SettingsButton("Save", primary: true) { [weak self] in self?.save() },
       ])
     stack.set([.init(view: form), .init(view: bar)])
     self.form = form
@@ -501,7 +501,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
     for (index, card) in list.enumerated() {
       let expiry = Self.expiry(card)
       let detail = [card.name, expiry.isEmpty ? "" : "Expires \(expiry)"].filter { !$0.isEmpty }.joined(separator: " · ")
-      let row = SettingsRecordRow(symbol: "creditcard.fill", title: "\(Self.networkName(card.network)) •••• \(card.last4)", detail: detail)
+      let row = SettingsItemRow(symbol: "creditcard.fill", title: "\(Self.networkName(card.network)) •••• \(card.last4)", detail: detail)
       row.expanded = card.id == openID
       row.onClick = { [weak self] in self?.toggle(card.id) }
       items.append(.init(view: row, line: index > 0))
@@ -539,7 +539,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
     openID = id
     render()
     let views = stack.items.map(\.view)
-    if let row = views.firstIndex(where: { ($0 as? SettingsRecordRow)?.expanded == true }), row + 1 < views.count {
+    if let row = views.firstIndex(where: { ($0 as? SettingsItemRow)?.expanded == true }), row + 1 < views.count {
       settingsScrollIntoView(views[row + 1])
     }
     settingsDataChanged("autofill")
@@ -632,7 +632,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
           self.render()
           settingsDataChanged("autofill")
         },
-        SettingsButton("Save") { [weak self] in self?.save() },
+        SettingsButton("Save", primary: true) { [weak self] in self?.save() },
       ])),
     ])
     self.form = form

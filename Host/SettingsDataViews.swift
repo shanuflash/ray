@@ -143,99 +143,6 @@ final class SettingsDataHeader: NSView, SettingsSizing {
 
 // MARK: Rows
 
-/// One item of a list: a round icon, a title over a grey line, and a chevron (or a control) on the right. A click
-/// opens or closes its details.
-final class SettingsRecordRow: NSView, SettingsSizing {
-  var onClick: (() -> Void)?
-  private let icon = NSImageView()
-  private let iconBack = NSView()
-  private let titleLabel: NSTextField
-  private let detailLabel: NSTextField
-  private let trailing: NSView?
-  private let chevron = NSImageView()
-  var expanded = false { didSet { updateChevron() } }
-
-  /// `headFirst`: the title loses its start when long (a host: its end is what tells sites apart).
-  init(symbol: String, title: String, detail: String, headFirst: Bool = false, trailing: NSView? = nil) {
-    titleLabel = settingsLabel(title, size: 13)
-    detailLabel = settingsLabel(detail, size: 12, color: .secondaryLabelColor)
-    self.trailing = trailing
-    super.init(frame: .zero)
-    titleLabel.lineBreakMode = headFirst ? .byTruncatingHead : .byTruncatingTail
-    iconBack.wantsLayer = true
-    iconBack.layer?.cornerRadius = 14
-    icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-    icon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
-    icon.contentTintColor = .secondaryLabelColor
-    addSubview(iconBack)
-    addSubview(icon)
-    addSubview(titleLabel)
-    addSubview(detailLabel)
-    if let trailing {
-      addSubview(trailing)
-    } else {
-      chevron.symbolConfiguration = .init(pointSize: 10, weight: .semibold)
-      chevron.contentTintColor = .tertiaryLabelColor
-      addSubview(chevron)
-      updateChevron()
-    }
-    setAccessibilityElement(true)
-    setAccessibilityRole(trailing == nil ? .button : .group)
-    setAccessibilityLabel(detail.isEmpty ? title : "\(title), \(detail)")
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override var isFlipped: Bool { true }
-  override var mouseDownCanMoveWindow: Bool { false }
-
-  private func updateChevron() {
-    chevron.image = NSImage(systemSymbolName: expanded ? "chevron.down" : "chevron.right", accessibilityDescription: nil)
-  }
-
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    needsLayout = true
-  }
-
-  func height(forWidth width: CGFloat) -> CGFloat { 48 }
-
-  override func layout() {
-    super.layout()
-    effectiveAppearance.performAsCurrentDrawingAppearance {
-      iconBack.layer?.backgroundColor = SettingsColors.track.cgColor
-    }
-    iconBack.frame = NSRect(x: 0, y: ((bounds.height - 28) / 2).rounded(), width: 28, height: 28)
-    icon.frame = iconBack.frame.insetBy(dx: 6, dy: 6)
-    var right = bounds.width
-    if let trailing {
-      let size = trailing.fittingSize
-      trailing.frame = NSRect(x: right - size.width, y: ((bounds.height - size.height) / 2).rounded(), width: size.width, height: size.height)
-      right -= size.width + 12
-    } else {
-      chevron.frame = NSRect(x: right - 12, y: ((bounds.height - 14) / 2).rounded(), width: 12, height: 14)
-      right -= 24
-    }
-    let x: CGFloat = 40
-    let titleHeight = ceil(titleLabel.intrinsicContentSize.height)
-    let detailHeight = detailLabel.stringValue.isEmpty ? 0 : ceil(detailLabel.intrinsicContentSize.height)
-    let block = titleHeight + (detailHeight > 0 ? 1 + detailHeight : 0)
-    let top = ((bounds.height - block) / 2).rounded()
-    titleLabel.frame = NSRect(x: x, y: top, width: max(0, right - x), height: titleHeight)
-    detailLabel.frame = NSRect(x: x, y: top + titleHeight + 1, width: max(0, right - x), height: detailHeight)
-  }
-
-  override func resetCursorRects() {
-    if onClick != nil { addCursorRect(bounds, cursor: .pointingHand) }
-  }
-
-  override func mouseDown(with event: NSEvent) { onClick?() }
-  override func accessibilityPerformPress() -> Bool {
-    onClick?()
-    return onClick != nil
-  }
-}
-
 /// A line of grey text that wraps (an empty list, a status after an export).
 final class SettingsNote: NSView, SettingsSizing {
   private let label: NSTextField
@@ -352,6 +259,8 @@ final class SettingsButtonBar: NSView, SettingsSizing {
     self.trailing = trailing
     super.init(frame: .zero)
     (leading + trailing).forEach { addSubview($0) }
+    // It sits on a card's fill.
+    (leading + trailing).forEach { ($0 as? SettingsButton)?.onCard = true }
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -385,7 +294,8 @@ final class SettingsForm: NSView, SettingsSizing {
   struct Field {
     let key: String
     let label: String
-    let field: NSTextField
+    let box: EditorField
+    var field: NSTextField { box.field }
   }
 
   private(set) var fields: [Field] = []
@@ -409,22 +319,19 @@ final class SettingsForm: NSView, SettingsSizing {
   @discardableResult
   func add(_ key: String, _ label: String, value: String = "", placeholder: String = "", secure: Bool = false,
            width: CGFloat? = nil) -> NSTextField {
-    let field: NSTextField = secure ? NSSecureTextField() : NSTextField()
+    // On the card's fill: the content's colour.
+    let box = EditorField(placeholder: placeholder, secure: secure)
+    box.fill = SettingsColors.content
+    let field = box.field
     field.stringValue = value
-    field.placeholderString = placeholder
-    field.font = .systemFont(ofSize: 13)
-    field.bezelStyle = .roundedBezel
-    field.usesSingleLineMode = true
-    field.cell?.wraps = false
-    field.cell?.isScrollable = true
     field.setAccessibilityLabel(label)
     if secure { field.contentType = .password }
     let name = settingsLabel(label, size: 12, color: .secondaryLabelColor)
-    fields.append(Field(key: key, label: label, field: field))
+    fields.append(Field(key: key, label: label, box: box))
     labels.append(name)
     if let width { widths[key] = width }
     addSubview(name)
-    addSubview(field)
+    addSubview(box)
     // Tab goes from field to field, in order.
     if fields.count > 1 { fields[fields.count - 2].field.nextKeyView = field }
     return field
@@ -461,8 +368,8 @@ final class SettingsForm: NSView, SettingsSizing {
     for (index, item) in fields.enumerated() {
       let label = labels[index]
       let labelHeight = ceil(label.intrinsicContentSize.height)
-      label.frame = NSRect(x: 0, y: y + ((28 - labelHeight) / 2).rounded(), width: nameWidth - 8, height: labelHeight)
-      item.field.frame = NSRect(x: nameWidth, y: y + 3, width: widths[item.key] ?? fieldWidth, height: 22)
+      label.frame = NSRect(x: 0, y: y + ((32 - labelHeight) / 2).rounded(), width: nameWidth - 8, height: labelHeight)
+      item.box.frame = NSRect(x: nameWidth, y: y + 2, width: widths[item.key] ?? fieldWidth, height: 28)
       y += 32
     }
     if !error.stringValue.isEmpty {

@@ -624,8 +624,8 @@ final class KeyCapField: NSControl {
 private final class ShortcutNotice: NSView, SettingsSizing {
   private let label: NSTextField
   private let isConflict: Bool
-  private var replace: AccentButton?
-  private var cancel: LinkButton?
+  private var replace: SettingsButton?
+  private var cancel: SettingsButton?
 
   init(_ notice: ShortcutEditor.Notice, onReplace: @escaping () -> Void, onCancel: @escaping () -> Void) {
     switch notice {
@@ -648,11 +648,9 @@ private final class ShortcutNotice: NSView, SettingsSizing {
       wantsLayer = true
       layer?.cornerRadius = 8
       layer?.cornerCurve = .continuous
-      let replace = AccentButton(title: "Replace")
-      replace.onClick = onReplace
-      let cancel = LinkButton(title: "Cancel")
-      cancel.background = SettingsColors.strip
-      cancel.onClick = onCancel
+      let replace = SettingsButton("Replace", primary: true, action: onReplace)
+      let cancel = SettingsButton("Cancel", action: onCancel)
+      cancel.onCard = true
       self.replace = replace
       self.cancel = cancel
       addSubview(replace)
@@ -668,7 +666,7 @@ private final class ShortcutNotice: NSView, SettingsSizing {
 
   private var buttonsWidth: CGFloat {
     guard let replace, let cancel else { return 0 }
-    return replace.intrinsicContentSize.width + 16 + cancel.intrinsicContentSize.width + 16
+    return replace.intrinsicContentSize.width + 8 + cancel.intrinsicContentSize.width + 16
   }
 
   private func textWidth(_ width: CGFloat) -> CGFloat { max(80, width - (isConflict ? 24 + buttonsWidth : 0)) }
@@ -688,7 +686,7 @@ private final class ShortcutNotice: NSView, SettingsSizing {
       replace.frame = NSRect(x: bounds.width - 12 - size.width, y: ((bounds.height - size.height) / 2).rounded(),
                              width: size.width, height: size.height)
       let cancelSize = cancel.intrinsicContentSize
-      cancel.frame = NSRect(x: replace.frame.minX - 16 - cancelSize.width, y: ((bounds.height - cancelSize.height) / 2).rounded(),
+      cancel.frame = NSRect(x: replace.frame.minX - 8 - cancelSize.width, y: ((bounds.height - cancelSize.height) / 2).rounded(),
                             width: cancelSize.width, height: cancelSize.height)
     } else {
       label.frame = NSRect(x: 0, y: 0, width: width, height: height)

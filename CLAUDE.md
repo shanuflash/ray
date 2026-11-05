@@ -77,7 +77,9 @@ publicly or create accounts.
   `foreground(on:)` is the white or black with the higher WCAG contrast on a fill: use it for any text or icon on an
   accent fill. `legible(color, on:)` moves any (tint of the) colour just far enough to read on a background, and
   `mix(a, over: b, light, dark:)` is a solid wash; both resolve when drawn, so they follow the setting and the
-  appearance. Never use `NSColor.controlAccentColor` (`scripts/test.sh` fails on it). Fixed light/dark pairs (the
+  appearance. `SelectedRow.fill(over:)` (same file) is every list's chosen row (command bar, ⌃Tab cards, icon
+  picker, Settings' sidebar via `SettingsColors.selectedFill`): a 22 % / 30 % dark `mix` over what the list sits on,
+  text unchanged; `mark(over:)` for a tint on it (owner's pick 2B, 2026-11-05). Never use `NSColor.controlAccentColor` (`scripts/test.sh` fails on it). Fixed light/dark pairs (the
   sidebar's, panels', Settings', the welcome's palettes) are `NSColor.dynamic(light:dark:)` (same file).
 - `SettingsCatalog`: every setting as one typed entry, `SettingKey<Value>` (a `static let` on `AnySettingKey`, named
   in its `all` list): id (also its Settings.json key and the test command's name; a rename goes through `aliases`),
@@ -161,7 +163,8 @@ publicly or create accounts.
   icon, version, description, switch) that open to site access, private windows, Options, Reload (unpacked),
   Remove…; the Web Store; Load unpacked; Add from a link unbuilt (test builds only).
   `ray://settings/extensions` opens it; chrome://extensions stays Chrome's. `SettingsDataRows`: what both share
-  (`SettingsDynamicList`, `SettingsItemRow`, `SettingsButton` (Settings' one grey row and card button; only a pane's
+  (`SettingsDynamicList`, `SettingsItemRow` (the one data-list row: ≥ 44 pt, plain 22 pt icon, chevron right/down),
+  `SettingsButton` (Settings' one button, `ButtonLook`: grey, `primary` Save, `destructive` red letters; only a pane's
   call to action is an `AccentButton`), `SettingsConfirm`: every Settings question (Privacy, Extensions, Passwords,
   Autofill, Export…), a `PanelQuestion` over the Settings window (`SettingsWindowController.askQuestion`, a
   pass-through `PanelPassThroughView` layer), Cancel by default (Return and Escape cancel), the action dead for 0.5 s,
@@ -171,8 +174,10 @@ publicly or create accounts.
   `settings-extensions`).
 - Settings › Passwords (`SettingsPasswords.swift`) and › Autofill (`SettingsAutofill.swift`), on the engine's
   `ac_passwords_*` and `ac_autofill_*` calls; `SettingsDataViews.swift` holds their pieces (`SettingsStack`, item rows,
-  inline cards and forms (`SettingsRecordRow`), `SettingsPasteboard`, `SecretJSON`, `SettingsDataGuard`; their
-  questions are `SettingsConfirm`'s).
+  inline cards and forms (`SettingsForm`: `EditorField`s, Settings' one text field, in `SettingsControls`), `SettingsPasteboard`,
+  `SecretJSON`, `SettingsDataGuard`; their rows are `SettingsItemRow`s (`disclosure`: the pane shows the details after
+  the row) and their questions `SettingsConfirm`'s). Every Settings form (these, the site search editor, Shortcuts'
+  Replace) is `EditorField`s with grey `SettingsButton`s and a `primary` Save (owner's pick 1A, 2026-11-05).
   Passwords: locked until Unlock (`ac_passwords_unlock`, the engine's Touch ID or login password, `ac_reauth.cc`);
   `SettingsDataGuard` locks it (and hides a shown card number) when the Settings window closes, after 5 min without a
   click or key in it (Chrome's `kPasswordManagerAuthValidity`), on sleep or a user switch. Unlocked: search, a row
@@ -297,7 +302,7 @@ publicly or create accounts.
   (sizes from Cra's measurements of Arc 1.170 and the owner's recording; look B of the mocks, owner 2026-11-04). With
   `recentTabCycling` on, ⌃Tab opens a walk over the up to 5 most recent tabs (current first, as many as fit the
   window) on card 1 (⌃⇧Tab: the last); the panel (`TabSwitcherView`, on `SurfaceBackdrop`, 22 pt corners, 180×158
-  cards on a 182 pitch, 158×105 pictures, the selected card a 22 % wash of the profile colour with a 45 % hairline)
+  cards on a 182 pitch, 158×105 pictures, the selected card `SelectedRow`'s wash)
   shows after 0.15 s, centred on the whole window, below `floating`, with no animation (Arc has none). Tab / ⇧Tab and
   ← → move and wrap; the pointer picks a card (once it has moved since the panel showed); releasing Control (the
   `flagsChanged` monitor's `endTabCycle`), Return or a click switch through `select`; Escape, a click outside, any

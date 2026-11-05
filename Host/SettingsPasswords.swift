@@ -200,7 +200,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
           : "No saved passwords match")))
       }
       for (index, login) in list.enumerated() {
-        let row = SettingsRecordRow(symbol: "key.fill", title: Self.host(of: login.origin),
+        let row = SettingsItemRow(symbol: "key.fill", title: Self.host(of: login.origin),
                                   detail: login.username.isEmpty ? "No username" : login.username, headFirst: true)
         row.expanded = login == open
         row.onClick = { [weak self] in self?.toggle(login) }
@@ -214,7 +214,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
         for (index, origin) in exceptions.enumerated() {
           let allow = SettingsButton("Remove") { [weak self] in self?.allow(origin) }
           allow.setAccessibilityLabel("Remove \(Self.host(of: origin)) from never saved")
-          items.append(.init(view: SettingsRecordRow(symbol: "nosign", title: Self.host(of: origin), detail: "", headFirst: true,
+          items.append(.init(view: SettingsItemRow(symbol: "nosign", title: Self.host(of: origin), detail: "", headFirst: true,
                                                    trailing: allow), line: index > 0))
         }
       }
@@ -333,7 +333,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
   private var openCard: NSView? {
     guard open != nil else { return nil }
     let views = stack.items.map(\.view)
-    guard let row = views.firstIndex(where: { ($0 as? SettingsRecordRow)?.expanded == true }), row + 1 < views.count else { return nil }
+    guard let row = views.firstIndex(where: { ($0 as? SettingsItemRow)?.expanded == true }), row + 1 < views.count else { return nil }
     return views[row + 1]
   }
 
@@ -455,7 +455,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
         .init(view: form),
         .init(view: SettingsButtonBar(trailing: [
           SettingsButton("Cancel") { [weak self] in self?.cancelAdding() },
-          SettingsButton("Save") { [weak self] in self?.saveAdding() },
+          SettingsButton("Save", primary: true) { [weak self] in self?.saveAdding() },
         ])),
       ])
       addForm = form
@@ -554,7 +554,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
           self?.endEditing()
           self?.render()
         },
-        SettingsButton("Save") { [weak self] in self?.saveEditing() },
+        SettingsButton("Save", primary: true) { [weak self] in self?.saveEditing() },
       ])),
     ])
     editForm = form
