@@ -310,6 +310,13 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     had room. Leaving and re-entering full screen fixed it. Not reproduced. Lead: a window restored into full screen at
     launch (a relaunch or update) before AppKit's launch finished; check Ray's window restoration and full-screen entry
     against Chrome's next time it happens.
+38. **Low disk space likely crashes Ray** (not tried): Chrome's storage pressure bubble dereferences a `BrowserView`
+    the engine's browsers don't have. Ardia fixed it in engine-38b319abda74
+    (`chromium-storage-pressure-bubble-without-browser-view.patch`, 0.2.44); take it with Ardia's engine or as an
+    `engine-ray` fixup. Found 2026-11-05.
+39. **macOS 27: the green button's Move & Resize / Fill & Arrange may crash** (not tried): a submenu's parent item
+    targets NSMenu with `submenuAction:`, which macOS 27's NSMenu no longer implements (Ardia 0.2.44, `9e5b115b`).
+    Fix: add an empty `submenuAction:` to NSMenu at launch when it's missing. Found 2026-11-05.
 
 ## Done
 

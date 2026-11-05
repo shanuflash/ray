@@ -4,7 +4,7 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.44-nightly.6 (engine-2da3ca19a224), 2026-11-04
+Last reviewed: v0.2.44 (engine-38b319abda74), 2026-11-05
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac on
 chromiumdash, checked 2026-11-02: 156.0.8078.80 (.76/.79 before it) and 157.0.8103.26. Ardia moved to
@@ -22,7 +22,7 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    `chromium-extension-omaha-attributes`: ungoogled's safebrowsing fix deletes a variable the patch now restores).
    Taking Ardia's engine (item 2) brings all of it. Xcode 27.2 needs the Metal Toolchain downloaded once
    (ANGLE's Metal shaders; Ardia's `docs/engine-build.md`).
-2. **Take engine-2da3ca19a224** (includes b2c15dac, 7ad5405d, 1982453a, 4d8c6403 and 2f172eb5) through `sync-engine.sh`, then
+2. **Take engine-38b319abda74** (includes 2da3ca19, b2c15dac, 7ad5405d, 1982453a, 4d8c6403 and 2f172eb5) through `sync-engine.sh`, then
    re-check `engine-ray/`'s fixups against the reorganised `ac_*.cc` files (4d8c64 rewrites every call's prelude
    and drops 15 export headers; see its section), move `Downloads` to `ac_downloads_command`, and diff `ArdiaCore.h`
    against `RayCore.h`: new delegate methods `engine:extensionInstallFailed:tab:` (or a failed .crx drop says
@@ -32,7 +32,8 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    where it was left, Obsidian Web Clipper's app links, Dia's page menu order, engine-side private-window gating and
    secret zeroing, and a host-shown page menu that runs the picked item before tearing the menu down (7ad5405);
    from 2da3ca19: a finished download's `sha256` in `downloads.changed`, `committedHTTPStatus` /
-   `committedDocumentCount` on a tab and a `committed` flag per `navigationEntries` row (item 16).
+   `committedDocumentCount` on a tab and a `committed` flag per `navigationEntries` row (item 16); from 38b319ab:
+   no crash when the disk runs low (Chrome's storage pressure bubble assumed a `BrowserView`; MISSING 38).
 3. **Decide Memory Saver.** Ray has no tab sleeping of its own: Ardia's 20-minute sleep lived in Ardia's app, which
    Ray never copied. But Ray's engine still skips Helium's `memory-saving-by-default.patch` with the reason "would
    fight Ray's own tab sleeping", so Memory Saver is off unless the user turns it on in chrome://settings/performance
@@ -56,6 +57,11 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    peek opens only while the app is active, a hover that arrived in the background opens when the app comes forward
    with the pointer still there, and one that left opens nothing. Ray's `pointer(at:appActive:)` only narrows the
    reach to the window's own edge strip when inactive, so it still peeks from a background window (not tried).
+8a. **macOS 27: the green button's Move & Resize / Fill & Arrange may crash Ray** (new, MISSING 39; not tried).
+   Ardia 0.2.44 (`9e5b115b`): on macOS 27 a submenu's parent item still targets NSMenu with `submenuAction:`,
+   which NSMenu no longer implements, so choosing either threw. Fix is app-side, five lines: at launch, if
+   `NSMenu.instancesRespond(to: "submenuAction:")` is false, `class_addMethod` an empty one. The owner is on macOS 27:
+   try it in Ray first, it's cheap.
 9. **Peek decision input** (PLAN.md open decision): Ardia's stable 0.2.43 opens other sites' links from Top Apps
    and pinned tabs in Peek, as Arc does, behind Settings › Tabs › Links (off by default).
 10. **Reserved keys:** Ardia's stable now reserves Helium's set by menu command; Ray's (`Shortcuts.isReserved`)
@@ -80,6 +86,38 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
     list (opens upward from the swipe, nearest page at the bottom under the fingers, 38 pt rows, the list slides per
     step; `a97d6db7`). Ray's engine already exports `navigationEntries`; start with Chrome's hold-Back menu as a
     `Panels` panel, then the swipe.
+
+## v0.2.44 (2026-11-04, stable), engine-38b319abda74
+
+Stable release of nightlies 1–6 plus a nightly.7 range (`v0.2.44-nightly.6..v0.2.44`, 40 commits, most of them
+release films, the perf ratchet and Ardia's dashboard). Already covered above: sidebar on the right (item 15),
+share from the page menu (13), swipe-and-hold history (16), shared Top Apps, hooks and config files, background
+peek (8), muted tabs' silent notifications (5).
+
+**Engine** (tree `38b319ab`, from `2da3ca19`; no Chromium bump, still 156.0.8078.79 on Helium 0.20.3; no Chrome
+security fixes): one patch, `chromium-storage-pressure-bubble-without-browser-view.patch` (`9e5b115b`, Ardia #835):
+when the disk runs low Chrome's storage pressure bubble dereferenced `BrowserView::GetBrowserViewForBrowser`, which
+an embedder's browsers don't have, and crashed. Ray's engine has the same browsers and no such patch: it should
+crash the same way (not tried). Comes with item 2, or as a one-file `engine-ray` fixup on its own.
+
+**App, new since nightly.6:** each profile picks whether its Top Apps join the shared set (`d3f81640`); PiP thrown
+into a corner nests its curve inside the window's corner (`c1409aa8`); the top tab strip clips at its start, a close
+keeps the next × under the pointer, split tabs click anywhere (`1b4eb4ac`); faster new tabs (first paint 80 → 69 ms,
+the page's first frame 55 → 45 ms) from memoizing React rows (`a59a0060`, `d50d6df3`, `01f6dbf1`).
+
+**Fixes Ray shares or should check** (`9e5b115b`):
+- macOS 27's green-button submenus throw (`submenuAction:` gone from NSMenu): Ray is AppKit too, item 8a.
+- Omnibox fixup regex backtracked exponentially on `my-blog-post.another-post.x:` (Hermes, stack depth). Ray's
+  `AddressInput` uses no regular expressions; nothing to take.
+- Acting on an extension the engine already removed: Ardia now logs and reloads its list. Ray's Settings ›
+  Extensions follows the engine's list; worth one try (remove from chrome://extensions with the pane open).
+- Names save on click away (a profile name needed Return), tabs moved to another window land per "New tabs open at",
+  never in a group. Ray has no profile names or move-to-window yet; keep both in mind when they land.
+
+**Competitive:** Ardia publishes a perf table per release (new tab first paint 69 ms). Ray has `switch-no-blank` but
+no published timings; a measured new-tab and window first paint would let Ray answer it. Ardia is ahead on sidebar
+side, sharing and scripting; Ray stays ahead on a native AppKit hot path (no React re-render cost to tune away) and
+Arc's ⌃Tab switcher.
 
 ## v0.2.44-nightly.6 (2026-11-04), engine-2da3ca19a224
 
