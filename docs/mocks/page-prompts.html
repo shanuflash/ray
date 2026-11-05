@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Page Prompts</title>
+<style>
+:root {
+  --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --hair: rgba(0,0,0,.08);
+  --side: #E8E5EF; --sideInk: #3A3A3F; --page: #FFFFFF; --line: #EDEDF0; --chip: #FFFFFF;
+  --card: #FFFFFF; --cardInk: #1C1C1E; --cardInk2: #6C6C70; --edge: rgba(0,0,0,.075);
+  --tile: rgba(0,0,0,.045); --tileHover: rgba(0,0,0,.08); --sep: rgba(0,0,0,.08);
+  --glass: rgba(255,255,255,.68); --sad: #F4F3F7;
+  --shadow: 0 1px 1.5px rgba(0,0,0,.05), 0 6px 14px -4px rgba(0,0,0,.08), 0 22px 48px -12px rgba(0,0,0,.22);
+  --accent: #8257E5; --onAccent: #fff; --red: #E5484D;
+}
+:root[data-theme="dark"] {
+  --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09);
+  --side: #1D1B22; --sideInk: #D8D6DE; --page: #242428; --line: #2F2F34; --chip: #28282D;
+  --card: #2C2C31; --cardInk: #F5F5F7; --cardInk2: #A1A1A9; --edge: rgba(255,255,255,.09);
+  --tile: rgba(255,255,255,.07); --tileHover: rgba(255,255,255,.12); --sep: rgba(255,255,255,.09);
+  --glass: rgba(40,40,46,.66); --sad: #1F1F23;
+  --shadow: 0 1px 1.5px rgba(0,0,0,.3), 0 6px 14px -4px rgba(0,0,0,.3), 0 24px 52px -12px rgba(0,0,0,.6);
+  --accent: #A486F0; --onAccent: #000; --red: #FF6369;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px 64px; }
+h1 { font-size: 22px; font-weight: 600; margin: 26px 0 4px; letter-spacing: -.01em; }
+.sub { color: var(--ink2); margin: 0 0 14px; max-width: 760px; }
+h3 { font-size: 13px; font-weight: 600; margin: 26px 0 8px; }
+.bar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--desk) 86%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 10px 0; border-bottom: 1px solid var(--hair); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.row + .row { margin-top: 6px; }
+.lab { color: var(--ink2); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; min-width: 58px; }
+button.t { font: inherit; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--chip); border: 1px solid var(--hair); border-radius: 7px; padding: 4px 9px; cursor: pointer; white-space: nowrap; }
+button.t:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+button.t[aria-pressed="true"] { background: var(--accent); color: var(--onAccent); border-color: transparent; }
+.rec { display: inline-block; font-size: 10px; font-weight: 700; color: var(--onAccent); background: var(--accent); border-radius: 4px; padding: 1px 5px; margin-left: 4px; vertical-align: 1px; }
+
+/* Window */
+.win { position: relative; margin-top: 16px; height: 540px; border-radius: 12px; background: var(--side); overflow: hidden;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.2), 0 20px 50px -12px rgba(0,0,0,.28); display: flex; }
+.side { width: 212px; flex: none; padding: 12px 10px; color: var(--sideInk); display: flex; flex-direction: column; }
+.lights { display: flex; gap: 8px; margin: 3px 0 16px 5px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; } .lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+.tab { height: 32px; border-radius: 8px; margin-bottom: 2px; display: flex; align-items: center; gap: 9px; padding: 0 9px; font-size: 12.5px; white-space: nowrap; overflow: hidden; }
+.tab.on { background: var(--page); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.tab b { width: 16px; height: 16px; border-radius: 4px; background: var(--c); flex: none; }
+.tab.faded b { opacity: .45; }
+.foot { margin-top: auto; padding: 0 4px; color: var(--ink2); }
+.foot svg { width: 16px; height: 16px; }
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.toolbar { height: 41px; display: flex; align-items: center; padding: 0 12px 0 14px; font-size: 13px; color: var(--ink2); }
+.toolbar b { color: var(--ink); font-weight: 500; }
+.page { position: relative; flex: 1; margin: 0 8px 8px 0; border-radius: 10px; background: var(--page); box-shadow: 0 0 0 .5px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
+.site-pg nav { height: 52px; display: flex; align-items: center; gap: 18px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+.site-pg nav .logo { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, #4F8CFF, #22C1C3); }
+.site-pg nav i { width: 46px; height: 7px; border-radius: 4px; background: var(--line); }
+.site-pg .hero { margin: 26px 28px 0; height: 190px; border-radius: 14px; background: radial-gradient(120% 140% at 85% 0%, #FFB86B 0%, #FF6A88 35%, #7B61FF 70%, #2D7FF9 100%); }
+.site-pg .text { padding: 22px 28px; } .site-pg .text div { height: 9px; border-radius: 5px; background: var(--line); margin-bottom: 12px; }
+.layer { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
+.layer > * { pointer-events: auto; }
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.18); pointer-events: none; }
+
+/* Surfaces: the notes' and panels' look */
+.surf { position: absolute; border-radius: 14px; color: var(--cardInk); background: var(--card); box-shadow: 0 0 0 .5px var(--edge), var(--shadow); }
+.glass .surf { background: var(--glass); backdrop-filter: blur(34px) saturate(190%); -webkit-backdrop-filter: blur(34px) saturate(190%); }
+.q { width: 320px; padding: 14px 14px 12px; animation: drop .32s cubic-bezier(.2,.9,.3,1); }
+.q.top { left: 50%; top: 10px; transform: translateX(-50%); animation-name: dropC; }
+.q.right { right: 10px; top: 10px; }
+.q .head { display: flex; gap: 11px; align-items: flex-start; }
+.q .icon { width: 36px; height: 36px; border-radius: 9px; flex: none; display: grid; place-items: center; }
+.q h4 { margin: 1px 0 3px; font-size: 13.5px; font-weight: 600; }
+.q p { margin: 0 0 10px; font-size: 12px; color: var(--cardInk2); }
+.q .org { color: var(--cardInk); font-weight: 600; word-break: break-all; }
+.chk { display: flex; align-items: center; gap: 7px; font-size: 12px; margin: 0 0 12px; }
+.chk i { width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--cardInk2); flex: none; }
+.btns { display: flex; justify-content: flex-end; gap: 6px; }
+.btn { height: 28px; border-radius: 8px; border: 0; background: var(--tile); color: var(--cardInk); font: inherit; font-size: 12.5px; font-weight: 500; padding: 0 12px; cursor: default; }
+.btn.primary { background: var(--accent); color: var(--onAccent); font-weight: 600; }
+.btn.danger { color: var(--red); }
+.btn.wait { opacity: .45; }
+.note { right: 10px; top: 10px; display: flex; align-items: center; gap: 10px; padding: 9px 9px 9px 12px; border-radius: 13px; animation: drop .32s cubic-bezier(.2,.9,.3,1); }
+.note.bl { right: auto; top: auto; left: 10px; bottom: 10px; }
+.note .ni { color: var(--accent); width: 16px; height: 16px; flex: none; }
+.note .ni.warn { color: #F5A524; }
+.note .nt { display: flex; flex-direction: column; min-width: 0; }
+.note .nt b { font-size: 12.5px; font-weight: 600; } .note .nt span { font-size: 11.5px; color: var(--cardInk2); }
+.note .btn { height: 26px; padding: 0 10px; font-size: 12px; }
+.list { margin: 10px 0 12px; border-radius: 9px; background: var(--tile); padding: 4px; }
+.list div { display: flex; justify-content: space-between; gap: 8px; padding: 5px 7px; font-size: 12px; }
+.list span { color: var(--cardInk2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list a { color: var(--accent); font-weight: 500; text-decoration: none; }
+@keyframes drop { from { opacity: 0; translate: 0 -8px; } to { opacity: 1; translate: 0 0; } }
+@keyframes dropC { from { opacity: 0; translate: 0 -8px; } to { opacity: 1; translate: 0 0; } }
+
+/* Crashed tab */
+.sad { position: absolute; inset: 0; display: grid; place-items: center; background: var(--sad); }
+.sad.onpage { background: var(--page); }
+.sad .c { text-align: center; max-width: 300px; }
+.sad .glyph { width: 44px; height: 44px; margin: 0 auto 14px; color: var(--ink2); }
+.sad h2 { font-size: 17px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
+.sad p { font-size: 12.5px; color: var(--ink2); margin: 0 0 16px; }
+.sad .btn { height: 30px; padding: 0 16px; font-size: 13px; }
+.sad .card { padding: 26px 30px 22px; border-radius: 16px; position: static; }
+
+.desc { margin-top: 14px; }
+.desc ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink2); } .desc li { margin: 4px 0; }
+.desc b { color: var(--ink); font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--page); border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 1px var(--hair); }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+th { font-weight: 600; color: var(--ink2); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+.tw { overflow-x: auto; }
+@media (max-width: 760px) { .side { display: none; } .page { margin-left: 8px; } .q { width: 290px; } }
+</style>
+</head>
+<body>
+<div class="bar"><div class="wrap" style="padding-bottom:0">
+  <div class="row" id="scenes">
+    <span class="lab">Prompt</span>
+    <button class="t" data-scene="ext">1 · Open app</button>
+    <button class="t" data-scene="noapp">1 · No app</button>
+    <button class="t" data-scene="popup">2 · Pop-up blocked</button>
+    <button class="t" data-scene="crash">3 · Crashed</button>
+    <button class="t" data-scene="hang">3 · Not responding</button>
+    <button class="t" data-scene="quit">4 · Quit with downloads</button>
+  </div>
+  <div class="row" id="variants"><span class="lab">Variant</span></div>
+  <div class="row">
+    <span class="lab">Look</span>
+    <button class="t" id="glassB" aria-pressed="true">Glass</button>
+    <button class="t" id="solidB" aria-pressed="false">Solid</button>
+    <span style="width:8px"></span>
+    <button class="t" id="lightB" aria-pressed="true">Light</button>
+    <button class="t" id="darkB" aria-pressed="false">Dark</button>
+    <span style="width:8px"></span>
+    <button class="t" id="waitB" aria-pressed="false">First 0.5 s</button>
+  </div>
+</div></div>
+<div class="wrap">
+  <h1>Prompts the page asks for</h1>
+  <p class="sub">Four things the engine already asks Ray. Today: a link to an app gets Chrome's own grey dialog ("Open Slack.app?", "file:// wants to open this application", two blue buttons); a pop-up without a click is dropped silently; a crashed tab shows a blank white page; quitting cancels downloads without a word. Pick a variant for each; the first one is my recommendation.</p>
+  <div class="win glass" id="win">
+    <div class="side">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="tab"><b style="--c:#24292F"></b>shanuflash/ray</div>
+      <div class="tab on" id="activeTab"><b style="--c:#2D8CFF"></b><span id="tabTitle">Join meeting · Zoom</span></div>
+      <div class="tab"><b style="--c:#FF4500"></b>r/MacApps</div>
+      <div class="foot"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v6M5.6 8.6L8 11l2.4-2.4"/></svg></div>
+    </div>
+    <div class="main">
+      <div class="toolbar"><b id="host">zoom.us</b><span id="path">/j/81234567</span></div>
+      <div class="page" id="page">
+        <div class="site-pg"><nav><span class="logo"></span><i></i><i></i><i></i></nav><div class="hero"></div><div class="text"><div style="width:44%;height:16px"></div><div></div><div style="width:90%"></div><div style="width:76%"></div></div></div>
+        <div class="layer" id="pageLayer"></div>
+      </div>
+    </div>
+  </div>
+  <div class="desc" id="desc"></div>
+
+  <h3>What the references do</h3>
+  <div class="tw"><table>
+    <tr><th></th><th>Chrome</th><th>Ardia</th><th>Crest</th><th>Cra</th></tr>
+    <tr><td>Open app</td><td>Tab-modal "Open <i>App</i>?", origin, "Always allow … in the associated app" (trustworthy origins only). Cancel is default.</td><td>Popover at the address: "Open “App”?", Cancel / Open, 0.5 s guard, cancelled by going to another host. No app: "No application is set to open this link".</td><td>Sheet: "Open this link in another app?", Open / Always Allow / Cancel.</td><td>None (CEF opens it).</td></tr>
+    <tr><td>Pop-up</td><td>Address-bar icon; its bubble lists the blocked pop-ups (click one to open) with "Always allow pop-ups from …".</td><td>Toolbar icon; first one opens "Always allow pop-ups from …?" with Always Deny / Only Once / Always Allow and the last 5.</td><td>Site controls turn orange; "Pop-up blocked for …", one button, no Open.</td><td>None.</td></tr>
+    <tr><td>Crashed</td><td>"Aw, Snap!", Reload; crashing again within 10 s: "Can't open this page" with tips.</td><td>"This tab needs to reload", Reload; no variants.</td><td>Reloads by itself twice, then an error page; a tab killed while hidden reloads when shown.</td><td>Chrome's.</td></tr>
+    <tr><td>Not responding</td><td>After 15 s: "Page Unresponsive", Wait / Exit Page; goes away by itself when the page recovers.</td><td>Same words, over a scrim, Wait primary.</td><td>None.</td><td>None.</td></tr>
+    <tr><td>Quit with downloads</td><td>"Downloads are in progress", "Quit Ray anyway?", Continue Downloading (default) / Quit.</td><td>Alert: "Are you sure you want to quit?", Quit / Cancel.</td><td>"Quit and cancel 2 downloads in progress?", Keep Browsing / Quit.</td><td>None.</td></tr>
+  </table></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const win = $('#win'), layer = $('#pageLayer'), desc = $('#desc');
+let scene = 'ext', variant = 0, waiting = false;
+const ic = {
+  zoom: '<div class="icon" style="background:#2D8CFF"><svg width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="5" width="11" height="10" rx="2.5" fill="#fff"/><path d="M14 8.5l4-2.5v8l-4-2.5z" fill="#fff"/></svg></div>',
+  pop: '<svg class="ni" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="1.8" y="3.2" width="10" height="9" rx="2"/><path d="M1.8 6h10"/><path d="M13 9.6v4M11 11.6h4" stroke-linecap="round"/></svg>',
+  warn: '<svg class="ni warn" viewBox="0 0 16 16" fill="currentColor"><path d="M7.1 2.4a1 1 0 011.8 0l5.6 10.1a1 1 0 01-.9 1.5H2.4a1 1 0 01-.9-1.5z"/><path d="M8 6v3.6M8 11.6v.1" stroke="var(--card)" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  hang: '<div class="icon" style="background:var(--tile);color:var(--cardInk2)"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="7"/><path d="M9 5v4.2l2.6 1.6"/></svg></div>',
+  dl: '<div class="icon" style="background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v6M5.6 8.6L8 11l2.4-2.4"/></svg></div>',
+  crash: '<svg class="glyph" viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="8" width="34" height="28" rx="6"/><path d="M5 15h34"/><path d="M17 23l3 3m0-3l-3 3M24 23l3 3m0-3l-3 3"/><path d="M18 31.5c2.4-1.6 5.6-1.6 8 0"/></svg>',
+};
+const w = () => waiting ? ' wait' : '';
+const q = (pos, icon, title, msg, check, buttons) => `<div class="surf q ${pos}"><div class="head">${icon || ''}<div style="flex:1;min-width:0"><h4>${title}</h4>${msg ? `<p>${msg}</p>` : ''}</div></div>${check ? `<div class="chk"><i></i>${check}</div>` : ''}<div class="btns">${buttons}</div></div>`;
+const scenes = {
+  ext: { tab: 'Join meeting · Zoom', host: 'zoom.us', path: '/j/81234567', variants: [
+    { name: 'A · Question from the top', html: () => q('top', ic.zoom, 'Open “zoom.us”?', '<span class="org">https://zoom.us</span> wants to open this app.', 'Always allow https://zoom.us', `<button class="btn${w()}">Cancel</button><button class="btn primary${w()}">Open</button>`),
+      text: `<ul><li><b>Where:</b> drops from the page's top centre, like the ⌘Q warning and extension installs. Only over its own tab: a tab switch puts it away and coming back shows it again; going to another site cancels it (Ardia).</li><li><b>Replaces Chrome's dialog:</b> Ray answers the engine's ask, so Chrome's never shows. Same rules underneath (Chrome's per-site “always allow” list), Ray's look.</li><li><b>Copy:</b> the app's name from macOS without “.app” (here “zoom.us”, Zoom's real name) and its icon, the full origin from the engine. A page with no real origin (a file) says “This page wants to open this app.” and has no tick box. The tick box shows only for an https (or localhost) site in a normal window; it saves the site in Settings › Privacy › Apps sites may open, which already lists and removes them.</li><li><b>Safe:</b> buttons dead for 0.5 s; Return does nothing; Escape, a click outside or closing the tab is Cancel. One question per tab; a second link while it shows replaces it.</li></ul>` },
+    { name: 'B · Panel at the top right', html: () => q('right', ic.zoom, 'Open “zoom.us”?', '<span class="org">https://zoom.us</span> wants to open this app.', 'Always allow https://zoom.us', `<button class="btn${w()}">Cancel</button><button class="btn primary${w()}">Open</button>`),
+      text: `<ul><li>Same panel in the save-password spot (Ardia puts its version under the address). Reads as less of an interruption, but the eye is at the link, mid-page.</li></ul>` },
+  ]},
+  noapp: { tab: 'Docs', host: 'docs.example.com', path: '/setup', variants: [
+    { name: 'A · Note', html: () => `<div class="surf note">${ic.warn}<div class="nt"><b>No app opens “figma:” links</b></div></div>`,
+      text: `<ul><li>A link to a kind of app this Mac doesn't have (the engine says so). A note at the top right for a few seconds instead of a question with only OK (Ardia's).</li></ul>` },
+  ]},
+  popup: { tab: 'Checkout · Shop', host: 'shop.example.com', path: '/checkout', variants: [
+    { name: 'A · Note with Open', html: () => `<div class="surf note">${ic.pop}<div class="nt"><b>Pop-up blocked</b><span>https://shop.example.com</span></div><button class="btn${w()}">Open</button><button class="btn primary${w()}">Always Allow</button></div>`,
+      text: `<ul><li><b>Where:</b> a note at the top right (Arc-light; no address-bar icon in Ray). More while it shows count up in place: “3 pop-ups blocked”.</li><li><b>Open</b> opens what this page tried to open (all of them, as Ardia's Only Once). <b>Always Allow</b> allows pop-ups for the site (the engine saves it; Settings › Privacy lists it) and opens them.</li><li>Stays 6 s, longer while hovered; ignoring it keeps them blocked. Only on its own tab: switching tabs puts it away. Buttons dead 0.5 s. Not shown again for the same page once dismissed.</li></ul>` },
+    { name: 'B · Panel with the list', html: () => `<div class="surf q right" style="width:330px"><h4 style="margin:1px 0 3px">Always allow pop-ups from <span style="word-break:break-all">https://shop.example.com</span>?</h4><div class="list"><div><span>pay.example.net/authorize?session=…</span><a>Open</a></div><div><span>shop.example.com/receipt/2291</span><a>Open</a></div></div><div class="btns"><button class="btn${w()}">Not Now</button><button class="btn primary${w()}">Always Allow</button></div></div>`,
+      text: `<ul><li>Ardia's: a panel with each blocked address, opened one by one. More to read, and the addresses are page-chosen text (shown grey, host first, never as the title).</li></ul>` },
+    { name: 'C · Note, allow only', html: () => `<div class="surf note">${ic.pop}<div class="nt"><b>Pop-up blocked</b><span>https://shop.example.com</span></div><button class="btn primary${w()}">Always Allow</button></div>`,
+      text: `<ul><li>Crest's: allowing doesn't open it; you redo what you clicked. Simplest, but the payment window you wanted stays shut.</li></ul>` },
+  ]},
+  crash: { tab: 'Figma', host: 'figma.com', path: '/file/x7…', faded: true, variants: [
+    { name: 'A · Crashed', sad: 1, html: () => `<div class="sad"><div class="c">${ic.crash}<h2>This page crashed</h2><p>Reload to try again.</p><button class="btn primary">Reload</button></div></div>`,
+      text: `<ul><li><b>Ray's own view</b> in the page's place (the page is gone; nothing under it), in the card colour. Reload is the default button (Return). The sidebar row keeps its title; its icon fades, like an unloaded tab.</li><li><b>Out of memory</b> and <b>crashing again within 10 s</b> (Chrome's rule) get their own words (other variants). Error code only for tests, not on screen.</li><li><b>Killed while hidden</b> (macOS ran low on memory, the tab wasn't shown): no page at all, it reloads when you switch to it, as Crest does and as a sleeping tab does.</li></ul>` },
+    { name: 'A · Out of memory', sad: 1, html: () => `<div class="sad"><div class="c">${ic.crash}<h2>This page ran out of memory</h2><p>Close some tabs, then reload.</p><button class="btn primary">Reload</button></div></div>`, text: '' },
+    { name: 'A · Keeps crashing', sad: 1, html: () => `<div class="sad"><div class="c">${ic.crash}<h2>This page keeps crashing</h2><p>Close other tabs or apps, then reload.</p><button class="btn primary">Reload</button></div></div>`, text: '' },
+    { name: 'B · On a card', sad: 1, html: () => `<div class="sad onpage"><div class="surf card c" style="position:static">${ic.crash}<h2>This page crashed</h2><p>Reload to try again.</p><button class="btn primary">Reload</button></div></div>`,
+      text: `<ul><li>The same words on the panels' surface over the page colour. Heavier; A reads more like a page.</li></ul>` },
+  ]},
+  hang: { tab: 'Spreadsheet', host: 'sheets.example.com', path: '/d/1Bx…', variants: [
+    { name: 'A · Question from the top', html: () => q('top', ic.hang, 'Page not responding', '<span class="org">https://sheets.example.com</span> stopped responding. Wait for it, or close the page.', null, `<button class="btn danger${w()}">Exit Page</button><button class="btn primary${w()}">Wait</button>`),
+      text: `<ul><li>After the engine's 15 s. Only over its own tab; it goes away by itself when the page answers again.</li><li><b>Wait</b> is the primary and Return's answer (Chrome's default); Escape is Wait too, and the engine asks again if it stays stuck. <b>Exit Page</b> ends it and shows the crashed view.</li></ul>` },
+    { name: 'B · With a scrim', scrim: 1, html: () => q('top', ic.hang, 'Page not responding', '<span class="org">https://sheets.example.com</span> stopped responding. Wait for it, or close the page.', null, `<button class="btn danger${w()}">Exit Page</button><button class="btn primary${w()}">Wait</button>`),
+      text: `<ul><li>Ardia's: the stuck page dims under the question. Says “this page is frozen” at a glance, but the page is already doing nothing.</li></ul>` },
+  ]},
+  quit: { tab: 'Releases · GitHub', host: 'github.com', path: '/shanuflash/ray/releases', variants: [
+    { name: 'A · Question from the top', html: () => q('top', ic.dl, 'Quit and cancel 2 downloads?', '', null, `<button class="btn danger${w()}">Quit</button><button class="btn primary${w()}">Keep Downloading</button>`),
+      text: `<ul><li>On any quit the engine catches (⌘Q, the menu, the Dock) while downloads run; with ⌘Q's own warning on, this one replaces it instead of asking twice.</li><li><b>Keep Downloading</b> is the primary and Return's answer (Chrome's, Crest's); Escape keeps them too. No “Don't ask again”.</li><li>Closing the last private window while its downloads run: “Close and cancel 1 download?” with Close Window. The normal window never asks: its downloads keep going while Ray runs.</li><li>No window open: the same words as a macOS alert.</li></ul>` },
+    { name: 'B · Note by Downloads', html: () => `<div class="surf q" style="left:10px;bottom:10px;top:auto;width:300px"><div class="head">${ic.dl}<div style="flex:1"><h4>Quit and cancel 2 downloads?</h4></div></div><div class="btns"><button class="btn danger${w()}">Quit</button><button class="btn primary${w()}">Keep Downloading</button></div></div>`,
+      text: `<ul><li>The same question at the bottom left, by the downloads button and where download notes show. Ties it to the downloads, but it's far from where the eye is on ⌘Q.</li></ul>` },
+  ]},
+};
+function render() {
+  const s = scenes[scene], v = s.variants[variant];
+  $('#tabTitle').textContent = s.tab; $('#host').textContent = s.host; $('#path').textContent = s.path;
+  $('#activeTab').classList.toggle('faded', !!s.faded);
+  layer.innerHTML = (v.scrim ? '<div class="scrim"></div>' : '') + v.html();
+  desc.innerHTML = `<h3 style="margin-top:6px">${v.name}</h3>` + (v.text || s.variants[0].text);
+  document.querySelectorAll('#scenes [data-scene]').forEach(b => b.setAttribute('aria-pressed', b.dataset.scene === scene));
+  const vr = $('#variants'); vr.innerHTML = '<span class="lab">Variant</span>';
+  s.variants.forEach((x, i) => { const b = document.createElement('button'); b.className = 't'; b.innerHTML = x.name + (i === 0 && s.variants.length > 1 ? '<span class="rec">Pick</span>' : ''); b.setAttribute('aria-pressed', i === variant); b.onclick = () => { variant = i; render(); }; vr.appendChild(b); });
+}
+document.querySelectorAll('#scenes [data-scene]').forEach(b => b.onclick = () => { scene = b.dataset.scene; variant = 0; render(); });
+const pair = (a, b, on) => { $(a).setAttribute('aria-pressed', on); $(b).setAttribute('aria-pressed', !on); };
+$('#glassB').onclick = () => { win.classList.add('glass'); pair('#glassB', '#solidB', true); };
+$('#solidB').onclick = () => { win.classList.remove('glass'); pair('#glassB', '#solidB', false); };
+$('#lightB').onclick = () => { document.documentElement.dataset.theme = 'light'; pair('#lightB', '#darkB', true); };
+$('#darkB').onclick = () => { document.documentElement.dataset.theme = 'dark'; pair('#lightB', '#darkB', false); };
+$('#waitB').onclick = () => { waiting = !waiting; $('#waitB').setAttribute('aria-pressed', waiting); render(); };
+if (matchMedia('(prefers-color-scheme: dark)').matches) $('#darkB').click();
+render();
+</script>
+</body>
+</html>

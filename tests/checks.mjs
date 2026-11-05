@@ -97,6 +97,16 @@ function serve(req, res) {
     res.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${name}"` });
     return res.end("ray download fixture\n".repeat(64));
   }
+  if (url.pathname.startsWith("/slow-file/")) {
+    // A download that takes a minute (quit-with-downloads): 1 KB every 200 ms.
+    const name = url.pathname.slice("/slow-file/".length);
+    res.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${name}"`,
+      "content-length": String(300 * 1024) });
+    let sent = 0;
+    const timer = setInterval(() => { res.write(Buffer.alloc(1024)); if (++sent >= 300) { clearInterval(timer); res.end(); } }, 200);
+    res.on("close", () => clearInterval(timer));
+    return;
+  }
   if (url.pathname === "/slow-start") {
     // Nothing at all for 1.5 s: the navigation stays pending (not committed) meanwhile.
     const timer = setTimeout(() => res.end("<title>Slow start</title><p>slow start</p>"), 1500);
@@ -2408,6 +2418,238 @@ const checks = {
       rmSync(files, { recursive: true, force: true });
     }
   },
+  async "app-link-prompt"() {
+    // A link to another app (maps:; Chrome never asks for mailto:) asks "Open “Maps”?" over its own tab, Ray's question, not Chrome's dialog: the
+    // full origin from the engine, buttons dead for 0.5 s, Escape cancels, a tab switch puts it away and coming back
+    // shows it again; Open with "Always allow" opens it (the test build only records it) and Settings › Privacy lists
+    // the site. A kind of link no app opens gets a note instead.
+    pages["/app-links"] = `<title>App links</title><a id=mail href="maps://?q=Ray">maps</a>
+      <a id=none href="rayfake://hello">none</a>`;
+    const url = `${secureOrigin}/app-links`;
+    const question = () => state().pageQuestion;
+    // Chrome asks only for a page that's shown: the hidden window joins the shown Space (see-through, click-through).
+    await command("onscreen on");
+    try {
+    await goTo(url, true);
+    await until("links page", async () => { await command("state"); return activeTabState()?.url === url; });
+    const { sessionId } = await session(url);
+    await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+    const launchesBefore = (state().pageQuestion.launches ?? []).length;
+    await clickElement(sessionId, "#mail");
+    let q = (await until("app question", async () => { await command("state"); return question().open !== null && question(); })).open;
+    assert(q.kind === "app" && q.scheme === "maps" && q.origin === secureOrigin && q.app.length > 0 && q.hasIcon,
+      `question ${JSON.stringify(q)}`);
+    assert(q.check === `Always allow ${secureOrigin}` && JSON.stringify(q.buttons) === `["Cancel","Open"]`, `question ${JSON.stringify(q)}`);
+    assert(state().panels.open?.name === "appLink", `panel ${JSON.stringify(state().panels.open)}`);
+    // Too early: a click meant for the page can't open the app.
+    const early = await commandResult("pagequestion press 1");
+    assert(early === "not ready" || early === "ok" && question().last === null, `an early click answered it: ${early}`);
+    // Another tab puts it away; coming back shows it again.
+    const other = state().sidebar.today.find((e) => e.live && e.tab !== state().active);
+    if (other) {
+      await command(`row ${other.id}`);
+      await until("put away", async () => { await command("state"); return question().open === null && question().waiting === 1; });
+      await command(`row ${entryOfTab(tabFor("/app-links").id).id}`);
+      await until("shown again", async () => { await command("state"); return question().open?.kind === "app"; });
+    }
+    // Escape cancels: nothing opens.
+    await command("pagequestion escape");
+    await until("cancelled", async () => { await command("state"); return question().open === null && question().last?.answer === "cancel"; });
+    assert(question().launches.length === launchesBefore, `cancel opened the app: ${JSON.stringify(question().launches)}`);
+    // Open, always allowed: the engine opens it (recorded) and remembers the site.
+    await clickElement(sessionId, "#mail");
+    await until("asked again", async () => { await command("state"); return question().open?.kind === "app"; });
+    await until("ready", async () => { await command("state"); return question().open?.ready; }, 3000);
+    await command("pagequestion check");
+    await command("pagequestion press 1");
+    q = await until("opened", async () => { await command("state"); return question().launches.length > launchesBefore && question(); });
+    assert(q.last.answer === "open" && q.last.remember === true, `answer ${JSON.stringify(q.last)}`);
+    const launch = q.launches.at(-1);
+    assert(launch.url === "maps://?q=Ray" && launch.remembered === true, `launch ${JSON.stringify(launch)}`);
+    // Settings › Privacy › Apps sites may open lists it; Remove takes it off (no later click opens Maps for real).
+    await command("settings open privacy");
+    const apps = async () => JSON.parse(await commandResult("privacy list"));
+    await commandResult("privacy reload");
+    let p = await until("allowance listed", async () => { const p = await apps(); return p.loaded && p.apps.some((a) => a.origin === secureOrigin && a.scheme === "maps") && p; });
+    await command(`privacy appremove ${secureOrigin} maps`);
+    await until("allowance removed", async () => { await commandResult("privacy reload"); const p = await apps(); return p.loaded && !p.apps.some((a) => a.origin === secureOrigin) && p; });
+    await closeSettingsWindow();
+    // No app for it: a note, no question.
+    await command(`row ${entryOfTab(tabFor("/app-links").id).id}`);
+    await clickElement(sessionId, "#none");
+    await until("no-app note", async () => { await command("state"); return question().last?.kind === "noApp" && state().noteText.includes("No app opens “rayfake:” links"); });
+    assert(question().open === null, `asked for a link no app opens: ${JSON.stringify(question().open)}`);
+    await command("menu closeTab");
+    } finally { await command("onscreen off"); }
+  },
+
+  async "popup-blocked"() {
+    // A pop-up the page opens without a click is blocked with a note over its own tab ("Pop-up blocked", the site):
+    // more count up in place, Open opens them all, later ones on that page stay blocked without another note, and
+    // Always Allow lets the site open them from then on (Settings › Privacy lists it; Reset takes it back).
+    pages["/popups"] = `<title>Pop-ups</title><p>pop-ups</p>`;
+    const popups = () => state().blockedPopups;
+    // Never with a user gesture: that would let the page open them.
+    const plain = async (sessionId, expression) =>
+      (await send("Runtime.evaluate", { expression, userGesture: false, returnByValue: true }, sessionId)).result.value;
+    const openWithoutClick = (sessionId, url) => plain(sessionId, `String(window.open(${JSON.stringify(url)}))`);
+    const page = `${origin}/popups`;
+    await goTo(page, true);
+    await until("pop-up page", async () => { await command("state"); return activeTabState()?.url === page; });
+    let { sessionId } = await session(page);
+    await until("loaded", async () => (await plain(sessionId, `document.readyState`)) === "complete");
+    assert((await openWithoutClick(sessionId, `${origin}/b?popup1`)) === "null", "the first pop-up wasn't blocked");
+    assert((await openWithoutClick(sessionId, `${origin}/c?popup2`)) === "null", "the second pop-up wasn't blocked");
+    await until("note", async () => { await command("state"); return popups().blocked === 2 && state().noteText.includes("2 pop-ups blocked"); });
+    assert(popups().noteShown, `note ${JSON.stringify(popups())}`);
+    await sleep(600);
+    await command("note press topTrailing 1");
+    await until("both opened", async () => (await targets()).filter((t) => /popup[12]/.test(t.url)).length === 2);
+    await until("answered", async () => { await command("state"); return popups().last?.answer === "open" && popups().last.count === 2; });
+    // Back on the page: another one stays blocked, with no note.
+    await command(`row ${entryOfTab(tabFor("/popups").id).id}`);
+    await until("page again", async () => { await command("state"); return activeTabState()?.url === page; });
+    assert((await openWithoutClick(sessionId, `${origin}/b?popup3`)) === "null", "the third pop-up wasn't blocked");
+    // (By the page's own tab: a pop-up opened above may still take the window's focus late.)
+    const pageTab = tabFor("/popups").id;
+    const mine = () => popups().pages.find((p) => p.tab === pageTab);
+    await until("third one counted", async () => { await command("state"); return mine()?.blocked === 1; }, 3000);
+    await sleep(300);
+    await command("state");
+    assert(mine()?.blocked === 1 && mine().done && !popups().noteShown && !state().noteText.includes("blocked"),
+      `after Open ${JSON.stringify(popups())} ${state().noteText}`);
+    for (const t of (await targets()).filter((t) => /popup[123]/.test(t.url))) await send("Target.closeTarget", { targetId: t.targetId });
+    await command(`row ${entryOfTab(tabFor("/popups").id).id}`);
+    await command("menu closeTab");
+    // Always Allow, on a site of its own: it opens, and the site's next pop-up opens without asking.
+    const allowed = `${raytestOrigin}/popups`;
+    await goTo(allowed, true);
+    await until("allowed page", async () => { await command("state"); return activeTabState()?.url === allowed; });
+    ({ sessionId } = await session(allowed));
+    await until("loaded", async () => (await plain(sessionId, `document.readyState`)) === "complete");
+    assert((await openWithoutClick(sessionId, `${origin}/b?popup4`)) === "null", "the fourth pop-up wasn't blocked");
+    await until("note again", async () => { await command("state"); return popups().noteShown && state().noteText.includes("Pop-up blocked"); });
+    await sleep(600);
+    await command("note press topTrailing 2");
+    await until("allowed one opened", async () => (await targets()).some((t) => t.url.includes("popup4")));
+    await command(`row ${entryOfTab(tabFor("/popups").id).id}`);
+    await until("allowed page again", async () => { await command("state"); return activeTabState()?.url === allowed; });
+    assert((await openWithoutClick(sessionId, `${origin}/c?popup5`)) !== "null", "an allowed site's pop-up was blocked");
+    await until("opened without asking", async () => (await targets()).some((t) => t.url.includes("popup5")));
+    await command("settings open privacy");
+    await commandResult("privacy reload");
+    await until("listed", async () => { const p = JSON.parse(await commandResult("privacy list")); return p.loaded && p.sites.some((s) => s.origin === raytestOrigin && s.permissions.popups === "allow"); });
+    await command(`privacy reset ${raytestOrigin}`);
+    await closeSettingsWindow();
+    for (const t of (await targets()).filter((t) => /popup[45]/.test(t.url))) await send("Target.closeTarget", { targetId: t.targetId });
+    await command(`row ${entryOfTab(tabFor("/popups").id).id}`);
+    await command("menu closeTab");
+  },
+
+  async "crashed-page"() {
+    // A page that crashes shows Ray's own view in its place ("This page crashed", Reload), Reload brings it back,
+    // crashing again within 10 s says "This page keeps crashing", and a tab that loses its page while hidden shows no
+    // view: it reloads when it's next shown.
+    const crashed = () => state().crashedPage;
+    const crash = async (urlPart) => {
+      const { sessionId } = await session(urlPart);
+      send("Page.crash", {}, sessionId).catch(() => {});
+    };
+    const url = `${origin}/b?crash`;
+    await goTo(url, true);
+    await until("page", async () => { await command("state"); return activeTabState()?.url === url; });
+    await crash("?crash");
+    let c = await until("crashed view", async () => { await command("state"); return crashed().shown !== null && crashed(); });
+    assert(c.shown.title === "This page crashed" && c.shown.message === "Reload to try again.", `view ${JSON.stringify(c)}`);
+    await command("crashed reload");
+    await until("reloaded", async () => { await command("state"); return crashed().shown === null && activeTabState()?.url === url && !activeTabState()?.loading; });
+    const { sessionId } = await session("?crash");
+    await until("page back", async () => (await evaluate(sessionId, `document.title`)) === "Page B");
+    // Again within 10 s.
+    await crash("?crash");
+    c = await until("crashed again", async () => { await command("state"); return crashed().shown !== null && crashed(); });
+    assert(c.shown.title === "This page keeps crashing", `again ${JSON.stringify(c)}`);
+    await command("crashed reload");
+    await until("reloaded again", async () => { await command("state"); return crashed().shown === null; });
+    // Hidden: no view, and it reloads when shown.
+    const crashEntry = entryOfTab(tabFor("?crash").id);
+    const other = state().sidebar.today.find((e) => e.live && e.id !== crashEntry.id);
+    await command(`row ${other.id}`);
+    await until("other tab", async () => { await command("state"); return state().activeEntry === other.id; });
+    await sleep(300);
+    await crash("?crash");
+    await until("waiting to reload", async () => { await command("state"); return crashed().waitingToReload === 1 && crashed().last?.shown === false; });
+    assert(crashed().shown === null, `a hidden tab's crash showed the view: ${JSON.stringify(crashed())}`);
+    await command(`row ${crashEntry.id}`);
+    await until("reloaded on show", async () => { await command("state"); return crashed().last?.reloadedOnShow === true && crashed().shown === null && crashed().waitingToReload === 0; });
+    const again = await session("?crash");
+    await until("hidden page back", async () => (await evaluate(again.sessionId, `document.title`)) === "Page B");
+    await command("menu closeTab");
+  },
+
+  async "page-unresponsive"() {
+    // A page stuck for the engine's 15 s asks "Page not responding" over its own tab (the full origin, Exit Page and
+    // Wait, buttons dead 0.5 s); Exit Page ends it and the crashed view shows. Slow: the engine's hang monitor is 15 s.
+    const url = `${origin}/c?hang`;
+    // Chrome's hang monitor watches only a shown page: the hidden window joins the shown Space.
+    await command("onscreen on");
+    try {
+    await goTo(url, true);
+    await until("page", async () => { await command("state"); return activeTabState()?.url === url; });
+    const { sessionId } = await session("?hang");
+    await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+    await evaluate(sessionId, `setTimeout(() => { for (;;) {} }, 1500), "ok"`);
+    // Chrome never calls a page stuck while DevTools is attached to it: let go first.
+    await send("Target.detachFromTarget", { sessionId });
+    await sleep(1800);
+    // A key the stuck page never answers.
+    await command("key j keywin");
+    const q = (await until("not responding", async () => { await command("state"); return state().pageQuestion.open?.kind === "hang" && state().pageQuestion; }, 40000, 500)).open;
+    assert(q.origin === origin && JSON.stringify(q.buttons) === `["Exit Page","Wait"]`, `question ${JSON.stringify(q)}`);
+    await until("ready", async () => { await command("state"); return state().pageQuestion.open?.ready; }, 3000);
+    await command("pagequestion press 0");
+    await until("exited", async () => { await command("state"); return state().pageQuestion.last?.answer === "exit" && state().crashedPage.shown !== null; }, 10000);
+    await command("crashed reload");
+    await until("back", async () => { await command("state"); return state().crashedPage.shown === null; });
+    await command("menu closeTab");
+    } finally { await command("onscreen off"); }
+  },
+
+  async "quit-with-downloads"() {
+    // On an instance of its own (it quits). Quitting while a download runs asks "Quit and cancel download?" instead of
+    // ⌘Q's own warning (on here): Keep Downloading (the primary) keeps Ray and the download going; asking again and
+    // Quit quits.
+    const dir = mkdtempSync(join(tmpdir(), "ray-dlquit-"));
+    writeFileSync(join(dir, "Settings.json"), JSON.stringify({ warnBeforeQuitting: true }));
+    const it = ownInstance("quit-with-downloads", { RAY_DATA_DIR: dir, RAY_DOWNLOADS_DIR: join(dir, "Downloads") });
+    try {
+      await it.until("window", (s) => s?.sidebar && s.tabs?.length > 0, 25000);
+      await it.ok("menu focusAddress");
+      await it.ok(`type ${origin}/slow-file/ray-slow.bin`);
+      await it.ok("enter");
+      await it.until("downloading", (s) => s?.downloads?.some((d) => d.filename === "ray-slow.bin" && d.state === "downloading"), 15000);
+      await it.ok("menu quit");
+      let s = await it.until("downloads question", (s) => s?.general?.warning?.showing === "downloads");
+      assert(s.general.warning.last.title === "Quit and cancel download?", `warning ${JSON.stringify(s.general.warning)}`);
+      assert(s.panels.open?.name === "downloadsWarning", `panel ${JSON.stringify(s.panels.open)}`);
+      await sleep(600);
+      await it.ok("warning cancel");
+      s = await it.until("kept", (s) => s.general.warning.showing === null && s.general.warning.last.answer === "cancelled");
+      await sleep(500);
+      assert(it.proc.exitCode === null, "Keep Downloading quit Ray");
+      assert(s.downloads.some((d) => d.filename === "ray-slow.bin" && d.state === "downloading"), `download after Keep ${JSON.stringify(s.downloads)}`);
+      await it.ok("menu quit");
+      await it.until("asked again", (s) => s.general.warning.showing === "downloads");
+      await sleep(600);
+      it.proc.stdin.write("warning confirm\n");
+      const code = await Promise.race([it.exit, sleep(15000).then(() => "timeout")]);
+      assert(code !== "timeout", "Quit didn't quit within 15 s");
+    } finally {
+      if (it.proc.exitCode === null) it.proc.kill("SIGKILL");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+
   async "password-prompt"() {
     // "Save password?" on an instance of its own (re-auth answered at once, fixture logins in RAY_TEST_SECRETS): a sign-in
     // on the fixture form asks over its own tab with the site's full origin, its buttons wait 0.5 s, Save saves it

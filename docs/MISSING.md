@@ -64,13 +64,13 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 2. ~~Passwords: the "save password?" prompt~~ (Done). The fill dropdown and "Suggest strong password" are Chrome's own
    popups (the engine draws them); see Known limitations 40.
 3. Autofill for addresses and cards (`autofillPrompt`, `showAutofillSuggestions`).
-4. Links that open other apps: `mailto:`, Zoom, Slack… (`externalAppRequest`) (?).
+4. ~~Links that open other apps: `mailto:`, Zoom, Slack… (`externalAppRequest`)~~ (Done).
 5. Device pickers: WebUSB, Bluetooth, HID, Serial (`deviceChooser`); requests get nothing.
 6. Screen-share picker (`allowDesktopCapture`, "share this tab instead").
 7. Cast (`castDialog`, `castRoutes`).
-8. A note when a popup is blocked, with "always allow" (`didBlockPopup`, `openBlockedPopup`).
-9. Crashed tab page and the "page unresponsive" dialog (`rendererGone`, `tabBecameUnresponsive`).
-10. Warning on quit while downloads run (`confirmCloseWithDownloads`).
+8. ~~A note when a popup is blocked, with "always allow" (`didBlockPopup`, `openBlockedPopup`)~~ (Done).
+9. ~~Crashed tab page and the "page unresponsive" dialog (`rendererGone`, `tabBecameUnresponsive`)~~ (Done).
+10. ~~Warning on quit while downloads run (`confirmCloseWithDownloads`)~~ (Done). See Known limitations 41.
 
 **Page and tab details**
 11. Link preview at the bottom corner on hover (`didChangeStatusText`).
@@ -321,11 +321,17 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     fallback, a click or with the window key and on screen), so whether they show in Ray is untried by hand. The
     prompt can't show the password (the engine gives only its length) and there's no key icon to bring a dismissed
     prompt back (Chrome's omnibox has one). No "Passwords" manual fallback (Ardia's `autofill passwords` command).
+41. **Page prompt gaps** (2026-11-05). Quitting from the Dock, at logout or for an update goes through
+    `applicationShouldTerminate`, which answers "now": whether the engine still asks about running downloads there is
+    untried. A dismissed "Pop-up blocked" note can't be brought back for that page (Chrome keeps an omnibox icon; Ray
+    has none). "Exit Page" and "Quit" in the questions are plain buttons, not the mock's red text (`PanelButton` has
+    no red-text style). The hang check waits for the engine's real 15 s monitor (no shorter test switch).
 
 ## Done
 
 | What | When |
 |---|---|
+| Page prompts: Ray's own "Open “App”?" for links to other apps (replacing Chrome's dialog; Always allow syncs with Settings › Privacy), "Pop-up blocked" note with Open and Always Allow, a crashed page view with Reload (out of memory, keeps crashing; a tab killed while hidden reloads when shown), "Page not responding" (Wait / Exit Page), "Quit and cancel N downloads?"; fixed two tabs opened in front at once flipping forever (out of memory) | 2026-11-05, `feat: page prompts` |
 | "Save password?" and "Update password?" after a sign-in (Never, Not Now, Save; username editable), "Password saved" for a suggested one; Settings › Passwords › Offer to save passwords | 2026-11-05, `feat: save password prompt` |
 | Arc's ⌃Tab switcher: recent tabs as cards with page pictures, switching on Control's release, Tab/⇧Tab/arrows/pointer, Escape cancels, a quick tap just switches | 2026-11-04, `feat: arc ctrl-tab switcher` |
 | Ray's own engine (Phase B) and "Ray Safe Storage" | 2026-10-28, 0.2.0 |

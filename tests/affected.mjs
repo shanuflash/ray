@@ -9,6 +9,9 @@
 const pages = ["page-channel", "navigate", "target-blank", "window-open", "background-tab", "create-target",
   "activate-target", "page-closes-itself", "close-target"];
 const permissions = ["permission", "permission-allow"];
+// What pages ask beside permissions (PagePrompts.swift, CrashedPage.swift): app links, blocked pop-ups, a crashed or
+// stuck page.
+const pagePrompts = ["app-link-prompt", "popup-blocked", "crashed-page", "page-unresponsive"];
 const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-switch-to-tab", "bar-history",
   "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions", "bar-search-google", "bar-actions",
   "bar-ranking", "bar-sites", "settings-bar",
@@ -107,7 +110,7 @@ export const areas = {
 
   // BrowserWindowController: by section. Lines outside them (properties, init) run everything.
   "Host/BrowserWindowController.swift#Layout": [...sidebarMotion, ...pageSurface, "page-toolbar", "site-controls",
-    "find-in-page", "copy-url", "notes"],
+    "find-in-page", "copy-url", "notes", "crashed-page"],
   "Host/BrowserWindowController.swift#Extensions and downloads": ["extensions", "extension-prompt", "downloads",
     "download-insecure-blocked", "site-controls"],
   "Host/BrowserWindowController.swift#Test snapshots": ["folder-rename", "tile-hover", "bar-actions", "load-sweep-once"],
@@ -116,6 +119,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Onboarding": ["onboarding"],
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
   "Host/BrowserWindowController.swift#Password prompts": ["password-prompt"],
+  "Host/BrowserWindowController.swift#Page prompts": [...pagePrompts, "quit-with-downloads", "panels"],
   "Host/BrowserWindowController.swift#Panels": ["panels", "site-controls"],
   "Host/BrowserWindowController.swift#Notes": ["notes", "copy-url", "page-commands", "find-in-page"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
@@ -143,10 +147,11 @@ export const areas = {
   "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Pages": pageSurface,
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",
-  "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "private-window", "close-last-window", "warn-before-closing-window"],
+  "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "private-window", "close-last-window", "warn-before-closing-window",
+    "crashed-page", "quit-with-downloads"],
   "Host/BrowserWindowController.swift#RayCoreTabDelegate": [...pages, ...permissions, "pending-address", "pending-security", "page-toolbar", "page-loading",
     "load-sweep-once", "site-controls", "find-in-page", "settings-zoom", "settings-routes", "settings-trimmed",
-    "address-fragment", "jumpcloud-relay"],
+    "address-fragment", "jumpcloud-relay", "popup-blocked", "crashed-page"],
   "Host/BrowserWindowController.swift#Settings": [...settings, "page-toolbar", "page-loading"],
   "Host/BrowserWindowController.swift#Page commands": ["page-commands"],
   "Host/BrowserWindowController.swift#Page zoom": ["settings-zoom", "settings-private-zoom", "settings-window", "site-controls",
@@ -196,7 +201,8 @@ export const areas = {
   "Host/SettingsTabs.swift": ["settings-panes", "settings-window"],
   "Host/SettingsAbout.swift": ["settings-panes", "settings-search"],
   "Host/SettingsGeneral.swift": ["settings-general", "settings-panes", "settings-search", "warn-before-quitting", "updater-config"],
-  "Host/CloseWarnings.swift": ["panels", "warn-before-quitting", "warn-before-closing-window", "close-last-window", "private-window"],
+  "Host/CloseWarnings.swift": ["panels", "warn-before-quitting", "warn-before-closing-window", "close-last-window", "private-window",
+    "quit-with-downloads"],
   // Settings › Privacy and Settings › Extensions, over the engine's data calls, and the pieces they share.
   "Host/SettingsPrivacy.swift": ["settings-privacy", "settings-panes", "settings-search", "site-controls"],
   "Host/SettingsExtensions.swift": ["settings-extensions", "settings-panes", "settings-search", "extensions"],
@@ -241,6 +247,8 @@ export const areas = {
   "Host/PermissionPrompt.swift": [...permissions, "password-prompt"],
   // "Save password?" (its panel, the setting that drives Chrome's switch) and the fill dropdown's report.
   "Host/PasswordPrompt.swift": ["password-prompt", "panels"],
+  "Host/PagePrompts.swift": ["app-link-prompt", "popup-blocked", "page-unresponsive", "panels", "notes"],
+  "Host/CrashedPage.swift": ["crashed-page", "page-unresponsive"],
   "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/TabSwitcher.swift": ["settings-recent-tab-cycling", "tab-switcher"],
