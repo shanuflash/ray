@@ -6221,6 +6221,135 @@ const checks = {
       await until("cleaned up", async () => (await live()) && made.every((id) => !entry(id)), 6000).catch(() => {});
     }
   },
+  async "link-preview"() {
+    // A real hover over /a's link: the engine's status text shows its address at the page's bottom left.
+    await resetSettings();
+    await todayTabs(2);
+    const { target, sessionId } = await session("/a");
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    await command("linkpreview hide");
+    const lp = async () => { await command("state"); return state().linkPreview; };
+    const at = async (selector) => evaluate(sessionId, `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+    const [lx, ly] = await at("#plain");
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: lx, y: ly }, sessionId);
+    let shown = await until("preview of the hovered link", async () => ((await lp()).shown ? state().linkPreview : null), 4000);
+    const port = new URL(origin).port;
+    assert(shown.host === `127.0.0.1:${port}` && shown.text === `127.0.0.1:${port}/b`, `hovered link reads ${JSON.stringify(shown)}`);
+    const [px, py, pw] = shown.page.split(",").map(Number);
+    let [x, y, w, h] = shown.frame.split(",").map(Number);
+    assert(x === px + 6 && y === py + 6 && h === 22, `not at the page's bottom left: ${shown.frame} on ${shown.page}`);
+    // Off the link: gone after Chrome's 250 ms wait and its fade.
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: lx + 300, y: ly + 200 }, sessionId);
+    await until("preview gone off the link", async () => !(await lp()).shown, 3000);
+    // How addresses read: credentials never, mail whole, scripts by their scheme only.
+    const reads = async (url) => {
+      await command(`linkpreview status ${url}`);
+      return until(`preview of ${url}`, async () => ((await lp()).shown && state().linkPreview.text) || null, 3000);
+    };
+    let text = await reads("https://user:secret@example.com/path/to?q=1#top");
+    assert(text === "example.com/path/to?q=1#top" && state().linkPreview.host === "example.com", `credentials link reads ${text}`);
+    text = await reads("mailto:keeper@lighthouse.org");
+    assert(text === "mailto:keeper@lighthouse.org", `mail link reads ${text}`);
+    text = await reads("javascript:alert(document.cookie)");
+    assert(text === "javascript:", `script link reads ${text}`);
+    // The pointer near it: the bottom right; away again: back.
+    await command(`linkpreview pointer ${px + 12} ${py + 12}`);
+    shown = await lp();
+    [x, y, w] = shown.frame.split(",").map(Number);
+    assert(shown.side === "trailing" && x + w === px + pw - 6, `didn't move aside: ${JSON.stringify(shown)}`);
+    await command(`linkpreview pointer ${px + pw / 2} ${py + 200}`);
+    assert((await lp()).side === "leading", "didn't come back to the left");
+    // A note in its corner (a download's): it sits on top of it.
+    await command("note show bottomLeading Downloading");
+    await until("on top of the note", async () => {
+      await lp();
+      const note = state().notes.spots.bottomLeading;
+      if (!note) return false;
+      const top = py + 10 + Number(note.target.split(",")[1]) + 8;
+      return Math.abs(Number(state().linkPreview.frame.split(",")[1]) - top) <= 1;
+    }, 3000);
+    await command("note dismiss bottomLeading");
+    await until("back in the corner", async () => Number((await lp()).frame.split(",")[1]) === py + 6, 3000);
+    // A long address: cut to a third of the page, then the page's width after 1.6 s.
+    await reads(`${origin}/${"long-path-segment/".repeat(40)}`);
+    w = Number(state().linkPreview.frame.split(",")[2]);
+    assert(!state().linkPreview.expanded && w <= Math.max(160, pw / 3) + 1, `long address not cut: ${state().linkPreview.frame}`);
+    await until("grown", async () => (await lp()).expanded, 3000);
+    await sleep(300);
+    w = Number((await lp()).frame.split(",")[2]);
+    assert(w > pw / 3 + 1, `grown to only ${w} of ${pw}`);
+    // Another tab: gone at once.
+    const other = allEntries().find((e) => e.live && e.tab !== state().active);
+    await command(`row ${other.id}`);
+    await until("hidden on a tab switch", async () => !(await lp()).shown, 2000);
+    await command(`linkpreview clear`);
+  },
+  async "tab-sound"() {
+    // A tab's sound mark: muting shows it (the engine's mute notice), the mark's click unmutes and it goes. Test
+    // instances run with --mute-audio, which keeps a page from ever counting as audible, so the playing mark isn't
+    // reached here.
+    const { target } = await session("/a");
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    const id = entryOfTab(state().active).id;
+    const sounds = async () => { await command("state"); return state().sidebarFrames.sounds ?? ""; };
+    if (entryOfTab(state().active).muted) await command(`rowaction mute ${id}`);
+    await until("no mark on a silent tab", async () => !(await sounds()).includes(id) && entryOfTab(state().active).muted === false, 3000);
+    await command(`rowaction mute ${id}`);
+    await until("muted mark", async () => (await sounds()).includes(`${id}=muted`), 3000);
+    await command(`soundclick ${id}`);
+    await until("unmuted, no mark", async () => !(await sounds()).includes(id) && entryOfTab(state().active).muted === false, 3000);
+    const result = await commandResult(`soundclick ${id}`);
+    assert(result === "no sound mark", `a silent tab's row took a sound click: ${result}`);
+  },
+  async "back-forward-list"() {
+    // Back's and forward's history lists, from the page bar's and the sidebar's buttons.
+    await goTo(`${origin}/h?step=1`, true);
+    await until("step 1", () => activeTabState()?.url.endsWith("/h?step=1"));
+    const { sessionId } = await session("/h?step=1");
+    for (const n of [2, 3]) {
+      await evaluate(sessionId, `location.href = "/h?step=${n}"`);
+      await until(`step ${n}`, () => activeTabState()?.url.endsWith(`/h?step=${n}`));
+      await sleep(150);
+    }
+    const tabId = state().active;
+    const list = async () => { await command("state"); return state().historyList; };
+    await command("navhistory open back toolbar");
+    let shown = await list();
+    assert(shown.open && shown.forward === false && shown.inSidebar === false && shown.fullHistory === true, `back list ${JSON.stringify(shown)}`);
+    assert(shown.items[0].url.endsWith("step=2") && shown.items[0].offset === -1 && shown.items[1].url.endsWith("step=1") &&
+      shown.items[1].offset === -2 && shown.items[0].title === "Hist Page", `back list items ${JSON.stringify(shown.items)}`);
+    assert(state().panels.open?.name === "backHistory", `panel ${JSON.stringify(state().panels.open)}`);
+    await command("navhistory pick 1");
+    await until("went two back", () => activeTabState()?.url.endsWith("step=1"));
+    assert(!(await list()).open, "list stayed open after a pick");
+    // Right-click on the sidebar's forward: the pages ahead, nearest first; ↓ ↓ ⏎ goes to the second.
+    await command("navhistory press forward sidebar right");
+    shown = await list();
+    assert(shown.open && shown.forward && shown.inSidebar && shown.lastPress === "right" && shown.items[0].url.endsWith("step=2") &&
+      shown.items[1].url.endsWith("step=3"), `forward list ${JSON.stringify(shown)}`);
+    await command("navhistory key down");
+    await command("navhistory key down");
+    assert((await list()).highlighted === 1, `highlighted ${state().historyList.highlighted}`);
+    await command("navhistory key return");
+    await until("went two forward", () => activeTabState()?.url.endsWith("step=3"));
+    // Held 0.5 s: the list; held again on the same button: closed. A quick click still goes back.
+    await command("navhistory press back sidebar hold");
+    assert((await list()).open && state().historyList.lastPress === "hold", `hold ${JSON.stringify(state().historyList)}`);
+    await command("navhistory press back sidebar hold");
+    assert(!(await list()).open, "a second hold didn't close it");
+    await command("navhistory press back sidebar click");
+    await until("a click went back", () => activeTabState()?.url.endsWith("step=2"));
+    assert(!(await list()).open && state().historyList.lastPress === "click", `click ${JSON.stringify(state().historyList)}`);
+    // A drag down on the page bar's back: the list; ⌘-click opens the page in a background tab.
+    const tabs = state().tabs.length;
+    await command("navhistory press back toolbar drag");
+    assert((await list()).open && state().historyList.lastPress === "drag", `drag ${JSON.stringify(state().historyList)}`);
+    await command("navhistory pick 0 cmd");
+    await until("background tab", () => state().tabs.length === tabs + 1 && state().tabs.some((t) => t.id !== tabId && t.url.endsWith("step=1")));
+    assert(state().active === tabId && activeTabState().url.endsWith("step=2"), "⌘-click moved the tab or switched to the new one");
+  },
   async "settings-general"() {
     // Settings › General: the default-browser strip, open at login, quitting and closing, downloads, updates, import.
     // Test builds answer from fakes (GeneralSystem): nothing here changes the Mac's default browser or login items.

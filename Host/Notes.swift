@@ -221,6 +221,15 @@ final class Notes {
 
   func view(at spot: NoteSpot) -> NSView? { views[spot].flatMap { $0.leaving ? nil : $0 } }
 
+  /// Where the bottom corner note in `spot` settles (not where its entrance has it this frame), for things that keep
+  /// clear of it (the link preview).
+  func settledFrame(at spot: NoteSpot) -> NSRect? {
+    guard !spot.isTop, !spot.isCenter, let view = views[spot], !view.leaving else { return nil }
+    let size = view.targetSize
+    let x = spot.isLeading ? page.minX + Self.inset : page.maxX - Self.inset - size.width
+    return NSRect(x: x.rounded(), y: (page.minY + Self.inset).rounded(), width: size.width.rounded(), height: size.height.rounded())
+  }
+
   /// The page's frame in `host`, and how far below the page's top the top-right note keeps (the find bar).
   func layout(in page: NSRect, topTrailingClearance: CGFloat) {
     let changed = page != self.page || topTrailingClearance != self.topTrailingClearance

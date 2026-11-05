@@ -3,6 +3,7 @@ import AppKit
 protocol PageToolbarDelegate: AnyObject {
   func toolbarToggleSidebar(_ toolbar: PageToolbarView)
   func toolbarBack(_ toolbar: PageToolbarView)
+  func toolbarHistory(_ toolbar: PageToolbarView, forward: Bool, from button: HistoryButton)
   func toolbarForward(_ toolbar: PageToolbarView)
   func toolbarReload(_ toolbar: PageToolbarView)
   func toolbarStop(_ toolbar: PageToolbarView)
@@ -25,8 +26,8 @@ final class PageToolbarView: NSView {
   weak var delegate: PageToolbarDelegate?
 
   private let sidebarButton = PageToolbarView.button("sidebar.left", "Show Sidebar")
-  private let backButton = PageToolbarView.button("chevron.left", "Back")
-  private let forwardButton = PageToolbarView.button("chevron.right", "Forward")
+  private let backButton = PageToolbarView.button("chevron.left", "Back", history: true) as! HistoryButton
+  private let forwardButton = PageToolbarView.button("chevron.right", "Forward", history: true) as! HistoryButton
   private let reloadButton = PageToolbarView.button("arrow.clockwise", "Reload")
   /// While the page loads the reload button is a stop button (an ✕), as in Dia and Ardia.
   private(set) var isStopping = false
@@ -62,6 +63,12 @@ final class PageToolbarView: NSView {
       addSubview(button)
     }
     for button in [sidebarButton, backButton, forwardButton, reloadButton] { button.isHidden = true }
+    for (button, forward) in [(backButton, false), (forwardButton, true)] {
+      button.onHistory = { [weak self, weak button] in
+        guard let self, let button else { return }
+        self.delegate?.toolbarHistory(self, forward: forward, from: button)
+      }
+    }
     address.onClick = { [weak self] in
       guard let self else { return }
       self.delegate?.toolbarEditAddress(self)
@@ -97,6 +104,8 @@ final class PageToolbarView: NSView {
   }
 
   var addressText: String { address.text }
+  /// The back or forward button, for its history list.
+  func historyButton(forward: Bool) -> HistoryButton { forward ? forwardButton : backButton }
   var showsFullAddress: Bool {
     get { address.showsFullAddress }
     set { address.showsFullAddress = newValue }
@@ -172,8 +181,8 @@ final class PageToolbarView: NSView {
     address.frame = NSRect(x: left, y: top, width: max(0, right - left), height: size)
   }
 
-  private static func button(_ symbol: String, _ label: String) -> HoverIconButton {
-    let button = HoverIconButton()
+  private static func button(_ symbol: String, _ label: String, history: Bool = false) -> HoverIconButton {
+    let button = history ? HistoryButton() : HoverIconButton()
     button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
     button.symbolConfiguration = .init(pointSize: 13, weight: .medium)
     button.isBordered = false

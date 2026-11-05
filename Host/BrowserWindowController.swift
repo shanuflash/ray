@@ -739,6 +739,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let panels = Panels(host: root) { [weak self] in self?.floating }
     panels.onChange = { [weak self] in self?.logState("panels") }
     panels.onOpen = { [weak self] frame in self?.notes.dismiss(overlapping: frame) }
+    // A hovered link's address belongs to the tab left.
+    panels.onTabSwitch = { [weak self] in self?.linkPreview.hide() }
     return panels
   }()
 
@@ -756,7 +758,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// This window's notes over the page (`Notes.swift`): `notes.show(Note(…))` from any feature.
   private(set) lazy var notes: Notes = {
     let notes = Notes(host: root)
-    notes.onChange = { [weak self] in self?.logState("notes") }
+    notes.onChange = { [weak self] in
+      self?.linkPreview.notesChanged()
+      self?.logState("notes")
+    }
     return notes
   }()
 
@@ -764,6 +769,24 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private func layoutNotes() {
     let clearance = findBar.map { $0.frame.height + 12 - Notes.inset + 8 } ?? 0
     notes.layout(in: pages.frame, topTrailingClearance: max(0, clearance))
+    linkPreview.layout(in: pages.frame)
+  }
+
+  // MARK: Link preview
+
+  /// The address of the link under the pointer, at the page's bottom left (`LinkPreview.swift`), over a download's
+  /// note in that corner rather than under it.
+  private(set) lazy var linkPreview: LinkPreview = {
+    let preview = LinkPreview(host: root, below: { [weak self] in self?.floating }) { [weak self] trailing in
+      self?.notes.settledFrame(at: trailing ? .bottomTrailing : .bottomLeading)
+    }
+    preview.onChange = { [weak self] in self?.logState("linkPreview") }
+    return preview
+  }()
+
+  func tab(_ tab: RayCoreTab, didChangeStatusText text: String) {
+    guard !closing, tab === activeTab else { return }
+    linkPreview.status(text)
   }
 
   // MARK: Find in page
@@ -1808,6 +1831,142 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// For tests: the toolbar's reload (or, while loading, stop) button.
   func pressToolbarReload() { toolbar.pressReload() }
 
+  // MARK: Tab sound
+
+  /// Sound started or stopped (2 s after it goes quiet), or the tab was muted: the row's and tile's sound mark.
+  func tabDidChangeAudio(_ tab: RayCoreTab) {
+    guard !closing, let entry = state.entry(for: tab) else { return }
+    sidebar.refresh(entry)
+    logState("audio")
+  }
+
+  /// For tests: a click on the sound mark of an entry's row.
+  func pressSound(of id: UUID) -> Bool { sidebar.pressSound(of: id) }
+
+  // MARK: History list
+
+  private var historyList: HistoryListView?
+  private var historyPanel: PanelHandle?
+  private var historyButton: HistoryButton?
+  private var historyForward = false
+
+  func toolbarHistory(_ toolbar: PageToolbarView, forward: Bool, from button: HistoryButton) {
+    toggleHistoryList(forward: forward, from: button, inSidebar: false)
+  }
+
+  func sidebarHistory(_ sidebar: SidebarView, forward: Bool, from button: HistoryButton) {
+    toggleHistoryList(forward: forward, from: button, inSidebar: true)
+  }
+
+  /// Back's or forward's history list (`HistoryList.swift`) under its button, or closed when it's already open from
+  /// that button.
+  func toggleHistoryList(forward: Bool, from button: HistoryButton, inSidebar: Bool) {
+    if historyList != nil, historyButton === button {
+      historyPanel?.close()
+      return
+    }
+    guard let entry = activeEntry, entry.isLive, let tab = entry.tab, !tab.closed else { return }
+    let items = HistoryList.items(tab.navigationEntries, forward: forward)
+    guard !items.isEmpty else { return }
+    let key = Self.menuItem(for: #selector(AppController.showHistory(_:))).flatMap(KeyCombo.init(item:))?.display
+    let list = HistoryListView(items: items, fullHistoryKey: key, showsFullHistory: !isPrivate)
+    list.onChoose = { [weak self, weak tab, weak entry] choice in
+      guard let self, let tab, let entry else { return }
+      self.historyPanel?.close()
+      self.chooseHistory(choice, tab: tab, entry: entry)
+    }
+    let anchor = PanelAnchor(rect: { [weak self, weak button] in
+      guard let self, let button else { return .zero }
+      return button.convert(button.bounds, to: self.root)
+    }, below: true, align: .leading, button: button, hold: { [weak button] held in button?.isHeld = held })
+    historyList = list
+    historyButton = button
+    historyForward = forward
+    historyPanel = panels.open(PanelSpec(
+      name: forward ? "forwardHistory" : "backHistory", content: list, anchor: anchor,
+      closesOn: [.outsideClick, .escape, .tabSwitch, .windowInactive], overSidebar: inSidebar,
+      onReturn: { [weak list] in list?.returnPressed() },
+      onClose: { [weak self, weak list] in
+        list?.stop()
+        guard let self, self.historyList === list else { return }
+        self.historyList = nil
+        self.historyPanel = nil
+        self.historyButton = nil
+        self.logState("historyList")
+      }))
+    HistoryList.favicons.load(items.map(\.url), profile: profile) { [weak self, weak list] in
+      list?.reloadIcons()
+      self?.logState("historyList")
+    }
+    logState("historyList")
+  }
+
+  private func chooseHistory(_ choice: HistoryListView.Choice, tab: RayCoreTab, entry: SidebarEntry) {
+    switch choice {
+    case .fullHistory:
+      AppController.shared.showHistory(nil)
+    case let .item(item, newTab):
+      // The tab's history may have moved on since the list opened: only the page it showed.
+      let entries = tab.navigationEntries
+      guard !tab.closed, let current = entries.firstIndex(where: { $0["current"] as? Bool == true }),
+            entries.indices.contains(current + item.offset),
+            entries[current + item.offset]["url"] as? String == item.url else { return }
+      if newTab, let url = URL(string: item.url).flatMap(AddressInput.link(fromOtherApp:)) {
+        openToday(url, after: entry, foreground: false)
+      } else {
+        tab.userGoToOffset(item.offset)
+      }
+    }
+    logState("historyList")
+  }
+
+  private static func menuItem(for action: Selector, in menu: NSMenu? = NSApp.mainMenu) -> NSMenuItem? {
+    for item in menu?.items ?? [] {
+      if item.action == action { return item }
+      if let found = menuItem(for: action, in: item.submenu) { return found }
+    }
+    return nil
+  }
+
+  /// For tests: back's or forward's list opened as a press would open it, the toolbar's or the sidebar's.
+  func openHistoryList(forward: Bool, inSidebar: Bool) -> Bool {
+    guard let button = inSidebar ? sidebar.historyButton(forward: forward) : toolbar.historyButton(forward: forward) else { return false }
+    toggleHistoryList(forward: forward, from: button, inSidebar: inSidebar)
+    return historyList != nil
+  }
+
+  /// For tests: a press on back or forward (`HistoryButton.simulatePress`).
+  func pressHistoryButton(forward: Bool, inSidebar: Bool, how: String) -> Bool {
+    guard let button = inSidebar ? sidebar.historyButton(forward: forward) : toolbar.historyButton(forward: forward) else { return false }
+    return button.simulatePress(how)
+  }
+
+  /// For tests: the open list's row `index` clicked (⌘-clicked with `newTab`), or ↑ ↓ ⏎.
+  func historyListAction(_ action: String, index: Int = 0, newTab: Bool = false) -> Bool {
+    guard let list = historyList else { return false }
+    switch action {
+    case "pick": list.choose(index, newTab: newTab)
+    case "up": list.move(-1)
+    case "down": list.move(1)
+    case "return": list.returnPressed()
+    default: return false
+    }
+    logState("historyList")
+    return true
+  }
+
+  var historyListState: [String: Any] {
+    var state: [String: Any] = ["open": historyList != nil, "lastPress": HistoryButton.lastPress]
+    guard let list = historyList else { return state }
+    state["forward"] = historyForward
+    state["inSidebar"] = historyButton.map { $0.isDescendant(of: sidebar) } ?? false
+    state["items"] = list.items.map { ["title": $0.title, "url": $0.url, "offset": $0.offset] }
+    state["highlighted"] = list.highlighted ?? -1
+    state["icons"] = list.iconsShown
+    state["fullHistory"] = list.subviews.contains { ($0 as? HistoryRowView)?.accessibilityLabel() == "Show Full History" }
+    return state
+  }
+
   // MARK: Sidebar visibility
 
   func toggleSidebar() {
@@ -2654,6 +2813,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         "parent": entry.parentID?.uuidString ?? NSNull(), "open": entry.isOpen ?? NSNull(),
         "color": entry.color ?? NSNull(), "icon": entry.icon ?? NSNull(), "group": entry.groupToken ?? NSNull(),
         "muted": entry.isLive && entry.tab?.muted == true,
+        "audible": entry.isLive && entry.tab?.audible == true,
       ]
     }
     var state: [String: Any] = [
@@ -2711,6 +2871,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       // A password or card number copied from Settings is concealed: never in this log.
       "pasteboard": (SettingsPasteboard.isConcealed ? "<concealed>" : Self.pasteboard.string(forType: .string)) ?? NSNull(),
       "notes": notes.state,
+      "linkPreview": linkPreview.debug,
+      "historyList": historyListState,
       "panels": panels.state,
       "noteText": notes.text,
       "realLightsHidden": [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {

@@ -37,9 +37,9 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
    decision in PLAN.md.
 
 **Smaller**
-8. Media controls in the sidebar (now playing, play/pause), and a sound icon on tabs (mute is in the row's menu
-   since 2026-11-03, the tab only, Chrome's per-tab mute). Mute Site as its own choice behind ⌥ (Ardia
-   0.2.43-nightly.4 moved to this after a site-wide mute surprised users; `docs/ARDIA-WATCH.md`).
+8. Media controls in the sidebar (now playing, play/pause; the sound icon on tabs is done). Mute Site as its own
+   choice behind ⌥ (Ardia 0.2.43-nightly.4 moved to this after a site-wide mute surprised users;
+   `docs/ARDIA-WATCH.md`).
 9. Automatic picture-in-picture when you switch away from a playing video (`setAutoPictureInPicture`).
 10. Arc's row-menu items that wait on other features: Add Split View (tabs) and Turn "<folder>" into Space (folders)
     once Split View and Spaces exist; Share Folder… as Arc's shared-folder link (Ray shares the folder's links).
@@ -73,9 +73,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 10. Warning on quit while downloads run (`confirmCloseWithDownloads`).
 
 **Page and tab details**
-11. Link preview at the bottom corner on hover (`didChangeStatusText`).
-12. Tab state: a sound icon (`tabDidChangeAudio`; the menu's Mute reads `audible`/`muted` when opened), put to sleep
-    (`tabDidChangeDiscarded`), the site's theme colour.
+11. ~~Link preview at the bottom corner on hover~~ (Done).
+12. Tab state: put to sleep (`tabDidChangeDiscarded`), the site's theme colour. (The sound icon is done.)
 13. Extension side panels and extension keyboard shortcuts (`extensionSidePanel`, `extensionActionShortcut`).
 14. Installing imported extensions: the engine's `ac_extensions_install` takes a folder or a .crx, not a Web Store id.
 15. Web notifications: from the engine's alerts helper, not checked (?).
@@ -88,9 +87,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
     engine-7ad5405dbe6d (`ac_context_menu_share`); Ray implements `tab:shareFromContextMenu:` (Ardia
     0.2.44-nightly.3, `docs/ARDIA-WATCH.md`).
 
-19. Back and Forward history lists: no hold or right-click menu on the back/forward buttons, and no two-finger
-    swipe-and-hold list (Dia's opens upward under the fingers; Ardia 0.2.44-nightly.6). The engine exports
-    `navigationEntries`; see `docs/ARDIA-WATCH.md` "Ray should" 16.
+19. Back and Forward history lists: the buttons' lists are done; left is Dia's two-finger swipe-and-hold list (it
+    opens upward under the fingers; Ardia 0.2.44-nightly.6, `docs/ARDIA-WATCH.md` "Ray should" 16).
 
 **Default browser**
 17. **Ask to be the default browser** outside Settings: a step in the onboarding (after the import, "Open links from
@@ -321,11 +319,18 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     fallback, a click or with the window key and on screen), so whether they show in Ray is untried by hand. The
     prompt can't show the password (the engine gives only its length) and there's no key icon to bring a dismissed
     prompt back (Chrome's omnibox has one). No "Passwords" manual fallback (Ardia's `autofill passwords` command).
+41. **Tab details gaps** (2026-11-05). The sound mark's playing state is untested: test instances run with
+    `--mute-audio`, under which no page ever counts as audible, so `tab-sound` covers muting and the mark's click
+    only. The mark goes at once when sound stops (2 s after, the engine's hold) rather than fading over Chrome's 1 s,
+    and the title slides over without animation. The link preview moves to the other corner as Arc's does, not
+    down off the page as Chrome's; it hasn't been tried with a right-to-left address. The history list has no Chrome "chapter stops" (other sites further back) or favicons for pages the
+    favicon store doesn't hold (private windows: none).
 
 ## Done
 
 | What | When |
 |---|---|
+| Link address on hover at the page's bottom left (above a download's note, aside from the pointer); a sound icon on tabs and favorites (click to mute); back/forward history lists on right-click or hold | 2026-11-05, `feat: link preview, tab sound, history lists` |
 | "Save password?" and "Update password?" after a sign-in (Never, Not Now, Save; username editable), "Password saved" for a suggested one; Settings › Passwords › Offer to save passwords | 2026-11-05, `feat: save password prompt` |
 | Arc's ⌃Tab switcher: recent tabs as cards with page pictures, switching on Control's release, Tab/⇧Tab/arrows/pointer, Escape cancels, a quick tap just switches | 2026-11-04, `feat: arc ctrl-tab switcher` |
 | Ray's own engine (Phase B) and "Ray Safe Storage" | 2026-10-28, 0.2.0 |

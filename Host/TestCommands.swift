@@ -306,6 +306,49 @@ enum TestCommands {
   }
 
   /// `iconpicker state|pick <sf:name>|clear|close`: Change Icon's panel, pressed as a click would.
+  /// `linkpreview status <url>|clear|pointer <x> <y>|hide`: the engine's status text for the active tab (as a hovered
+  /// link sends it), the pointer at a point in the window's content (bottom-left origin), or gone at once.
+  private static func linkPreview(_ argument: String) -> String {
+    guard let controller = AppController.shared.current, let tab = controller.activeTab else { return "no tab" }
+    let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+    switch parts.first {
+    case "status" where parts.count == 2: controller.tab(tab, didChangeStatusText: parts[1])
+    case "clear": controller.tab(tab, didChangeStatusText: "")
+    case "pointer" where parts.count == 2:
+      let xy = parts[1].split(separator: " ").compactMap { Double($0) }
+      guard xy.count == 2 else { return "usage: linkpreview pointer <x> <y>" }
+      controller.linkPreview.pointerMoved(to: NSPoint(x: xy[0], y: xy[1]))
+    case "hide": controller.linkPreview.hide()
+    default: return "usage: linkpreview status <url>|clear|pointer <x> <y>|hide"
+    }
+    controller.logState("linkPreview")
+    return "ok"
+  }
+
+  /// `navhistory open|press back|forward toolbar|sidebar [click|hold|drag|right|control]`, `navhistory pick <n> [cmd]`,
+  /// `navhistory key up|down|return`: back's and forward's history lists.
+  private static func navHistory(_ argument: String) -> String {
+    let usage = "usage: navhistory open|press back|forward toolbar|sidebar [how] | pick <n> [cmd] | key up|down|return"
+    guard let controller = AppController.shared.current else { return "no window" }
+    let parts = argument.split(separator: " ").map(String.init)
+    switch parts.first {
+    case "open" where parts.count == 3, "press" where parts.count == 4:
+      guard ["back", "forward"].contains(parts[1]), ["toolbar", "sidebar"].contains(parts[2]) else { return usage }
+      let forward = parts[1] == "forward", inSidebar = parts[2] == "sidebar"
+      let done = parts[0] == "open" ? controller.openHistoryList(forward: forward, inSidebar: inSidebar)
+        : controller.pressHistoryButton(forward: forward, inSidebar: inSidebar, how: parts[3])
+      controller.logState("historyList")
+      return done ? "ok" : "nothing to list"
+    case "pick" where parts.count >= 2:
+      guard let index = Int(parts[1]) else { return usage }
+      return controller.historyListAction("pick", index: index, newTab: parts.count == 3 && parts[2] == "cmd") ? "ok" : "no list"
+    case "key" where parts.count == 2:
+      return controller.historyListAction(parts[1]) ? "ok" : "no list"
+    default:
+      return usage
+    }
+  }
+
   private static func iconPicker(_ argument: String) -> String {
     guard let picker = AppController.shared.current?.iconPicker else { return "no picker" }
     let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -506,6 +549,15 @@ enum TestCommands {
       }
     case "iconpicker":
       result = iconPicker(argument)
+    case "soundclick":
+      // `soundclick <id>`: a click on the sound mark of that entry's row.
+      if let id = UUID(uuidString: argument), AppController.shared.current?.pressSound(of: id) == true {} else {
+        result = "no sound mark"
+      }
+    case "linkpreview":
+      result = linkPreview(argument)
+    case "navhistory":
+      result = navHistory(argument)
     case "extinstall":
       AppController.shared.current?.extensions.installUnpacked(argument) { id in
         FileHandle.standardError.write("[ray-test] installed \(id ?? "nothing")\n".data(using: .utf8)!)

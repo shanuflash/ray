@@ -338,6 +338,33 @@ publicly or create accounts.
   their per-tab queue and top-left spot (`PermissionPrompts`) on the same surface, `PanelButton`s and spring. State
   log `panels` (`open` with name, frame, anchor, target size, style; `steps` opened/reshaped/closed;
   `lastClosedBy`); check `panels`.
+- `LinkPreview` (`Host/LinkPreview.swift`, `BrowserWindowController` `// MARK: Link preview`): the hovered link's
+  address (`tab:didChangeStatusText:`, active tab only) in a pill at the page's bottom left (owner's pick, Ardia's
+  size: 6 pt in, 22 pt tall, 7 pt corners, 12 pt text, on `SurfaceBackdrop` with a small shadow; mock
+  `docs/mocks/tab-details.html`). Chrome's timing: shows after 80 ms (120 ms fade), waits 250 ms after the link is
+  left and fades over 200 ms, swaps text in place; a third of the page wide, grown to the page's width after 1.6 s on
+  one link. Text from `LinkPreview.parts` (`AddressInput.addressParts`: host leads in medium, `user:pass@` hidden,
+  percent-encoded; mailto/tel/sms whole; `javascript:` and the like their scheme only), cut at 2,048 characters.
+  The pointer within 20 pt of it (a local mouse-moved monitor, only while it shows) sends it to the bottom right; it
+  sits on a bottom corner note (`Notes.settledFrame`, the downloads note) instead of under it; never takes a click;
+  a tab switch hides it (`Panels.onTabSwitch`). Test command `linkpreview status <url>|clear|pointer <x> <y>|hide`;
+  state log `linkPreview`; check `link-preview` (a real hover through DevTools).
+- Sound mark (`SidebarView.sound(for:)`, `BrowserWindowController` `// MARK: Tab sound`): `tabDidChangeAudio`
+  refreshes the entry; a row shows Ardia's 12 pt `speaker.wave.2` / `speaker.slash` button right after the favicon
+  (title and slash move over 18 pt) while the tab is audible (the engine holds it 2 s after sound stops) or muted, and
+  its click is the row menu's Mute; a favorite shows an 8 pt filled speaker in its bottom right, no click. Test
+  command `soundclick <id>`; state log `sidebarFrames.sounds`, `audible` per entry; check `tab-sound` (muting only:
+  test instances run with `--mute-audio`, so no page is ever audible there).
+- `HistoryList` (`Host/HistoryList.swift`, `BrowserWindowController` `// MARK: History list`): back's and forward's
+  lists (owner's pick: a `Panels` panel). `HistoryButton.onHistory` (page bar and sidebar back/forward; its own class, since overriding `mouseDown` on every
+  `HoverIconButton` changed AppKit's tracking and hung synthetic presses): right-click,
+  ⌃-click, a 0.5 s hold (its own tracking loop; a quick click still goes) or a drag down 5 pt. The engine's
+  `navigationEntries`, nearest first, at most 12, a title or the address, favicons through `ac_favicons_get`, then
+  Show Full History with its live key (not in private windows); 300 pt wide, 32 pt rows, the profile colour's wash
+  on the lit row. Click goes (`userGoToOffset`, only if the entry still has that URL), ⌘-click opens an http(s) page
+  in a background tab, ↑ ↓ ⏎ Escape; the same button again closes it. Test command `navhistory open|press
+  back|forward toolbar|sidebar [click|hold|drag|right|control]`, `navhistory pick <n> [cmd]`, `navhistory key
+  up|down|return`; state log `historyList`; check `back-forward-list`.
 - `LinksFromApps`: Ray as a web browser to macOS. Info.plist (`build-app.sh`) declares http/https and HTML, XHTML,
   PDF (`AddressInput.documentTypes`; no `file` scheme), so Ray can be picked as the default browser. Ray installs its
   own GetURL and Open Documents Apple Event handlers on willFinishLaunching (AppKit's never reached the delegate);
@@ -585,7 +612,8 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   hidden test window happens to land on the visible desktop: `switch-back-latency` then fails (on older commits
   too) and leaves state that breaks `private-window`, `arc-import` and `close-last-window` after it. A subset run
   can also fail from what earlier checks left behind: `pin-unload-restore` leaves its tab pinned, so `favorites` and
-  `reopen-closed-tab` fail right after it (on main too); run those alone. Before blaming a change, run the same command on the
+  `reopen-closed-tab` fail right after it (on main too); run those alone. A Chrome log line can land inside a long `[ray-state]`
+  line (pipe writes over 512 bytes aren't atomic) and the runner dies on `JSON.parse`; run the checks it didn't reach. Before blaming a change, run the same command on the
   previous commit (`git stash -u`, build, run, `git stash pop`) and compare.
 
 ## Gotchas (learnt the hard way)

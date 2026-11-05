@@ -116,8 +116,14 @@ export const areas = {
   "Host/BrowserWindowController.swift#Onboarding": ["onboarding"],
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
   "Host/BrowserWindowController.swift#Password prompts": ["password-prompt"],
-  "Host/BrowserWindowController.swift#Panels": ["panels", "site-controls"],
-  "Host/BrowserWindowController.swift#Notes": ["notes", "copy-url", "page-commands", "find-in-page"],
+  "Host/BrowserWindowController.swift#Panels": ["panels", "site-controls", "link-preview"],
+  "Host/BrowserWindowController.swift#Notes": ["notes", "copy-url", "page-commands", "find-in-page", "link-preview"],
+  // The hovered link's address at the page's bottom left, and the engine's status text for it.
+  "Host/BrowserWindowController.swift#Link preview": ["link-preview", "notes"],
+  // A tab's sound mark in the sidebar (rows and favorites) as its sound starts, stops or is muted.
+  "Host/BrowserWindowController.swift#Tab sound": ["tab-sound", "row-menus"],
+  // Back's and forward's history lists: the panel, the buttons' presses, going there.
+  "Host/BrowserWindowController.swift#History list": ["back-forward-list", "panels"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Site controls": ["panels", "site-controls", "extensions", "copy-url", "find-in-page", "settings-privacy"],
   "Host/BrowserWindowController.swift#Entries": "all",
@@ -156,7 +162,7 @@ export const areas = {
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
   "Host/SidebarView.swift": [...drag, ...folders, "tile-hover", "row-hover-close", "favorites", "pin-unload-restore",
     "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment", "tab-rename",
-    "settings-sidebar-button", "settings-fade-unloaded", "row-menus"],
+    "settings-sidebar-button", "settings-fade-unloaded", "row-menus", "tab-sound", "back-forward-list"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
   // Also where Change Icon… points, and the inline field for Rename… and Edit Pinned Page › Edit….
   "Host/SidebarView.swift#Folder motion": [...folders, ...drag, "tab-rename", "row-menus"],
@@ -237,15 +243,17 @@ export const areas = {
   "Host/PageToolbar.swift": ["pending-security", "pending-address", "new-tab-sweep", "page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle",
     "top-strip-click", "settings-sidebar-button"],
   // Which loads the address field sweeps for.
-  "Host/LoadSweep.swift": ["new-tab-sweep", "page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar"],
+  "Host/LoadSweep.swift": ["new-tab-sweep", "page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar", "back-forward-list"],
+  "Host/LinkPreview.swift": ["link-preview"],
+  "Host/HistoryList.swift": ["back-forward-list"],
   "Host/PermissionPrompt.swift": [...permissions, "password-prompt"],
   // "Save password?" (its panel, the setting that drives Chrome's switch) and the fill dropdown's report.
   "Host/PasswordPrompt.swift": ["password-prompt", "panels"],
   "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/TabSwitcher.swift": ["settings-recent-tab-cycling", "tab-switcher"],
-  "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay"],
-  "Host/Panels.swift": ["panels", "site-controls", "extensions", "extension-prompt", "settings-privacy", "warn-before-quitting", "warn-before-closing-window", ...folders],
+  "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay", "link-preview"],
+  "Host/Panels.swift": ["panels", "site-controls", "link-preview", "back-forward-list", "extensions", "extension-prompt", "settings-privacy", "warn-before-quitting", "warn-before-closing-window", ...folders],
   "Host/Surface.swift": ["surfaces-snap", "panels", "notes", "site-controls", "permission", "permission-allow", "downloads"],
   "Host/Updater.swift": ["updater-config", "settings-general"],
   // ⇧⌘T and History › Recently Closed.
@@ -261,7 +269,7 @@ export const areas = {
   "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
     "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes",
-    "row-menus", "multi-select", "folders", "password-prompt"],
+    "row-menus", "multi-select", "folders", "password-prompt", "link-preview", "tab-sound", "back-forward-list"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

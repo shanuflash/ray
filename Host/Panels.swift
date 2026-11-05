@@ -82,6 +82,9 @@ final class Panels {
   var onChange: (() -> Void)?
   /// A panel opened here (its frame in the host): notes under it get out of the way.
   var onOpen: ((NSRect) -> Void)?
+  /// The window switched tabs (before any panel closes for it): other things over the page that belong to one tab
+  /// (the link preview) go too.
+  var onTabSwitch: (() -> Void)?
 
   init(host: NSView, below: @escaping () -> NSView?) {
     self.host = host
@@ -143,7 +146,10 @@ final class Panels {
     if let open { place(open) }
   }
 
-  func tabSwitched() { if spec?.closesOn.contains(.tabSwitch) == true { close(by: "tabSwitch") } }
+  func tabSwitched() {
+    onTabSwitch?()
+    if spec?.closesOn.contains(.tabSwitch) == true { close(by: "tabSwitch") }
+  }
 
   /// The active tab committed a page from `origin`.
   func navigated(to origin: String?) {
