@@ -523,7 +523,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if let first = entries.first { select(first) }
   }
 
-  /// Pin / Add to Pinned: the bookmark, or the folder with what's in it (closed), at the end of Pinned, asleep until
+  /// Add to Pinned: the bookmark, or the folder with what's in it (closed), at the end of Pinned, asleep until
   /// opened. A page already pinned or a favorite isn't added twice (one open in Today is: pinning keeps it); only pages
   /// Ray opens. The bookmarks stay.
   func pinBookmark(_ node: Bookmark) {

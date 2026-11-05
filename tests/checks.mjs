@@ -6283,8 +6283,8 @@ const checks = {
       // Menus: a bookmarklet can't open or pin.
       const menu = async (id) => JSON.parse(await result(`menu ${id}`));
       const want = (items, list, what) => assert(JSON.stringify(items) === JSON.stringify(list), `${what} menu: ${JSON.stringify(items)}`);
-      want(await menu(one), ["Open in New Tab", "Copy Link", "-", "Pin", "Rename…", "-", "Delete"], "page");
-      want(await menu(script), ["~Open in New Tab", "Copy Link", "-", "~Pin", "Rename…", "-", "Delete"], "bookmarklet");
+      want(await menu(one), ["Open in New Tab", "Copy Link", "-", "Add to Pinned", "Rename…", "-", "Delete"], "page");
+      want(await menu(script), ["~Open in New Tab", "Copy Link", "-", "~Add to Pinned", "Rename…", "-", "Delete"], "bookmarklet");
       want(await menu(folder), ["Open All (2)", "Add to Pinned", "-", "Rename…", "-", "Delete"], "folder");
 
       // A click: a new Today tab, shown, the panel closed. A bookmarklet's click does nothing.

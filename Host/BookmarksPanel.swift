@@ -7,7 +7,7 @@ import AppKit
 //
 // A click opens a page in a new Today tab and closes the panel (⌘-click: in the background, the panel stays); a click
 // on a folder opens or closes it. ↑ ↓ pick a row, Return opens it, → ← open and close a folder while nothing is typed,
-// Escape clears the search, then closes. Right-click: a page's Open in New Tab, Copy Link, Pin, Rename…, Delete; a
+// Escape clears the search, then closes. Right-click: a page's Open in New Tab, Copy Link, Add to Pinned, Rename…, Delete; a
 // folder's Open All, Add to Pinned, Rename…, Delete. Delete has Undo in a note. Rename… edits in the row.
 
 final class BookmarksPanelView: NSView, NSTextFieldDelegate {
@@ -305,7 +305,7 @@ final class BookmarksPanelView: NSView, NSTextFieldDelegate {
       add("Open in New Tab", enabled: node.opens) { [weak self] in self?.onOpen?(node, true) }
       add("Copy Link") { [weak self] in self?.onCopy?(url) }
       menu.addItem(.separator())
-      add("Pin", enabled: canPin && node.opens) { [weak self] in self?.onPin?(node) }
+      add("Add to Pinned", enabled: canPin && node.opens) { [weak self] in self?.onPin?(node) }
     } else {
       let links = node.links.filter(\.opens)
       add("Open All (\(links.count))", enabled: !links.isEmpty) { [weak self] in self?.onOpenAll?(node) }
@@ -339,7 +339,7 @@ final class BookmarksPanelView: NSView, NSTextFieldDelegate {
     editor.drawsBackground = true
     editor.backgroundColor = .textBackgroundColor
     editor.wantsLayer = true
-    editor.layer?.cornerRadius = 4
+    editor.layer?.cornerRadius = 6
     editor.cell?.isScrollable = true
     editor.cell?.wraps = false
     editor.delegate = self
@@ -497,13 +497,16 @@ final class BookmarkRowView: NSView {
   var isSelected = false { didSet { if oldValue != isSelected { needsDisplay = true } } }
 
   private static let globe = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+  /// The picked row: Settings' selected-row wash of the profile's colour (`SettingsColors.selectedFill`), over the panel.
+  private static let selectedFill = ProfileColor.mix(
+    NSColor(name: nil) { _ in ProfileColor.accent }, over: SurfaceBackdrop.solidFill, 0.17, dark: 0.26)
   private static let chevronRight = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)
   private static let chevronDown = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)
 
   init() {
     super.init(frame: .zero)
     wantsLayer = true
-    fill.cornerRadius = 7
+    fill.cornerRadius = 8
     fill.cornerCurve = .continuous
     layer?.addSublayer(fill)
     chevron.symbolConfiguration = .init(pointSize: 9, weight: .semibold)
@@ -564,7 +567,7 @@ final class BookmarkRowView: NSView {
   override func updateLayer() {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    fill.backgroundColor = (isSelected ? PanelColors.tileHover : hovered ? SidebarColors.hover : .clear).cgColor
+    fill.backgroundColor = (isSelected ? Self.selectedFill : hovered ? SidebarColors.hover : .clear).cgColor
     CATransaction.commit()
   }
 

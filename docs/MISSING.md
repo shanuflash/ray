@@ -323,7 +323,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     prompt back (Chrome's omnibox has one). No "Passwords" manual fallback (Ardia's `autofill passwords` command).
 
 41. **Bookmarks panel gaps** (2026-11-05). No drag: rows can't be reordered or moved between folders in the panel,
-    nor dragged into the sidebar to pin (the sidebar takes no drops from outside it; Pin / Add to Pinned do it from the
+    nor dragged into the sidebar to pin (the sidebar takes no drops from outside it; Add to Pinned does it from the
     menu); moving is Bookmark Manager's (Chrome's page). Bookmark This Tab… puts new ones at the end of the bookmarks
     bar with no folder choice (Chrome remembers the last folder). No bookmarks bar, on purpose. No Export Bookmarks
     (engine call `ac_bookmarks_export_html` comes with the next engine, Chrome 16 above). Fix: a drag source on
@@ -333,7 +333,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
-| Bookmarks: a panel from the sidebar's footer (⌥⌘B: search, folders in place, open, ⌘-click behind, Rename…, Delete with Undo, Pin / Add to Pinned, Open All), the menu bar's Bookmarks menu (Bookmark This Tab…, Bookmark All Tabs…, the bookmarks as menus), "Bookmark" rows in the command bar | 2026-11-05, `feat: bookmarks panel` |
+| Bookmarks: a panel from the sidebar's footer (⌥⌘B: search, folders in place, open, ⌘-click behind, Rename…, Delete with Undo, Add to Pinned, Open All), the menu bar's Bookmarks menu (Bookmark This Tab…, Bookmark All Tabs…, the bookmarks as menus), "Bookmark" rows in the command bar | 2026-11-05, `feat: bookmarks panel` |
 | "Save password?" and "Update password?" after a sign-in (Never, Not Now, Save; username editable), "Password saved" for a suggested one; Settings › Passwords › Offer to save passwords | 2026-11-05, `feat: save password prompt` |
 | Arc's ⌃Tab switcher: recent tabs as cards with page pictures, switching on Control's release, Tab/⇧Tab/arrows/pointer, Escape cancels, a quick tap just switches | 2026-11-04, `feat: arc ctrl-tab switcher` |
 | Ray's own engine (Phase B) and "Ray Safe Storage" | 2026-10-28, 0.2.0 |

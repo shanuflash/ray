@@ -418,7 +418,7 @@ publicly or create accounts.
   (`docs/mocks/bookmarks.html` B), a `Panels` panel over the sidebar from the bookmark button beside downloads in its
   footer, leading edge on the footer's: search (it has the keys; ↑ ↓ Return, → ← open and close folders, Escape clears
   then closes, so the spec leaves Escape out of `closesOn`), rows with Ray's folder icon, a click opens a new Today tab
-  and closes it, ⌘-click behind; row menus (Open in New Tab, Copy Link, Pin, Rename… in the row, Delete with an Undo
+  and closes it, ⌘-click behind; row menus (Open in New Tab, Copy Link, Add to Pinned, Rename… in the row, Delete with an Undo
   note; folders Open All, which asks past 15, and Add to Pinned). `BrowserWindowController` `// MARK: Bookmarks`:
   the panel, `bookmarkTab` (a page already bookmarked is revealed, else added to the bar with its name field open),
   `bookmarkAllTabs`, `openBookmark(s)`, `pinBookmark` (skips pages already pinned or favorites, not open Today tabs).
