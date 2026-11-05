@@ -88,9 +88,12 @@ final class PasswordPrompts {
     }
     let view = PasswordPromptView(prompt: prompt)
     var handle: PanelHandle?
-    view.onAnswer = { [weak self] action in self?.answer(action, from: view, handle: handle) }
+    view.onAnswer = { [weak self, weak view] action in
+      guard let view else { return }
+      self?.answer(action, from: view, handle: handle)
+    }
     handle = controller.panels.open(PanelSpec(
-      name: "passwordPrompt", content: view, anchor: Self.anchor(in: controller),
+      name: "passwordPrompt", content: view.makeQuestion(), anchor: Self.anchor(in: controller),
       closesOn: [.outsideClick, .escape, .tabSwitch], origin: prompt.origin,
       onClose: { [weak self, weak view] in
         guard let self, let view, self.shown?.view === view else { return }
@@ -172,45 +175,30 @@ final class PasswordPrompts {
 
 // MARK: Prompt card
 
-/// What the save prompts share ("Save password?", "Save address?", "Save card?"): an icon tile, the title over the site's
-/// full origin, an optional line, a well with what's saved (the subclass's), an optional footnote, then the answers (the
-/// last one primary), which wait half a second each time the card appears.
-class PromptCardView: NSView {
-  static let width: CGFloat = 320
+/// What the save prompts share ("Save password?", "Save address?", "Save card?"): a `PanelQuestion` with an icon tile,
+/// the title over the site's full origin, and this as its accessory: an optional line, a well with what's saved (the
+/// subclass's), an optional footnote. The answers (the last one primary) wait half a second each time it appears.
+class PromptCardView: NSView, PanelQuestionAccessory {
   var onAnswer: ((String) -> Void)?
-  private let icon = NSImageView()
-  private let title: NSTextField
-  private let origin: NSTextField
+  private let symbol: String
+  private let title: String
+  private let origin: String
   private let message: NSTextField
   private let footnote: NSTextField
   let well = NSView()
-  let buttons: [(action: String, button: PanelButton)]
-  private(set) var ready = false
+  private let answers: [(action: String, title: String, primary: Bool)]
+  /// The panel's content, made by `makeQuestion()`; the panel keeps it, and it keeps this card.
+  private(set) weak var question: PanelQuestion?
 
   init(symbol: String, title: String, origin: String, message: String = "", footnote: String = "",
-       answers: [(String, PanelButton)]) {
-    self.title = NSTextField(labelWithString: title)
-    self.origin = NSTextField(wrappingLabelWithString: PermissionPromptView.display(origin))
+       answers: [(action: String, title: String, primary: Bool)]) {
+    self.symbol = symbol
+    self.title = title
+    self.origin = origin
     self.message = NSTextField(wrappingLabelWithString: message)
     self.footnote = NSTextField(wrappingLabelWithString: footnote)
-    buttons = answers.map { (action: $0.0, button: $0.1) }
+    self.answers = answers
     super.init(frame: .zero)
-
-    icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-    icon.symbolConfiguration = .init(pointSize: 14, weight: .semibold)
-    icon.contentTintColor = .secondaryLabelColor
-    icon.wantsLayer = true
-    icon.layer?.cornerRadius = 8
-    icon.layer?.cornerCurve = .continuous
-    addSubview(icon)
-    self.title.font = .systemFont(ofSize: 13.5, weight: .semibold)
-    self.title.lineBreakMode = .byTruncatingTail
-    self.origin.font = .systemFont(ofSize: 12)
-    self.origin.textColor = .secondaryLabelColor
-    self.origin.lineBreakMode = .byCharWrapping
-    self.origin.isSelectable = false
-    addSubview(self.title)
-    addSubview(self.origin)
     for text in [self.message, self.footnote] {
       text.font = .systemFont(ofSize: 12)
       text.textColor = .secondaryLabelColor
@@ -218,60 +206,47 @@ class PromptCardView: NSView {
       text.isHidden = text.stringValue.isEmpty
       addSubview(text)
     }
-
     well.wantsLayer = true
     well.layer?.cornerRadius = 8
     well.layer?.cornerCurve = .continuous
     addSubview(well)
-    for (action, button) in buttons {
-      button.isEnabled = false
-      button.onClick = { [weak self] in self?.onAnswer?(action) }
-      addSubview(button)
-    }
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
+  /// The question to open in the panel, with this card under its title.
+  func makeQuestion() -> PanelQuestion {
+    let made = PanelQuestion(
+      title: title, site: PermissionPromptView.display(origin), message: "",
+      icon: NSImage(systemSymbolName: symbol, accessibilityDescription: nil), tile: true, accessory: self,
+      answers: answers.map { ($0.title, $0.primary, false) }, wait: 0.5) { [weak self] index in
+        guard let self else { return }
+        self.onAnswer?(self.answers[index].action)
+      }
+    question = made
+    return made
+  }
+
   override var isFlipped: Bool { true }
-  override var mouseDownCanMoveWindow: Bool { false }
-
-  /// Sizes the card to its content: call once the subclass's well views are in.
-  func sizeToContent() {
-    frame = NSRect(x: 0, y: 0, width: Self.width, height: layoutContent(apply: false))
-  }
-
-  /// Lays out the well's content at `y`, `width` wide (when `apply`) and returns the well's height.
-  func layoutWell(x: CGFloat, y: CGFloat, width: CGFloat, apply: Bool) -> CGFloat { 0 }
-
-  override func viewDidMoveToWindow() {
-    super.viewDidMoveToWindow()
-    guard window != nil else { return }
-    // Each time it appears its buttons wait half a second, so a click meant for the page can't land on one.
-    ready = false
-    buttons.forEach { $0.button.isEnabled = false }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-      guard let self, self.window != nil else { return }
-      self.ready = true
-      self.buttons.forEach { $0.button.isEnabled = true }
-    }
-  }
+  override var wantsUpdateLayer: Bool { true }
 
   override func updateLayer() {
-    super.updateLayer()
-    icon.layer?.backgroundColor = PanelColors.tile.cgColor
     well.layer?.backgroundColor = PanelColors.tile.cgColor
   }
-
-  override var wantsUpdateLayer: Bool { true }
 
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
     needsDisplay = true
   }
 
+  /// Lays out the well's content at `y`, `width` wide (when `apply`) and returns the well's height.
+  func layoutWell(x: CGFloat, y: CGFloat, width: CGFloat, apply: Bool) -> CGFloat { 0 }
+
+  func height(forWidth width: CGFloat) -> CGFloat { layoutContent(width: width, apply: false) }
+
   override func layout() {
     super.layout()
-    _ = layoutContent(apply: true)
+    _ = layoutContent(width: bounds.width, apply: true)
   }
 
   private func height(of text: NSTextField, width: CGFloat) -> CGFloat {
@@ -279,50 +254,32 @@ class PromptCardView: NSView {
     return ceil(text.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: 1000)).height ?? 16)
   }
 
-  private func layoutContent(apply: Bool) -> CGFloat {
-    let pad: CGFloat = 16
-    let left = pad + 44
-    let textWidth = Self.width - left - pad
-    let fullWidth = Self.width - pad * 2
-    var y = pad
-    let titleHeight = ceil(title.intrinsicContentSize.height)
-    let originHeight = height(of: origin, width: textWidth)
-    if apply {
-      icon.frame = NSRect(x: pad, y: pad, width: 32, height: 32)
-      title.frame = NSRect(x: left - 2, y: y, width: textWidth + 4, height: titleHeight)
-      origin.frame = NSRect(x: left - 2, y: y + titleHeight + 2, width: textWidth + 4, height: originHeight)
-    }
-    y = max(y + titleHeight + 2 + originHeight, pad + 32) + 12
+  private func layoutContent(width: CGFloat, apply: Bool) -> CGFloat {
+    var y: CGFloat = 0
     if !message.isHidden {
-      let messageHeight = height(of: message, width: fullWidth)
-      if apply { message.frame = NSRect(x: pad - 2, y: y, width: fullWidth + 4, height: messageHeight) }
+      let messageHeight = height(of: message, width: width)
+      if apply { message.frame = NSRect(x: -2, y: y, width: width + 4, height: messageHeight) }
       y += messageHeight + 8
     }
-    let wellHeight = layoutWell(x: pad, y: y, width: fullWidth, apply: apply)
-    if apply { well.frame = NSRect(x: pad, y: y, width: fullWidth, height: wellHeight) }
+    let wellHeight = layoutWell(x: 0, y: y, width: width, apply: apply)
+    if apply { well.frame = NSRect(x: 0, y: y, width: width, height: wellHeight) }
     y += wellHeight
     if !footnote.isHidden {
-      let footnoteHeight = height(of: footnote, width: fullWidth)
-      if apply { footnote.frame = NSRect(x: pad - 2, y: y + 8, width: fullWidth + 4, height: footnoteHeight) }
+      let footnoteHeight = height(of: footnote, width: width)
+      if apply { footnote.frame = NSRect(x: -2, y: y + 8, width: width + 4, height: footnoteHeight) }
       y += 8 + footnoteHeight
     }
-    y += 14
-    var right = Self.width - pad
-    for (_, button) in buttons.reversed() {
-      let width = button.intrinsicContentSize.width
-      right -= width
-      if apply { button.frame = NSRect(x: right, y: y, width: width, height: 28) }
-      right -= 6
-    }
-    return y + 28 + pad
+    return y
   }
 
-  var originText: String { origin.stringValue }
-  var buttonTitles: [String] { buttons.map { $0.button.accessibilityLabel() ?? "" } }
+  var ready: Bool { question?.ready ?? false }
+  var originText: String { question?.siteText ?? "" }
+  var buttonTitles: [String] { question?.buttons.map { $0.accessibilityLabel() ?? "" } ?? [] }
 
   /// A click on an answer, as the mouse would make it: nothing while its buttons wait.
   func press(_ action: String) -> Bool {
-    guard let button = buttons.first(where: { $0.action == action })?.button, button.isEnabled else { return false }
+    guard let index = answers.firstIndex(where: { $0.action == action }), let button = question?.buttons[index],
+          button.isEnabled else { return false }
     button.performClick(nil)
     return true
   }
@@ -342,10 +299,10 @@ final class PasswordPromptView: PromptCardView {
   init(prompt: PasswordPrompts.Prompt) {
     self.prompt = prompt
     let update = prompt.state == "update"
-    var answers: [(String, PanelButton)] = []
-    if !update { answers.append(("never", PanelButton(title: "Never"))) }
-    answers.append((update ? "nope" : "dismiss", PanelButton(title: "Not Now")))
-    answers.append((update ? "update" : "save", PanelButton(title: update ? "Update" : "Save", primary: true)))
+    var answers: [(action: String, title: String, primary: Bool)] = []
+    if !update { answers.append(("never", "Never", false)) }
+    answers.append((update ? "nope" : "dismiss", "Not Now", false))
+    answers.append((update ? "update" : "save", update ? "Update" : "Save", true))
     super.init(symbol: "key.fill", title: update ? "Update password?" : "Save password?", origin: prompt.origin,
                answers: answers)
 
@@ -372,7 +329,6 @@ final class PasswordPromptView: PromptCardView {
       secret.setAccessibilityLabel("Password, hidden")
       addSubview(secret)
     }
-    sizeToContent()
   }
 
   required init?(coder: NSCoder) { fatalError() }

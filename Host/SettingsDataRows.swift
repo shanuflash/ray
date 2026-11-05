@@ -12,11 +12,17 @@ import AppKit
 final class SettingsDynamicList: NSView, SettingsSizing {
   private(set) var rows: [NSView] = []
   private var lines: [Hairline] = []
+  private let watch = SettingsWindowWatch()
   /// When the list lands in a window (its pane is shown): the time to load what it shows.
-  var onShow: (() -> Void)?
+  var onShow: (() -> Void)? {
+    get { watch.onShow }
+    set { watch.onShow = newValue }
+  }
   /// When the window it's in becomes key again (back from the browser, say).
-  var onWindowKey: (() -> Void)?
-  private var keyObserver: NSObjectProtocol?
+  var onWindowKey: (() -> Void)? {
+    get { watch.onWindowKey }
+    set { watch.onWindowKey = newValue }
+  }
 
   override var isFlipped: Bool { true }
 
@@ -51,12 +57,28 @@ final class SettingsDynamicList: NSView, SettingsSizing {
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
+    watch.moved(to: window)
+  }
+}
+
+/// A pane's view in the Settings window, which stays there between visits: `onShow` when the view lands in a window,
+/// `onWindowKey` each time that window becomes key again. The view passes `viewDidMoveToWindow` on to `moved(to:)`.
+final class SettingsWindowWatch {
+  var onShow: (() -> Void)?
+  var onWindowKey: (() -> Void)?
+  private var keyObserver: NSObjectProtocol?
+
+  func moved(to window: NSWindow?) {
     if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
     keyObserver = nil
     guard let window else { return }
     onShow?()
     keyObserver = NotificationCenter.default.addObserver(
       forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in self?.onWindowKey?() }
+  }
+
+  deinit {
+    if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
   }
 }
 

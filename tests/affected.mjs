@@ -201,7 +201,7 @@ export const areas = {
   // Settings › Privacy and Settings › Extensions, over the engine's data calls, and the pieces they share.
   "Host/SettingsPrivacy.swift": ["settings-privacy", "settings-panes", "settings-search", "site-controls"],
   "Host/SettingsExtensions.swift": ["settings-extensions", "settings-panes", "settings-search", "extensions"],
-  "Host/SettingsDataRows.swift": ["settings-privacy", "settings-extensions"],
+  "Host/SettingsDataRows.swift": ["settings-privacy", "settings-extensions", "settings-autofill", "autofill-prompt"],
   // Settings › Passwords and › Autofill (on the engine's ac_passwords_* and ac_autofill_*), and their shared pieces.
   "Host/SettingsPasswords.swift": ["settings-passwords", "settings-panes", "settings-search", "jumpcloud-relay", "password-prompt"],
   "Host/SettingsAutofill.swift": ["settings-autofill", "settings-panes", "settings-search", "autofill-prompt"],

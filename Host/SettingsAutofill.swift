@@ -133,6 +133,7 @@ final class AutofillAddressesView: NSView, SettingsSizing {
   ]
 
   private let stack = SettingsStack()
+  private let watch = SettingsWindowWatch()
   private let header = SettingsDataHeader(title: "Addresses")
   private lazy var addButton = SettingsPushButton("Add…") { [weak self] in self?.startEditing(nil) }
   private var list: [[String: String]] = []
@@ -154,6 +155,9 @@ final class AutofillAddressesView: NSView, SettingsSizing {
     addSubview(stack)
     header.setTrailing([addButton])
     SettingsDataGuard.shared.register { [weak self] in self?.forget() }
+    // Back in Settings (after a save prompt, say), the list again.
+    watch.onShow = { [weak self] in self?.load() }
+    watch.onWindowKey = { [weak self] in self?.load() }
     render()
   }
 
@@ -168,15 +172,8 @@ final class AutofillAddressesView: NSView, SettingsSizing {
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
-    if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
-    keyObserver = nil
-    guard let window else { return }
-    load()
-    // The pane stays in the window between visits: back in Settings (after a save prompt, say), the list again.
-    keyObserver = NotificationCenter.default.addObserver(
-      forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in self?.load() }
+    watch.moved(to: window)
   }
-  private var keyObserver: NSObjectProtocol?
 
   func load() {
     guard let profile = settingsDataProfile else { return }
@@ -388,6 +385,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
   }
 
   private let stack = SettingsStack()
+  private let watch = SettingsWindowWatch()
   private let header = SettingsDataHeader(title: "Cards")
   private lazy var addButton = SettingsPushButton("Add…") { [weak self] in self?.startEditing(nil) }
   private var list: [Card] = []
@@ -412,6 +410,9 @@ final class AutofillCardsView: NSView, SettingsSizing {
     addSubview(stack)
     header.setTrailing([addButton])
     SettingsDataGuard.shared.register { [weak self] in self?.forget() }
+    // Back in Settings (after a save prompt, say), the list again.
+    watch.onShow = { [weak self] in self?.load() }
+    watch.onWindowKey = { [weak self] in self?.load() }
     render()
   }
 
@@ -426,15 +427,8 @@ final class AutofillCardsView: NSView, SettingsSizing {
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
-    if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
-    keyObserver = nil
-    guard let window else { return }
-    load()
-    // The pane stays in the window between visits: back in Settings (after a save prompt, say), the list again.
-    keyObserver = NotificationCenter.default.addObserver(
-      forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in self?.load() }
+    watch.moved(to: window)
   }
-  private var keyObserver: NSObjectProtocol?
 
   func load() {
     guard let profile = settingsDataProfile else { return }

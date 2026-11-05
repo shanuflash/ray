@@ -125,9 +125,12 @@ final class AutofillPrompts {
     }
     let view = AutofillPromptView(prompt: prompt)
     var handle: PanelHandle?
-    view.onAnswer = { [weak self] action in self?.answer(action, from: view, handle: handle) }
+    view.onAnswer = { [weak self, weak view] action in
+      guard let view else { return }
+      self?.answer(action, from: view, handle: handle)
+    }
     handle = controller.panels.open(PanelSpec(
-      name: "autofillPrompt", content: view, anchor: PasswordPrompts.anchor(in: controller),
+      name: "autofillPrompt", content: view.makeQuestion(), anchor: PasswordPrompts.anchor(in: controller),
       closesOn: [.outsideClick, .escape, .tabSwitch], origin: prompt.origin,
       onClose: { [weak self, weak view] in
         guard let self, let view, self.shown?.view === view else { return }
@@ -207,12 +210,12 @@ final class AutofillPromptView: PromptCardView {
   init(prompt: AutofillPrompts.Prompt) {
     super.init(symbol: prompt.isCard ? "creditcard.fill" : "mappin.and.ellipse", title: prompt.title,
                origin: prompt.origin, message: prompt.message, footnote: prompt.footer,
-               answers: [("decline", PanelButton(title: "Not Now")), ("accept", PanelButton(title: prompt.accept, primary: true))])
+               answers: [("decline", "Not Now", false), ("accept", prompt.accept, true)])
     for section in prompt.sections {
       var label: NSTextField?
       if !section.label.isEmpty {
         let text = NSTextField(labelWithString: section.label)
-        text.font = .systemFont(ofSize: 11)
+        text.font = .systemFont(ofSize: 12)
         text.textColor = .secondaryLabelColor
         addSubview(text)
         label = text
@@ -229,7 +232,6 @@ final class AutofillPromptView: PromptCardView {
       }
       rows.append((label, lines))
     }
-    sizeToContent()
   }
 
   required init?(coder: NSCoder) { fatalError() }

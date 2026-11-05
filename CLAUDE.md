@@ -158,7 +158,7 @@ publicly or create accounts.
   icon, version, description, switch) that open to site access, private windows, Options, Reload (unpacked),
   Remove…; the Web Store; Load unpacked; Add from a link unbuilt (test builds only).
   `ray://settings/extensions` opens it; chrome://extensions stays Chrome's. `SettingsDataRows`: what both share
-  (`SettingsDynamicList`, `SettingsItemRow`, `SettingsConfirm`: a `PanelQuestion` over the Settings window
+  (`SettingsDynamicList`, `SettingsWindowWatch` (load on show and when the window becomes key again), `SettingsItemRow`, `SettingsConfirm`: a `PanelQuestion` over the Settings window
   (`SettingsWindowController.askQuestion`, a pass-through `PanelPassThroughView` layer), Cancel by default, the action dead for 0.5 s, the
   full origin or the extension's ID; `SettingsPages.open` uses the normal window). Test commands `privacy …` and
   `extpane …` answer with the pane's lists as JSON and press its controls (checks `settings-privacy`,
@@ -280,8 +280,8 @@ publicly or create accounts.
   Escape or a click outside is "not now", buttons dead 0.5 s, Return does nothing; "saved" is a note; the fill
   dropdown and generation are Chrome's own popups, `autofillSuggestions` in the state log; test command
   `pwprompt press save|never|notnow|update|nope|close`, state log `passwordPrompt` (shape only); check
-  `password-prompt`; `PromptCardView` in that file is the card all the save prompts share: icon tile, title over the
-  full origin, a line, a well, a footnote, answers), `AutofillPrompts` (`Host/AutofillPrompt.swift`,
+  `password-prompt`; `PromptCardView` in that file is what all the save prompts share: a `PanelQuestion` (icon tile, title over
+  the full origin, answers) whose accessory it is (a line, a well, a footnote)), `AutofillPrompts` (`Host/AutofillPrompt.swift`,
   `BrowserWindowController` `// MARK: Autofill prompts`: the engine's `autofillPrompt` (`saveAddress`,
   `updateAddress`, `saveCard`; local cards only, the engine skips Payments upload, IBAN and offers) as the same card in
   the same spot, Chrome's title, lines and accept label, "Not Now" is `decline`, Escape or a click outside `dismiss`;
@@ -340,8 +340,9 @@ publicly or create accounts.
   committing another origin); `asks` never closes on an outside click. `PanelAnchor.align` is leading, centre or
   trailing; `overSidebar` puts it above a peeking sidebar and keeps the peek out; `onReturn` is Return's answer. Notes under a panel that opens leave (`Panels.onOpen` → `notes.dismiss(overlapping:)`).
   `PanelKit`: `stack`, `header`, `row` (`SettingRow`), `choice` (a ticked list row), `back`, `separator`;
-  `PanelButton` (28 pt, primary in the profile colour, destructive in red); `PanelQuestion` (title, wrapping
-  message, optional icon and "Don't ask again", buttons that can wait). Site controls' pages: "…", a permission's
+  `PanelButton` (28 pt, primary in the profile colour, destructive in red); `PanelQuestion` (title, optional site
+  (full origin), wrapping message, optional icon (`tile` puts a symbol on a tile), a `PanelQuestionAccessory` at full
+  width (the save prompts' well) and "Don't ask again", buttons that wait each time it appears). Site controls' pages: "…", a permission's
   choices (`choices:<type>`), Clear Site Data's question (`clearData`). Permission prompts keep
   their per-tab queue and top-left spot (`PermissionPrompts`) on the same surface, `PanelButton`s and spring. State
   log `panels` (`open` with name, frame, anchor, target size, style; `steps` opened/reshaped/closed;
