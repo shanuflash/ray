@@ -300,7 +300,8 @@ final class SettingsButtonRow: NSView, SettingsSizing {
   }
 }
 
-/// A plain push button that runs a closure (grey, never the system accent).
+/// Settings' one button for a row or a card (Change…, Import…, Edit, Delete…): grey, never the system accent; only a
+/// pane's call to action is filled (`AccentButton`). `destructive` draws it as macOS does Delete.
 final class SettingsButton: NSButton {
   var onClick: (() -> Void)?
 
@@ -377,15 +378,26 @@ final class SettingsPopUp: NSPopUpButton {
 
 // MARK: Confirm
 
-/// The question before a destructive action (Remove an extension, Clear Site Data), as a panel over the Settings
-/// window (a sheet when that window isn't on screen). Following the security checklist: Cancel is the default (Return
-/// and Escape cancel), the action's button ignores clicks for its first half second, and the message names exactly
-/// what goes (the full origin, the extension and its ID).
+/// The question before an action that destroys something or gives it away (Remove an extension, Clear Site Data,
+/// Delete a password, Export passwords), as a panel over the Settings window. Following the security checklist: Cancel
+/// is the default (Return and Escape cancel), the action's button ignores clicks for its first half second, and the
+/// message names exactly what goes (the full origin, the extension and its ID). One at a time.
 enum SettingsConfirm {
-  private static var open: (question: PanelQuestion, message: String, detail: String)?
+  private static var open: (question: PanelQuestion, kind: String, message: String, detail: String)?
 
+  /// What is being asked ("removePassword", "exportPasswords", …), never its text (which names a site).
+  static var pending: String? { open?.kind }
+
+  /// A destructive question; `then` runs only on its action. With the Settings window off screen, an alert asks.
   static func ask(_ message: String, detail: String, action: String, in window: NSWindow?, then: @escaping () -> Void) {
-    guard open == nil else { return }
+    ask("settingsConfirm", title: message, message: detail, confirm: action, alert: true) { if $0 { then() } }
+  }
+
+  /// `destructive`: the action's button is red (Delete); else it's the profile's colour (Export…). `alert`: with the
+  /// Settings window off screen, ask in an alert; else that answers no.
+  static func ask(_ kind: String, title: String, message: String, confirm: String, destructive: Bool = true,
+                  alert: Bool = false, then: @escaping (Bool) -> Void) {
+    guard open == nil else { return then(false) }
     var answered = false
     var close: (() -> Void)?
     let finish = { (accepted: Bool) in
@@ -393,24 +405,25 @@ enum SettingsConfirm {
       answered = true
       open = nil
       close?()
-      if accepted { then() }
+      then(accepted)
     }
-    let question = PanelQuestion(title: message, message: detail,
-                                 answers: [("Cancel", false, false), (action, false, true)]) { finish($0 == 1) }
-    let confirm = question.buttons[1]
-    confirm.isEnabled = false
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { confirm.isEnabled = true }
-    open = (question, message, detail)
+    let question = PanelQuestion(title: title, message: message,
+                                 answers: [("Cancel", false, false), (confirm, !destructive, destructive)]) { finish($0 == 1) }
+    let action = question.buttons[1]
+    action.isEnabled = false
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { action.isEnabled = true }
+    open = (question, kind, title, message)
     guard let handle = SettingsWindowController.shared.askQuestion(
-      "settingsConfirm", question, onReturn: { finish(false) }, onClose: { finish(false) }) else {
+      kind, question, onReturn: { finish(false) }, onClose: { finish(false) }) else {
       open = nil
+      guard alert else { return then(false) }
       let alert = NSAlert()
       alert.alertStyle = .warning
-      alert.messageText = message
-      alert.informativeText = detail
+      alert.messageText = title
+      alert.informativeText = message
       alert.addButton(withTitle: "Cancel")
-      alert.addButton(withTitle: action).hasDestructiveAction = true
-      if alert.runModal() == .alertSecondButtonReturn { then() }
+      alert.addButton(withTitle: confirm).hasDestructiveAction = destructive
+      then(alert.runModal() == .alertSecondButtonReturn)
       return
     }
     close = { handle.close() }
@@ -418,7 +431,7 @@ enum SettingsConfirm {
 
   /// For tests: the question showing, if any.
   static var debug: [String: Any]? {
-    open.map { ["message": $0.message, "detail": $0.detail, "ready": $0.question.buttons[1].isEnabled] }
+    open.map { ["kind": $0.kind, "message": $0.message, "detail": $0.detail, "ready": $0.question.buttons[1].isEnabled] }
   }
 
   /// For tests: answers as a click would; a click on the action in its first half second does nothing.
@@ -429,6 +442,9 @@ enum SettingsConfirm {
     button.performClick(nil)
     return "ok"
   }
+
+  /// Closes a question still up (the window is closing), as Cancel.
+  static func dismiss() { _ = answer(accept: false) }
 }
 
 // MARK: Pages

@@ -109,7 +109,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Layout": [...sidebarMotion, ...pageSurface, "page-toolbar", "site-controls",
     "find-in-page", "copy-url", "notes"],
   "Host/BrowserWindowController.swift#Extensions and downloads": ["extensions", "extension-prompt", "downloads",
-    "download-insecure-blocked", "site-controls"],
+    "download-held", "download-insecure-blocked", "site-controls"],
   "Host/BrowserWindowController.swift#Test snapshots": ["folder-rename", "tile-hover", "bar-actions", "load-sweep-once"],
   "Host/BrowserWindowController.swift#Arc import": ["arc-import", "import-browser"],
   "Host/BrowserWindowController.swift#Browser import": ["import-browser", "arc-import", "onboarding", "tab-rename"],
@@ -228,7 +228,7 @@ export const areas = {
   "Host/Suggestions.swift": [...commandBar, "tab-rename"],
   // The command bar's action rows: menu commands by name (they run through the menu's own validation and selectors).
   "Host/BarActions.swift": [...commandBar, "page-commands", "copy-url"],
-  "Host/Downloads.swift": ["downloads", "download-insecure-blocked"],
+  "Host/Downloads.swift": ["downloads", "download-held", "download-insecure-blocked"],
   "Host/Extensions.swift": ["extensions", "extension-prompt", "site-controls", "panels"],
   "Host/FindBar.swift": ["find-in-page", "notes"],
   "Host/PageContainerView.swift": pageSurface,

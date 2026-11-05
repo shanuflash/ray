@@ -326,7 +326,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
-| "Save password?" and "Update password?" after a sign-in (Never, Not Now, Save; username editable), "Password saved" for a suggested one; Settings › Passwords › Offer to save passwords | 2026-11-05, `feat: save password prompt` |
+| "Save password?" and "Update password?" after a sign-in (Never, Not Now, Save; username editable), "Password Saved" for a suggested one; Settings › Passwords › Offer to save passwords | 2026-11-05, `feat: save password prompt` |
 | Arc's ⌃Tab switcher: recent tabs as cards with page pictures, switching on Control's release, Tab/⇧Tab/arrows/pointer, Escape cancels, a quick tap just switches | 2026-11-04, `feat: arc ctrl-tab switcher` |
 | Ray's own engine (Phase B) and "Ray Safe Storage" | 2026-10-28, 0.2.0 |
 | First installs without notarization: a DMG whose window shows the drag and the first open (Open Anyway), and a cask for the owner's tap (`brew install shanuflash/tap/ray`), both from `scripts/release.sh` | 2026-11-03, `feat: dmg and homebrew tap` |

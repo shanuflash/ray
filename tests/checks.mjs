@@ -1847,6 +1847,11 @@ const checks = {
       `a panel that asks, from the page's top centre: ${JSON.stringify(state().panels.open)}`);
     assert(await commandResult("extprompt accept") === "not ready", "Add took a click in its first half second");
     await until("add ready", async () => { await command("state"); return state().installPrompt?.addEnabled; }, 3000);
+    // A page's prompt: Return answers nothing.
+    await command("key return keywin");
+    await sleep(300);
+    await command("state");
+    assert(state().installPrompt && state().panels.open?.name === "extensionInstall", "Return answered the install prompt");
     await command("extprompt cancel");
     await until("prompt gone", () => state().installPrompt === null);
   },
@@ -1885,6 +1890,24 @@ const checks = {
     await until("sidebar hides after", async () => { await command("state"); return !state().sidebar.peeking; }, 3000);
     await command("menu toggleSidebar");
     await until("sidebar back", () => !state().sidebar.hidden);
+  },
+  async "download-held"() {
+    // A held dangerous download (a fake one: this engine cancels instead of holding): Keep and Discard are panel
+    // buttons in the list, Keep takes no click for half a second, and Return answers nothing (no default button).
+    const id = "held-check";
+    await command(`dlhold ${id}`);
+    await until("list open with it", async () => { await command("state"); return state().downloadsOpen && state().downloads.some((d) => d.id === id); });
+    assert(state().downloads.find((d) => d.id === id).keepReady === false, "Keep was ready at once");
+    assert(await commandResult(`dl keep ${id}`) === "not ready", "Keep took a click in its first half second");
+    await command("key return keywin");
+    await sleep(300);
+    await command("state");
+    assert(state().downloadAnswer === null, `Return answered the held download: ${state().downloadAnswer}`);
+    await until("Keep ready", async () => { await command("state"); return state().downloads.find((d) => d.id === id)?.keepReady; }, 3000);
+    await command(`dl discard ${id}`);
+    await until("discarded", async () => { await command("state"); return state().downloadAnswer === "discard"; });
+    await command("key esc keywin");
+    await until("list closed", async () => { await command("state"); return !state().downloadsOpen; }, 3000);
   },
   async "download-insecure-blocked"() {
     // A file over plain HTTP from a secure page never lands without Keep. This engine cancels Chrome's insecure
@@ -2268,6 +2291,12 @@ const checks = {
     // Settings › Passwords on instances of its own whose engine answers the OS re-auth at once (RAY_REAUTH; no Touch ID
     // or password prompt, never the login keychain): locked by default, Unlock, the list, show and copy, add, edit and
     // delete, Export behind re-auth, CSV import, and no password, username or site in the state log or stderr.
+    // A question's action, once it takes clicks (it ignores them for its first half second).
+    const okWhenReady = (inst, line) => until(`${line} ready`, async () => {
+      const result = await inst.cmd(line);
+      assert(result === "ok" || result === "not ready", `${line}: ${result}`);
+      return result === "ok";
+    }, 3000, 100);
     const hex = () => Math.random().toString(16).slice(2, 10);
     const secrets = [`Fx-${hex()}-"quoted"\\slash`, `Fx-${hex()}-second`, `Fx-${hex()}-third`, `Fx-${hex()}-csv`];
     const logins = [
@@ -2302,7 +2331,7 @@ const checks = {
       const deniedFile = join(files, "denied.csv");
       await denied.ok(`passwords export ${deniedFile}`);
       await denied.until("export warning", (s) => pane(s).confirming === "exportPasswords");
-      await denied.ok("passwords confirm yes");
+      await okWhenReady(denied, "passwords confirm yes");
       await denied.until("export refused", (s) => pane(s).export === "reauthFailed");
       assert(!existsSync(deniedFile), "a denied export wrote the file");
       await denied.stop();
@@ -2375,7 +2404,7 @@ const checks = {
       assert(pane(s).count === 2, "Cancel deleted it");
       await it.ok("passwords remove");
       await it.until("delete asks again", (s) => pane(s).confirming === "removePassword");
-      await it.ok("passwords confirm yes");
+      await okWhenReady(it, "passwords confirm yes");
       s = await it.until("deleted", (s) => pane(s).count === 1 && pane(s).last === "removed");
       assert(pane(s).open === -1 && !pane(s).revealed, "the deleted row stayed open");
       // Five idle minutes (fired now) lock it and forget the list; so does closing the window.
@@ -2392,7 +2421,14 @@ const checks = {
       const exported = join(files, "Ray Passwords.csv");
       await it.ok(`passwords export ${exported}`);
       await it.until("export warning", (s) => pane(s).confirming === "exportPasswords");
-      await it.ok("passwords confirm yes");
+      // Export waits half a second and Return cancels it (it gives every password away).
+      assert((await it.cmd("passwords confirm yes")) === "not ready", "Export… took a click in its first half second");
+      await it.ok("settings return");
+      s = await it.until("Return cancelled the export", (s) => pane(s).confirming === null);
+      assert(pane(s).export !== "succeeded" && !existsSync(exported), "Return exported the passwords");
+      await it.ok(`passwords export ${exported}`);
+      await it.until("export warning again", (s) => pane(s).confirming === "exportPasswords");
+      await okWhenReady(it, "passwords confirm yes");
       await it.until("exported", (s) => pane(s).export === "succeeded");
       const csv = readFileSync(exported, "utf8");
       assert(/^name,url,username,password/.test(csv) && csv.includes(secrets[2]) && csv.includes("second@example.test"),
@@ -2567,6 +2603,12 @@ const checks = {
   async "settings-autofill"() {
     // Settings › Autofill on instances of its own (RAY_REAUTH): addresses and cards added, edited and deleted (asked
     // first), a card's number shown only through the engine's re-auth, and no number, name or address in the logs.
+    // A question's action, once it takes clicks (it ignores them for its first half second).
+    const okWhenReady = (inst, line) => until(`${line} ready`, async () => {
+      const result = await inst.cmd(line);
+      assert(result === "ok" || result === "not ready", `${line}: ${result}`);
+      return result === "ok";
+    }, 3000, 100);
     const number = "4242 4242 4242 4242";
     const fixtures = {
       addresses: [
@@ -2663,12 +2705,12 @@ const checks = {
       await it.ok("autofill open card 0");
       await it.ok("autofill remove");
       await it.until("delete asks", (s) => pane(s).confirming === "removeCard");
-      await it.ok("autofill confirm yes");
+      await okWhenReady(it, "autofill confirm yes");
       await it.until("card deleted", (s) => pane(s).cards === 0 && pane(s).lastCard === "removed");
       await it.ok("autofill open address 0");
       await it.ok("autofill remove");
       await it.until("address delete asks", (s) => pane(s).confirming === "removeAddress");
-      await it.ok("autofill confirm yes");
+      await okWhenReady(it, "autofill confirm yes");
       await it.until("address deleted", (s) => pane(s).addresses === 0 && pane(s).lastAddress === "removed");
 
       for (const each of [denied, it]) {
@@ -3213,6 +3255,8 @@ const checks = {
     await command("site press back");
     await command("site press clearData");
     await until("clear page", async () => { await command("state"); return state().siteControls?.page === "clearData"; });
+    assert(state().siteControls.clearReady === false, "Clear took clicks at once");
+    await until("Clear ready after half a second", async () => { await command("state"); return state().siteControls?.clearReady === true; }, 3000);
     await command("site press back");
     await until("main again", async () => { await command("state"); return state().siteControls?.page === "main"; });
     // The look follows Settings at once, by its old name too (0.6.0's noteStyle).

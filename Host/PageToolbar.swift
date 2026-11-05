@@ -25,8 +25,8 @@ final class PageToolbarView: NSView {
   weak var delegate: PageToolbarDelegate?
 
   private let sidebarButton = PageToolbarView.button("sidebar.left", "Show Sidebar")
-  private let backButton = PageToolbarView.button("chevron.left", "Back")
-  private let forwardButton = PageToolbarView.button("chevron.right", "Forward")
+  private let backButton = PageToolbarView.button("arrow.left", "Back")
+  private let forwardButton = PageToolbarView.button("arrow.right", "Forward")
   private let reloadButton = PageToolbarView.button("arrow.clockwise", "Reload")
   /// While the page loads the reload button is a stop button (an ✕), as in Dia and Ardia.
   private(set) var isStopping = false
@@ -173,16 +173,7 @@ final class PageToolbarView: NSView {
   }
 
   private static func button(_ symbol: String, _ label: String) -> HoverIconButton {
-    let button = HoverIconButton()
-    button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-    button.symbolConfiguration = .init(pointSize: 13, weight: .medium)
-    button.isBordered = false
-    button.bezelStyle = .regularSquare
-    button.imagePosition = .imageOnly
-    button.contentTintColor = .secondaryLabelColor
-    button.refusesFirstResponder = true
-    button.toolTip = label
-    return button
+    HoverIconButton.make(symbol, label: label, size: 13)
   }
 }
 

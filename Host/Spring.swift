@@ -1,7 +1,25 @@
 import AppKit
 import QuartzCore
 
+/// A CADisplayLink spring for values layout reads every frame (the sidebar's dock and peek, a panel's size).
 final class Spring: NSObject {
+  /// The sidebar's spring, which notes, panels, prompts, the find bar and the command bar share (no bounce).
+  static let response: CGFloat = 0.26
+  static let dampingRatio: CGFloat = 0.86
+
+  /// The same spring as a Core Animation one, for a layer: from `from` to `to`, lasting until it settles.
+  static func caAnimation(keyPath: String, from: Any?, to: Any?, response: CGFloat = Spring.response,
+                          dampingRatio: CGFloat = Spring.dampingRatio) -> CASpringAnimation {
+    let spring = CASpringAnimation(keyPath: keyPath)
+    spring.fromValue = from
+    spring.toValue = to
+    spring.mass = 1
+    spring.stiffness = pow(2 * .pi / response, 2)
+    spring.damping = 4 * .pi * dampingRatio / response
+    spring.duration = spring.settlingDuration
+    return spring
+  }
+
   private(set) var value: CGFloat
   private(set) var target: CGFloat
   private var velocity: CGFloat = 0

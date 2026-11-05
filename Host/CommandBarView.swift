@@ -185,12 +185,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
       var from = CATransform3DMakeTranslation(pivot.x, pivot.y, 0)
       from = CATransform3DScale(from, 0.97, 0.97, 1)
       from = CATransform3DTranslate(from, -pivot.x, -pivot.y, 0)
-      let grow = CASpringAnimation(keyPath: "transform")
-      grow.fromValue = NSValue(caTransform3D: from)
-      grow.toValue = NSValue(caTransform3D: CATransform3DIdentity)
-      grow.stiffness = pow(2 * .pi / Notes.response, 2)
-      grow.damping = 4 * .pi * Notes.dampingRatio / Notes.response
-      grow.duration = grow.settlingDuration
+      let grow = Spring.caAnimation(keyPath: "transform", from: NSValue(caTransform3D: from),
+                                    to: NSValue(caTransform3D: CATransform3DIdentity))
       layer.add(grow, forKey: "present")
     }
     let fade = CABasicAnimation(keyPath: "opacity")
@@ -433,9 +429,9 @@ private final class ScopeChip: NSView {
     NSSize(width: min(220, ceil(label.attributedStringValue.size().width) + 4) + 10 + 14 + 6 + 10, height: 28)
   }
 
+  /// A wash of the profile's colour over the panels' card (what the bar sits on).
   private var fill: NSColor {
-    let panel = NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.115, alpha: 1) : .white }
-    return ProfileColor.mix(NSColor(name: nil) { _ in ProfileColor.accent }, over: panel, 0.16, dark: 0.28)
+    ProfileColor.mix(NSColor(name: nil) { _ in ProfileColor.accent }, over: SurfaceBackdrop.solidFill, 0.16, dark: 0.28)
   }
 
   override func updateLayer() {

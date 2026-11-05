@@ -736,13 +736,9 @@ private final class VeilWash: NSView {
 // MARK: Card
 
 private enum OnboardingColors {
-  private static func dynamic(dark: NSColor, light: NSColor) -> NSColor {
-    NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
-  }
-
-  static let card = dynamic(dark: NSColor(white: 0.16, alpha: 1), light: NSColor(white: 0.985, alpha: 1))
-  static let idleDot = dynamic(dark: NSColor(white: 1, alpha: 0.2), light: NSColor(white: 0, alpha: 0.16))
-  static let boxOff = dynamic(dark: NSColor(white: 1, alpha: 0.3), light: NSColor(white: 0, alpha: 0.25))
+  static let card = NSColor.dynamic(light: NSColor(white: 0.985, alpha: 1), dark: NSColor(white: 0.16, alpha: 1))
+  static let idleDot = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.16), dark: NSColor(white: 1, alpha: 0.2))
+  static let boxOff = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.25), dark: NSColor(white: 1, alpha: 0.3))
 
   /// The profile's colour for marks on the card (dots, ticks, the progress line, links, tints): the colour itself,
   /// or as near to it as stays visible there (a black profile colour on the dark card). Filled buttons keep the
@@ -914,8 +910,8 @@ fileprivate final class StepDots: NSView {
   }
 }
 
-/// The card's buttons: the primary one filled in the profile's colour with the text that reads best on it, the
-/// secondary one a quiet fill, both 30 pt tall with an 8 pt radius.
+/// The card's buttons, in `ButtonLook`: the primary one filled in the profile's colour, the secondary one a quiet fill.
+/// 30 pt tall, 2 more than panels' (the welcome's card is bigger; Ardia's onboarding buttons are taller too).
 fileprivate final class OnboardingButton: NSControl {
   enum Style { case primary, secondary }
   let style: Style
@@ -937,15 +933,14 @@ fileprivate final class OnboardingButton: NSControl {
   }
 
   override var isEnabled: Bool {
-    didSet { alphaValue = isEnabled ? 1 : 0.4; needsDisplay = true }
+    didSet { alphaValue = isEnabled ? 1 : ButtonLook.disabledAlpha; needsDisplay = true }
   }
 
   init(style: Style) {
     self.style = style
     super.init(frame: .zero)
     wantsLayer = true
-    layer?.cornerRadius = 8
-    layer?.cornerCurve = .continuous
+    ButtonLook.shape(layer)
     label.font = .systemFont(ofSize: 13, weight: .medium)
     label.alignment = .center
     addSubview(label)
@@ -967,17 +962,9 @@ fileprivate final class OnboardingButton: NSControl {
   }
 
   override func updateLayer() {
-    let lit = isEnabled && (hovered || pressed)
-    switch style {
-    case .primary:
-      let accent = ProfileColor.accent
-      let fill = lit ? (accent.usingColorSpace(.sRGB)?.blended(withFraction: pressed ? 0.16 : 0.08, of: .black) ?? accent) : accent
-      layer?.backgroundColor = fill.cgColor
-      label.textColor = ProfileColor.foreground(on: accent)
-    case .secondary:
-      layer?.backgroundColor = (lit ? PanelColors.tileHover : PanelColors.tile).cgColor
-      label.textColor = .labelColor
-    }
+    let kind: ButtonLook.Kind = style == .primary ? .primary : .plain
+    layer?.backgroundColor = ButtonLook.fill(kind, hovered: isEnabled && hovered, pressed: isEnabled && pressed).cgColor
+    label.textColor = ButtonLook.ink(kind)
   }
 
   override func layout() {

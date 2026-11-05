@@ -102,7 +102,8 @@ final class PasswordsPaneContent: SettingsPaneContent {
       return saved.editFixture(login) ? "ok" : "no row open"
     case "remove": return saved.pressDelete() ? "ok" : "no row open"
     case "confirm":
-      guard rest == "yes" || rest == "no", SettingsRecordConfirm.answer(rest == "yes") else { return "no sheet" }
+      guard rest == "yes" || rest == "no" else { return "usage: passwords confirm yes|no" }
+      return SettingsConfirm.answer(accept: rest == "yes")
     case "export":
       guard rest.hasPrefix("/") else { return "usage: passwords export <absolute path>" }
       return more.pressExport(testPath: rest) ? "ok" : "no window"
@@ -129,7 +130,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
   private let stack = SettingsStack()
   private let header = SettingsDataHeader(title: "Saved passwords")
   private let search = NSSearchField()
-  private lazy var addButton = SettingsPushButton("Add…") { [weak self] in self?.startAdding() }
+  private lazy var addButton = SettingsButton("Add…") { [weak self] in self?.startAdding() }
   private lazy var lockedView = PasswordsLockedView { [weak self] in _ = self?.pressUnlock() }
 
   private(set) var locked = true
@@ -195,8 +196,8 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
       let list = shown
       if list.isEmpty {
         items.append(.init(view: SettingsNote(query.isEmpty
-          ? "No saved passwords yet."
-          : "No saved passwords match.")))
+          ? "No saved passwords yet"
+          : "No saved passwords match")))
       }
       for (index, login) in list.enumerated() {
         let row = SettingsRecordRow(symbol: "key.fill", title: Self.host(of: login.origin),
@@ -211,7 +212,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
         items.append(.init(view: never, gap: 22))
         items.append(.init(view: SettingsNote("Ray won't offer to save passwords on these sites.", inset: 0)))
         for (index, origin) in exceptions.enumerated() {
-          let allow = SettingsPushButton("Remove") { [weak self] in self?.allow(origin) }
+          let allow = SettingsButton("Remove") { [weak self] in self?.allow(origin) }
           allow.setAccessibilityLabel("Remove \(Self.host(of: origin)) from never saved")
           items.append(.init(view: SettingsRecordRow(symbol: "nosign", title: Self.host(of: origin), detail: "", headFirst: true,
                                                    trailing: allow), line: index > 0))
@@ -236,8 +237,8 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
       .init(view: SettingsDetailLine(name: "Password", value: revealed ?? String(repeating: "•", count: 10),
                                      monospaced: revealed != nil, buttons: [eye, copyPassword])),
       .init(view: SettingsButtonBar(
-        leading: [SettingsPushButton("Delete…", destructive: true) { [weak self] in _ = self?.pressDelete() }],
-        trailing: [SettingsPushButton("Edit") { [weak self] in self?.startEditing() }])),
+        leading: [SettingsButton("Delete…", destructive: true) { [weak self] in _ = self?.pressDelete() }],
+        trailing: [SettingsButton("Edit") { [weak self] in self?.startEditing() }])),
     ])
     return SettingsCard(lines)
   }
@@ -453,8 +454,8 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
       stack.set([
         .init(view: form),
         .init(view: SettingsButtonBar(trailing: [
-          SettingsPushButton("Cancel") { [weak self] in self?.cancelAdding() },
-          SettingsPushButton("Save") { [weak self] in self?.saveAdding() },
+          SettingsButton("Cancel") { [weak self] in self?.cancelAdding() },
+          SettingsButton("Save") { [weak self] in self?.saveAdding() },
         ])),
       ])
       addForm = form
@@ -549,11 +550,11 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
     stack.set([
       .init(view: form),
       .init(view: SettingsButtonBar(trailing: [
-        SettingsPushButton("Cancel") { [weak self] in
+        SettingsButton("Cancel") { [weak self] in
           self?.endEditing()
           self?.render()
         },
-        SettingsPushButton("Save") { [weak self] in self?.saveEditing() },
+        SettingsButton("Save") { [weak self] in self?.saveEditing() },
       ])),
     ])
     editForm = form
@@ -620,9 +621,9 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
   func pressDelete() -> Bool {
     guard let login = open else { return false }
     SettingsDataGuard.shared.touch()
-    SettingsRecordConfirm.ask(
+    SettingsConfirm.ask(
       "removePassword", title: "Delete the password for \(Self.host(of: login.origin))?",
-      message: "Ray won't be able to fill it in any more. This can't be undone.", confirm: "Delete", from: self
+      message: "Ray won't be able to fill it in any more. This can't be undone.", confirm: "Delete"
     ) { [weak self] yes in
       guard yes, let self, let profile = self.profile else { return }
       EngineCalls.call("ac_passwords_remove", profile: profile, args: ["origin": login.origin, "username": login.username]) { [weak self] reply in
@@ -656,7 +657,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
       "locked": locked, "count": logins.count, "shown": list.count, "exceptions": exceptions.count,
       "open": open.flatMap { list.firstIndex(of: $0) } ?? -1, "revealed": revealed != nil,
       "editing": editCard != nil, "adding": addCard != nil, "formError": !(addForm?.errorText ?? editForm?.errorText ?? "").isEmpty,
-      "busy": busy, "last": last, "guardArmed": SettingsDataGuard.shared.armed, "confirming": SettingsRecordConfirm.pending ?? NSNull(),
+      "busy": busy, "last": last, "guardArmed": SettingsDataGuard.shared.armed, "confirming": SettingsConfirm.pending ?? NSNull(),
       "clipboardPending": SettingsPasteboard.clearPending, "idleSeconds": SettingsDataGuard.idle,
       "clearSeconds": SettingsPasteboard.clearDelay,
     ]
@@ -750,11 +751,11 @@ final class PasswordsMoreView: NSView, SettingsSizing {
       let importRow = SettingsRowView(
         title: "Import passwords",
         detail: importStatus ?? "From a CSV file.",
-        control: SettingsPushButton("Import…") { [weak self] in self?.chooseImport() })
+        control: SettingsButton("Import…") { [weak self] in self?.chooseImport() })
       let exportRow = SettingsRowView(
         title: "Export passwords",
         detail: exportStatus ?? "To a CSV file, readable by anyone.",
-        control: SettingsPushButton("Export…") { [weak self] in _ = self?.pressExport(testPath: nil) })
+        control: SettingsButton("Export…") { [weak self] in _ = self?.pressExport(testPath: nil) })
       items += [.init(view: importRow, line: true), .init(view: exportRow, line: true)]
     }
     stack.set(items)
@@ -767,10 +768,10 @@ final class PasswordsMoreView: NSView, SettingsSizing {
   /// `testPath` (tests) stands for the save panel's answer.
   func pressExport(testPath: String?) -> Bool {
     guard window != nil else { return false }
-    SettingsRecordConfirm.ask(
+    SettingsConfirm.ask(
       "exportPasswords", title: "Export your passwords?",
       message: "The file holds every saved password as plain text. Anyone who can open it can read them, so delete it once you're done with it.",
-      confirm: "Export…", destructive: false, from: self
+      confirm: "Export…", destructive: false
     ) { [weak self] yes in
       guard yes, let self else { return }
       if let testPath { return self.export(to: testPath) }

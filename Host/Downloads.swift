@@ -101,8 +101,34 @@ final class DownloadsController {
     return fromPrivate == offTheRecord
   }
 
-  func keep(_ id: String) { call("ac_downloads_keep", id) }
-  func discard(_ id: String) { call("ac_downloads_cancel", id) }
+  func keep(_ id: String) { answer("keep", id, call: "ac_downloads_keep") }
+  func discard(_ id: String) { answer("discard", id, call: "ac_downloads_cancel") }
+
+  private func answer(_ verb: String, _ id: String, call name: String) {
+    lastAnswer = verb
+    guard !debugHeld.contains(id) else {
+      debugHeld.remove(id)
+      items.removeAll { $0.id == id }
+      onChange?(false)
+      return
+    }
+    call(name, id)
+  }
+
+  /// For the state log: the last answer to a held download ("keep", "discard"), never which file.
+  private(set) var lastAnswer: String?
+  private var debugHeld: Set<String> = []
+
+  /// Test builds: a held dangerous download that isn't real (this engine never holds one; it cancels insecure
+  /// downloads), so the list's Keep and Discard can be checked.
+  func debugHold(_ id: String) {
+    guard TestEnvironment.isTestBuild, let item = Item(["id": id, "filename": "held.dmg", "state": "downloading",
+                                                         "dangerous": true, "url": "https://ray.test/held.dmg"]) else { return }
+    lastAnswer = nil
+    debugHeld.insert(id)
+    items.insert(item, at: 0)
+    onChange?(true)
+  }
   func cancel(_ id: String) { call("ac_downloads_cancel", id) }
   func pause(_ id: String) { call("ac_downloads_pause", id) }
   func resume(_ id: String) { call("ac_downloads_resume", id) }
@@ -216,16 +242,7 @@ final class DownloadsListView: NSView {
   override var fittingSize: NSSize { NSSize(width: width, height: stack.fittingSize.height) }
 
   static func iconButton(_ symbol: String, _ label: String) -> NSButton {
-    let button = HoverIconButton()
-    button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-    button.symbolConfiguration = .init(pointSize: 12, weight: .medium)
-    button.isBordered = false
-    button.bezelStyle = .regularSquare
-    button.imagePosition = .imageOnly
-    button.contentTintColor = .secondaryLabelColor
-    button.refusesFirstResponder = true
-    button.toolTip = label
-    return button
+    HoverIconButton.make(symbol, label: label, size: 12)
   }
 }
 
@@ -262,8 +279,10 @@ final class DownloadRowView: NSView {
   private let bar = CALayer()
   private let primary = DownloadsListView.iconButton("pause.fill", "Pause")
   private let secondary = DownloadsListView.iconButton("xmark", "Cancel")
-  private let keep = NSButton(title: "Keep", target: nil, action: nil)
-  private let discard = NSButton(title: "Discard", target: nil, action: nil)
+  /// A held dangerous download: Discard leads (the profile's colour), Keep waits half a second. Return does nothing
+  /// here (no default button): Discard is a click away and Keep never comes from a stray key.
+  private let keep = PanelButton(title: "Keep")
+  private let discard = PanelButton(title: "Discard", primary: true)
   private let fill = CALayer()
   private var item: DownloadsController.Item?
   private var heldSince: Date?
@@ -285,13 +304,8 @@ final class DownloadRowView: NSView {
     bar.cornerRadius = 1.5
     layer?.addSublayer(track)
     layer?.addSublayer(bar)
-    for button in [keep, discard] {
-      button.bezelStyle = .rounded
-      button.controlSize = .small
-      button.target = self
-    }
-    keep.action = #selector(keepClicked)
-    discard.action = #selector(discardClicked)
+    keep.onClick = { [weak self] in self?.keepClicked() }
+    discard.onClick = { [weak self] in self?.discardClicked() }
     primary.target = self
     primary.action = #selector(primaryClicked)
     secondary.target = self
@@ -333,7 +347,7 @@ final class DownloadRowView: NSView {
     controller?.open(item.id)
   }
 
-  /// Waiting for Keep or Discard: Discard is the default (Return), Keep ignores clicks for its first half second.
+  /// Waiting for Keep or Discard: Keep ignores clicks for its first half second.
   var keepReady: Bool { item?.waiting == true && keep.isEnabled }
 
   func show(_ item: DownloadsController.Item) {
@@ -356,10 +370,8 @@ final class DownloadRowView: NSView {
         keep.isEnabled = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.keep.isEnabled = true }
       }
-      discard.keyEquivalent = "\r"
     } else {
       heldSince = nil
-      discard.keyEquivalent = ""
       switch item.state {
       case "finished": status.stringValue = Self.bytes(item.received) + from
       case "failed":
@@ -386,7 +398,8 @@ final class DownloadRowView: NSView {
     primary.isHidden = waiting || !(downloading || (item.state == "finished" && hovered))
     secondary.isHidden = waiting || !(downloading || hovered)
     if downloading {
-      primary.image = NSImage(systemSymbolName: item.paused ? "play.fill" : "pause.fill", accessibilityDescription: nil)
+      primary.image = NSImage(systemSymbolName: item.paused ? "play.fill" : "pause.fill",
+                              accessibilityDescription: item.paused ? "Resume" : "Pause")
       primary.toolTip = item.paused ? "Resume" : "Pause"
       secondary.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Cancel")
       secondary.toolTip = "Cancel"
@@ -411,12 +424,12 @@ final class DownloadRowView: NSView {
     if item.active { controller.cancel(item.id) } else { controller.remove(item.id) }
   }
 
-  @objc private func keepClicked() {
+  private func keepClicked() {
     guard let item else { return }
     controller?.keep(item.id)
   }
 
-  @objc private func discardClicked() {
+  private func discardClicked() {
     guard let item else { return }
     controller?.discard(item.id)
   }
@@ -438,10 +451,10 @@ final class DownloadRowView: NSView {
     icon.frame = NSRect(x: 8, y: (bounds.height - 32) / 2, width: 32, height: 32)
     var right = bounds.width - 6
     for button in [discard, keep] where !button.isHidden {
-      button.sizeToFit()
-      right -= button.frame.width
-      button.frame.origin = NSPoint(x: right, y: (bounds.height - button.frame.height) / 2)
-      right -= 4
+      let width = button.intrinsicContentSize.width
+      right -= width
+      button.frame = NSRect(x: right, y: ((bounds.height - 28) / 2).rounded(), width: width, height: 28)
+      right -= 6
     }
     for button in [secondary, primary] where !button.isHidden {
       right -= 26

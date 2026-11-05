@@ -20,7 +20,7 @@ extension JumpCloudSetupRow {
 /// Ray's Chrome on the extension's Web Store page. Follows the relay's changes (Chrome closing after setup).
 final class JumpCloudSetupRow: NSView, SettingsSizing {
   private let row: SettingsRowView
-  private let button = AccentButton(title: "Set Up…")
+  private let button = SettingsButton("Set Up…")
   private var observer: NSObjectProtocol?
 
   init() {
@@ -57,7 +57,7 @@ final class JumpCloudSetupRow: NSView, SettingsSizing {
       row.detail = status.text
       row.settingsPaneChanged()
     }
-    button.alphaValue = status.canSetUp ? 1 : 0.4
+    button.isEnabled = status.canSetUp
   }
 
   func height(forWidth width: CGFloat) -> CGFloat { row.height(forWidth: width) }

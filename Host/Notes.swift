@@ -8,6 +8,9 @@ import QuartzCore
 //
 // Motion is the sidebar's spring (response 0.26 s, damping 0.86: no bounce) for entering, reshaping and making way;
 // leaving is 160 ms. Reduce Motion keeps only the fades.
+//
+// Copy: a label for what just happened is Title Case, as Arc's ("Copied Current URL", "Password Saved"); anything
+// longer is one sentence in sentence case with no full stop ("Casting isn't available on this page").
 
 /// Where a note sits on the page: a corner, or the middle of the top or bottom edge.
 enum NoteSpot: String, CaseIterable {
@@ -140,9 +143,6 @@ struct NoteHandle {
 final class Notes {
   static let inset: CGFloat = 10
   static let gap: CGFloat = 8
-  /// The sidebar's spring.
-  static let response: CGFloat = 0.26
-  static let dampingRatio: CGFloat = 0.86
 
   private weak var host: NSView?
   private var views: [NoteSpot: NoteView] = [:]
@@ -271,7 +271,7 @@ final class Notes {
           if meets { target = max(target, size.height + clearance + Self.gap) }
         }
       }
-      let spring = shifts[center] ?? Spring(value: 0, response: Self.response, dampingRatio: Self.dampingRatio) {
+      let spring = shifts[center] ?? Spring(value: 0, response: Spring.response, dampingRatio: Spring.dampingRatio) {
         [weak self] _ in
         guard let self, let view = self.views[center] else { return }
         self.place(view)
@@ -395,7 +395,7 @@ final class NoteView: NSView {
     body.layer?.masksToBounds = true
     addSubview(body)
     body.addSubview(backdrop)
-    sizeSpring = Spring(value: 1, response: Notes.response, dampingRatio: Notes.dampingRatio) { [weak self] t in
+    sizeSpring = Spring(value: 1, response: Spring.response, dampingRatio: Spring.dampingRatio) { [weak self] t in
       guard let self else { return }
       self.currentSize = NSSize(width: self.fromSize.width + (self.targetSize.width - self.fromSize.width) * t,
                                 height: self.fromSize.height + (self.targetSize.height - self.fromSize.height) * t)
@@ -480,14 +480,7 @@ final class NoteView: NSView {
   }
 
   private func springAnimation(_ keyPath: String, from: CGFloat, to: CGFloat) -> CASpringAnimation {
-    let spring = CASpringAnimation(keyPath: keyPath)
-    spring.fromValue = from
-    spring.toValue = to
-    spring.mass = 1
-    spring.stiffness = pow(2 * .pi / Notes.response, 2)
-    spring.damping = 4 * .pi * Notes.dampingRatio / Notes.response
-    spring.duration = spring.settlingDuration
-    return spring
+    Spring.caAnimation(keyPath: keyPath, from: from, to: to)
   }
 
   /// A new note in this spot: the same shape updates its words in place (a download's size so far), a figure rolls
@@ -1026,12 +1019,7 @@ final class NoteFigureView: NSView {
   }
 
   private func roll(_ layer: CALayer, from: CGFloat, to: CGFloat, delay: Double) {
-    let spring = CASpringAnimation(keyPath: "transform.translation.y")
-    spring.fromValue = from
-    spring.toValue = to
-    spring.stiffness = pow(2 * .pi / Notes.response, 2)
-    spring.damping = 4 * .pi * Notes.dampingRatio / Notes.response
-    spring.duration = spring.settlingDuration
+    let spring = Spring.caAnimation(keyPath: "transform.translation.y", from: from, to: to)
     spring.beginTime = CACurrentMediaTime() + delay
     spring.fillMode = .backwards
     layer.add(spring, forKey: "roll")
@@ -1069,8 +1057,8 @@ final class NoteFigureView: NSView {
 
 // MARK: Note button
 
-/// A 28 pt button on a note: a grey wash, or the profile's colour for a question's primary answer; a title or an
-/// icon.
+/// A 28 pt button on a note, in `ButtonLook` (as panels' buttons): a grey wash, or the profile's colour for a question's
+/// primary answer; a title or an icon.
 final class NoteButton: NSView {
   let action: NoteAction
   private let primary: Bool
@@ -1087,8 +1075,7 @@ final class NoteButton: NSView {
     self.primary = primary
     super.init(frame: .zero)
     wantsLayer = true
-    layer?.cornerRadius = 8
-    layer?.cornerCurve = .continuous
+    ButtonLook.shape(layer)
     if let title = action.title {
       label.stringValue = title
       label.font = primary ? Self.boldFont : Self.font
@@ -1117,16 +1104,9 @@ final class NoteButton: NSView {
   }
 
   override func updateLayer() {
-    let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    if primary {
-      layer?.backgroundColor = ProfileColor.accent.cgColor
-      layer?.opacity = down ? 0.85 : 1
-      label.textColor = ProfileColor.foreground(on: ProfileColor.accent)
-    } else {
-      let alpha: CGFloat = (down ? 0.14 : hovered ? 0.09 : 0.055) * (dark ? 1.7 : 1)
-      layer?.backgroundColor = (dark ? NSColor(white: 1, alpha: alpha) : NSColor(white: 0, alpha: alpha)).cgColor
-      label.textColor = .labelColor
-    }
+    let kind: ButtonLook.Kind = primary ? .primary : .plain
+    layer?.backgroundColor = ButtonLook.fill(kind, hovered: hovered, pressed: down).cgColor
+    label.textColor = ButtonLook.ink(kind)
   }
 
   override func layout() {

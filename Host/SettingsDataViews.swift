@@ -1,7 +1,7 @@
 import AppKit
 
 // Building blocks for the Settings panes that show the user's own data (Passwords, Autofill): a stack whose rows come
-// and go, list rows, headers, inline forms and detail lines, small buttons, a confirmation sheet, a pasteboard that
+// and go, list rows, headers, inline forms and detail lines, small buttons, a pasteboard that
 // forgets secrets, and the test hooks' fixtures. Nothing here logs what it shows.
 
 /// Tells the pane that holds `view` its height changed (rows came or went): it lays out again and the scroll view's
@@ -475,27 +475,6 @@ final class SettingsForm: NSView, SettingsSizing {
 
 // MARK: Buttons
 
-/// A push button that runs a closure. `destructive` draws it as macOS does Delete.
-final class SettingsPushButton: NSButton {
-  var onClick: (() -> Void)?
-
-  init(_ title: String, destructive: Bool = false, action: (() -> Void)? = nil) {
-    super.init(frame: .zero)
-    self.title = title
-    bezelStyle = .push
-    controlSize = .regular
-    font = .systemFont(ofSize: 13)
-    hasDestructiveAction = destructive
-    target = self
-    self.action = #selector(clicked)
-    onClick = action
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  @objc private func clicked() { onClick?() }
-}
-
 /// A borderless SF Symbol button (Copy, Show), its name in its tooltip and for VoiceOver.
 final class SettingsIconButton: NSButton {
   var onClick: (() -> Void)?
@@ -525,53 +504,6 @@ final class SettingsIconButton: NSButton {
   override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
   @objc private func clicked() { onClick?() }
-}
-
-// MARK: Confirmation
-
-/// "Delete …?" as a panel over the Settings window: Cancel is the default (Return cancels something that destroys),
-/// the confirming button is red when it destroys something. One at a time; tests answer it with `answer(_:)`, as a
-/// click on either button would.
-enum SettingsRecordConfirm {
-  private static var question: PanelQuestion?
-  /// What is being confirmed ("removePassword", "export", …), never its text (which names a site).
-  private(set) static var pending: String?
-
-  static func ask(_ kind: String, title: String, message: String, confirm: String, destructive: Bool = true,
-                  from view: NSView, then: @escaping (Bool) -> Void) {
-    guard question == nil, view.window != nil else { return then(false) }
-    var answered = false
-    var close: (() -> Void)?
-    let finish = { (yes: Bool) in
-      guard !answered else { return }
-      answered = true
-      question = nil
-      pending = nil
-      close?()
-      then(yes)
-    }
-    let made = PanelQuestion(title: title, message: message,
-                             answers: [("Cancel", false, false), (confirm, !destructive, destructive)]) { finish($0 == 1) }
-    question = made
-    pending = kind
-    guard let handle = SettingsWindowController.shared.askQuestion(
-      kind, made, onReturn: { finish(!destructive) }, onClose: { finish(false) }) else {
-      question = nil
-      pending = nil
-      return then(false)
-    }
-    close = { handle.close() }
-  }
-
-  /// For tests: the confirming button (`true`) or Cancel, as a click would.
-  static func answer(_ yes: Bool) -> Bool {
-    guard let question else { return false }
-    question.buttons[yes ? 1 : 0].performClick(nil)
-    return true
-  }
-
-  /// Closes a question still up (the window is closing), as Cancel.
-  static func dismiss() { _ = answer(false) }
 }
 
 // MARK: Pasteboard
@@ -753,7 +685,7 @@ final class SettingsDataGuard {
     observing = true
     NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
       guard (note.object as? NSWindow)?.delegate === SettingsWindowController.shared else { return }
-      SettingsRecordConfirm.dismiss()
+      SettingsConfirm.dismiss()
       self?.lock()
     }
     let workspace = NSWorkspace.shared.notificationCenter

@@ -4,18 +4,14 @@ import AppKit
 // `RaySwitch` and `SwatchRow` are also the welcome's (Onboarding.swift).
 
 enum SettingsColors {
-  private static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
-    NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
-  }
-
   /// The window's sidebar: Ray's own sidebar colour, darker than the content.
   static let sidebar = SidebarColors.background
   /// The content column behind the rows.
-  static let content = dynamic(light: NSColor(white: 1, alpha: 1), dark: NSColor(white: 0.135, alpha: 1))
+  static let content = NSColor.dynamic(light: NSColor(white: 1, alpha: 1), dark: NSColor(white: 0.135, alpha: 1))
   /// Kept for the welcome, which sits on the sidebar colour.
   static let background = SidebarColors.background
   static let separator = PanelColors.border
-  static let switchOff = dynamic(light: NSColor(white: 0, alpha: 0.2), dark: NSColor(white: 1, alpha: 0.25))
+  static let switchOff = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.2), dark: NSColor(white: 1, alpha: 0.25))
   /// A segmented control's track and the search field's fill.
   static let track = SidebarColors.fill
   static let hover = SidebarColors.hover
@@ -452,21 +448,28 @@ final class SettingsCallToAction: NSView, SettingsSizing {
   func press() { button.onClick?() }
 }
 
-/// A small button filled with the profile's colour, its title in the white or black that reads on it.
+/// A 28 pt button filled with the profile's colour (`ButtonLook`'s primary), for a pane's one call to action. Its title
+/// stays 13 pt, Settings' text size.
 final class AccentButton: NSControl {
   var onClick: (() -> Void)?
   private let label: NSTextField
+  private var hovered = false
+  private var down = false
 
   init(title: String) {
     label = settingsLabel(title, size: 13, weight: .medium)
     super.init(frame: .zero)
     wantsLayer = true
-    layer?.cornerRadius = 7
-    layer?.cornerCurve = .continuous
+    ButtonLook.shape(layer)
     addSubview(label)
     setAccessibilityElement(true)
     setAccessibilityRole(.button)
     setAccessibilityLabel(title)
+    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+
+  override var isEnabled: Bool {
+    didSet { needsDisplay = true }
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -478,8 +481,9 @@ final class AccentButton: NSControl {
   override var intrinsicContentSize: NSSize { NSSize(width: ceil(label.attributedStringValue.size().width) + 4 + 24, height: 28) }
 
   override func updateLayer() {
-    layer?.backgroundColor = ProfileColor.accent.cgColor
-    label.textColor = ProfileColor.foreground(on: ProfileColor.accent)
+    layer?.backgroundColor = ButtonLook.fill(.primary, hovered: hovered && isEnabled, pressed: down).cgColor
+    label.textColor = ButtonLook.ink(.primary)
+    alphaValue = isEnabled ? 1 : ButtonLook.disabledAlpha
   }
 
   override func layout() {
@@ -490,8 +494,19 @@ final class AccentButton: NSControl {
     label.frame = NSRect(x: 0, y: ((bounds.height - height) / 2).rounded(), width: bounds.width, height: height)
   }
 
-  override func mouseDown(with event: NSEvent) { onClick?() }
+  override func mouseEntered(with event: NSEvent) { hovered = true; needsDisplay = true }
+  override func mouseExited(with event: NSEvent) { hovered = false; needsDisplay = true }
+  override func mouseDown(with event: NSEvent) { guard isEnabled else { return }; down = true; needsDisplay = true }
+
+  override func mouseUp(with event: NSEvent) {
+    guard down else { return }
+    down = false
+    needsDisplay = true
+    if isEnabled, bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+  }
+
   override func accessibilityPerformPress() -> Bool {
+    guard isEnabled else { return false }
     onClick?()
     return true
   }

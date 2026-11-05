@@ -39,7 +39,9 @@ final class FolderIconPicker: NSView {
     selection.cornerRadius = 9
     selection.cornerCurve = .continuous
     layer?.addSublayer(selection)
-    title.font = .systemFont(ofSize: 15, weight: .semibold)
+    // Panels' titles: 13 pt semibold grey (as Downloads').
+    title.font = .systemFont(ofSize: 13, weight: .semibold)
+    title.textColor = .secondaryLabelColor
     title.alignment = .center
     addSubview(title)
     trash.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Remove Icon")

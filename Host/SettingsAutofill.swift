@@ -62,7 +62,7 @@ final class AutofillPaneContent: SettingsPaneContent {
       "openAddress": addresses.openID ?? NSNull(), "openCard": cards.openID ?? NSNull(),
       "addingAddress": addresses.adding, "addingCard": cards.adding, "editingCard": cards.editing,
       "revealed": cards.revealed, "lastAddress": addresses.last, "lastCard": cards.last,
-      "formError": addresses.formError || cards.formError, "confirming": SettingsRecordConfirm.pending ?? NSNull(),
+      "formError": addresses.formError || cards.formError, "confirming": SettingsConfirm.pending ?? NSNull(),
     ]
   }
 
@@ -113,7 +113,8 @@ final class AutofillPaneContent: SettingsPaneContent {
       let pressed = addresses.openID != nil ? addresses.pressDelete() : cards.pressDelete()
       return pressed ? "ok" : "nothing open"
     case "confirm":
-      guard second == "yes" || second == "no", SettingsRecordConfirm.answer(second == "yes") else { return "no sheet" }
+      guard second == "yes" || second == "no" else { return "usage: autofill confirm yes|no" }
+      return SettingsConfirm.answer(accept: second == "yes")
     default:
       return "usage: autofill load|addaddress|addcard|open|close|edit|reveal|revealcheck|copy|pasteboard|remove|confirm"
     }
@@ -133,7 +134,7 @@ final class AutofillAddressesView: NSView, SettingsSizing {
 
   private let stack = SettingsStack()
   private let header = SettingsDataHeader(title: "Addresses")
-  private lazy var addButton = SettingsPushButton("Add…") { [weak self] in self?.startEditing(nil) }
+  private lazy var addButton = SettingsButton("Add…") { [weak self] in self?.startEditing(nil) }
   private var list: [[String: String]] = []
   private(set) var openID: String?
   private var form: SettingsForm?
@@ -195,7 +196,7 @@ final class AutofillAddressesView: NSView, SettingsSizing {
     var items: [SettingsStack.Item] = [.init(view: header)]
     if adding, let formCard { items.append(.init(view: formCard, gap: 4)) }
     if list.isEmpty, !adding {
-      items.append(.init(view: SettingsNote("No saved addresses.")))
+      items.append(.init(view: SettingsNote("No saved addresses")))
     }
     for (index, address) in list.enumerated() {
       let id = address["id"] ?? ""
@@ -269,14 +270,14 @@ final class AutofillAddressesView: NSView, SettingsSizing {
     }
     let stack = SettingsStack()
     let bar = SettingsButtonBar(
-      leading: id == nil ? [] : [SettingsPushButton("Delete…", destructive: true) { [weak self] in _ = self?.pressDelete() }],
+      leading: id == nil ? [] : [SettingsButton("Delete…", destructive: true) { [weak self] in _ = self?.pressDelete() }],
       trailing: [
-        SettingsPushButton("Cancel") { [weak self] in
+        SettingsButton("Cancel") { [weak self] in
           self?.endEditing()
           self?.render()
           settingsDataChanged("autofill")
         },
-        SettingsPushButton("Save") { [weak self] in self?.save() },
+        SettingsButton("Save") { [weak self] in self?.save() },
       ])
     stack.set([.init(view: form), .init(view: bar)])
     self.form = form
@@ -348,9 +349,9 @@ final class AutofillAddressesView: NSView, SettingsSizing {
 
   func pressDelete() -> Bool {
     guard let id = openID else { return false }
-    SettingsRecordConfirm.ask(
+    SettingsConfirm.ask(
       "removeAddress", title: "Delete this address?", message: "Ray won't fill it into forms any more. This can't be undone.",
-      confirm: "Delete", from: self
+      confirm: "Delete"
     ) { [weak self] yes in
       guard yes, let profile = settingsDataProfile else { return }
       EngineCalls.call("ac_autofill_remove", profile: profile, args: ["id": id]) { [weak self] reply in
@@ -381,7 +382,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
 
   private let stack = SettingsStack()
   private let header = SettingsDataHeader(title: "Cards")
-  private lazy var addButton = SettingsPushButton("Add…") { [weak self] in self?.startEditing(nil) }
+  private lazy var addButton = SettingsButton("Add…") { [weak self] in self?.startEditing(nil) }
   private var list: [Card] = []
   private(set) var openID: String?
   /// The open card's full number while it shows; nil when it hides, the card closes or the pane locks.
@@ -495,7 +496,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
     var items: [SettingsStack.Item] = [.init(view: header)]
     if adding, let formCard { items.append(.init(view: formCard, gap: 4)) }
     if list.isEmpty, !adding {
-      items.append(.init(view: SettingsNote("No saved cards.")))
+      items.append(.init(view: SettingsNote("No saved cards")))
     }
     for (index, card) in list.enumerated() {
       let expiry = Self.expiry(card)
@@ -524,8 +525,8 @@ final class AutofillCardsView: NSView, SettingsSizing {
     let expiry = Self.expiry(card)
     if !expiry.isEmpty { items.append(.init(view: SettingsDetailLine(name: "Expires", value: expiry))) }
     items.append(.init(view: SettingsButtonBar(
-      leading: [SettingsPushButton("Delete…", destructive: true) { [weak self] in _ = self?.pressDelete() }],
-      trailing: [SettingsPushButton("Edit") { [weak self] in self?.startEditing(card.id) }])))
+      leading: [SettingsButton("Delete…", destructive: true) { [weak self] in _ = self?.pressDelete() }],
+      trailing: [SettingsButton("Edit") { [weak self] in self?.startEditing(card.id) }])))
     lines.set(items)
     return SettingsCard(lines)
   }
@@ -623,7 +624,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
     stack.set([
       .init(view: form),
       .init(view: SettingsButtonBar(trailing: [
-        SettingsPushButton("Cancel") { [weak self] in
+        SettingsButton("Cancel") { [weak self] in
           guard let self else { return }
           let wasAdding = self.adding
           self.endEditing()
@@ -631,7 +632,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
           self.render()
           settingsDataChanged("autofill")
         },
-        SettingsPushButton("Save") { [weak self] in self?.save() },
+        SettingsButton("Save") { [weak self] in self?.save() },
       ])),
     ])
     self.form = form
@@ -716,9 +717,9 @@ final class AutofillCardsView: NSView, SettingsSizing {
 
   func pressDelete() -> Bool {
     guard let id = openID, !adding, let card = list.first(where: { $0.id == id }) else { return false }
-    SettingsRecordConfirm.ask(
+    SettingsConfirm.ask(
       "removeCard", title: "Delete \(Self.networkName(card.network)) •••• \(card.last4)?",
-      message: "Ray won't fill it in when you pay any more. This can't be undone.", confirm: "Delete", from: self
+      message: "Ray won't fill it in when you pay any more. This can't be undone.", confirm: "Delete"
     ) { [weak self] yes in
       guard yes, let profile = settingsDataProfile else { return }
       EngineCalls.call("ac_autofill_remove", profile: profile, args: ["id": id]) { [weak self] reply in
