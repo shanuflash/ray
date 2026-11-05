@@ -340,10 +340,10 @@ publicly or create accounts.
   `lastClosedBy`); check `panels`.
 - `LinkPreview` (`Host/LinkPreview.swift`, `BrowserWindowController` `// MARK: Link preview`): the hovered link's
   address (`tab:didChangeStatusText:`, active tab only) in a pill at the page's bottom left (owner's pick, Ardia's
-  size: 6 pt in, 22 pt tall, 7 pt corners, 12 pt text, on `SurfaceBackdrop` with a small shadow; mock
-  `docs/mocks/tab-details.html`). Chrome's timing: shows after 80 ms (120 ms fade), waits 250 ms after the link is
-  left and fades over 200 ms, swaps text in place; a third of the page wide, grown to the page's width after 1.6 s on
-  one link. Text from `LinkPreview.parts` (`AddressInput.addressParts`: host leads in medium, `user:pass@` hidden,
+  size: 6 pt in, 22 pt tall, 12 pt text; 8 pt corners and the surfaces' shadow on `SurfaceBackdrop`; mock
+  `docs/mocks/tab-details.html`). Chrome's timing, as layer animations: shows after 80 ms (120 ms fade), waits 250 ms
+  after the link is left and fades over 200 ms, swaps text in place; a third of the page wide, grown to the page's
+  width after 1.6 s on one link (at once); moving over a note rides the notes' spring. Text from `LinkPreview.parts` (`AddressInput.addressParts`: host leads in medium, `user:pass@` hidden,
   percent-encoded; mailto/tel/sms whole; `javascript:` and the like their scheme only), cut at 2,048 characters.
   The pointer within 20 pt of it (a local mouse-moved monitor, only while it shows) sends it to the bottom right; it
   sits on a bottom corner note (`Notes.settledFrame`, the downloads note) instead of under it; never takes a click;

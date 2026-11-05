@@ -193,8 +193,16 @@ final class HistoryRowView: NSView {
   }
 
   override func updateLayer() {
-    // The mock's wash of the profile's colour, as a selected Settings row has.
-    layer?.backgroundColor = lit ? ProfileColor.accent.withAlphaComponent(0.16).cgColor : NSColor.clear.cgColor
+    layer?.backgroundColor = lit ? Self.litFill.cgColor : NSColor.clear.cgColor
+  }
+
+  /// The lit row: a solid wash of the profile's colour over the panel's card, Settings' selected row's mix (it
+  /// follows dark mode and a black profile colour).
+  static let litFill = ProfileColor.mix(NSColor(name: nil) { _ in ProfileColor.accent }, over: SurfaceBackdrop.solidFill, 0.17, dark: 0.26)
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    needsDisplay = true
   }
 
   override func layout() {

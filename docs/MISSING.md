@@ -323,7 +323,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     `--mute-audio`, under which no page ever counts as audible, so `tab-sound` covers muting and the mark's click
     only. The mark goes at once when sound stops (2 s after, the engine's hold) rather than fading over Chrome's 1 s,
     and the title slides over without animation. The link preview moves to the other corner as Arc's does, not
-    down off the page as Chrome's; it hasn't been tried with a right-to-left address. The history list has no Chrome "chapter stops" (other sites further back) or favicons for pages the
+    down off the page as Chrome's, and grows to the page's width at once (Chrome animates it over up to 150 ms); it hasn't been tried with a right-to-left address. The history list has no Chrome "chapter stops" (other sites further back) or favicons for pages the
     favicon store doesn't hold (private windows: none).
 
 ## Done

@@ -128,11 +128,7 @@ final class LinkPreview {
     place(animated: false)
     if appearing {
       view.isHidden = false
-      NSAnimationContext.runAnimationGroup { context in
-        context.duration = Self.fadeIn
-        context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        view.animator().alphaValue = 1
-      }
+      fade(to: 1, duration: Self.fadeIn, timing: .easeOut)
     }
     // Cut short: grow to the page's width if the pointer stays (Chrome's expand).
     expandWork?.cancel()
@@ -156,15 +152,29 @@ final class LinkPreview {
     expanded = false
     expandWork?.cancel()
     stopWatching()
-    NSAnimationContext.runAnimationGroup({ context in
-      context.duration = Self.fadeOut
-      context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-      view.animator().alphaValue = 0
-    }, completionHandler: { [weak self] in
+    fade(to: 0, duration: Self.fadeOut, timing: .easeIn) { [weak self] in
       guard let self, !self.shown else { return }
       self.view.isHidden = true
-    })
+    }
     onChange?()
+  }
+
+  /// The pill's opacity on its layer, from what shows now: a fade cut short takes only the rest of its time
+  /// (Chrome scales its fades by the opacity left to cover).
+  private func fade(to target: Float, duration: TimeInterval, timing: CAMediaTimingFunctionName, done: (() -> Void)? = nil) {
+    guard let layer = view.layer else { return }
+    let from = layer.presentation()?.opacity ?? layer.opacity
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    CATransaction.setCompletionBlock(done)
+    view.alphaValue = CGFloat(target)
+    let fade = CABasicAnimation(keyPath: "opacity")
+    fade.fromValue = from
+    fade.toValue = target
+    fade.duration = duration * Double(min(1, max(0.1, abs(target - from))))
+    fade.timingFunction = CAMediaTimingFunction(name: timing)
+    layer.add(fade, forKey: "fade")
+    CATransaction.commit()
   }
 
   /// A third of the page (Chrome's standard width), never under 160 pt (Ardia's least).
@@ -182,19 +192,21 @@ final class LinkPreview {
     return NSRect(x: x.rounded(), y: y.rounded(), width: width, height: Self.height)
   }
 
+  /// Where it belongs now. Moving up over a note (or back down) rides the notes' spring on the layer; a change of
+  /// width (the expand) is at once, as the pill's insides would otherwise lag its edge.
   private func place(animated: Bool) {
     let target = frame(trailing: trailing)
-    guard target != view.frame else { return }
-    if animated, view.alphaValue > 0, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-      NSAnimationContext.runAnimationGroup { context in
-        // Chrome's expansion: 20–150 ms by how far it grows.
-        context.duration = min(0.15, max(0.02, abs(target.width - view.frame.width) / 1000))
-        context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        view.animator().frame = target
-      }
-    } else {
-      view.frame = target
-    }
+    let old = view.frame
+    guard target != old else { return }
+    let from = view.layer?.presentation()?.position
+    view.frame = target
+    guard animated, target.size == old.size, view.alphaValue > 0, let layer = view.layer, let from,
+          !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+    let move = CASpringAnimation(perceptualDuration: Notes.response, bounce: 1 - Notes.dampingRatio)
+    move.keyPath = "position"
+    move.fromValue = NSValue(point: from)
+    move.toValue = NSValue(point: layer.position)
+    layer.add(move, forKey: "move")
   }
 
   // MARK: Pointer
@@ -265,8 +277,8 @@ private final class LinkPreviewView: NSView {
   private(set) var host = ""
   private var parts = AddressInput.AddressParts()
   var style: String { backdrop.style }
-  /// Ardia's 7 pt corners.
-  static let radius: CGFloat = 7
+  /// The small surfaces' 8 pt corners.
+  static let radius: CGFloat = 8
   static let padding: CGFloat = 8
   static let font = NSFont.systemFont(ofSize: 12)
   static let hostFont = NSFont.systemFont(ofSize: 12, weight: .medium)
@@ -317,22 +329,12 @@ private final class LinkPreviewView: NSView {
     backdrop.frame = body.bounds
     let height = ceil(label.intrinsicContentSize.height)
     label.frame = NSRect(x: Self.padding, y: ((bounds.height - height) / 2).rounded(), width: max(0, bounds.width - Self.padding * 2), height: height)
-    shadow()
-  }
-
-  /// Ardia's small shadow (radius 6, 2 pt down), not the notes' deep one: the pill is a fifth of their size.
-  private func shadow() {
-    guard let layer else { return }
-    let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    layer.shadowColor = NSColor.black.cgColor
-    layer.shadowOpacity = dark ? 0.3 : 0.1
-    layer.shadowRadius = 6
-    layer.shadowOffset = CGSize(width: 0, height: -2)
-    layer.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Self.radius, cornerHeight: Self.radius, transform: nil)
+    SurfaceBackdrop.shadow(on: self, radius: Self.radius)
   }
 
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
     refreshText()
+    SurfaceBackdrop.shadow(on: self, radius: Self.radius)
   }
 }
