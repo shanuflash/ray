@@ -443,7 +443,8 @@ still to build (numbers are `docs/MISSING.md`, "From Ardia's settings"). Default
 - **General** ✓ (`25f0e1e`): Make Default strip, and a Default browser row that says whether Ray is; open Ray at login, off; warn before ⌘Q, off, and before closing a
   private window with 2+ tabs, on (a normal window keeps its tabs); on quit, keep tabs and windows or start fresh;
   downloads folder and ask where to save, off; updates: check and install automatically, on, version and Check Now;
-  import from another browser. Still to do: the default-browser step in the onboarding (Chrome #17).
+  import from another browser. Outside Settings: the onboarding's "Open links in Ray?" step and a rare launch note
+  (`DefaultBrowserAsk`, 2026-11-05).
 - **Tabs and sidebar** ✓ (`d2c6ed0`): new tabs at the top or below current, ✓; ⌃Tab in recent order, on ✓; show the
   sidebar button, on ✓; fade icons of unloaded tabs, off ✓; haptic on reorder, on ✓. Unbuilt rows (test builds
   only): Clear button (9), hide the address bar while scrolling (8), media controls and auto picture-in-picture

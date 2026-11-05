@@ -669,6 +669,8 @@ enum TestCommands {
       let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
       let pane = GeneralPaneContent.current?.press(words) ?? "no pane"
       result = pane == "no such control" || pane == "no pane" ? GeneralSystem.shared.command(words) : pane
+    case "defaultask":
+      result = DefaultBrowserAsk.shared.command(argument)
     case "warning":
       result = CloseWarnings.command(argument)
     case "privacy": result = PrivacyPaneContent.test(argument)

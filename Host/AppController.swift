@@ -44,6 +44,8 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
       if let main, !links.isEmpty { openLinks(links, in: main) }
       // A new data dir's first window welcomes you (once; never in a test instance unless a check asks).
       if OnboardingView.showsAtLaunch { main?.showOnboarding(.firstRun) }
+      // Not the default browser: a note may ask, rarely (DefaultBrowserAsk).
+      if let main { DefaultBrowserAsk.shared.launched(in: main) }
     }
   }
 

@@ -19,7 +19,8 @@ final class RaySettings {
   }
 
   /// Ray's own state kept in Settings.json beside the settings: no row, no observers, never reset.
-  private static let stateKeys: Set<String> = ["zoomedHosts", "zoomAdopted", "windowFrame", "onboarded"]
+  private static let stateKeys: Set<String> = ["zoomedHosts", "zoomAdopted", "windowFrame", "onboarded", "defaultBrowserAsks",
+                                                "defaultBrowserAskedAt", "defaultBrowserNever"]
 
   /// Each setting's value by id, always valid (see `SettingKey.validate`).
   private var values: [String: Any] = [:]
@@ -35,6 +36,11 @@ final class RaySettings {
   /// The first run's welcome is done. Only "Start browsing" sets it, so a new data dir and every profile from before
   /// the welcome existed (Ray 0.2.0 and earlier: no key in Settings.json, or no Settings.json at all) see it once.
   private(set) var onboarded: Bool
+  /// Asking to be the default browser (`DefaultBrowserAsk`): how many times the note asked, when Ray last asked (the
+  /// note or the onboarding's step, seconds since 1970) and whether it never asks again.
+  private(set) var defaultBrowserAsks: Int
+  private(set) var defaultBrowserAskedAt: Double?
+  private(set) var defaultBrowserNever: Bool
 
   private let url: URL?
   private var pending: DispatchWorkItem?
@@ -55,6 +61,9 @@ final class RaySettings {
     zoomAdopted = file["zoomAdopted"].flatMap { Bool(settingJSON: $0) } ?? false
     windowFrame = file["windowFrame"] as? String
     onboarded = file["onboarded"].flatMap { Bool(settingJSON: $0) } ?? false
+    defaultBrowserAsks = max(0, (file["defaultBrowserAsks"] as? NSNumber)?.intValue ?? 0)
+    defaultBrowserAskedAt = (file["defaultBrowserAskedAt"] as? NSNumber).map(\.doubleValue).flatMap { $0.isFinite ? $0 : nil }
+    defaultBrowserNever = file["defaultBrowserNever"].flatMap { Bool(settingJSON: $0) } ?? false
     values = Dictionary(uniqueKeysWithValues: AnySettingKey.all.map { ($0.id, $0.load(file[$0.id])) })
     let known = Set(AnySettingKey.all.map(\.id)).union(Self.stateKeys)
     unknown = file.filter { !known.contains($0.key) }
@@ -184,6 +193,30 @@ final class RaySettings {
     flush()
   }
 
+  // MARK: Default browser ask
+
+  /// Ray asked to be the default browser at `date` (`counts`: the note did, not the onboarding's step).
+  func recordDefaultBrowserAsk(at date: Date, counts: Bool) {
+    defaultBrowserAskedAt = date.timeIntervalSince1970
+    if counts { defaultBrowserAsks += 1 }
+    save()
+  }
+
+  /// "Never", or Ray was the default: the note never asks again.
+  func neverAskDefaultBrowser() {
+    guard !defaultBrowserNever else { return }
+    defaultBrowserNever = true
+    save()
+  }
+
+  /// For tests: forget every ask.
+  func resetDefaultBrowserAsk() {
+    defaultBrowserAsks = 0
+    defaultBrowserAskedAt = nil
+    defaultBrowserNever = false
+    save()
+  }
+
   // MARK: Saving
 
   /// The Settings window's frame, remembered without telling anyone.
@@ -212,6 +245,9 @@ final class RaySettings {
     file["zoomedHosts"] = zoomedHosts
     file["zoomAdopted"] = zoomAdopted
     file["onboarded"] = onboarded
+    file["defaultBrowserAsks"] = defaultBrowserAsks
+    file["defaultBrowserAskedAt"] = defaultBrowserAskedAt
+    file["defaultBrowserNever"] = defaultBrowserNever
     file["windowFrame"] = windowFrame
     guard JSONSerialization.isValidJSONObject(file),
           let data = try? JSONSerialization.data(withJSONObject: file, options: [.sortedKeys]) else { return }
@@ -227,6 +263,9 @@ final class RaySettings {
     out["zoomedHosts"] = zoomedHosts.sorted()
     out["zoomAdopted"] = zoomAdopted
     out["onboarded"] = onboarded
+    out["defaultBrowserAsks"] = defaultBrowserAsks
+    out["defaultBrowserAskedAt"] = defaultBrowserAskedAt ?? NSNull()
+    out["defaultBrowserNever"] = defaultBrowserNever
     return out
   }
 }

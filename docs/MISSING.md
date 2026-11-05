@@ -92,11 +92,6 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
     swipe-and-hold list (Dia's opens upward under the fingers; Ardia 0.2.44-nightly.6). The engine exports
     `navigationEntries`; see `docs/ARDIA-WATCH.md` "Ray should" 16.
 
-**Default browser**
-17. **Ask to be the default browser** outside Settings: a step in the onboarding (after the import, "Open links from
-    other apps in Ray?") and a gentle note when Ray isn't the default (Chrome's infobar, Arc's prompt). Settings ›
-    General's Make Default strip is done (`NSWorkspace.setDefaultApplication`, macOS's own confirmation).
-
 **Already working through Chrome's defaults:** right-click menus, spell check, `chrome://` pages.
 
 ## From Ardia's settings
@@ -326,6 +321,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
+| Asks to be the default browser: an onboarding step after the import ("Open links in Ray?") and a rare note at launch (bottom right, 14 days apart, 3 times at most, Never for good) | 2026-11-05, `feat: ask to be default browser` |
 | "Save password?" and "Update password?" after a sign-in (Never, Not Now, Save; username editable), "Password saved" for a suggested one; Settings › Passwords › Offer to save passwords | 2026-11-05, `feat: save password prompt` |
 | Arc's ⌃Tab switcher: recent tabs as cards with page pictures, switching on Control's release, Tab/⇧Tab/arrows/pointer, Escape cancels, a quick tap just switches | 2026-11-04, `feat: arc ctrl-tab switcher` |
 | Ray's own engine (Phase B) and "Ray Safe Storage" | 2026-10-28, 0.2.0 |

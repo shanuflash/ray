@@ -44,6 +44,7 @@ Ray updates itself after that (Ray › Check for Updates…).
 - **Moving in**
   - Also from Dia, Chrome, Brave, Edge, Helium, Firefox, Zen and Safari
   - Tabs, folders, history, bookmarks, passwords and cookies
+  - Asks once to open links from other apps, then rarely
 - **Other**
   - Address bar above the page, like Dia
   - Edge-to-edge full screen
