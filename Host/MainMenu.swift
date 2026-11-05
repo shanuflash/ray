@@ -92,6 +92,16 @@ enum MainMenu {
       item("Show Full History", #selector(AppController.showHistory(_:)), "y", target: target),
     ]))
 
+    // Chrome's Bookmarks menu: its commands, then the bookmarks themselves (BookmarksMenu fills them when it opens).
+    let bookmarks = submenu("Bookmarks", [
+      item("Bookmark This Tab…", #selector(AppController.bookmarkTab(_:)), nil, target: target),
+      item("Bookmark All Tabs…", #selector(AppController.bookmarkAllTabs(_:)), nil, target: target),
+      item("Show Bookmarks", #selector(AppController.showBookmarks(_:)), "b", [.command, .option], target: target),
+      item("Bookmark Manager", #selector(AppController.bookmarkManager(_:)), nil, target: target),
+    ])
+    main.addItem(bookmarks)
+    if let menu = bookmarks.submenu { BookmarksMenu.shared.install(in: menu) }
+
     var tabItems: [NSMenuItem] = [
       item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
       item("Zoom", #selector(NSWindow.performZoom(_:)), nil),

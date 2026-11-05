@@ -49,7 +49,7 @@ enum TestCommands {
 
   private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53, "tab": 48, ",": 43, "=": 24, "-": 27,
                                                      "0": 29, "p": 35, "u": 32, "y": 16, "z": 6, "k": 40, "j": 38, "q": 12, "h": 4, "m": 46,
-                                                     "e": 14, "o": 31, "space": 49, "left": 123, "right": 124, "return": 36, "delete": 51, "fwddelete": 117, "f5": 96, "3": 20]
+                                                     "e": 14, "o": 31, "b": 11, "space": 49, "left": 123, "right": 124, "return": 36, "delete": 51, "fwddelete": 117, "f5": 96, "3": 20]
 
   /// What a key types when it isn't its own name.
   private static let typedCharacters: [String: String] = [
@@ -567,6 +567,10 @@ enum TestCommands {
       _ = AppController.shared.applicationShouldHandleReopen(NSApp, hasVisibleWindows: false)
     case "appopen":
       result = openFromOtherApp(argument)
+    case "bookmarks":
+      // Answered later when it waits for the engine (add, folder, tree).
+      guard let answer = bookmarks(line, argument) else { return }
+      result = answer
     case "pwprompt":
       result = AppController.shared.current?.passwords.test(argument) ?? "no window"
     case "perm":
@@ -710,5 +714,85 @@ enum TestCommands {
       result = "unknown"
     }
     FileHandle.standardError.write("[ray-test] \(line) -> \(result)\n".data(using: .utf8)!)
+  }
+
+  // MARK: Bookmarks
+
+  /// `bookmarks state|open|close|toggle|search <text>|key up|down|left|right|return|escape|click <id> [cmd]|menu <id>|
+  /// press <id> <title>|rename <id>|renameto <text>|add <parent> <url> [title]|remove <id>|folder <title>|addtab|
+  /// alltabs|tree|menubar|
+  /// menubarpress <a > b>|openall open|cancel`: the Bookmarks panel's and menu's own controls, and the engine's tree.
+  private static func bookmarks(_ line: String, _ argument: String) -> String? {
+    let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
+    let rest = words.count > 1 ? words[1] : ""
+    guard let controller = AppController.shared.current else { return "no window" }
+    let store = Bookmarks.shared
+    let list = controller.bookmarksList
+    switch words.first {
+    case "state": return json(controller.bookmarksState)
+    case "open": controller.showBookmarks()
+    case "close": controller.closeBookmarks()
+    case "toggle": if !controller.pressBookmarksButton() { return "no button" }
+    case "search":
+      guard let list else { return "not open" }
+      list.debugSearch(rest)
+    case "key":
+      guard let list else { return "not open" }
+      let keys: [String: Selector] = [
+        "up": #selector(NSResponder.moveUp(_:)), "down": #selector(NSResponder.moveDown(_:)),
+        "left": #selector(NSResponder.moveLeft(_:)), "right": #selector(NSResponder.moveRight(_:)),
+        "return": #selector(NSResponder.insertNewline(_:)), "escape": #selector(NSResponder.cancelOperation(_:)),
+      ]
+      guard let selector = keys[rest] else { return "usage: bookmarks key up|down|left|right|return|escape" }
+      list.key(selector)
+    case "click":
+      let parts = rest.split(separator: " ").map(String.init)
+      guard let list, let id = parts.first, let node = list.row(for: id) else { return "no row" }
+      list.click(node, modifiers: parts.dropFirst().contains("cmd") ? .command : [])
+    case "menu":
+      guard let list, let node = list.row(for: rest) else { return "no row" }
+      return json(list.menu(for: node).items.map { $0.isSeparatorItem ? "-" : ($0.isEnabled ? "" : "~") + $0.title })
+    case "press":
+      let parts = rest.split(separator: " ", maxSplits: 1).map(String.init)
+      guard let list, parts.count == 2, let node = list.row(for: parts[0]) else { return "no row" }
+      guard let item = list.menu(for: node).items.first(where: { $0.title == parts[1] }), item.isEnabled,
+            let action = item.representedObject as? BookmarkMenuAction else { return "no item" }
+      action.run(nil)
+    case "rename":
+      guard let list, list.row(for: rest) != nil else { return "no row" }
+      list.beginRename(rest)
+    case "renameto":
+      guard let list, list.debugRename(rest) else { return "not renaming" }
+    case "add":
+      let parts = rest.split(separator: " ", maxSplits: 2).map(String.init)
+      guard parts.count >= 2 else { return "usage: bookmarks add <parent> <url> [title]" }
+      store.add(url: parts[1], title: parts.count > 2 ? parts[2] : "", in: parts[0]) { id in respond(line, id) }
+      return nil
+    case "remove":
+      _ = store.remove(rest)
+    case "folder":
+      store.addFolder(rest) { id in respond(line, id) }
+      return nil
+    case "addtab": controller.bookmarkTab()
+    case "alltabs": controller.bookmarkAllTabs()
+    case "tree":
+      store.reload {
+        func value(_ node: Bookmark) -> [String: Any] {
+          var out: [String: Any] = ["id": node.id, "title": node.title]
+          if let url = node.url { out["url"] = url } else { out["children"] = node.children.map(value) }
+          return out
+        }
+        respond(line, json(["bar": store.bar.map(value) as Any? ?? NSNull(), "other": store.other.map(value) as Any? ?? NSNull()]))
+      }
+      return nil
+    case "menubar": return json(BookmarksMenu.shared.debugItems())
+    case "menubarpress": if !BookmarksMenu.shared.debugPress(rest) { return "no item" }
+    case "openall":
+      guard let question = controller.openAllQuestion else { return "no question" }
+      question.buttons[rest == "open" ? 1 : 0].performClick(nil)
+    default:
+      return "unknown bookmarks command"
+    }
+    return "ok"
   }
 }

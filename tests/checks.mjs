@@ -3276,6 +3276,25 @@ const checks = {
       await command("key esc keywin");
       await panelClosed();
       await setSetting("pageAddressBar", "on");
+      // The bookmarks panel from the sidebar's footer, a folder open, light and dark.
+      const marks = await commandResult("bookmarks folder Imported from Chrome");
+      for (const [path, title] of [["/a", "Linear"], ["/b", "Design System"], ["/c", "Team Wiki"]]) {
+        await commandResult(`bookmarks add ${marks} ${origin}${path}?snap ${title}`);
+      }
+      const lone = await commandResult(`bookmarks add bar ${origin}/icon-tile GitHub`);
+      for (const mode of ["light", "dark"]) {
+        await setSetting("appearanceMode", mode);
+        await sleep(800);
+        await command("bookmarks open");
+        await panelOpen();
+        if (!state().bookmarks.panel.rows.find((r) => r.id === marks)?.open) await command(`bookmarks click ${marks}`);
+        await snap(`${mode}-bookmarks`);
+        await command("bookmarks close");
+        await panelClosed();
+      }
+      await setSetting("appearanceMode", "light");
+      await commandResult(`bookmarks remove ${marks}`);
+      await commandResult(`bookmarks remove ${lone}`);
       // A site asking for notifications.
       const { sessionId } = await session("/a");
       await evaluate(sessionId, `Notification.requestPermission(); 0`);
@@ -6219,6 +6238,176 @@ const checks = {
         await command(`rowaction close ${id}`);
       }
       await until("cleaned up", async () => (await live()) && made.every((id) => !entry(id)), 6000).catch(() => {});
+    }
+  },
+  async bookmarks() {
+    // Bookmarks (Chrome's model, through ac_bookmarks_*): the sidebar's bookmark button opens the panel over the
+    // sidebar with its search focused; folders open in place; a click opens a page in a new Today tab and closes the
+    // panel, ⌘-click opens it behind; a javascript: bookmark never opens or pins; search and Return; Escape clears, then
+    // closes; Rename… in the row; Delete with Undo; Add to Pinned (pages open in Today still pin); Open All (asks past
+    // 15); the menu bar's Bookmarks menu; the command bar's "Bookmark" rows; Bookmark This Tab… (again: the same one).
+    const bm = () => state().bookmarks;
+    const live = async () => { await command("state"); return state(); };
+    const result = (line) => commandResult(`bookmarks ${line}`);
+    const tree = async () => JSON.parse(await result("tree"));
+    const find = (node, id) => (node?.id === id ? node : (node?.children ?? []).map((c) => find(c, id)).find(Boolean));
+    const node = async (id) => { const t = await tree(); return find(t.bar, id) ?? find(t.other, id); };
+    const row = (id) => bm().panel?.rows.find((r) => r.id === id);
+    const tag = `bm${Date.now() % 1000000}`;
+    const tabsOf = (part) => allEntries().filter((e) => e.url.includes(part));
+    const opened = (part, n) => until(`${n} tab(s) on ${part}`, async () => (await live()) && tabsOf(part).length === n, 6000);
+    const made = [];
+    try {
+      const folder = await result(`folder Reading ${tag}`);
+      made.push(folder);
+      const one = await result(`add ${folder} ${origin}/a?${tag}-one Alpha ${tag}`);
+      const two = await result(`add ${folder} ${origin}/b?${tag}-two Bravo ${tag}`);
+      const script = await result(`add ${folder} javascript:void(0) Bookmarklet ${tag}`);
+      const three = await result(`add bar ${origin}/c?${tag}-three Charlie ${tag}`);
+      made.push(three);
+      assert((await node(folder))?.children.length === 3, `folder: ${JSON.stringify(await node(folder))}`);
+
+      // The sidebar's button: the panel over the sidebar, the search field has the keys.
+      await command("bookmarks toggle");
+      await until("panel open", async () => (await live()) && bm().open && state().panels.open?.name === "bookmarks" && bm().panel?.rows.length);
+      assert(state().panels.open.overSidebar === true, `not over the sidebar: ${JSON.stringify(state().panels.open)}`);
+      // Its leading edge on the footer's, as the downloads list's (not on the bookmark button, over the page).
+      assert(Number(state().panels.open.frame.split(",")[0]) < 20, `panel frame: ${state().panels.open.frame}`);
+      assert(bm().panel.searchFocused === true, "the search field doesn't have the keys");
+      if (row(folder)?.open) await command(`bookmarks click ${folder}`);
+      await until("folder closed", async () => (await live()) && row(folder)?.open === false && !row(one));
+      await command(`bookmarks click ${folder}`);
+      await until("folder open", async () => (await live()) && row(folder)?.open === true && row(one)?.depth === 1 && row(script));
+      assert(row(script).opens === false && row(one).opens === true && row(one).host === "127.0.0.1", `rows: ${JSON.stringify(bm().panel.rows)}`);
+
+      // Menus: a bookmarklet can't open or pin.
+      const menu = async (id) => JSON.parse(await result(`menu ${id}`));
+      const want = (items, list, what) => assert(JSON.stringify(items) === JSON.stringify(list), `${what} menu: ${JSON.stringify(items)}`);
+      want(await menu(one), ["Open in New Tab", "Copy Link", "-", "Pin", "Rename…", "-", "Delete"], "page");
+      want(await menu(script), ["~Open in New Tab", "Copy Link", "-", "~Pin", "Rename…", "-", "Delete"], "bookmarklet");
+      want(await menu(folder), ["Open All (2)", "Add to Pinned", "-", "Rename…", "-", "Delete"], "folder");
+
+      // A click: a new Today tab, shown, the panel closed. A bookmarklet's click does nothing.
+      await command(`bookmarks click ${script}`);
+      await command(`bookmarks click ${one}`);
+      await opened(`${tag}-one`, 1);
+      await until("shown, panel closed", async () => (await live()) && !bm().open && state().active === tabsOf(`${tag}-one`)[0].tab);
+      assert(!allEntries().some((e) => e.url.startsWith("javascript:")), "a javascript: bookmark opened");
+      // ⌘-click: behind, the panel stays.
+      await command("bookmarks open");
+      await command(`bookmarks click ${two} cmd`);
+      await opened(`${tag}-two`, 1);
+      assert(bm().open && state().active === tabsOf(`${tag}-one`)[0].tab, `⌘-click: ${JSON.stringify(bm().lastOpened)}`);
+
+      // Search, Return; Escape clears the search, then closes.
+      await command(`bookmarks search charlie ${tag}`);
+      await until("one match", async () => (await live()) && bm().panel.rows.length === 1 && bm().panel.selected === three);
+      await command("bookmarks key escape");
+      await until("search cleared", async () => (await live()) && bm().open && bm().panel.query === "" && bm().panel.rows.length > 1);
+      await command("bookmarks key escape");
+      await until("closed by Escape", async () => (await live()) && !bm().open);
+      await command("bookmarks open");
+      await command(`bookmarks search alpha ${tag}`);
+      await command("bookmarks key return");
+      await opened(`${tag}-one`, 2);
+
+      // Rename… in the row; Delete, then Undo puts it back.
+      await command("bookmarks open");
+      await command(`bookmarks rename ${two}`);
+      await until("renaming", async () => (await live()) && bm().panel?.renaming === two);
+      await command(`bookmarks renameto Renamed ${tag}`);
+      await until("renamed", async () => (await node(two))?.title === `Renamed ${tag}`);
+      await command(`bookmarks press ${two} Delete`);
+      await until("deleted", async () => !(await node(two)));
+      await until("undo note", async () => (await live()) && state().noteText.includes("Deleted “Renamed"));
+      await command("note press topTrailing");
+      await until("restored", async () => (await node(two))?.title === `Renamed ${tag}` && (await node(folder)).children[1]?.id === two);
+
+      // ⌥⌘B (Show Bookmarks) through the menu's keys, though its folders never fill for a key press.
+      await command("bookmarks close");
+      await until("closed", async () => (await live()) && !bm().open);
+      await command("key b cmd opt keywin");
+      await until("⌥⌘B opens", async () => (await live()) && bm().open);
+      await command("key b cmd opt keywin");
+      await until("⌥⌘B closes", async () => (await live()) && !bm().open);
+
+      // The menu bar's Bookmarks menu: its commands, then the bar's bookmarks, folders as submenus.
+      const items = JSON.parse(await result("menubar"));
+      want(items.slice(0, 4), ["Bookmark This Tab…", "Bookmark All Tabs…", "Show Bookmarks", "Bookmark Manager"], "Bookmarks");
+      const sub = items.find((t) => t.startsWith(`Reading ${tag} > `));
+      assert(sub === `Reading ${tag} > Alpha ${tag}|Renamed ${tag}|Bookmarklet ${tag}|-|Open All (2)|Add to Pinned`, `submenu: ${sub}`);
+      assert(items.includes(`Charlie ${tag}`), `no bar bookmark: ${JSON.stringify(items)}`);
+      assert(await result(`menubarpress Reading ${tag} > Bookmarklet ${tag}`) === "no item", "a bookmarklet ran from the menu");
+      await command(`bookmarks menubarpress Reading ${tag} > Alpha ${tag}`);
+      await opened(`${tag}-one`, 3);
+
+      // The command bar: a bookmark never visited is a row ("Bookmark"), and opens.
+      await command("menu newTab");
+      await command(`type Charlie ${tag}`);
+      const bar = await until("bookmark row", () => state().commandBar?.rows.some((r) => r.kind === "bookmark" && r.url === `${origin}/c?${tag}-three`) && state().commandBar);
+      const at = bar.rows.findIndex((r) => r.kind === "bookmark");
+      assert(bar.rows[at].title === `Charlie ${tag}`, `row: ${JSON.stringify(bar.rows[at])}`);
+      for (let i = 0; i < at; i++) await command("down");
+      await command("enter");
+      await opened(`${tag}-three`, 1);
+
+      // Bookmark This Tab…: the page is bookmarked already, so the panel shows that one; a new page is added to the
+      // bar with its name being typed; asking again shows it, never a second.
+      await until("on three", async () => (await live()) && state().active === tabsOf(`${tag}-three`)[0].tab);
+      await command("bookmarks addtab");
+      await until("revealed", async () => (await live()) && bm().open && bm().panel.selected === three && bm().panel.renaming === null);
+      await command("bookmarks close");
+      await send("Target.createTarget", { url: `${origin}/b?${tag}-new` });
+      await until("new tab active", async () => (await live()) && state().active === tabsOf(`${tag}-new`)[0]?.tab && tabsOf(`${tag}-new`)[0].pageTitle === "Page B");
+      await command("bookmarks addtab");
+      const mine = await until("renaming the new one", async () => (await live()) && bm().panel?.renaming);
+      made.push(mine);
+      await command(`bookmarks renameto Mine ${tag}`);
+      await until("named", async () => { const n = await node(mine); return n?.title === `Mine ${tag}` && n.url === `${origin}/b?${tag}-new`; });
+      await command("bookmarks close");
+      await command("bookmarks addtab");
+      await until("same one", async () => (await live()) && bm().panel?.selected === mine);
+      const t = await tree();
+      assert(t.bar.children.filter((c) => c.url === `${origin}/b?${tag}-new`).length === 1, "bookmarked twice");
+      await command("bookmarks close");
+
+      // Add to Pinned: the folder, closed, with its two pages (open in Today, still pinned), no bookmarklet.
+      await command("bookmarks open");
+      await command(`bookmarks press ${folder} Add to Pinned`);
+      const pinned = await until("pinned folder", async () => (await live()) && state().sidebar.pinned.find((e) => e.kind === "folder" && e.title === `Reading ${tag}`));
+      const kids = state().sidebar.pinned.filter((e) => e.parent === pinned.id);
+      assert(kids.length === 2 && kids.every((e) => e.kind === "pinned") && kids[0].pinnedURL === `${origin}/a?${tag}-one`
+        && pinned.open === false, `pinned: ${JSON.stringify(kids)}`);
+      assert(!bm().open, "the panel stayed open");
+
+      // Open All: the folder's pages in new tabs; past 15 it asks first (Cancel opens nothing).
+      const before = [tabsOf(`${tag}-one`).length, tabsOf(`${tag}-two`).length];
+      await command("bookmarks open");
+      await command(`bookmarks press ${folder} Open All (2)`);
+      await opened(`${tag}-two`, before[1] + 1);
+      const big = await result(`folder Big ${tag}`);
+      made.push(big);
+      for (let i = 0; i < 16; i++) await result(`add ${big} ${origin}/c?${tag}-big${i} Big ${i}`);
+      await command("bookmarks open");
+      await until("big folder", async () => (await live()) && row(big));
+      await command(`bookmarks press ${big} Open All (16)`);
+      await until("asked", async () => (await live()) && bm().openAllAsked === 16 && state().panels.open?.name === "openAllBookmarks");
+      await command("bookmarks openall cancel");
+      await until("answered", async () => (await live()) && state().panels.open?.name !== "openAllBookmarks");
+      await sleep(300);
+      assert(tabsOf(`${tag}-big`).length === 0, "Cancel opened tabs");
+    } finally {
+      await command("bookmarks close").catch(() => {});
+      for (const id of made) await result(`remove ${id}`).catch(() => {});
+      await command("state");
+      for (const e of allEntries().filter((e) => e.url.includes(tag))) {
+        if (e.kind === "pinned") await command(`rowaction unpin ${e.id}`);
+        await command(`rowaction close ${e.id}`);
+      }
+      await command("state");
+      for (const f of state().sidebar.pinned.filter((e) => e.kind === "folder" && e.title.includes(tag))) {
+        await command(`rowaction deletefolder ${f.id}`);
+      }
     }
   },
   async "settings-general"() {

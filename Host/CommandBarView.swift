@@ -487,7 +487,7 @@ private final class SuggestionCell: NSTableCellView {
   private let iconBox = NSView()
   private let icon = NSImageView()
   private let label = NSTextField(labelWithString: "")
-  /// On the right: "Switch to Tab" on a tab, an action's keyboard shortcut (Ardia's hint) on an action.
+  /// On the right: "Switch to Tab" on a tab, "Bookmark" on a bookmark, an action's keyboard shortcut (Ardia's hint).
   private let action = NSTextField(labelWithString: "Switch to Tab")
   private let arrowBox = NSView()
   private let arrow = NSImageView()
@@ -555,6 +555,8 @@ private final class SuggestionCell: NSTableCellView {
     if case .tab = suggestion.kind { isTab = true } else { isTab = false }
     switch suggestion.kind {
     case .action, .scope: shortcut = suggestion.detail
+    // A bookmark says so where a tab says "Switch to Tab", in the quieter look of a shortcut.
+    case .bookmark: shortcut = "Bookmark"
     default: shortcut = ""
     }
     action.stringValue = isTab ? "Switch to Tab" : shortcut
@@ -566,7 +568,7 @@ private final class SuggestionCell: NSTableCellView {
     switch suggestion.kind {
     case .tab: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
     case .search: detail = suggestion.detail
-    case .url, .history: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
+    case .url, .history, .bookmark: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
     case .action, .scope: detail = ""
     case .setting: detail = suggestion.detail
     }

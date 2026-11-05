@@ -6,6 +6,8 @@ struct Suggestion {
     case url(String)
     case search(String)
     case history(String)
+    /// A bookmarked page ("Bookmark" on the right), visited or not.
+    case bookmark(String)
     case action(BarAction)
     /// A pane, setting or section of Ray's Settings window ("Settings: …").
     case setting(SettingsTarget)
@@ -26,7 +28,7 @@ struct Suggestion {
   var key: String {
     switch kind {
     case .tab(let tab): return "tab:\(tab.tabId)"
-    case .url(let url), .search(let url), .history(let url): return "\(kindName):\(url)"
+    case .url(let url), .search(let url), .history(let url), .bookmark(let url): return "\(kindName):\(url)"
     case .action(let action): return "action:\(action.id)"
     case .setting(let target): return "setting:\(target.id)"
     case .scope(let scope): return "scope:\(scope.keyword)"
@@ -39,6 +41,7 @@ struct Suggestion {
     case .url: return "url"
     case .search: return "search"
     case .history: return "history"
+    case .bookmark: return "bookmark"
     case .action: return "action"
     case .setting: return "setting"
     case .scope: return "scope"
@@ -77,6 +80,21 @@ struct HistoryItem {
     if d <= 31 { return 0.5 + (31 - d) * 0.2 / 17 }
     if d <= 90 { return 0.3 + (90 - d) * 0.2 / 60 }
     return 0.1 + max(0, 365 - d) * 0.1 / 275
+  }
+}
+
+/// A bookmark as the bar matches it (`Bookmarks.barItems`).
+struct BookmarkItem {
+  let url: String
+  let title: String
+  let titleLower: String
+  let urlLower: String
+
+  init(url: String, title: String) {
+    self.url = url
+    self.title = title
+    titleLower = title.lowercased()
+    urlLower = Suggestions.matchable(url)
   }
 }
 
@@ -246,6 +264,8 @@ enum Suggestions {
   static let leadFrecency = 1.5
   /// What being open counts for, in visits (Ardia ranks open tabs a little up).
   private static let openTabFrecency = 1.0
+  /// ... and being bookmarked (Chrome and Ardia rank bookmarks up): one recent visit then lets it lead.
+  private static let bookmarkFrecency = 1.0
 
   /// A page that matched what you typed: an open tab or a history entry.
   private struct Page {
@@ -262,7 +282,7 @@ enum Suggestions {
   /// page is the one you're on), though another tab on the same address is.
   static func build(
     query raw: String, tabs: [RayCoreTab], active: RayCoreTab?, history: [HistoryItem], searches: [String],
-    actions: () -> [BarAction] = { [] },
+    bookmarks: [BookmarkItem] = [], actions: () -> [BarAction] = { [] },
     settings: (String) -> [(target: SettingsTarget, exact: Bool)] = { _ in [] }, frecency: (String) -> Double = { _ in 0 },
     favicon: (String) -> NSImage? = { _ in nil }, name: (RayCoreTab) -> String? = { _ in nil }
   ) -> [Suggestion] {
@@ -293,12 +313,32 @@ enum Suggestions {
         row: tabSuggestion(tab, name: own), url: tab.url, match: match.score, strong: match.strong,
         frecency: frecency(tab.url) + openTabFrecency))
     }
-    // The current page's history entry goes with its tab (it's open), so it never comes back as a history row.
+    // The current page's history entry goes with its tab (it's open), so it never comes back as a history row. A
+    // bookmarked page is one row, its bookmark's (found by either title), ranked with its visits and a bookmark's
+    // lift; one never visited still shows.
+    let marked = Dictionary(bookmarks.map { ($0.url, $0) }) { first, _ in first }
+    var seenBookmarks = Set<String>()
     for entry in history where !openURLs.contains(entry.url) {
-      guard let match = match(tokens, query: needle, title: entry.titleLower, url: entry.urlLower) else { continue }
+      let bookmark = marked[entry.url]
+      let titles = [bookmark?.titleLower, entry.titleLower].compactMap { $0 }
+      guard let match = titles.compactMap({ match(tokens, query: needle, title: $0, url: entry.urlLower) })
+        .max(by: { $0.score < $1.score }) else { continue }
+      if let bookmark {
+        seenBookmarks.insert(bookmark.url)
+        pages.append(Page(
+          row: bookmarkSuggestion(bookmark, favicon: favicon), url: entry.url, match: match.score, strong: match.strong,
+          frecency: entry.frecency + bookmarkFrecency))
+      } else {
+        pages.append(Page(
+          row: historySuggestion(entry, favicon: favicon), url: entry.url, match: match.score, strong: match.strong,
+          frecency: entry.frecency))
+      }
+    }
+    for bookmark in bookmarks where !openURLs.contains(bookmark.url) && seenBookmarks.insert(bookmark.url).inserted {
+      guard let match = match(tokens, query: needle, title: bookmark.titleLower, url: bookmark.urlLower) else { continue }
       pages.append(Page(
-        row: historySuggestion(entry, favicon: favicon), url: entry.url, match: match.score, strong: match.strong,
-        frecency: entry.frecency))
+        row: bookmarkSuggestion(bookmark, favicon: favicon), url: bookmark.url, match: match.score, strong: match.strong,
+        frecency: bookmarkFrecency))
     }
     pages.sort { $0.rank > $1.rank }
 
@@ -518,6 +558,10 @@ enum Suggestions {
     pageSuggestion(kind: .history(entry.url), url: entry.url, title: entry.title, icon: favicon(entry.url) ?? clock)
   }
 
+  private static func bookmarkSuggestion(_ bookmark: BookmarkItem, favicon: (String) -> NSImage?) -> Suggestion {
+    pageSuggestion(kind: .bookmark(bookmark.url), url: bookmark.url, title: bookmark.title, icon: favicon(bookmark.url) ?? globe)
+  }
+
   private static func host(of url: String) -> String { AddressInput.host(of: url) }
 
   /// Whether an address is its site's front page: no path but "/", no query.
@@ -538,7 +582,7 @@ enum Suggestions {
   private static func same(_ a: Suggestion, _ b: Suggestion) -> Bool {
     switch (a.kind, b.kind) {
     case let (.tab(x), .tab(y)): return x === y
-    case let (.history(x), .history(y)): return x == y
+    case let (.history(x), .history(y)), let (.bookmark(x), .bookmark(y)): return x == y
     default: return false
     }
   }

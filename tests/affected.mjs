@@ -12,7 +12,7 @@ const permissions = ["permission", "permission-allow"];
 const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-switch-to-tab", "bar-history",
   "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions", "bar-search-google", "bar-actions",
   "bar-ranking", "bar-sites", "settings-bar",
-  "search-engine", "search-suggestions-off", "site-search"];
+  "search-engine", "search-suggestions-off", "site-search", "bookmarks"];
 const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];
 // Folders in Pinned and Today (Today's are Chrome tab groups), their icon and Change Icon.
@@ -156,7 +156,7 @@ export const areas = {
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
   "Host/SidebarView.swift": [...drag, ...folders, "tile-hover", "row-hover-close", "favorites", "pin-unload-restore",
     "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment", "tab-rename",
-    "settings-sidebar-button", "settings-fade-unloaded", "row-menus"],
+    "settings-sidebar-button", "settings-fade-unloaded", "row-menus", "bookmarks"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
   // Also where Change Icon… points, and the inline field for Rename… and Edit Pinned Page › Edit….
   "Host/SidebarView.swift#Folder motion": [...folders, ...drag, "tab-rename", "row-menus"],
@@ -228,7 +228,11 @@ export const areas = {
   "Host/Suggestions.swift": [...commandBar, "tab-rename"],
   // The command bar's action rows: menu commands by name (they run through the menu's own validation and selectors).
   "Host/BarActions.swift": [...commandBar, "page-commands", "copy-url"],
-  "Host/Downloads.swift": ["downloads", "download-insecure-blocked"],
+  "Host/Downloads.swift": ["downloads", "download-insecure-blocked", "bookmarks"],
+  // Bookmarks: the store and the menu bar's menu, the panel, and the window's part (open, pin, Open All, ⌘D's twin).
+  "Host/Bookmarks.swift": ["bookmarks"],
+  "Host/BookmarksPanel.swift": ["bookmarks"],
+  "Host/BrowserWindowController.swift#Bookmarks": ["bookmarks"],
   "Host/Extensions.swift": ["extensions", "extension-prompt", "site-controls", "panels"],
   "Host/FindBar.swift": ["find-in-page", "notes"],
   "Host/PageContainerView.swift": pageSurface,
@@ -258,6 +262,7 @@ export const areas = {
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
+  "Host/TestCommands.swift#Bookmarks": ["bookmarks"],
   "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
     "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes",

@@ -72,6 +72,12 @@ enum BarActions {
     #selector(AppController.zoomIn(_:)): Extra(symbol: "plus.magnifyingglass"),
     #selector(AppController.zoomOut(_:)): Extra(symbol: "minus.magnifyingglass"),
     #selector(AppController.showDownloads(_:)): Extra(symbol: "arrow.down.circle", synonyms: ["show downloads"]),
+    #selector(AppController.bookmarkTab(_:)): Extra(
+      symbol: "bookmark", synonyms: ["bookmark", "add bookmark", "bookmark page"]),
+    #selector(AppController.bookmarkAllTabs(_:)): Extra(symbol: "bookmark"),
+    #selector(AppController.showBookmarks(_:)): Extra(symbol: "book", synonyms: ["bookmarks", "open bookmarks"]),
+    #selector(AppController.bookmarkManager(_:)): Extra(
+      symbol: "books.vertical", synonyms: ["manage bookmarks", "edit bookmarks", "all bookmarks"]),
     #selector(AppController.toggleDevTools(_:)): Extra(
       symbol: "hammer", synonyms: ["devtools", "inspect", "inspector", "console"]),
     #selector(AppController.viewSource(_:)): Extra(
