@@ -5802,7 +5802,7 @@ const checks = {
       await run(first, "general accept no");
       await run(first, "onboarding next");
       o = await reach(first, "default browser step", (o) => o.step === "defaultBrowser");
-      assert(o.dot === 4 && o.primary === "Make Default" && o.back === "Not now" && o.title === "Open links in Ray?", `default browser step ${JSON.stringify(o)}`);
+      assert(o.dot === 4 && o.primary === "Make Default" && o.back === "Not Now" && o.title === "Open links in Ray?", `default browser step ${JSON.stringify(o)}`);
       await snap(first, "5b-default-browser");
       await run(first, "onboarding next");
       o = await reach(first, "theme after declining", (o) => o.step === "theme");
@@ -5878,12 +5878,12 @@ const checks = {
       assert(againRow("pinnedTabs").count === 0 && againRow("pinnedTabs").existing === 6 && againRow("pinnedTabs").text === "6 already here"
         && againRow("favorites").text === "3 already here", `already here rows ${JSON.stringify(o.rows)}`);
       await snap(second, "8c-already-here");
-      // Not now: on to the colour without asking macOS.
+      // Not Now: on to the colour without asking macOS.
       await run(second, "onboarding next");
       await reach(second, "default browser step again", (o) => o.step === "defaultBrowser");
       await run(second, "onboarding back");
       await reach(second, "theme again", (o) => o.step === "theme");
-      assert((await probe(second)).general.defaultRequests.length === 0, "Not now asked macOS");
+      assert((await probe(second)).general.defaultRequests.length === 0, "Not Now asked macOS");
       await run(second, "onboarding next");
       await reach(second, "keys again", (o) => o.step === "keys");
       await run(second, "onboarding finish");

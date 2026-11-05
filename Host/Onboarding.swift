@@ -379,7 +379,7 @@ final class OnboardingView: NSView {
     switch step {
     case .welcome, .importing: nil
     case .source: mode == .importOnly ? "Cancel" : "Back"
-    case .defaultBrowser: "Not now"
+    case .defaultBrowser: "Not Now"
     default: "Back"
     }
   }
@@ -416,7 +416,7 @@ final class OnboardingView: NSView {
   private func backPressed() {
     guard !closing, backTitle != nil else { return }
     if step == .source && mode == .importOnly { return close() }
-    // "Not now": on without asking (the import behind it can't be gone back to).
+    // "Not Now": on without asking (the import behind it can't be gone back to).
     if step == .defaultBrowser { return go(to: .theme) }
     goBack()
   }
@@ -783,6 +783,8 @@ private enum OnboardingColors {
   static let card = dynamic(dark: NSColor(white: 0.16, alpha: 1), light: NSColor(white: 0.985, alpha: 1))
   static let idleDot = dynamic(dark: NSColor(white: 1, alpha: 0.2), light: NSColor(white: 0, alpha: 0.16))
   static let boxOff = dynamic(dark: NSColor(white: 1, alpha: 0.3), light: NSColor(white: 0, alpha: 0.25))
+  /// An app's tile in the default browser step's picture.
+  static let appTile = dynamic(dark: NSColor(white: 0.26, alpha: 1), light: .white)
 
   /// The profile's colour for marks on the card (dots, ticks, the progress line, links, tints): the colour itself,
   /// or as near to it as stays visible there (a black profile colour on the dark card). Filled buttons keep the
@@ -1912,7 +1914,7 @@ fileprivate final class ProgressRowView: NSView {
 
 // MARK: Open links in Ray
 
-/// Arc's and Dia's step: links from other apps landing in Ray. Make Default (the footer's) asks macOS; Not now goes on.
+/// Arc's and Dia's step: links from other apps landing in Ray. Make Default (the footer's) asks macOS; Not Now goes on.
 fileprivate final class DefaultBrowserStepView: OnboardingStepView {
   private let art = LinksArt()
 
@@ -1953,7 +1955,7 @@ fileprivate final class LinksArt: NSView {
     layer?.cornerRadius = 12
     for (tile, glyph) in zip(tiles, glyphs) {
       tile.wantsLayer = true
-      tile.layer?.cornerRadius = 13
+      tile.layer?.cornerRadius = 12
       tile.layer?.shadowOpacity = 0.12
       tile.layer?.shadowRadius = 4
       tile.layer?.shadowOffset = CGSize(width: 0, height: -1)
@@ -1976,8 +1978,7 @@ fileprivate final class LinksArt: NSView {
 
   override func updateLayer() {
     layer?.backgroundColor = OnboardingColors.accent(0.1, dark: 0.18).cgColor
-    let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    for tile in tiles { tile.layer?.backgroundColor = (dark ? NSColor(white: 0.26, alpha: 1) : .white).cgColor }
+    for tile in tiles { tile.layer?.backgroundColor = OnboardingColors.appTile.cgColor }
   }
 
   override func layout() {

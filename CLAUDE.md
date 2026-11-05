@@ -393,7 +393,7 @@ publicly or create accounts.
   only `RAY_IMPORT_SOURCE_DIR` (fixtures) and `RAY_IMPORT_SECRET`, never the Keychain (checks `import-browser`).
 - `Onboarding`: the first-run overlay (welcome, where you're coming from, what to bring, moving in, open links in Ray
   (`defaultBrowser`: Make Default is `GeneralSystem.makeDefaultBrowser`, the flow moves on at macOS's answer; "Not
-  now" skips; left out when Ray already is the default), your colour, three keys), shown until "Start browsing" sets `onboarded` in Settings.json: on a new data dir and, once, on every
+  Now" skips; left out when Ray already is the default), your colour, three keys), shown until "Start browsing" sets `onboarded` in Settings.json: on a new data dir and, once, on every
   profile from Ray 0.2.0 and earlier (no key),
   File › Import from Browser… (import steps only) and Ray › Show Welcome Again (⌥, also ⌥⌘,). Test builds show it
   only with `RAY_ONBOARDING=1` (check `onboarding`). `ProfileColor.visible(on:)` keeps accent marks at 3:1 against
