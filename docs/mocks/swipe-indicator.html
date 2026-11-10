@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Swipe Indicator</title>
+<style>
+:root, [data-theme="light"] {
+  --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --hair: rgba(0,0,0,.08);
+  --side: #E8E5EF; --sideInk: #3A3A3F; --row: rgba(0,0,0,.06); --page: #FFFFFF; --line: #EDEDF0; --line2: #F3F3F5;
+  --chip: #FFFFFF; --glass: rgba(255,255,255,.62); --rim: rgba(0,0,0,.125); --chev: rgba(0,0,0,.85);
+  --wash: rgba(255,255,255,.4); --track: rgba(0,0,0,.10); --gapChip: rgba(0,0,0,.07);
+  --chipShadow: 0 2px 8px rgba(0,0,0,.20);
+  --shadow: 0 1px 1.5px rgba(0,0,0,.05), 0 6px 14px -4px rgba(0,0,0,.08), 0 22px 48px -12px rgba(0,0,0,.22);
+  --accent: #8257E5; --onAccent: #fff;
+}
+[data-theme="dark"] {
+  --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09);
+  --side: #1D1B22; --sideInk: #D8D6DE; --row: rgba(255,255,255,.07); --page: #242428; --line: #34343A; --line2: #2C2C31;
+  --chip: #28282D; --glass: rgba(44,44,50,.62); --rim: rgba(255,255,255,.15); --chev: rgba(255,255,255,.85);
+  --wash: rgba(255,255,255,0); --track: rgba(255,255,255,.14); --gapChip: rgba(255,255,255,.09);
+  --chipShadow: 0 2px 8px rgba(0,0,0,.25);
+  --shadow: 0 1px 1.5px rgba(0,0,0,.3), 0 6px 14px -4px rgba(0,0,0,.3), 0 24px 52px -12px rgba(0,0,0,.6);
+  --accent: #A486F0; --onAccent: #000;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px 64px; }
+h1 { font-size: 22px; font-weight: 600; margin: 26px 0 4px; letter-spacing: -.01em; }
+.sub { color: var(--ink2); margin: 0 0 14px; max-width: 760px; }
+h2 { font-size: 17px; font-weight: 600; margin: 34px 0 2px; }
+h3 { font-size: 13px; font-weight: 600; margin: 26px 0 8px; }
+.bar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--desk) 86%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 10px 0; border-bottom: 1px solid var(--hair); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.row + .row { margin-top: 6px; }
+.lab { color: var(--ink2); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; min-width: 58px; }
+button.t { font: inherit; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--chip); border: 1px solid var(--hair); border-radius: 7px; padding: 4px 9px; cursor: pointer; white-space: nowrap; }
+button.t:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+button.t[aria-pressed="true"] { background: var(--accent); color: var(--onAccent); border-color: transparent; }
+input[type=range] { accent-color: var(--accent); width: 180px; }
+.pv { font-variant-numeric: tabular-nums; color: var(--ink2); font-size: 12px; min-width: 64px; }
+
+/* window */
+.win { display: flex; color: var(--ink); background: var(--side); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; border: 1px solid var(--hair); }
+.stage .win { height: 460px; margin-top: 14px; }
+.side { width: 200px; flex: none; padding: 40px 8px 8px; display: flex; flex-direction: column; gap: 2px; }
+.side .addr { height: 32px; border-radius: 9px; background: var(--row); margin: 0 2px 10px; }
+.side .r { height: 32px; border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--sideInk); font-size: 12.5px; }
+.side .r i { width: 16px; height: 16px; border-radius: 4px; background: var(--row); flex: none; }
+.side .r.on { background: var(--page); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.pw { position: relative; flex: 1; overflow: hidden; padding: 8px 8px 8px 0; }
+.mini .pw { padding: 6px; }
+.page { position: relative; height: 100%; border-radius: 8px; overflow: hidden; background: var(--page); box-shadow: 0 0 0 .5px var(--hair); will-change: transform; }
+.content { padding: 22px 28px; }
+.content .hdr { height: 12px; width: 32%; border-radius: 4px; background: var(--line); margin-bottom: 18px; }
+.content .ttl { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin: 0 0 12px; }
+.content .img { height: 120px; border-radius: 10px; margin: 6px 0 16px; }
+.content .ln { height: 9px; border-radius: 4px; background: var(--line2); margin: 9px 0; }
+.mini .content { padding: 12px 14px; }
+.mini .content .ttl { font-size: 13px; margin-bottom: 7px; }
+.mini .content .img { height: 46px; border-radius: 6px; margin: 4px 0 8px; }
+.mini .content .ln { height: 6px; margin: 6px 0; }
+
+/* indicator */
+.clip { position: absolute; inset: 8px 8px 8px 0; overflow: hidden; border-radius: 8px; pointer-events: none; }
+.mini .clip { inset: 6px; }
+.ind { position: absolute; top: 50%; pointer-events: none; transform-origin: center; }
+.chip { position: relative; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+  transition: width .2s cubic-bezier(.3,1.45,.5,1), height .2s cubic-bezier(.3,1.45,.5,1), background-color .16s ease; }
+.chip .glass { position: absolute; inset: 0; border-radius: inherit; background: var(--glass); backdrop-filter: blur(18px) saturate(1.6); -webkit-backdrop-filter: blur(18px) saturate(1.6); }
+.chip .wash { position: absolute; inset: 0; border-radius: inherit; background: var(--wash); opacity: 0; transition: opacity .18s ease; }
+.chip .rim { position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--rim); }
+.chip svg { position: relative; fill: none; stroke-linecap: round; stroke-linejoin: round;
+  transition: width .2s cubic-bezier(.3,1.45,.5,1), height .2s cubic-bezier(.3,1.45,.5,1), opacity .18s ease, stroke .16s ease; }
+.shadowed { box-shadow: var(--chipShadow); }
+.ring { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%) rotate(-90deg); overflow: visible; }
+.ring circle { fill: none; }
+@keyframes pop { 0% { transform: scale(1) } 40% { transform: scale(1.16) } 100% { transform: scale(1) } }
+.popping { animation: pop .28s cubic-bezier(.3,1.3,.5,1); }
+.haptic { position: absolute; right: 16px; top: 14px; font-size: 11px; font-weight: 600; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--page)); border-radius: 20px; padding: 3px 9px; opacity: 0; transition: opacity .5s ease; }
+.haptic.on { opacity: 1; transition: none; }
+
+/* grid */
+.look { margin-top: 10px; }
+.look p { color: var(--ink2); margin: 2px 0 12px; max-width: 780px; }
+table.g { border-collapse: separate; border-spacing: 10px 8px; margin: 0 -10px; }
+table.g th { font-size: 11px; font-weight: 600; color: var(--ink2); text-align: left; text-transform: uppercase; letter-spacing: .05em; }
+table.g td.rl { font-size: 11.5px; color: var(--ink2); white-space: nowrap; padding-right: 2px; }
+.mini { width: 230px; height: 142px; border-radius: 10px; }
+.mini .side { display: none; }
+@media (max-width: 820px) { .mini { width: 150px; height: 110px; } table.g td.rl { white-space: normal; } .side { width: 120px; } }
+.note { color: var(--ink2); max-width: 780px; }
+.note b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="bar"><div class="wrap">
+  <div class="row"><span class="lab">Look</span>
+    <button class="t" data-look="A">A · Dia chip</button><button class="t" data-look="B">B · Arc dot</button><button class="t" data-look="C">C · Page nudge</button>
+    <span style="width:14px"></span><span class="lab">Theme</span>
+    <button class="t" data-th="light">Light</button><button class="t" data-th="dark">Dark</button>
+  </div>
+  <div class="row"><span class="lab">Swipe</span>
+    <button class="t" id="play">Pause</button>
+    <button class="t" data-edge="back">← Back</button><button class="t" data-edge="fwd">Forward →</button>
+    <input type="range" id="prog" min="0" max="100" value="0"><span class="pv" id="pv">0 %</span>
+    <button class="t" id="rel">Let go</button>
+    <button class="t" id="rm">Reduce Motion</button>
+  </div>
+</div></div>
+
+<div class="wrap">
+  <h1>Swipe indicator</h1>
+  <p class="sub">Two fingers on the trackpad to go back or forward. Today Chrome draws its own dark half-circle; Ray would hide it and draw one of these over the page. 100 % is the point where letting go navigates. Drag the slider to track by hand, then Let go.</p>
+
+  <div class="stage" id="stage"></div>
+
+  <h2>States</h2>
+  <p class="note">Resting: the fingers just started. Tracking: on the way. Armed: letting go now navigates (haptic here).</p>
+  <div id="grid"></div>
+
+  <h3>Notes</h3>
+  <p class="note"><b>All three:</b> Ray's own layers over the page, below a peeking sidebar; the sidebar's spring for every settle; a light haptic at the point of no return; Reduce Motion fades in place with no slide or pop. Chrome's gesture rules stay as they are (threshold, vertical cancel, Swipe between pages setting).</p>
+  <p class="note"><b>Not here:</b> Dia's hold-to-list (keep holding when armed to pick an older page). Chrome's swiper cancels on vertical motion, so it needs Ray's own gesture code: a later step.</p>
+</div>
+
+<script>
+const LOOKS = {
+  A: { name: "A · Dia chip", text: "Dia's. A frosted 72 pt circle with a chevron slides in with the fingers and stops 14 pt from the edge. Armed, it grows to 82 pt and the chevron goes solid. No accent colour. Let go: it shrinks away as the page changes." },
+  B: { name: "B · Arc dot", text: "Arc-like. A small 40 pt glass dot with an arrow; a ring in your profile colour fills as you swipe. Armed, the dot fills with the colour and pops. Let go: it swells and fades." },
+  C: { name: "C · Page nudge", text: "The page itself slides up to 44 pt with the fingers (its layer, not its frame) and a small chevron sits in the gap; it fills with your profile colour when armed. Let go: the page springs back. Most physical, most work." },
+};
+const CHEV = "M15 5 L8 12 L15 19", ARROW = "M19 12 H5 M11 6 L5 12 L11 18";
+
+function frame(mini) {
+  const w = document.createElement("div");
+  w.className = "win" + (mini ? " mini" : "");
+  w.innerHTML = `<div class="side"><div class="addr"></div>${["Inbox","Calendar","Docs","Design review","Recipes"].map((t,i)=>`<div class="r${i==3?" on":""}"><i></i>${t}</div>`).join("")}</div>
+  <div class="pw"><div class="page"><div class="content"></div></div>
+    <div class="clip"><div class="ind"><svg class="ring"><circle class="tr"/><circle class="fl"/></svg><div class="chip"><div class="glass"></div><div class="wash"></div><div class="rim"></div><svg viewBox="0 0 24 24"><path/></svg></div></div></div>
+    <div class="haptic">Haptic</div></div>`;
+  return w;
+}
+const PAGES = [
+  { t: "Design review", hue: 262 },
+  { t: "Recipes: autumn soups", hue: 28 },
+];
+function setPage(w, i) {
+  const p = PAGES[i % PAGES.length];
+  w.querySelector(".content").innerHTML = `<div class="hdr"></div><div class="ttl">${p.t}</div>
+    <div class="img" style="background:linear-gradient(120deg,hsl(${p.hue} 70% 62%),hsl(${p.hue+40} 75% 70%))"></div>
+    ${[96,88,92,70,94,60].map(x=>`<div class="ln" style="width:${x}%"></div>`).join("")}`;
+}
+
+// st: { look, edge, p (0..1), armed, exit (0..1), commit, rm, s }
+function render(w, st) {
+  const s = st.s || 1, back = st.edge === "back", p = Math.max(0, Math.min(1, st.p)), e = st.exit || 0;
+  const ind = w.querySelector(".ind"), chip = ind.querySelector(".chip"), svg = chip.querySelector("svg"), path = svg.querySelector("path");
+  const ring = ind.querySelector(".ring"), glass = chip.querySelector(".glass"), wash = chip.querySelector(".wash"), rim = chip.querySelector(".rim");
+  const page = w.querySelector(".page");
+  const visible = st.p > 0 || e > 0;
+  ind.style.visibility = visible ? "visible" : "hidden";
+  ind.style.left = ind.style.right = "auto";
+  svg.style.transform = back ? "" : "scaleX(-1)";
+  page.style.transform = "";
+  ring.style.display = "none";
+  chip.classList.remove("shadowed");
+  glass.style.display = rim.style.display = "";
+  chip.style.backgroundColor = "transparent";
+  let size, x, op = 1, scale = 1, ic, stroke = "var(--chev)", sw = 2.6, icOp = 1;
+
+  if (st.look === "A") {
+    size = (st.armed ? 82 : 72) * s;
+    const inset = 14 * s;
+    x = st.rm ? inset : p * (size + inset) - size;
+    op = st.rm ? p : 1;
+    if (st.commit) { op *= 1 - e; scale = 1 - e * .99; }
+    else if (e) op *= 1 - e;
+    ic = (st.armed ? 34 : 28) * s; icOp = st.armed ? 1 : .5; path.setAttribute("d", CHEV);
+    wash.style.opacity = st.armed ? 1 : 0;
+    chip.classList.add("shadowed");
+  } else if (st.look === "B") {
+    size = 40 * s;
+    const inset = 16 * s;
+    x = st.rm ? inset : p * (size + inset) - size;
+    op = st.rm ? p : Math.min(1, p * 4);
+    if (st.commit) { op *= 1 - e; scale = 1 + e * .18; }
+    else if (e) op *= 1 - e;
+    ic = 19 * s; sw = 2.4; path.setAttribute("d", ARROW);
+    wash.style.opacity = 0;
+    chip.classList.add("shadowed");
+    if (st.armed) { glass.style.display = rim.style.display = "none"; chip.style.backgroundColor = "var(--accent)"; stroke = "var(--onAccent)"; }
+    else {
+      stroke = "var(--ink2)";
+      const r = size / 2 + 4 * s, d = 2 * (r + 2 * s), c = 2 * Math.PI * r;
+      ring.style.display = ""; ring.setAttribute("width", d); ring.setAttribute("height", d);
+      for (const k of ring.querySelectorAll("circle")) { k.setAttribute("cx", d/2); k.setAttribute("cy", d/2); k.setAttribute("r", r); k.setAttribute("stroke-width", 2.5 * s); }
+      ring.querySelector(".tr").setAttribute("stroke", "var(--track)");
+      const fl = ring.querySelector(".fl");
+      fl.setAttribute("stroke", "var(--accent)"); fl.setAttribute("stroke-linecap", "round");
+      fl.setAttribute("stroke-dasharray", `${c * p} ${c}`);
+      if (!back) ring.style.transform = "translate(-50%,-50%) rotate(-90deg) scaleY(-1)"; else ring.style.transform = "";
+    }
+  } else {
+    const max = 44 * s;
+    let n = st.rm ? 0 : max * (1 - Math.pow(1 - p, 2));
+    if (e) n *= 1 - e;
+    page.style.transform = `translateX(${back ? n : -n}px)`;
+    page.style.boxShadow = n > 0.5 ? "0 0 0 .5px var(--hair), 0 4px 18px rgba(0,0,0,.12)" : "";
+    size = 30 * s;
+    x = st.rm ? 10 * s : Math.max(2 * s, (n - size) / 2);
+    op = st.rm ? p : Math.min(1, p * 1.6);
+    scale = st.rm ? 1 : .55 + .45 * p;
+    if (e) op *= 1 - e;
+    glass.style.display = rim.style.display = "none";
+    chip.style.backgroundColor = st.armed ? "var(--accent)" : "var(--gapChip)";
+    stroke = st.armed ? "var(--onAccent)" : "var(--ink2)";
+    ic = 16 * s; sw = 2.6; path.setAttribute("d", CHEV);
+    wash.style.opacity = 0;
+  }
+
+  chip.style.width = chip.style.height = size + "px";
+  svg.style.width = svg.style.height = ic + "px";
+  svg.style.opacity = icOp;
+  svg.style.stroke = stroke; svg.style.strokeWidth = sw;
+  if (back) ind.style.left = x + "px"; else ind.style.right = x + "px";
+  ind.style.opacity = op;
+  ind.style.transform = `translateY(-50%) scale(${scale})`;
+  // pop for B when armed flips on
+  if (st.look === "B" && st.armed && !w._armed && !st.rm && !st.static) { chip.classList.remove("popping"); void chip.offsetWidth; chip.classList.add("popping"); }
+  if (st.armed && !w._armed && !st.static) { const h = w.querySelector(".haptic"); h.classList.add("on"); setTimeout(() => h.classList.remove("on"), 60); }
+  w._armed = st.armed;
+}
+
+// ---------- live stage ----------
+const root = document.documentElement;
+const stage = document.getElementById("stage");
+const big = frame(false); stage.appendChild(big);
+let pageIx = 0; setPage(big, pageIx);
+const S = { look: "A", edge: "back", p: 0, armed: false, exit: 0, commit: false, rm: false };
+const draw = () => { render(big, S); document.getElementById("prog").value = Math.round(Math.min(1, S.p) * 100); document.getElementById("pv").textContent = Math.round(Math.min(1, S.p) * 100) + " %"; };
+
+const frameP = () => new Promise(r => requestAnimationFrame(r));
+let token = 0;
+async function tween(ms, f, ease = t => t, tk) {
+  const t0 = performance.now();
+  for (;;) { if (tk !== token) throw 0; const t = Math.min(1, (performance.now() - t0) / ms); f(ease(t)); if (t >= 1) return; await frameP(); }
+}
+async function spring(from, to, f, tk) {           // Ray's sidebar spring: response 0.26 s, damping 0.86
+  const k = Math.pow(2 * Math.PI / .26, 2), c = 4 * Math.PI * .86 / .26;
+  let x = from, v = 0, last = performance.now();
+  for (;;) {
+    await frameP(); if (tk !== token) throw 0;
+    const now = performance.now(); let dt = Math.min(.032, (now - last) / 1000); last = now;
+    while (dt > 0) { const h = Math.min(dt, 1/240); v += (-k * (x - to) - c * v) * h; x += v * h; dt -= h; }
+    if (Math.abs(x - to) < .002 && Math.abs(v) < .01) { f(to); return; }
+    f(x);
+  }
+}
+const sleep = (ms, tk) => new Promise((r, j) => setTimeout(() => tk === token ? r() : j(0), ms));
+const easeInOut = t => t < .5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2, easeIn = t => t*t, easeOut = t => 1 - (1-t)*(1-t);
+
+function track(p) { S.p = p; S.armed = p >= 1; S.exit = 0; S.commit = false; draw(); }
+async function release(tk) {
+  if (S.armed) {
+    S.commit = true;
+    pageIx++; setPage(big, pageIx);
+    await tween(S.look === "C" ? 260 : 200, t => { S.exit = t; draw(); }, S.look === "C" ? easeOut : easeIn, tk);
+  } else if (S.rm) {
+    await tween(160, t => { S.exit = t; draw(); }, easeOut, tk);
+  } else {
+    await spring(S.p, 0, x => { S.p = Math.max(0, x); draw(); }, tk);
+  }
+  S.p = 0; S.exit = 0; S.armed = false; S.commit = false; big._armed = false; draw();
+}
+
+let playing = true;
+async function loop() {
+  const tk = ++token;
+  try {
+    for (;;) {
+      for (const edge of ["back", "fwd"]) {
+        S.edge = edge; syncButtons();
+        await tween(620, t => track(.55 * t), easeInOut, tk); await sleep(260, tk); await release(tk); await sleep(650, tk);
+        await tween(700, t => track(t), easeInOut, tk); await sleep(500, tk); await release(tk); await sleep(1000, tk);
+      }
+    }
+  } catch (_) {}
+}
+function stopPlay() { playing = false; token++; document.getElementById("play").textContent = "Play"; }
+
+function syncButtons() {
+  document.querySelectorAll("[data-look]").forEach(b => b.setAttribute("aria-pressed", b.dataset.look === S.look));
+  document.querySelectorAll("[data-edge]").forEach(b => b.setAttribute("aria-pressed", b.dataset.edge === S.edge));
+  document.querySelectorAll("[data-th]").forEach(b => b.setAttribute("aria-pressed", b.dataset.th === root.dataset.theme));
+  document.getElementById("rm").setAttribute("aria-pressed", S.rm);
+}
+document.querySelectorAll("[data-look]").forEach(b => b.onclick = () => { S.look = b.dataset.look; big._armed = false; syncButtons(); draw(); renderGrid(); });
+document.querySelectorAll("[data-edge]").forEach(b => b.onclick = () => { stopPlay(); S.edge = b.dataset.edge; track(S.p); syncButtons(); });
+document.querySelectorAll("[data-th]").forEach(b => b.onclick = () => { root.dataset.theme = b.dataset.th; syncButtons(); });
+document.getElementById("rm").onclick = () => { S.rm = !S.rm; syncButtons(); draw(); renderGrid(); };
+document.getElementById("play").onclick = () => { if (playing) stopPlay(); else { playing = true; document.getElementById("play").textContent = "Pause"; track(0); loop(); } };
+document.getElementById("prog").oninput = e => { stopPlay(); track(e.target.value / 100); };
+document.getElementById("rel").onclick = () => { stopPlay(); const tk = ++token; release(tk).catch(() => {}); };
+
+// ---------- states grid ----------
+const grid = document.getElementById("grid");
+function renderGrid() {
+  grid.innerHTML = "";
+  for (const look of ["A", "B", "C"]) {
+    const sec = document.createElement("div"); sec.className = "look";
+    sec.innerHTML = `<h3>${LOOKS[look].name}</h3><p>${LOOKS[look].text}</p>`;
+    const tb = document.createElement("table"); tb.className = "g";
+    tb.innerHTML = `<tr><th></th><th>Resting</th><th>Tracking</th><th>Armed</th></tr>`;
+    for (const th of ["light", "dark"]) for (const edge of ["back", "fwd"]) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="rl">${th === "light" ? "Light" : "Dark"} · ${edge === "back" ? "Back (left)" : "Forward (right)"}</td>`;
+      for (const [p, armed] of [[.25, false], [.7, false], [1, true]]) {
+        const td = document.createElement("td"), w = frame(true);
+        w.dataset.theme = th; setPage(w, edge === "back" ? 0 : 1);
+        td.appendChild(w); tr.appendChild(td);
+        const small = matchMedia("(max-width: 820px)").matches;
+        render(w, { look, edge, p, armed, rm: S.rm, s: small ? .55 : .72, static: true });
+      }
+      tb.appendChild(tr);
+    }
+    sec.appendChild(tb); grid.appendChild(sec);
+  }
+}
+
+root.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+syncButtons(); draw(); renderGrid(); loop();
+</script>
+</body>
+</html>

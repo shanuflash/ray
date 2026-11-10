@@ -1022,7 +1022,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     panels.onChange = { [weak self] in self?.logState("panels") }
     panels.onOpen = { [weak self] frame in self?.notes.dismiss(overlapping: frame) }
     // A hovered link's address belongs to the tab left.
-    panels.onTabSwitch = { [weak self] in self?.linkPreview.hide() }
+    panels.onTabSwitch = { [weak self] in
+      self?.linkPreview.hide()
+      self?.swipeIndicator.hide()
+    }
     return panels
   }()
 
@@ -1052,6 +1055,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let clearance = findBar.map { $0.frame.height + 12 - Notes.inset + 8 } ?? 0
     notes.layout(in: pages.frame, topTrailingClearance: max(0, clearance))
     linkPreview.layout(in: pages.frame)
+    swipeIndicator.layout(in: pages.frame, radius: pages.cornerRadius)
   }
 
   // MARK: Link preview
@@ -1070,6 +1074,21 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard !closing, tab === activeTab else { return }
     linkPreview.status(text)
   }
+
+  // MARK: Swipe indicator
+
+  /// The back/forward swipe's chip over the page (`SwipeIndicator.swift`), fed by Chrome's swiper.
+  private(set) lazy var swipeIndicator: SwipeIndicator = {
+    let indicator = SwipeIndicator(host: root) { [weak self] in self?.floating }
+    indicator.onChange = { [weak self] in self?.logState("swipeIndicator") }
+    indicator.layout(in: pages.frame, radius: pages.cornerRadius)
+    return indicator
+  }()
+
+  #if RAY_TEST_HOOKS
+  /// The active tab's page view, where Chrome's swiper puts its overlay.
+  var activePageView: NSView? { activeTab?.view }
+  #endif
 
   // MARK: Find in page
 
@@ -3229,6 +3248,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "pasteboard": (SettingsPasteboard.isConcealed ? "<concealed>" : Self.pasteboard.string(forType: .string)) ?? NSNull(),
       "notes": notes.state,
       "linkPreview": linkPreview.debug,
+      "swipeIndicator": swipeIndicator.debug,
       "historyList": historyListState,
       "panels": panels.state,
       "noteText": notes.text,

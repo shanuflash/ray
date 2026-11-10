@@ -91,7 +91,9 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
     0.2.44-nightly.3, `docs/ARDIA-WATCH.md`).
 
 19. Back and Forward history lists: the buttons' lists are done; left is Dia's two-finger swipe-and-hold list (it
-    opens upward under the fingers; Ardia 0.2.44-nightly.6, `docs/ARDIA-WATCH.md` "Ray should" 16).
+    opens upward under the fingers; Ardia 0.2.44-nightly.6, `docs/ARDIA-WATCH.md` "Ray should" 16). The swipe's chip
+    is Ray's (Dia's look) but Chrome still recognises the gesture, and Chrome's swiper cancels on vertical motion, so
+    the list needs Ray's own swipe code (Ardia's `ArdiaSwipe`).
 
 **Already working through Chrome's defaults:** right-click menus, spell check, `chrome://` pages.
 
@@ -373,6 +375,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
+| Back/forward swipe shows Dia's frosted chip with a chevron (grows and ticks once letting go navigates) instead of Chrome's dark half-circle | 2026-11-10, `feat: dia swipe chip` |
 | Arc's Tab to Search: the start of a site's name offers "Search YouTube  Tab" at the field's end; Tab scopes with a pill in the site's colour, a pulse of it and the row filled with it; Arc's built-in site searches (YouTube, Wikipedia, GitHub, Google Maps…) | 2026-11-10, `feat: arc tab to search` |
 | Command bar: ↑ ↓ and Tab put the chosen row in the field (a search's query, a page's address; menu commands and settings keep what you typed), Escape brings back what you typed, typing goes on from the field (Known limitation 42) | 2026-11-10, `feat: bar arrows fill field` |
 | Automatic picture in picture (Settings › Tabs, on by default): a playing video or a call pops out when you switch tabs or leave the window, and goes back when you return | 2026-11-10, `feat: auto picture in picture` |

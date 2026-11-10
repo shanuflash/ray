@@ -6986,6 +6986,68 @@ const checks = {
     await until("hidden on a tab switch", async () => !(await lp()).shown, 2000);
     await command(`linkpreview clear`);
   },
+  async "swipe-indicator"() {
+    // Chrome's own swipe overlay, driven on the active tab as its swiper would: Ray hides it and draws Dia's chip.
+    await goTo(`${origin}/h?step=1`, true);
+    await until("step 1", () => activeTabState()?.url.endsWith("/h?step=1"));
+    const { sessionId } = await session("/h?step=1");
+    await evaluate(sessionId, `location.href = "/h?step=2"`);
+    await until("step 2", () => activeTabState()?.url.endsWith("/h?step=2"));
+    await sleep(150);
+    const si = async () => { await command("state"); return state().swipeIndicator; };
+    const rect = (r) => r.split(",").map(Number);
+    let s = await si();
+    assert(s.hook && s.navigateHook, `hook not installed: ${JSON.stringify(s)}`);
+    const haptics = s.haptics;
+    // Back: off the page's left edge at no progress, Chrome's half-circle hidden.
+    await command("swipe start back");
+    s = await si();
+    assert(s.shown && s.direction === "back" && s.chromeHidden === true && s.steps[0] === "began back", `began ${JSON.stringify(s)}`);
+    assert(s.belowSidebar, "indicator above the floating sidebar");
+    const [px, py, pw, ph] = rect(s.page);
+    let [x, y, w] = rect(s.target);
+    assert(Math.abs(x - (px - 72)) < 1 && w === 72 && Math.abs(y - (py + ph / 2 - 36)) < 1, `resting at ${s.target} on ${s.page}`);
+    // Half way: 43 pt of its 86 in; not armed, no haptic.
+    await command("swipe progress 0.5");
+    s = await si();
+    [x] = rect(s.target);
+    assert(s.progress === 0.5 && !s.armed && Math.abs(x - (px + 0.5 * 86 - 72)) < 1 && s.haptics === haptics, `tracking ${JSON.stringify(s)}`);
+    assert(s.chromeHidden === true, "Chrome's overlay showed again on progress");
+    // Past the threshold: armed, 82 pt, 14 pt in, one haptic.
+    await command("swipe progress 1 finished");
+    s = await si();
+    [x, , w] = rect(s.target);
+    assert(s.armed && w === 82 && Math.abs(x - (px + 14)) < 1 && s.haptics === haptics + 1 && s.steps.includes("armed"), `armed ${JSON.stringify(s)}`);
+    // Let go: Chrome's delegate navigates (the page really goes back), then dismisses; the chip leaves.
+    await command("swipe navigate");
+    await command("swipe dismiss");
+    await until("went back", () => activeTabState()?.url.endsWith("/h?step=1"));
+    s = await si();
+    assert(s.steps.includes("committed"), `not committed: ${JSON.stringify(s.steps)}`);
+    await until("chip gone", async () => !(await si()).shown, 3000);
+    assert(state().swipeIndicator.steps.at(-1) === "gone", `steps ${state().swipeIndicator.steps}`);
+    // Forward, let go short of the threshold: cancelled at the right edge, no haptic.
+    await command("swipe start forward");
+    await command("swipe progress 0.4");
+    s = await si();
+    [x, , w] = rect(s.target);
+    assert(s.direction === "forward" && Math.abs(x + w - (px + pw - (0.4 * 86 - 72))) < 1, `forward at ${s.target} on ${s.page}`);
+    await command("swipe dismiss");
+    s = await si();
+    assert(s.steps.includes("cancelled") && !s.steps.includes("committed") && s.haptics === haptics + 1, `cancel ${JSON.stringify(s)}`);
+    await until("cancelled chip gone", async () => !(await si()).shown, 3000);
+    assert(activeTabState()?.url.endsWith("/h?step=1"), "a cancelled swipe navigated");
+    // Reduce Motion: it sits at its place and fades with the fingers.
+    await command("swipe reducemotion on");
+    await command("swipe start back");
+    await command("swipe progress 0.5");
+    s = await si();
+    [x] = rect(s.target);
+    assert(s.reduceMotion && Math.abs(x - (px + 14)) < 1 && Math.abs(s.alpha - 0.5) < 0.02, `reduce motion ${JSON.stringify(s)}`);
+    await command("swipe dismiss");
+    await command("swipe reducemotion system");
+    await until("reduce-motion chip gone", async () => !(await si()).shown, 3000);
+  },
   async "tab-sound"() {
     // A tab's sound mark: muting shows it (the engine's mute notice), the mark's click unmutes and it goes. Test
     // instances run with --mute-audio, which keeps a page from ever counting as audible, so the playing mark isn't

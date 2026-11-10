@@ -121,10 +121,11 @@ export const areas = {
   "Host/BrowserWindowController.swift#Password prompts": ["password-prompt", "autofill-prompt"],
   "Host/BrowserWindowController.swift#Autofill prompts": ["autofill-prompt", "password-prompt"],
   "Host/BrowserWindowController.swift#Page prompts": [...pagePrompts, "quit-with-downloads", "panels"],
-  "Host/BrowserWindowController.swift#Panels": ["panels", "site-controls", "link-preview"],
-  "Host/BrowserWindowController.swift#Notes": ["notes", "copy-url", "page-commands", "find-in-page", "link-preview"],
+  "Host/BrowserWindowController.swift#Panels": ["panels", "site-controls", "link-preview", "swipe-indicator"],
+  "Host/BrowserWindowController.swift#Notes": ["notes", "copy-url", "page-commands", "find-in-page", "link-preview", "swipe-indicator"],
   // The hovered link's address at the page's bottom left, and the engine's status text for it.
   "Host/BrowserWindowController.swift#Link preview": ["link-preview", "notes"],
+  "Host/BrowserWindowController.swift#Swipe indicator": ["swipe-indicator"],
   // A tab's sound mark in the sidebar (rows and favorites) as its sound starts, stops or is muted.
   "Host/BrowserWindowController.swift#Tab sound": ["tab-sound", "row-menus"],
   // Chrome's picture-in-picture window opening and closing, in the state log.
@@ -271,6 +272,8 @@ export const areas = {
   "Host/LoadSweep.swift": ["new-tab-sweep", "page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar", "back-forward-list"],
   "Host/LinkPreview.swift": ["link-preview"],
   "Host/HistoryList.swift": ["back-forward-list"],
+  // The back/forward swipe's chip, and the hook on Chrome's own overlay.
+  "Host/SwipeIndicator.swift": ["swipe-indicator"],
   "Host/PermissionPrompt.swift": [...permissions, "password-prompt", "autofill-prompt"],
   // "Save password?" (its panel, the setting that drives Chrome's switch) and the fill dropdown's report.
   "Host/PasswordPrompt.swift": ["password-prompt", "autofill-prompt", "panels"],
@@ -300,7 +303,7 @@ export const areas = {
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
     "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes",
     "row-menus", "multi-select", "folders", "password-prompt", "autofill-prompt", "link-preview", "tab-sound", "back-forward-list",
-    "auto-picture-in-picture"],
+    "auto-picture-in-picture", "swipe-indicator"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],
