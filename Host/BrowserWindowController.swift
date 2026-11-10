@@ -2447,6 +2447,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       bar.autoresizingMask = [.width, .height]
       bar.delegate = self
       bar.onSelectionChange = { [weak self] in self?.logState("commandBarSelection") }
+      // A site search of the user's has no brand colour: its site's icon's.
+      bar.iconColor = { [weak self] scope in self?.favicons.accent(for: Self.siteRoot(of: scope)) }
       root.addSubview(bar)
       commandBar = bar
     }
@@ -2465,6 +2467,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     // Scoped to a site search: only that search, nothing from tabs, history or the engine's suggestions.
     if let scope = bar.scope {
       bar.show(Suggestions.scoped(scope, query: query))
+      bar.offer(nil)
       logState("commandBar")
       return
     }
@@ -2477,13 +2480,36 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       settings: SettingsSearch.barMatches, frecency: history.frecency(of:), favicon: favicons.image(for:),
       name: { [weak self] tab in self?.state.entry(for: tab)?.customTitle })
     bar.show(rows)
-    let pages = rows.compactMap { row -> String? in
+    let offered = SearchEngines.offer(for: query, use: history.use(ofHost:))
+    bar.offer(offered)
+    var pages = rows.compactMap { row -> String? in
       if case .history(let url) = row.kind { return url }
       if case .bookmark(let url) = row.kind { return url }
       return nil
     }
+    // An offered site search of the user's: its icon, for its colour once scoped.
+    if let offered, offered.brand == nil { pages.append(Self.siteRoot(of: offered)) }
     favicons.load(pages, profile: profile) { [weak self] in self?.refreshSuggestions() }
     logState("commandBar")
+  }
+
+  /// For the state log: the bar's scope, its colour and the text on it.
+  private static func debugScope(of bar: CommandBarView) -> [String: Any]? {
+    guard let scope = bar.scope else { return nil }
+    let look = bar.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) ?? .aqua
+    var logged: [String: Any] = ["name": scope.name, "keyword": scope.keyword, "brand": scope.brand ?? NSNull()]
+    if let fill = bar.scopeFill {
+      logged["fill"] = ProfileColor.hex(of: fill, appearance: look)
+      logged["ink"] = ProfileColor.hex(of: CommandBarView.brandInk(on: fill), appearance: look)
+    }
+    return logged
+  }
+
+  /// A site search's front page (its template's scheme and host), whose icon gives its colour.
+  private static func siteRoot(of scope: SearchScope) -> String {
+    guard let components = URLComponents(string: scope.template.replacingOccurrences(of: "%s", with: "")),
+          let scheme = components.scheme, let host = components.host else { return scope.template }
+    return "\(scheme)://\(host)/"
   }
 
   private func requestSearchSuggestions() {
@@ -2509,8 +2535,6 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func commandBar(_ bar: CommandBarView, choose suggestion: Suggestion) {
-    // "Search Wikipedia" scopes the bar (as Tab does) and keeps it open.
-    if case .scope(let scope) = suggestion.kind { return bar.enter(scope) }
     let mode = commandBarMode
     let folder = newTabFolder
     closeCommandBar(focus: false)
@@ -2535,8 +2559,6 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       return
     case .url(let target), .search(let target), .history(let target), .bookmark(let target):
       url = target
-    case .scope:
-      return
     }
     // ray://settings/appearance is Ray's own Settings window, never a page.
     if showNativeSettings(for: url) { return }
@@ -3231,7 +3253,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "commandBar": commandBar.map { bar in
         [
           "mode": commandBarMode.rawValue, "query": bar.typed, "field": bar.field.stringValue, "completion": bar.inlineCompletion ?? NSNull(), "selected": bar.selectedIndex,
-          "scope": bar.scope.map { ["name": $0.name, "keyword": $0.keyword] } ?? NSNull(),
+          "filledRow": bar.filledRow ?? NSNull(),
+          "scope": Self.debugScope(of: bar) ?? NSNull(),
+          "offered": bar.offered.map { ["name": $0.name, "keyword": $0.keyword] } ?? NSNull(),
+          "hint": bar.hintText ?? NSNull(), "pulses": bar.pulses,
           "rowsFullyVisible": bar.rowsFullyVisible,
           "firstVisibleRow": bar.shownRows.first, "visibleRows": bar.shownRows.count,
           "rows": bar.suggestions.map { row -> [String: Any] in

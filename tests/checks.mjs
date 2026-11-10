@@ -89,7 +89,9 @@ function serve(req, res) {
     const q = url.searchParams.get("q") ?? "";
     suggestRequests.push({ q, engine: url.searchParams.get("engine") });
     res.writeHead(200, { "content-type": "application/json" });
-    return res.end(JSON.stringify([q, q.startsWith("zz") ? [`${q} one`, `${q} two`, q] : []]));
+    // "zzmany…" gets nine suggestions, as a real engine gives (the bar-fills-rows check).
+    const many = Array.from({ length: 9 }, (_, i) => `${q} ${i + 1}`);
+    return res.end(JSON.stringify([q, q.startsWith("zzmany") ? many : q.startsWith("zz") ? [`${q} one`, `${q} two`, q] : []]));
   }
   if (url.pathname.startsWith("/files/")) {
     // Attachments for the download checks.
@@ -816,6 +818,181 @@ const checks = {
     await until("switched to the site's tab", () => state().active === siteTab.id && !state().commandBar);
     await send("Target.closeTarget", { targetId: (await session(`${site}/b?site`)).target.targetId });
     await until("site tab closed", async () => { await command("state"); return !tabFor(`${site}/b?site`); });
+  },
+  async "bar-arrow-fill"() {
+    // ↑ ↓ and Tab put the chosen row in the field, as Chrome's omnibox, Dia and Ardia do: a search its query, a page
+    // its address. Back on the first row (or Escape) what you typed comes back, inline completion too; a second Escape
+    // closes. Typing goes on from the field. A scoped bar still searches its site, and Delete still leaves the scope.
+    const port = new URL(origin).port;
+    const site = `zzarrow.ray.test:${port}`;
+    pages["/arrowfill"] = `<title>Zzarrow page</title><p>arrow</p>`;
+    await send("Target.createTarget", { url: `${origin}/arrowfill` });
+    const { target: visited, sessionId } = await session("/arrowfill");
+    await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+    await send("Target.closeTarget", { targetId: visited.targetId });
+    await send("Target.createTarget", { url: `http://${site}/b` });
+    const siteTab = await until("site tab", () => tabFor(`${site}/b`));
+    const { target: a } = await session("/a");
+    await send("Target.activateTarget", { targetId: a.targetId });
+    await until("/a active", () => state().active === tabFor("/a").id);
+    const bar = async (what, ready) => {
+      let last;
+      return until(what, async () => { await command("state"); last = state().commandBar; return last && ready(last) && last; }, 8000)
+        .catch((error) => { throw new Error(`${error.message}: ${JSON.stringify(last)}`); });
+    };
+    const open = async () => {
+      await command("menu newTab");
+      await command("type zzarrow");
+      return bar("rows", (b) => b.completion === "zzarrow.ray.test" && b.rows.some((r) => r.kind === "history" && r.url === `${origin}/arrowfill`) &&
+        b.rows.some((r) => r.suggested && r.title === "zzarrow one"));
+    };
+    let shown = await open();
+    assert(shown.rows[0].kind === "tab" && shown.rows[0].tab === siteTab.id && shown.rows[1].kind === "search" && shown.rows[1].title === "zzarrow",
+      `rows ${JSON.stringify(shown.rows)}`);
+    const page = shown.rows.findIndex((r) => r.kind === "history" && r.url === `${origin}/arrowfill`);
+    const suggested = shown.rows.findIndex((r) => r.suggested && r.title === "zzarrow one");
+    // A search row: its query, the completion gone.
+    await command("down");
+    shown = await bar("search row", (b) => b.selected === 1);
+    assert(shown.field === "zzarrow" && shown.completion === null && shown.query === "zzarrow" && shown.filledRow?.startsWith("search:"),
+      `on the search row ${JSON.stringify(shown)}`);
+    // A page row: its address.
+    for (let i = 1; i < page; i++) await command("down");
+    shown = await bar("page row", (b) => b.selected === page);
+    assert(shown.field === `${origin}/arrowfill` && shown.query === "zzarrow" && shown.filledRow === `history:${origin}/arrowfill`,
+      `on the page row ${JSON.stringify(shown)}`);
+    // Back on the first row: what you typed, completed inline again.
+    for (let i = 0; i < page; i++) await command("up");
+    shown = await bar("first row", (b) => b.selected === 0);
+    assert(shown.field === "zzarrow.ray.test" && shown.completion === "zzarrow.ray.test" && shown.query === "zzarrow" && shown.filledRow === null,
+      `back on the first row ${JSON.stringify(shown)}`);
+    // A suggestion's text, then Escape puts back what you typed and keeps the bar; a second Escape closes it.
+    for (let i = 0; i < suggested; i++) await command("down");
+    shown = await bar("suggestion", (b) => b.selected === suggested);
+    assert(shown.field === "zzarrow one" && shown.query === "zzarrow", `on the suggestion ${JSON.stringify(shown)}`);
+    await command("escape");
+    shown = await bar("escaped", (b) => b.selected === 0);
+    assert(shown.field === "zzarrow.ray.test" && shown.completion === "zzarrow.ray.test" && shown.filledRow === null, `after Escape ${JSON.stringify(shown)}`);
+    await command("escape");
+    await until("bar closed", async () => { await command("state"); return state().commandBar === null; });
+    // Tab moves and fills as ↓ does; typing on a page's address goes on from it, and Escape then closes.
+    await open();
+    await command("tab");
+    shown = await bar("tabbed", (b) => b.selected === 1);
+    assert(shown.field === "zzarrow" && shown.scope === null, `after Tab ${JSON.stringify(shown)}`);
+    for (let i = 1; i < page; i++) await command("down");
+    await bar("page row again", (b) => b.selected === page && b.field === `${origin}/arrowfill`);
+    await command("type x");
+    shown = await bar("typed on", (b) => b.query === `${origin}/arrowfillx`);
+    assert(shown.field === `${origin}/arrowfillx` && shown.filledRow === null, `typing on ${JSON.stringify(shown)}`);
+    await command("escape");
+    await until("bar closed after typing", async () => { await command("state"); return state().commandBar === null; });
+    // Scoped: one row, ↓ changes nothing, and Delete with nothing typed still leaves the scope.
+    await command("menu newTab");
+    await command("type duckduckgo.com");
+    await bar("duckduckgo typed", (b) => b.query === "duckduckgo.com");
+    await command("tab");
+    await bar("scoped", (b) => b.scope?.name === "DuckDuckGo");
+    await command("type zz");
+    await bar("scoped row", (b) => b.query === "zz" && b.rows.length === 1);
+    await command("down");
+    await command("state");
+    shown = state().commandBar;
+    assert(shown.field === "zz" && shown.selected === 0 && shown.filledRow === null && shown.scope?.name === "DuckDuckGo", `scoped ↓ ${JSON.stringify(shown)}`);
+    await command("backspace");
+    await command("backspace");
+    await bar("emptied", (b) => b.field === "" && b.scope?.name === "DuckDuckGo");
+    await command("backspace");
+    await bar("scope left", (b) => b.scope === null && b.query === "duckduckgo.com");
+    await command("escape");
+    await until("bar closed after scope", async () => { await command("state"); return state().commandBar === null; });
+    await send("Target.closeTarget", { targetId: (await session(`${site}/b`)).target.targetId });
+    await until("site tab closed", async () => { await command("state"); return !tabFor(`${site}/b`); });
+  },
+  async "tab-to-search"() {
+    // Arc's Tab to Search: the start of a built-in site search's name ("y") offers it at the field's end ("Search
+    // YouTube" and a Tab key); Tab scopes the bar with a pill in the site's colour and a pulse of it; what you type is
+    // one row, filled with that colour, searching the site. Delete with nothing typed puts back what you typed. A word
+    // of a name works too ("maps"), and a colourless brand (GitHub) still shows on the bar.
+    const bar = async (what, ready) => {
+      let last;
+      return until(what, async () => { await command("state"); last = state().commandBar; return last && ready(last) && last; }, 8000)
+        .catch((error) => { throw new Error(`${error.message}: ${JSON.stringify(last)}`); });
+    };
+    await command("menu newTab");
+    await command("type y");
+    let shown = await bar("offered", (b) => b.query === "y" && b.offered);
+    assert(shown.offered.name === "YouTube" && shown.hint === "Search YouTube" && shown.scope === null, `"y" offers ${JSON.stringify(shown)}`);
+    const pulses = shown.pulses;
+    await command("tab");
+    shown = await bar("scoped", (b) => b.scope?.name === "YouTube");
+    assert(shown.query === "" && shown.rows.length === 0 && shown.hint === null && shown.scope.brand === "#FF0000" &&
+      shown.scope.fill === "#FF0000" && shown.scope.ink === "#FFFFFF" && shown.pulses === pulses + 1, `scoped ${JSON.stringify(shown)}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-tab-to-search.png")}`);
+    await command("type test");
+    shown = await bar("scoped row", (b) => b.query === "test" && b.rows.length === 1);
+    assert(shown.rows[0].kind === "search" && shown.rows[0].title === "test" && shown.selected === 0 &&
+      shown.rows[0].url === "https://www.youtube.com/results?search_query=test", `scoped row ${JSON.stringify(shown.rows)}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-tab-to-search-row.png")}`);
+    for (let i = 0; i < 4; i++) await command("backspace");
+    await bar("emptied", (b) => b.field === "" && b.scope);
+    await command("backspace");
+    shown = await bar("left", (b) => b.scope === null);
+    assert(shown.query === "y" && shown.hint === "Search YouTube", `after leaving ${JSON.stringify(shown)}`);
+    await command("escape");
+    await until("closed", async () => { await command("state"); return state().commandBar === null; });
+    // A word of a name, and an exact host with a space.
+    await command("menu newTab");
+    await command("type maps");
+    shown = await bar("maps", (b) => b.query === "maps" && b.offered);
+    assert(shown.offered.name === "Google Maps", `"maps" offers ${JSON.stringify(shown.offered)}`);
+    await command("escape");
+    await command("menu newTab");
+    await command("type github.com ");
+    shown = await bar("github scoped", (b) => b.scope?.name === "GitHub");
+    assert(shown.scope.brand === "#181717" && /^#[0-9A-F]{6}$/i.test(shown.scope.fill), `GitHub's fill ${JSON.stringify(shown.scope)}`);
+    await command("backspace");
+    shown = await bar("github left", (b) => b.scope === null);
+    assert(shown.query === "github.com", `space scope left ${JSON.stringify(shown)}`);
+    await command("escape");
+    // Nothing starts with it: no hint, and Tab moves down.
+    await command("menu newTab");
+    await command("type zzqx");
+    shown = await bar("no offer", (b) => b.query === "zzqx");
+    assert(shown.offered === null && shown.hint === null, `"zzqx" offers ${JSON.stringify(shown)}`);
+    await command("escape");
+  },
+  async "bar-fills-rows"() {
+    // Typed with nothing of yours matching, the engine's suggestions fill the list: the five rows shown, and on to ten
+    // (it scrolls), as Chrome and Arc do. With pages of yours that match, suggestions only fill what's left of the
+    // five shown: two at most once your rows and the search take three.
+    const rows = async (text, ready) => {
+      await command("menu newTab");
+      await command(`type ${text}`);
+      let last;
+      return until(`rows for ${text}`, async () => { await command("state"); last = state().commandBar; return last?.query === text && ready(last) && last; }, 8000)
+        .catch((error) => { throw new Error(`${error.message}: ${JSON.stringify(last)}`); });
+    };
+    let bar = await rows("zzmanyq", (b) => b.rows.some((r) => r.title === "zzmanyq 9"));
+    assert(bar.rows.length === 10 && bar.rows[0].kind === "search" && bar.rows[0].title === "zzmanyq" &&
+      bar.rows.slice(1).every((r) => r.suggested) && bar.visibleRows === 5 && bar.rowsFullyVisible,
+      `no-match rows ${JSON.stringify(bar.rows.map((r) => r.title))}, shown ${bar.visibleRows}`);
+    await command("escape");
+    // Pages of yours that match: they come first, suggestions fill the rest of the five shown, two at most.
+    for (const n of ["one", "two"]) {
+      pages[`/fill-${n}`] = `<title>Zzmanyp page ${n}</title><p>${n}</p>`;
+      await send("Target.createTarget", { url: `${origin}/fill-${n}` });
+      const { target, sessionId } = await session(`/fill-${n}`);
+      await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+      await send("Target.closeTarget", { targetId: target.targetId });
+    }
+    bar = await rows("zzmanyp", (b) => b.rows.filter((r) => r.kind === "history" && r.title.startsWith("Zzmanyp page")).length === 2 &&
+      b.rows.some((r) => r.suggested));
+    const own = bar.rows.filter((r) => !r.suggested).length;
+    const suggested = bar.rows.filter((r) => r.suggested).length;
+    assert(own === 3 && suggested === 2 && bar.rows.length === 5 && bar.rows.slice(own).every((r) => r.suggested),
+      `with pages: ${JSON.stringify(bar.rows.map((r) => [r.kind, r.title]))}`);
+    await command("escape");
   },
   async "bar-ranking"() {
     // Arc's order: a page you go to that matches leads (Enter opens it), then what you typed, then the other pages;
@@ -7620,19 +7797,19 @@ const checks = {
     await command("searchpane cancel");
     if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-search-sites.png")}`);
     await closeSettingsWindow();
-    // The keyword is offered ("Search Fixture", Tab), and Tab scopes the bar.
+    // The keyword is offered ("Search Fixture" and a Tab key at the field's end), and Tab scopes the bar.
     const asked = suggestRequests.length;
     const bar = async (ready) => until("bar", async () => { await command("state"); const b = state().commandBar; return b && ready(b) && b; });
     await command("menu newTab");
     await command("type fx");
-    let shown = await bar((b) => b.query === "fx" && b.rows.some((r) => r.kind === "scope"));
-    assert(shown.rows[1].kind === "scope" && shown.rows[1].title === "Search Fixture" && shown.rows[1].detail === "Tab" && shown.scope === null, `keyword rows ${JSON.stringify(shown.rows)}`);
+    let shown = await bar((b) => b.query === "fx" && b.offered?.keyword === "fx");
+    assert(shown.hint === "Search Fixture" && shown.scope === null, `keyword offered ${JSON.stringify(shown)}`);
     await command("tab");
     shown = await bar((b) => b.scope?.name === "Fixture");
     assert(shown.query === "" && shown.rows.length === 0, `scoped ${JSON.stringify(shown)}`);
     await command("type zzsite query");
     shown = await bar((b) => b.query === "zzsite query" && b.rows.length === 1);
-    assert(shown.scope?.keyword === "fx" && shown.rows[0].kind === "search" && shown.rows[0].detail === "Search Fixture" &&
+    assert(shown.scope?.keyword === "fx" && shown.rows[0].kind === "search" && shown.rows[0].detail === "" &&
       shown.rows[0].url === `${origin}/find?q=zzsite%20query`, `scoped row ${JSON.stringify(shown)}`);
     await sleep(400);
     assert(!suggestRequests.slice(asked).some((r) => r.q.startsWith("zzsite")), `a scoped search was sent for suggestions: ${JSON.stringify(suggestRequests.slice(asked))}`);

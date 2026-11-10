@@ -323,8 +323,8 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     checks (it froze input on the owner's Mac in Ardia's test). Ardia's engine now refuses native display capture
     unless the host's picker asked (`b18165de`, v0.2.45). Fix: that engine (`docs/ARDIA-WATCH.md` item 1a) or an
     `engine-ray` fixup, then a picker behind a click; add a check. Found 2026-11-10.
-42. **Command bar: arrowing moves only the highlight.** Chrome, Dia and now Ardia (0.2.45) put the chosen row in the
-    field (a search's query, a page's address) and Escape restores what you typed. Found 2026-11-10.
+42. ~~**Command bar: arrowing moves only the highlight.**~~ (Done 2026-11-10: ↑ ↓ and Tab put the row in the field,
+    Escape restores what you typed.)
 43. **Engine leaves Gemini in Chrome (glic) on.** Helium keeps `kGlic`, so every tab carries glic's tab features
     (an Ardia crash, #954, was in one's destructor). Fix: disable the glic features in `ac_main_delegate.cc`
     (Ardia `0365b06a`). Found 2026-11-10.
@@ -363,11 +363,18 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     and Crest close it too). The video route is untested in checks (test instances run with `--mute-audio`, so no
     page is audible); `auto-picture-in-picture` covers the call route on Chrome's fake camera. No "back to tab" or
     sidebar control for the PiP window beyond Chrome's own.
+50. **Tab to Search gaps** (2026-11-10). Arc's built-in site searches aren't listed in Settings › Search, so they
+    can't be turned off or edited (a site search of your own with the same keyword replaces one). A site search of
+    your own takes its icon's colour only once that icon is cached (its front page visited), else the profile's.
+    The unscoped field keeps the magnifier; Arc shows the default engine's icon there. Fix: list the built-ins in
+    `SettingsSearchPane` with a switch each; fetch the icon by host.
 
 ## Done
 
 | What | When |
 |---|---|
+| Arc's Tab to Search: the start of a site's name offers "Search YouTube  Tab" at the field's end; Tab scopes with a pill in the site's colour, a pulse of it and the row filled with it; Arc's built-in site searches (YouTube, Wikipedia, GitHub, Google Maps…) | 2026-11-10, `feat: arc tab to search` |
+| Command bar: ↑ ↓ and Tab put the chosen row in the field (a search's query, a page's address; menu commands and settings keep what you typed), Escape brings back what you typed, typing goes on from the field (Known limitation 42) | 2026-11-10, `feat: bar arrows fill field` |
 | Automatic picture in picture (Settings › Tabs, on by default): a playing video or a call pops out when you switch tabs or leave the window, and goes back when you return | 2026-11-10, `feat: auto picture in picture` |
 | Settings' new look: rows on rounded cards (Dia's, Ardia's), a group's live picture across the top of its card instead of beside a row, a calmer segmented control and sidebar; Check Now beside the version in About Ray | 2026-11-10, `feat: settings cards look` |
 | Asks to be the default browser: an onboarding step after the import ("Open links in Ray?") and a rare note at launch (bottom right, 14 days apart, 3 times at most, Never for good) | 2026-11-05, `feat: ask to be default browser` |

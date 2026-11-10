@@ -35,18 +35,30 @@ publicly or create accounts.
   "settings" with no host, command or page matching (check `settings-bar`). Ranking is Arc's: when nothing else leads, a page you go to leads over the typed search (Enter opens it): only for a
   search, from 3 characters, every word at a word start of its title or address, frecency ≥ 1.5 (Chromium's
   HistoryQuick: last 10 visits, each worth its recency; an open tab adds 1), never a search results page. Then the
-  typed row, actions, settings, the other pages by match + frecency, and search suggestions last, only to fill the 5 shown rows
-  (2 at most). The bar shows 5 rows and scrolls to 10 (overlay scroller). This window's active tab is never offered
+  typed row, actions, settings, the other pages by match + frecency, and search suggestions last, filling what's left of the 5 shown rows (so
+  2 at most once your rows and the typed one take 3), or all 10 when nothing of yours matches (check `bar-fills-rows`). The bar shows 5 rows and scrolls to 10 (overlay scroller). ↑ ↓ and Tab put the row in the field
+  (Chrome's temporary text, `Suggestion.fieldText`): a search its query, a page its address (`AddressInput.display`,
+  http(s)/chrome/about only); menu commands, settings and "Search …" keep what you typed. Back on the first row, or
+  Escape, brings back what you typed (inline completion too; a second Escape closes); typing goes on from the field;
+  the pointer picking a row puts the typed text back; `typed` stays what you typed meanwhile (check `bar-arrow-fill`). This window's active tab is never offered
   (nor its page as history); another tab on the same address is. Page rows: title, then `Suggestions.shortAddress`
   (host, "…", the path's last ~16 characters; a long host loses its start instead). Check `bar-ranking`.
-  Site searches (Chrome's keyword mode): a keyword (a site search's, or a built-in engine's host) then Tab, or a
-  space, scopes the bar (`CommandBarView.scope`, a chip in the profile's colour before the text, one row, no
-  suggestions sent); the exact keyword also gets a "Search <site>" row (Tab) after the first; Delete with nothing
-  typed leaves the scope with the keyword back. Checks `site-search`, `search-engine`, `search-suggestions-off`.
+  Site searches (Chrome's keyword mode, Arc's Tab to Search): what you typed starting a site search's keyword, name or
+  a word of its name ("y", "maps"; `SearchEngines.offer`, the site you use most first, by `HistoryCache.use(ofHost:)`)
+  or a built-in engine's exact host shows "Search <site>" and a Tab key at the field's end (`ScopeHint`, a click
+  works too; hidden while arrowing); Tab, or the exact keyword and a space, scopes the bar (`CommandBarView.scope`:
+  after the search icon Arc's pill in the site's colour, one row filled with it, no suggestions sent; white text on it
+  unless under 3:1, `CommandBarView.brandInk`). Entering pulses the bar in that colour (a glow under the panel, a tint over it: 100 ms up, gone
+  in 1.1 s; none with Reduce Motion). The colour (`scopeFill`): `SearchScope.brand` (Arc's table), else the site's
+  favicon's main hue (`IconAccent`, `FaviconCache.accent`), else the profile's, moved by `ProfileColor.legible` to
+  show on the card. Delete with nothing typed leaves the scope with what you typed back. Checks `tab-to-search`,
+  `site-search`, `search-engine`, `search-suggestions-off`.
 - `SearchEngines` (`Host/SearchEngines.swift`): what the bar searches with. Ray's own list (Google, DuckDuckGo, Bing,
   Brave Search, Ecosia, Kagi, Startpage, Perplexity; Ardia's minus its regional and AI-chat extras), not Chrome's
   TemplateURLService (`ac_search_engines_list` only reads it, and the bar searches by itself), so pages that search
-  through Chrome ("Search Google for …") still use Chrome's default. `install()` points `AddressInput.searchTemplate`
+  through Chrome ("Search Google for …") still use Chrome's default. `siteSearches` are Arc's built-in site searches
+  (YouTube, Wikipedia, GitHub, Google Maps/Drive/Docs/Calendar, Amazon, Reddit, X, Spotify, Figma…, from Arc's app)
+  with their brand colours; the user's own with the same keyword win. `install()` points `AddressInput.searchTemplate`
   (and so `isSearch`) at the chosen engine; `suggestURL` is nil with suggestions off or an engine without them
   (Kagi, Perplexity), and `SearchSuggestions` then sends nothing. `SiteSearch` / `SiteSearchList` are the user's site
   searches as a setting value (JSON list; Settings.json drops bad entries, text input refuses them); templates go
