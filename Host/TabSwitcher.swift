@@ -381,10 +381,8 @@ private final class TabSwitcherCard: NSView {
     let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    // The sidebar's way of marking the chosen row: a wash of the profile's colour with a hairline of it.
-    layer?.backgroundColor = selected ? ProfileColor.accent.withAlphaComponent(0.22).cgColor : nil
-    layer?.borderWidth = selected ? 0.5 : 0
-    layer?.borderColor = ProfileColor.accent.withAlphaComponent(0.45).cgColor
+    // The chosen card: `SelectedRow`'s wash, as every list of Ray's marks its choice.
+    layer?.backgroundColor = selected ? SelectedRow.fill(over: SurfaceBackdrop.solidFill).cgColor : nil
     // Arc's empty card (#1C1C1C) for a tab not seen since launch.
     picture.backgroundColor = dark ? NSColor(white: 28 / 255, alpha: 1).cgColor : NSColor(white: 0.9, alpha: 1).cgColor
     picture.borderColor = SurfaceBackdrop.edge.cgColor

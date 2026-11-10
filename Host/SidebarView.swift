@@ -51,20 +51,14 @@ protocol SidebarViewDelegate: AnyObject {
 }
 
 enum SidebarColors {
-  private static func dynamic(dark: NSColor, light: NSColor) -> NSColor {
-    NSColor(name: nil) { appearance in
-      appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
-    }
-  }
-
-  static let background = dynamic(dark: NSColor(white: 0.075, alpha: 1), light: NSColor(white: 0.9, alpha: 1))
-  static let fill = dynamic(dark: NSColor(white: 1, alpha: 0.08), light: NSColor(white: 0, alpha: 0.06))
+  static let background = NSColor.dynamic(light: NSColor(white: 0.9, alpha: 1), dark: NSColor(white: 0.075, alpha: 1))
+  static let fill = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.06), dark: NSColor(white: 1, alpha: 0.08))
   /// Laid over a favorites tile's own fill while the pointer is on it (the tile brightens, nothing moves).
-  static let tileHover = dynamic(dark: NSColor(white: 1, alpha: 0.07), light: NSColor(white: 0, alpha: 0.05))
-  static let hover = dynamic(dark: NSColor(white: 1, alpha: 0.06), light: NSColor(white: 0, alpha: 0.05))
-  static let lightsIdle = dynamic(dark: NSColor(white: 1, alpha: 0.18), light: NSColor(white: 0, alpha: 0.15))
-  static let selected = dynamic(dark: NSColor(white: 1, alpha: 0.14), light: NSColor(white: 1, alpha: 0.85))
-  static let lifted = dynamic(dark: NSColor(white: 0.2, alpha: 1), light: NSColor(white: 1, alpha: 1))
+  static let tileHover = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.05), dark: NSColor(white: 1, alpha: 0.07))
+  static let hover = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.05), dark: NSColor(white: 1, alpha: 0.06))
+  static let lightsIdle = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.15), dark: NSColor(white: 1, alpha: 0.18))
+  static let selected = NSColor.dynamic(light: NSColor(white: 1, alpha: 0.85), dark: NSColor(white: 1, alpha: 0.14))
+  static let lifted = NSColor.dynamic(light: NSColor(white: 1, alpha: 1), dark: NSColor(white: 0.2, alpha: 1))
   /// A private window's sidebar: near-black with a purple cast.
   static let privateBackground = NSColor(srgbRed: 0.105, green: 0.078, blue: 0.157, alpha: 1)
 }
@@ -152,11 +146,11 @@ final class SidebarView: NSView {
   var reservesTrafficLights = true { didSet { if oldValue != reservesTrafficLights { needsLayout = true } } }
 
   private let windowLights = WindowLights()
-  private let toggleButton = SidebarView.iconButton("sidebar.left")
-  private let backButton = SidebarView.iconButton("arrow.left")
-  private let forwardButton = SidebarView.iconButton("arrow.right")
-  private let reloadButton = SidebarView.iconButton("arrow.clockwise")
-  private let downloadsButton = SidebarView.iconButton("arrow.down.circle")
+  private let toggleButton = HoverIconButton.make("sidebar.left", label: "Hide Sidebar", size: 15)
+  private let backButton = HoverIconButton.make("arrow.left", label: "Back", size: 15)
+  private let forwardButton = HoverIconButton.make("arrow.right", label: "Forward", size: 15)
+  private let reloadButton = HoverIconButton.make("arrow.clockwise", label: "Reload", size: 15)
+  private let downloadsButton = HoverIconButton.make("arrow.down.circle", label: "Downloads", size: 15)
   private let privateBadge = PrivateBadge()
   /// Settings › Show the sidebar button: off, the top row has none (⌘S still toggles the sidebar).
   var showsToggle = true {
@@ -1547,17 +1541,6 @@ final class SidebarView: NSView {
     return views
   }
 
-  private static func iconButton(_ symbol: String) -> NSButton {
-    let button = HoverIconButton()
-    button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-    button.symbolConfiguration = .init(pointSize: 15, weight: .medium)
-    button.isBordered = false
-    button.bezelStyle = .regularSquare
-    button.imagePosition = .imageOnly
-    button.contentTintColor = .secondaryLabelColor
-    button.refusesFirstResponder = true
-    return button
-  }
 }
 
 final class WindowLights: NSView {
@@ -1664,7 +1647,22 @@ final class WindowLightButton: NSView {
   }
 }
 
+/// An icon button of Ray's chrome (the sidebar, the page's toolbar, the find bar, downloads): a grey SF Symbol, a fill
+/// under the pointer, and its name for VoiceOver and as its tooltip.
 final class HoverIconButton: NSButton {
+  static func make(_ symbol: String, label: String, size: CGFloat, weight: NSFont.Weight = .medium) -> HoverIconButton {
+    let button = HoverIconButton()
+    button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+    button.symbolConfiguration = .init(pointSize: size, weight: weight)
+    button.isBordered = false
+    button.bezelStyle = .regularSquare
+    button.imagePosition = .imageOnly
+    button.contentTintColor = .secondaryLabelColor
+    button.refusesFirstResponder = true
+    button.toolTip = label
+    return button
+  }
+
   private var hovered = false
   /// Keeps the hover fill while what the button opens is showing.
   var isHeld = false { didSet { needsDisplay = true } }
@@ -1724,7 +1722,7 @@ final class AddressPill: NSView {
   private let searchIcon = NSImageView()
   /// Site controls (extensions, permissions, the site's actions) at the end of the address field, as Dia's address
   /// bar has them; shown while there's a page.
-  let siteButton = HoverIconButton()
+  let siteButton = HoverIconButton.make("slider.horizontal.3", label: "Site Controls", size: 13)
   var onSiteControls: (() -> Void)?
   private(set) var text = ""
   private(set) var look = ConnectionLook.quiet
@@ -1741,15 +1739,7 @@ final class AddressPill: NSView {
     searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
     searchIcon.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
     searchIcon.contentTintColor = .tertiaryLabelColor
-    siteButton.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Site Controls")
-    siteButton.symbolConfiguration = .init(pointSize: 13, weight: .medium)
-    siteButton.isBordered = false
-    siteButton.bezelStyle = .regularSquare
-    siteButton.imagePosition = .imageOnly
-    siteButton.contentTintColor = .secondaryLabelColor
-    siteButton.refusesFirstResponder = true
     siteButton.isHidden = true
-    siteButton.toolTip = "Site Controls"
     siteButton.target = self
     siteButton.action = #selector(showSiteControls)
     addSubview(siteButton)

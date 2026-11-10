@@ -44,7 +44,9 @@ struct PanelSpec {
   var asks = false
   /// Over the sidebar (its button is in it): above a peeking sidebar too, and the peek stays out while it's open.
   var overSidebar = false
-  /// What Return does (a question's default answer); nil leaves Return to the focused control.
+  /// What Return does (a question's default answer); nil leaves Return to the focused control. The rule: a prompt a
+  /// page brought (a permission, an extension install, a password save, a held download) has none; a question before
+  /// something destructive cancels; only the quit and close warnings confirm (⌘Q, Return, as macOS's alerts do).
   var onReturn: (() -> Void)?
   var onClose: (() -> Void)?
 }
@@ -256,7 +258,7 @@ final class PanelView: NSView {
     targetSize = content.frame.size
     fromSize = targetSize
     currentSize = targetSize
-    sizeSpring = Spring(value: 1, response: Notes.response, dampingRatio: Notes.dampingRatio) { [weak self] t in
+    sizeSpring = Spring(value: 1, response: Spring.response, dampingRatio: Spring.dampingRatio) { [weak self] t in
       guard let self else { return }
       self.currentSize = NSSize(width: self.fromSize.width + (self.targetSize.width - self.fromSize.width) * t,
                                 height: self.fromSize.height + (self.targetSize.height - self.fromSize.height) * t)
@@ -324,12 +326,8 @@ final class PanelView: NSView {
     guard let layer else { return }
     layoutSubtreeIfNeeded()
     if !reduce {
-      let grow = CASpringAnimation(keyPath: "transform")
-      grow.fromValue = NSValue(caTransform3D: scale(0.97, lift: spec.anchor.below ? 8 : -8))
-      grow.toValue = NSValue(caTransform3D: CATransform3DIdentity)
-      grow.stiffness = pow(2 * .pi / Notes.response, 2)
-      grow.damping = 4 * .pi * Notes.dampingRatio / Notes.response
-      grow.duration = grow.settlingDuration
+      let grow = Spring.caAnimation(keyPath: "transform", from: NSValue(caTransform3D: scale(0.97, lift: spec.anchor.below ? 8 : -8)),
+                                    to: NSValue(caTransform3D: CATransform3DIdentity))
       layer.add(grow, forKey: "grow")
     }
     let fade = CABasicAnimation(keyPath: "opacity")
@@ -542,8 +540,45 @@ final class PanelBackButton: NSView {
   override func accessibilityPerformPress() -> Bool { onClick?(); return true }
 }
 
-/// A 28 pt button in a panel: a grey wash, or the profile's colour for the answer a question leads with (its text
-/// white or black, whichever reads). Disabled, it's faded and takes no clicks.
+/// The look every button of Ray's own shares (panels, notes, Settings, the welcome): 8 pt continuous corners; a grey
+/// wash that deepens under the pointer, or a fill in the profile's colour (red for a destructive answer) that darkens a
+/// little under the pointer and more while pressed, its text in the white or black that reads; 0.45 when disabled.
+enum ButtonLook {
+  static let radius: CGFloat = 8
+  static let disabledAlpha: CGFloat = 0.45
+
+  enum Kind { case plain, primary, destructive }
+
+  static func fill(_ kind: Kind, hovered: Bool, pressed: Bool) -> NSColor {
+    switch kind {
+    case .plain: hovered || pressed ? PanelColors.tileHover : PanelColors.tile
+    case .primary: lit(ProfileColor.accent, hovered: hovered, pressed: pressed)
+    case .destructive: lit(.systemRed, hovered: hovered, pressed: pressed)
+    }
+  }
+
+  static func ink(_ kind: Kind) -> NSColor {
+    switch kind {
+    case .plain: .labelColor
+    case .primary: ProfileColor.foreground(on: ProfileColor.accent)
+    case .destructive: .white
+    }
+  }
+
+  /// Resolved under the drawing appearance (call it from `updateLayer`).
+  private static func lit(_ color: NSColor, hovered: Bool, pressed: Bool) -> NSColor {
+    guard hovered || pressed else { return color }
+    return color.usingColorSpace(.sRGB)?.blended(withFraction: pressed ? 0.16 : 0.08, of: .black) ?? color
+  }
+
+  static func shape(_ layer: CALayer?) {
+    layer?.cornerRadius = radius
+    layer?.cornerCurve = .continuous
+  }
+}
+
+/// A 28 pt button in a panel (`ButtonLook`): a grey wash, or the profile's colour for the answer a question leads with.
+/// Disabled, it's faded and takes no clicks.
 final class PanelButton: NSView {
   var onClick: (() -> Void)?
   var isEnabled = true {
@@ -562,8 +597,7 @@ final class PanelButton: NSView {
     label = NSTextField(labelWithString: title)
     super.init(frame: .zero)
     wantsLayer = true
-    layer?.cornerRadius = 8
-    layer?.cornerCurve = .continuous
+    ButtonLook.shape(layer)
     label.font = .systemFont(ofSize: 12.5, weight: primary ? .semibold : .medium)
     label.alignment = .center
     addSubview(label)
@@ -583,17 +617,10 @@ final class PanelButton: NSView {
   }
 
   override func updateLayer() {
-    if destructive {
-      layer?.backgroundColor = NSColor.systemRed.cgColor
-      label.textColor = .white
-    } else if primary {
-      layer?.backgroundColor = ProfileColor.accent.cgColor
-      label.textColor = ProfileColor.foreground(on: ProfileColor.accent)
-    } else {
-      layer?.backgroundColor = (hovered && isEnabled || down ? PanelColors.tileHover : PanelColors.tile).cgColor
-      label.textColor = .labelColor
-    }
-    alphaValue = isEnabled ? (down ? 0.85 : 1) : 0.45
+    let kind: ButtonLook.Kind = destructive ? .destructive : primary ? .primary : .plain
+    layer?.backgroundColor = ButtonLook.fill(kind, hovered: hovered && isEnabled, pressed: down).cgColor
+    label.textColor = ButtonLook.ink(kind)
+    alphaValue = isEnabled ? 1 : ButtonLook.disabledAlpha
   }
 
   override func viewDidChangeEffectiveAppearance() {

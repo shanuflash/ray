@@ -1,5 +1,26 @@
 import AppKit
 
+extension NSColor {
+  /// One colour for light appearances and another for dark, resolved when drawn. Every palette of Ray's (the sidebar,
+  /// panels, Settings, the welcome) is made with it.
+  static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
+    NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
+  }
+}
+
+/// The chosen row of any list of Ray's own (the command bar, the ⌃Tab switcher, the folder icon picker, Settings'
+/// sidebar): a solid wash of the profile's colour over what the list sits on, 22 % (30 % in dark mode); its text keeps
+/// the label colour. A mark drawn on it (a tint, an icon) uses `mark(over:)`, which keeps 3:1 on the wash.
+enum SelectedRow {
+  static func fill(over background: NSColor) -> NSColor {
+    ProfileColor.mix(NSColor(name: nil) { _ in ProfileColor.accent }, over: background, 0.22, dark: 0.30)
+  }
+
+  static func mark(over background: NSColor) -> NSColor {
+    ProfileColor.legible(NSColor(name: nil) { _ in ProfileColor.accent }, on: fill(over: background), minimum: 3)
+  }
+}
+
 /// The browser profile's colour. Every accent in Ray's own UI takes it: the loading wash, progress, drop targets,
 /// the command bar's selection, "on" states. Settings › Appearance sets it (`RaySettings` calls `apply`); until
 /// the user picks one it is the lavender of Dia's loading wash. Ray's UI never uses `NSColor.controlAccentColor`

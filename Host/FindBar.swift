@@ -54,12 +54,7 @@ final class FindBarView: NSView, NSTextFieldDelegate {
   func animateIn() {
     guard let layer else { return }
     if !Panels.reduceMotion {
-      let drop = CASpringAnimation(keyPath: "transform.translation.y")
-      drop.fromValue = 8
-      drop.toValue = 0
-      drop.stiffness = pow(2 * .pi / Notes.response, 2)
-      drop.damping = 4 * .pi * Notes.dampingRatio / Notes.response
-      drop.duration = drop.settlingDuration
+      let drop = Spring.caAnimation(keyPath: "transform.translation.y", from: 8, to: 0)
       layer.add(drop, forKey: "drop")
     }
     let fade = CABasicAnimation(keyPath: "opacity")
@@ -132,14 +127,6 @@ final class FindBarView: NSView, NSTextFieldDelegate {
   }
 
   private static func button(_ symbol: String, _ label: String) -> NSButton {
-    let button = HoverIconButton()
-    button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-    button.symbolConfiguration = .init(pointSize: 11, weight: .semibold)
-    button.isBordered = false
-    button.bezelStyle = .regularSquare
-    button.imagePosition = .imageOnly
-    button.contentTintColor = .secondaryLabelColor
-    button.refusesFirstResponder = true
-    return button
+    HoverIconButton.make(symbol, label: label, size: 11, weight: .semibold)
   }
 }

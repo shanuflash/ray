@@ -90,7 +90,9 @@ final class ExtensionsController: NSObject, RayCoreTabDelegate {
     // A hairline over the page's edge (a layer's border draws above its sublayers), so a white popup still reads
     // against a white page.
     container.layer?.borderWidth = 0.5
-    container.layer?.borderColor = NSColor.black.withAlphaComponent(0.15).cgColor
+    container.effectiveAppearance.performAsCurrentDrawingAppearance {
+      container.layer?.borderColor = SurfaceBackdrop.edge.cgColor
+    }
     page.view.frame = container.bounds
     page.view.autoresizingMask = [.width, .height]
     container.addSubview(page.view)
@@ -212,8 +214,8 @@ final class ExtensionsController: NSObject, RayCoreTabDelegate {
   // MARK: Install prompt
 
   /// Chrome's "Add extension?" as a panel that asks, dropping from the page's top centre. Following the security
-  /// checklist: Return and Escape cancel, its buttons ignore clicks for their first half second, closing it any other
-  /// way cancels, and it names the extension, version and ID.
+  /// checklist: Escape cancels and Return answers nothing (a page's prompt), its buttons ignore clicks for their first
+  /// half second, closing it any other way cancels, and it names the extension, version and ID.
   func showInstallPrompt(_ request: [String: Any], in controller: BrowserWindowController?) {
     guard let id = request["requestId"] as? String else { return }
     guard let controller, prompt == nil else {
@@ -248,7 +250,7 @@ final class ExtensionsController: NSObject, RayCoreTabDelegate {
       }
     let handle = controller.panels.open(PanelSpec(
       name: "extensionInstall", content: question, anchor: controller.questionAnchor, asks: true,
-      onReturn: { resolve(false); close?() }, onClose: { resolve(false) }))
+      onClose: { resolve(false) }))
     close = { handle.close() }
     prompt = (id, name, question, handle)
     onChange?()

@@ -193,6 +193,9 @@ enum TestCommands {
       guard words.count == 2, let on = Bool(settingText: words[1]) else { return "usage: settings asapp on|off" }
       window.lookLikeRayApp(on)
     case "close": SettingsWindowController.shared.close()
+    case "return":
+      // Return in the Settings window, through the event queue (a question's panel answers it there).
+      return key("return keywin", in: NSApp.windows.first { $0.delegate === SettingsWindowController.shared && $0.isVisible })
     case "link": if !SettingsWindowController.shared.pressAllSettings() { return "no window" }
     case "press":
       guard words.count == 2, SettingsWindowController.shared.press(words[1].split(separator: " ").map(String.init)) else {
@@ -205,7 +208,7 @@ enum TestCommands {
       guard let data = try? JSONSerialization.data(withJSONObject: AnySettingKey.catalogDebug(RaySettings.shared), options: [.sortedKeys]),
             let text = String(data: data, encoding: .utf8) else { return "no catalog" }
       return text
-    default: return "usage: settings open [pane]|search <text>|choose <n>|key <k>|asapp on|off|close|link|press|snap|catalog"
+    default: return "usage: settings open [pane]|search <text>|choose <n>|key <k>|asapp on|off|close|return|link|press|snap|catalog"
     }
     return "ok"
   }
@@ -605,6 +608,9 @@ enum TestCommands {
       if AppController.shared.current?.snapshotDownloads(to: argument) != true { result = "no list" }
     case "dlopen":
       AppController.shared.current?.showDownloads()
+    case "dlhold":
+      // A fake held download (test builds), so the list's Keep and Discard show.
+      AppController.shared.current?.downloads.debugHold(argument)
     case "dl":
       let parts = argument.split(separator: " ").map(String.init)
       if parts.count == 2, ["keep", "discard"].contains(parts[0]), let controller = AppController.shared.current {

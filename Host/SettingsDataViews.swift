@@ -1,7 +1,7 @@
 import AppKit
 
 // Building blocks for the Settings panes that show the user's own data (Passwords, Autofill): a stack whose rows come
-// and go, list rows, headers, inline forms and detail lines, small buttons, a confirmation sheet, a pasteboard that
+// and go, list rows, headers, inline forms and detail lines, small buttons, a pasteboard that
 // forgets secrets, and the test hooks' fixtures. Nothing here logs what it shows.
 
 /// Tells the pane that holds `view` its height changed (rows came or went): it lays out again and the scroll view's
@@ -143,99 +143,6 @@ final class SettingsDataHeader: NSView, SettingsSizing {
 
 // MARK: Rows
 
-/// One item of a list: a round icon, a title over a grey line, and a chevron (or a control) on the right. A click
-/// opens or closes its details.
-final class SettingsRecordRow: NSView, SettingsSizing {
-  var onClick: (() -> Void)?
-  private let icon = NSImageView()
-  private let iconBack = NSView()
-  private let titleLabel: NSTextField
-  private let detailLabel: NSTextField
-  private let trailing: NSView?
-  private let chevron = NSImageView()
-  var expanded = false { didSet { updateChevron() } }
-
-  /// `headFirst`: the title loses its start when long (a host: its end is what tells sites apart).
-  init(symbol: String, title: String, detail: String, headFirst: Bool = false, trailing: NSView? = nil) {
-    titleLabel = settingsLabel(title, size: 13)
-    detailLabel = settingsLabel(detail, size: 12, color: .secondaryLabelColor)
-    self.trailing = trailing
-    super.init(frame: .zero)
-    titleLabel.lineBreakMode = headFirst ? .byTruncatingHead : .byTruncatingTail
-    iconBack.wantsLayer = true
-    iconBack.layer?.cornerRadius = 14
-    icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-    icon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
-    icon.contentTintColor = .secondaryLabelColor
-    addSubview(iconBack)
-    addSubview(icon)
-    addSubview(titleLabel)
-    addSubview(detailLabel)
-    if let trailing {
-      addSubview(trailing)
-    } else {
-      chevron.symbolConfiguration = .init(pointSize: 10, weight: .semibold)
-      chevron.contentTintColor = .tertiaryLabelColor
-      addSubview(chevron)
-      updateChevron()
-    }
-    setAccessibilityElement(true)
-    setAccessibilityRole(trailing == nil ? .button : .group)
-    setAccessibilityLabel(detail.isEmpty ? title : "\(title), \(detail)")
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override var isFlipped: Bool { true }
-  override var mouseDownCanMoveWindow: Bool { false }
-
-  private func updateChevron() {
-    chevron.image = NSImage(systemSymbolName: expanded ? "chevron.down" : "chevron.right", accessibilityDescription: nil)
-  }
-
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    needsLayout = true
-  }
-
-  func height(forWidth width: CGFloat) -> CGFloat { 48 }
-
-  override func layout() {
-    super.layout()
-    effectiveAppearance.performAsCurrentDrawingAppearance {
-      iconBack.layer?.backgroundColor = SettingsColors.track.cgColor
-    }
-    iconBack.frame = NSRect(x: 0, y: ((bounds.height - 28) / 2).rounded(), width: 28, height: 28)
-    icon.frame = iconBack.frame.insetBy(dx: 6, dy: 6)
-    var right = bounds.width
-    if let trailing {
-      let size = trailing.fittingSize
-      trailing.frame = NSRect(x: right - size.width, y: ((bounds.height - size.height) / 2).rounded(), width: size.width, height: size.height)
-      right -= size.width + 12
-    } else {
-      chevron.frame = NSRect(x: right - 12, y: ((bounds.height - 14) / 2).rounded(), width: 12, height: 14)
-      right -= 24
-    }
-    let x: CGFloat = 40
-    let titleHeight = ceil(titleLabel.intrinsicContentSize.height)
-    let detailHeight = detailLabel.stringValue.isEmpty ? 0 : ceil(detailLabel.intrinsicContentSize.height)
-    let block = titleHeight + (detailHeight > 0 ? 1 + detailHeight : 0)
-    let top = ((bounds.height - block) / 2).rounded()
-    titleLabel.frame = NSRect(x: x, y: top, width: max(0, right - x), height: titleHeight)
-    detailLabel.frame = NSRect(x: x, y: top + titleHeight + 1, width: max(0, right - x), height: detailHeight)
-  }
-
-  override func resetCursorRects() {
-    if onClick != nil { addCursorRect(bounds, cursor: .pointingHand) }
-  }
-
-  override func mouseDown(with event: NSEvent) { onClick?() }
-  override func accessibilityPerformPress() -> Bool {
-    onClick?()
-    return onClick != nil
-  }
-}
-
 /// A line of grey text that wraps (an empty list, a status after an export).
 final class SettingsNote: NSView, SettingsSizing {
   private let label: NSTextField
@@ -352,6 +259,8 @@ final class SettingsButtonBar: NSView, SettingsSizing {
     self.trailing = trailing
     super.init(frame: .zero)
     (leading + trailing).forEach { addSubview($0) }
+    // It sits on a card's fill.
+    (leading + trailing).forEach { ($0 as? SettingsButton)?.onCard = true }
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -385,7 +294,8 @@ final class SettingsForm: NSView, SettingsSizing {
   struct Field {
     let key: String
     let label: String
-    let field: NSTextField
+    let box: EditorField
+    var field: NSTextField { box.field }
   }
 
   private(set) var fields: [Field] = []
@@ -409,22 +319,19 @@ final class SettingsForm: NSView, SettingsSizing {
   @discardableResult
   func add(_ key: String, _ label: String, value: String = "", placeholder: String = "", secure: Bool = false,
            width: CGFloat? = nil) -> NSTextField {
-    let field: NSTextField = secure ? NSSecureTextField() : NSTextField()
+    // On the card's fill: the content's colour.
+    let box = EditorField(placeholder: placeholder, secure: secure)
+    box.fill = SettingsColors.content
+    let field = box.field
     field.stringValue = value
-    field.placeholderString = placeholder
-    field.font = .systemFont(ofSize: 13)
-    field.bezelStyle = .roundedBezel
-    field.usesSingleLineMode = true
-    field.cell?.wraps = false
-    field.cell?.isScrollable = true
     field.setAccessibilityLabel(label)
     if secure { field.contentType = .password }
     let name = settingsLabel(label, size: 12, color: .secondaryLabelColor)
-    fields.append(Field(key: key, label: label, field: field))
+    fields.append(Field(key: key, label: label, box: box))
     labels.append(name)
     if let width { widths[key] = width }
     addSubview(name)
-    addSubview(field)
+    addSubview(box)
     // Tab goes from field to field, in order.
     if fields.count > 1 { fields[fields.count - 2].field.nextKeyView = field }
     return field
@@ -461,8 +368,8 @@ final class SettingsForm: NSView, SettingsSizing {
     for (index, item) in fields.enumerated() {
       let label = labels[index]
       let labelHeight = ceil(label.intrinsicContentSize.height)
-      label.frame = NSRect(x: 0, y: y + ((28 - labelHeight) / 2).rounded(), width: nameWidth - 8, height: labelHeight)
-      item.field.frame = NSRect(x: nameWidth, y: y + 3, width: widths[item.key] ?? fieldWidth, height: 22)
+      label.frame = NSRect(x: 0, y: y + ((32 - labelHeight) / 2).rounded(), width: nameWidth - 8, height: labelHeight)
+      item.box.frame = NSRect(x: nameWidth, y: y + 2, width: widths[item.key] ?? fieldWidth, height: 28)
       y += 32
     }
     if !error.stringValue.isEmpty {
@@ -474,27 +381,6 @@ final class SettingsForm: NSView, SettingsSizing {
 }
 
 // MARK: Buttons
-
-/// A push button that runs a closure. `destructive` draws it as macOS does Delete.
-final class SettingsPushButton: NSButton {
-  var onClick: (() -> Void)?
-
-  init(_ title: String, destructive: Bool = false, action: (() -> Void)? = nil) {
-    super.init(frame: .zero)
-    self.title = title
-    bezelStyle = .push
-    controlSize = .regular
-    font = .systemFont(ofSize: 13)
-    hasDestructiveAction = destructive
-    target = self
-    self.action = #selector(clicked)
-    onClick = action
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  @objc private func clicked() { onClick?() }
-}
 
 /// A borderless SF Symbol button (Copy, Show), its name in its tooltip and for VoiceOver.
 final class SettingsIconButton: NSButton {
@@ -525,53 +411,6 @@ final class SettingsIconButton: NSButton {
   override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
   @objc private func clicked() { onClick?() }
-}
-
-// MARK: Confirmation
-
-/// "Delete …?" as a panel over the Settings window: Cancel is the default (Return cancels something that destroys),
-/// the confirming button is red when it destroys something. One at a time; tests answer it with `answer(_:)`, as a
-/// click on either button would.
-enum SettingsRecordConfirm {
-  private static var question: PanelQuestion?
-  /// What is being confirmed ("removePassword", "export", …), never its text (which names a site).
-  private(set) static var pending: String?
-
-  static func ask(_ kind: String, title: String, message: String, confirm: String, destructive: Bool = true,
-                  from view: NSView, then: @escaping (Bool) -> Void) {
-    guard question == nil, view.window != nil else { return then(false) }
-    var answered = false
-    var close: (() -> Void)?
-    let finish = { (yes: Bool) in
-      guard !answered else { return }
-      answered = true
-      question = nil
-      pending = nil
-      close?()
-      then(yes)
-    }
-    let made = PanelQuestion(title: title, message: message,
-                             answers: [("Cancel", false, false), (confirm, !destructive, destructive)]) { finish($0 == 1) }
-    question = made
-    pending = kind
-    guard let handle = SettingsWindowController.shared.askQuestion(
-      kind, made, onReturn: { finish(!destructive) }, onClose: { finish(false) }) else {
-      question = nil
-      pending = nil
-      return then(false)
-    }
-    close = { handle.close() }
-  }
-
-  /// For tests: the confirming button (`true`) or Cancel, as a click would.
-  static func answer(_ yes: Bool) -> Bool {
-    guard let question else { return false }
-    question.buttons[yes ? 1 : 0].performClick(nil)
-    return true
-  }
-
-  /// Closes a question still up (the window is closing), as Cancel.
-  static func dismiss() { _ = answer(false) }
 }
 
 // MARK: Pasteboard
@@ -753,7 +592,7 @@ final class SettingsDataGuard {
     observing = true
     NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
       guard (note.object as? NSWindow)?.delegate === SettingsWindowController.shared else { return }
-      SettingsRecordConfirm.dismiss()
+      SettingsConfirm.dismiss()
       self?.lock()
     }
     let workspace = NSWorkspace.shared.notificationCenter

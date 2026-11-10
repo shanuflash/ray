@@ -13,7 +13,9 @@ publicly or create accounts.
 
 ## Layout
 - `Host/`: the native app in Swift + AppKit. `Bridging.h` exposes the engine API. `BrowserWindowController` owns a
-  window's tabs; `SidebarView` is the address field and tab list; `PageContainerView` shows one page at a time
+  window's tabs; `SidebarView` is the address field and tab list (its icon buttons, the toolbar's, the find bar's and
+  downloads' are `HoverIconButton.make(symbol, label:, size:)`: tooltip and VoiceOver name; back and forward are
+  Arc's `arrow.left`/`arrow.right` in both bars); `PageContainerView` shows one page at a time
   (others stay attached but hidden, with `noteShown(byHost:)`); `MainMenu` + `Shortcuts` do key routing.
   A tab switch never shows a blank frame: the page left stays on screen until the new one's first frame
   (`PageFrameWatch`: Chrome adds a new content layer under the render view when the page's new compositor delivers
@@ -75,7 +77,10 @@ publicly or create accounts.
   `foreground(on:)` is the white or black with the higher WCAG contrast on a fill: use it for any text or icon on an
   accent fill. `legible(color, on:)` moves any (tint of the) colour just far enough to read on a background, and
   `mix(a, over: b, light, dark:)` is a solid wash; both resolve when drawn, so they follow the setting and the
-  appearance. Never use `NSColor.controlAccentColor` (`scripts/test.sh` fails on it).
+  appearance. `SelectedRow.fill(over:)` (same file) is every list's chosen row (command bar, ⌃Tab cards, icon
+  picker, Settings' sidebar via `SettingsColors.selectedFill`): a 22 % / 30 % dark `mix` over what the list sits on,
+  text unchanged; `mark(over:)` for a tint on it (owner's pick 2B, 2026-11-05). Never use `NSColor.controlAccentColor` (`scripts/test.sh` fails on it). Fixed light/dark pairs (the
+  sidebar's, panels', Settings', the welcome's palettes) are `NSColor.dynamic(light:dark:)` (same file).
 - `SettingsCatalog`: every setting as one typed entry, `SettingKey<Value>` (a `static let` on `AnySettingKey`, named
   in its `all` list): id (also its Settings.json key and the test command's name; a rename goes through `aliases`),
   default, `validate` (clamp or refuse), scope (app; profile and Space later), `built` (an unbuilt one's row shows only
@@ -158,14 +163,21 @@ publicly or create accounts.
   icon, version, description, switch) that open to site access, private windows, Options, Reload (unpacked),
   Remove…; the Web Store; Load unpacked; Add from a link unbuilt (test builds only).
   `ray://settings/extensions` opens it; chrome://extensions stays Chrome's. `SettingsDataRows`: what both share
-  (`SettingsDynamicList`, `SettingsItemRow`, `SettingsConfirm`: a `PanelQuestion` over the Settings window
-  (`SettingsWindowController.askQuestion`, a pass-through `PanelPassThroughView` layer), Cancel by default, the action dead for 0.5 s, the
-  full origin or the extension's ID; `SettingsPages.open` uses the normal window). Test commands `privacy …` and
+  (`SettingsDynamicList`, `SettingsItemRow` (the one data-list row: ≥ 44 pt, plain 22 pt icon, chevron right/down),
+  `SettingsButton` (Settings' one button, `ButtonLook`: grey, `primary` Save, `destructive` red letters; only a pane's
+  call to action is an `AccentButton`), `SettingsConfirm`: every Settings question (Privacy, Extensions, Passwords,
+  Autofill, Export…), a `PanelQuestion` over the Settings window (`SettingsWindowController.askQuestion`, a
+  pass-through `PanelPassThroughView` layer), Cancel by default (Return and Escape cancel), the action dead for 0.5 s,
+  the full origin or the extension's ID, `pending` its kind for the state log; `SettingsPages.open` uses the normal
+  window). Test commands `privacy …` and
   `extpane …` answer with the pane's lists as JSON and press its controls (checks `settings-privacy`,
   `settings-extensions`).
 - Settings › Passwords (`SettingsPasswords.swift`) and › Autofill (`SettingsAutofill.swift`), on the engine's
   `ac_passwords_*` and `ac_autofill_*` calls; `SettingsDataViews.swift` holds their pieces (`SettingsStack`, item rows,
-  inline cards and forms (`SettingsRecordRow`), `SettingsRecordConfirm` questions (the same panels), `SettingsPasteboard`, `SecretJSON`, `SettingsDataGuard`).
+  inline cards and forms (`SettingsForm`: `EditorField`s, Settings' one text field, in `SettingsControls`), `SettingsPasteboard`,
+  `SecretJSON`, `SettingsDataGuard`; their rows are `SettingsItemRow`s (`disclosure`: the pane shows the details after
+  the row) and their questions `SettingsConfirm`'s). Every Settings form (these, the site search editor, Shortcuts'
+  Replace) is `EditorField`s with grey `SettingsButton`s and a `primary` Save (owner's pick 1A, 2026-11-05).
   Passwords: locked until Unlock (`ac_passwords_unlock`, the engine's Touch ID or login password, `ac_reauth.cc`);
   `SettingsDataGuard` locks it (and hides a shown card number) when the Settings window closes, after 5 min without a
   click or key in it (Chrome's `kPasswordManagerAuthValidity`), on sleep or a user switch. Unlocked: search, a row
@@ -272,9 +284,11 @@ publicly or create accounts.
 - `Extensions` (tiles in site controls, whose sliders button is in the sidebar's address field too while the page
   address bar is off; action popups in a borderless child window under that button, Crest's way: rounded, no arrow, sized by the page, closed by a click elsewhere, Escape, a tab switch, Ray
   going to the background or the page closing itself; state log `extensionPopupView`, check `extensions` reads its
-  pixels back with `onscreen on`; the install prompt is a `Panels` question that waits 0.5 s, Return cancels),
+  pixels back with `onscreen on`; the install prompt is a `Panels` question that waits 0.5 s, Return does nothing),
   `Downloads` (button in the sidebar footer, ⌥⌘L; the list is a `Panels` panel above that button, over the sidebar,
-  a peeking sidebar kept out while it's open), `FindBar` (⌘F,
+  a peeking sidebar kept out while it's open; a held dangerous download's Keep and Discard are `PanelButton`s,
+  Discard leading, Keep dead 0.5 s, Return nothing; test command `dlhold <id>` fakes one, state log
+  `downloadAnswer`, check `download-held`), `FindBar` (⌘F,
   on `SurfaceBackdrop`, dropping in on the panels' spring),
   `PermissionPrompt` (site permissions, only over their own tab), `PasswordPrompts` (`Host/PasswordPrompt.swift`,
   `BrowserWindowController` `// MARK: Password prompts`: the engine's `passwordPrompt` as a `Panels` panel at the
@@ -288,7 +302,7 @@ publicly or create accounts.
   (sizes from Cra's measurements of Arc 1.170 and the owner's recording; look B of the mocks, owner 2026-11-04). With
   `recentTabCycling` on, ⌃Tab opens a walk over the up to 5 most recent tabs (current first, as many as fit the
   window) on card 1 (⌃⇧Tab: the last); the panel (`TabSwitcherView`, on `SurfaceBackdrop`, 22 pt corners, 180×158
-  cards on a 182 pitch, 158×105 pictures, the selected card a 22 % wash of the profile colour with a 45 % hairline)
+  cards on a 182 pitch, 158×105 pictures, the selected card `SelectedRow`'s wash)
   shows after 0.15 s, centred on the whole window, below `floating`, with no animation (Arc has none). Tab / ⇧Tab and
   ← → move and wrap; the pointer picks a card (once it has moved since the panel showed); releasing Control (the
   `flagsChanged` monitor's `endTabCycle`), Return or a click switch through `select`; Escape, a click outside, any
@@ -309,6 +323,8 @@ publicly or create accounts.
   note that would meet a corner note moves one row in. Motion is the sidebar's spring (response 0.26, damping 0.86;
   no bounce, scale or blur): 8 pt in from the spot's edge with a 160 ms fade, 160 ms out; Reduce Motion fades only.
   `lasts` `.auto` (2.4–6 s by length, 6 s with a button, 1.4 s for a figure), `.seconds`, `.held`; hovering holds.
+  Copy: a label of what just happened is Title Case as Arc's ("Copied Current URL", "Password Saved"); longer is a
+  sentence in sentence case, no full stop.
   `asks`: buttons ignore clicks for 0.5 s, the last one is the primary (profile colour). Look: Settings › Appearance ›
   Panels and notes (`surfaceStyle`, `SurfaceBackdrop`).
   Spots in use: ⇧⌘C's "Copied Current URL" (3 s, Share), "Opened in Background Tab" (a link the page opened
@@ -334,8 +350,14 @@ publicly or create accounts.
   outside (not on its button), Escape, a tab switch, the window resigning key, or `.otherSite` (the active tab
   committing another origin); `asks` never closes on an outside click. `PanelAnchor.align` is leading, centre or
   trailing; `overSidebar` puts it above a peeking sidebar and keeps the peek out; `onReturn` is Return's answer. Notes under a panel that opens leave (`Panels.onOpen` → `notes.dismiss(overlapping:)`).
+  Return and waiting, one rule: a prompt a page brought (permission, extension install, password save, held
+  download) has no `onReturn` (Return does nothing to it); a question before something destructive or that gives
+  something away cancels on Return and its action takes no click for 0.5 s (`SettingsConfirm`, site controls' Clear,
+  state log `siteControls.clearReady`); only the quit and close warnings confirm on Return.
   `PanelKit`: `stack`, `header`, `row` (`SettingRow`), `choice` (a ticked list row), `back`, `separator`;
-  `PanelButton` (28 pt, primary in the profile colour, destructive in red); `PanelQuestion` (title, wrapping
+  `PanelButton` (28 pt, primary in the profile colour, destructive in red); `ButtonLook` is the look every button of
+  Ray's own shares (`PanelButton`, `NoteButton`, `AccentButton`, the welcome's 30 pt `OnboardingButton`): 8 pt
+  corners, grey wash or filled, darker under the pointer and pressed, 0.45 disabled; `PanelQuestion` (title, wrapping
   message, optional icon and "Don't ask again", buttons that can wait). Site controls' pages: "…", a permission's
   choices (`choices:<type>`), Clear Site Data's question (`clearData`). Permission prompts keep
   their per-tab queue and top-left spot (`PermissionPrompts`) on the same surface, `PanelButton`s and spring. State
@@ -424,6 +446,8 @@ publicly or create accounts.
 - Tab-modal dialogs (print preview…) are centred on the page with rounded corners: `engine-ray/fixups/0004`
   (raycore's `DialogPositionInHostView`, and `chromium-web-dialog-rounded-corners.patch`).
 - `Spring`: a CADisplayLink spring. `dockSpring` (⌘S) and `peekSpring` drive `layout()` every frame.
+  `Spring.response` / `dampingRatio` (0.26 s, 0.86) are the sidebar's spring that notes, panels, prompts, the find
+  bar and the command bar share; `Spring.caAnimation(keyPath:from:to:)` is it as a `CASpringAnimation` for a layer.
   A hidden sidebar peeks only at the window's edge (its first 5 pt, or up to 24 pt past it on the same screen
   while Ray is active; Arc's and Ardia's, check `peek-zones`), and stays out to 24 pt past its own edge.
 - `Branding/Ray.icon` (Icon Composer; `actool` builds Assets.car + Ray.icns) and `tools/rebrand-pak.py` (renames
@@ -437,7 +461,7 @@ publicly or create accounts.
 - `Host/TestCommands.swift`: with `RAY_TEST_COMMANDS=1`, stdin lines drive the real UI (`menu <action>`,
   `type <text>`, `enter`, `escape`) through the same code paths as the keyboard. DevTools can't reach native UI, so
   checks for the sidebar and address field go through this. Settings: `setting <id> <value>` (any catalog id, parsed
-  by its type; same call as the window's controls), `settings open [pane]|close|link|press <id> [n]|snap <path>|catalog`
+  by its type; same call as the window's controls), `settings open [pane]|close|return|link|press <id> [n]|snap <path>|catalog`
   (the window's controls are named by setting id in `settingsWindow.controls`), `settings search <text>`,
   `settings choose <n>`, `settings key up|down|enter|escape` (the sidebar's search), `settings asapp on|off` (list
   panes and rows as Ray.app does: unbuilt rows and empty panes hidden), `searchpane state|default <id>|add|edit <kw>|

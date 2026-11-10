@@ -237,16 +237,23 @@ final class SiteControlsView: NSView {
   private func openSiteSettings() { onAction?(.siteSettings) }
   private func clearData() { onAction?(.clearData) }
 
-  /// Clearing signs you out: asked on a page of its own (Cancel goes back), its Clear in red.
+  /// Clearing signs you out: asked on a page of its own (Cancel goes back), its Clear in red and taking no click for
+  /// its first half second.
   private func confirmClearData() {
     page = "clearData"
-    onPage?(PanelQuestion(
+    let question = PanelQuestion(
       title: "Clear cookies and site data for \(host)?",
       message: "You'll be signed out of this site, and anything it keeps on your Mac will be deleted.",
       width: Self.width, answers: [("Cancel", false, false), ("Clear", false, true)]) { [weak self] answer in
         answer == 1 ? self?.clearData() : self?.showMore()
-      })
+      }
+    let clear = question.buttons[1]
+    clear.isEnabled = false
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { clear.isEnabled = true }
+    clearQuestion = question
+    onPage?(question)
   }
+  private weak var clearQuestion: PanelQuestion?
   private func developerTools() { onAction?(.developerTools) }
 
   private func resetPermissions() {
@@ -324,6 +331,7 @@ final class SiteControlsView: NSView {
       "extensionIcons": extensionIcons,
       "settings": rows.map { ["title": $0.title, "value": $0.subtitle] },
       "page": page,
+      "clearReady": page == "clearData" ? clearQuestion?.buttons[1].isEnabled ?? false : NSNull(),
       "frame": NSStringFromRect(frame),
     ]
   }
@@ -337,14 +345,10 @@ final class SiteControlsView: NSView {
 }
 
 enum PanelColors {
-  private static func dynamic(dark: NSColor, light: NSColor) -> NSColor {
-    NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
-  }
-
-  static let background = dynamic(dark: NSColor(white: 0.16, alpha: 0.98), light: NSColor(white: 0.985, alpha: 0.98))
-  static let border = dynamic(dark: NSColor(white: 1, alpha: 0.1), light: NSColor(white: 0, alpha: 0.09))
-  static let tile = dynamic(dark: NSColor(white: 1, alpha: 0.07), light: NSColor(white: 0, alpha: 0.045))
-  static let tileHover = dynamic(dark: NSColor(white: 1, alpha: 0.13), light: NSColor(white: 0, alpha: 0.085))
+  static let background = NSColor.dynamic(light: NSColor(white: 0.985, alpha: 0.98), dark: NSColor(white: 0.16, alpha: 0.98))
+  static let border = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.09), dark: NSColor(white: 1, alpha: 0.1))
+  static let tile = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.045), dark: NSColor(white: 1, alpha: 0.07))
+  static let tileHover = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.085), dark: NSColor(white: 1, alpha: 0.13))
 }
 
 /// The engine's site permissions, as Chrome's page info names them.

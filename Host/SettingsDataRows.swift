@@ -76,8 +76,10 @@ extension NSView {
 
 // MARK: Rows
 
-/// One item of a data list: an icon, a title (a host elides from its start, so the end of the name stays), a grey
-/// line, controls on the right, and, opened, more under it (`body`). A click on the top part opens or closes it.
+/// One item of a data list, in every data pane (Privacy, Extensions, Passwords, Autofill): a plain 22 pt icon, a title
+/// (a host elides from its start, so the end of the name stays), a grey line, controls on the right, at least 44 pt.
+/// Opened, more shows under it (`body`), or, for a row whose details are the pane's own (`disclosure`, `onClick`), its
+/// chevron turns: right when closed, down when open. A click on the top part opens or closes it.
 final class SettingsItemRow: NSView, SettingsSizing {
   static let iconSize: CGFloat = 22
   private static let indent: CGFloat = 34
@@ -94,10 +96,15 @@ final class SettingsItemRow: NSView, SettingsSizing {
   var onToggle: ((Bool) -> Void)?
   private(set) var isOpen = false
   private let hasIcon: Bool
+  /// A row whose details the pane shows itself, after it: a click runs this, and `expanded` turns its chevron.
+  var onClick: (() -> Void)?
+  private let disclosure: Bool
+  var expanded = false { didSet { updateChevron() } }
 
   init(key: String, icon: NSImage?, title: String, detail: String, controls: [NSView] = [], body: NSView? = nil,
-       open: Bool = false, titleElidesHead: Bool = false, showsIcon: Bool = true) {
+       open: Bool = false, titleElidesHead: Bool = false, showsIcon: Bool = true, disclosure: Bool = false) {
     self.key = key
+    self.disclosure = disclosure && body == nil
     titleLabel = settingsLabel(title, size: 13)
     detailLabel = NSTextField(wrappingLabelWithString: detail)
     self.controls = controls
@@ -118,14 +125,34 @@ final class SettingsItemRow: NSView, SettingsSizing {
     addSubview(titleLabel)
     addSubview(detailLabel)
     controls.forEach { addSubview($0) }
-    if let body {
+    if body != nil || self.disclosure {
       chevron.symbolConfiguration = .init(pointSize: 10, weight: .semibold)
       chevron.contentTintColor = .tertiaryLabelColor
       addSubview(chevron)
-      addSubview(body)
     }
+    if let body { addSubview(body) }
     setOpen(open, animated: false)
-    setAccessibilityElement(false)
+    if self.disclosure {
+      setAccessibilityElement(true)
+      setAccessibilityRole(.button)
+      setAccessibilityLabel(detail.isEmpty ? title : "\(title), \(detail)")
+    } else {
+      setAccessibilityElement(false)
+    }
+  }
+
+  /// A row a search or a list made from an SF Symbol (a saved password, an address, a card).
+  convenience init(symbol: String, title: String, detail: String, headFirst: Bool = false, trailing: NSView? = nil) {
+    self.init(key: title, icon: NSImage(systemSymbolName: symbol, accessibilityDescription: nil), title: title,
+              detail: detail, controls: trailing.map { [$0] } ?? [], titleElidesHead: headFirst, disclosure: trailing == nil)
+  }
+
+  private var hasChevron: Bool { body != nil || disclosure }
+
+  private func updateChevron() {
+    let shown = isOpen || expanded
+    chevron.image = NSImage(systemSymbolName: shown ? "chevron.down" : "chevron.right", accessibilityDescription: nil)
+    chevron.setAccessibilityLabel(shown ? "Hide details" : "Show details")
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -142,8 +169,7 @@ final class SettingsItemRow: NSView, SettingsSizing {
   func setOpen(_ open: Bool, animated: Bool = true) {
     isOpen = open && body != nil
     body?.isHidden = !isOpen
-    chevron.image = NSImage(systemSymbolName: isOpen ? "chevron.up" : "chevron.down", accessibilityDescription: nil)
-    chevron.setAccessibilityLabel(isOpen ? "Hide details" : "Show details")
+    updateChevron()
     needsLayout = true
     if animated { settingsSectionResized() }
   }
@@ -157,18 +183,27 @@ final class SettingsItemRow: NSView, SettingsSizing {
 
   override func mouseDown(with event: NSEvent) {
     let point = convert(event.locationInWindow, from: nil)
-    if point.y <= topHeight(bounds.width) { toggle() }
+    guard point.y <= topHeight(bounds.width) else { return }
+    if disclosure { onClick?() } else { toggle() }
+  }
+
+  override func accessibilityPerformPress() -> Bool {
+    guard disclosure, let onClick else { return false }
+    onClick()
+    return true
   }
 
   override func resetCursorRects() {
-    if body != nil { addCursorRect(NSRect(x: 0, y: 0, width: bounds.width, height: topHeight(bounds.width)), cursor: .pointingHand) }
+    if body != nil || disclosure && onClick != nil {
+      addCursorRect(NSRect(x: 0, y: 0, width: bounds.width, height: topHeight(bounds.width)), cursor: .pointingHand)
+    }
   }
 
   private var textLeft: CGFloat { hasIcon ? Self.indent : 0 }
 
   private var controlsWidth: CGFloat {
     var width = controls.reduce(0) { $0 + $1.fittingSize.width + 8 }
-    if body != nil { width += 22 }
+    if hasChevron { width += 22 }
     return width
   }
 
@@ -200,7 +235,7 @@ final class SettingsItemRow: NSView, SettingsSizing {
     titleLabel.frame = NSRect(x: textLeft, y: (middle - block / 2).rounded(), width: text, height: title)
     detailLabel.frame = NSRect(x: textLeft, y: (middle - block / 2 + title + 2).rounded(), width: text, height: detail)
     var right = bounds.width
-    if body != nil {
+    if hasChevron {
       chevron.frame = NSRect(x: right - 14, y: (middle - 7).rounded(), width: 14, height: 14)
       right -= 22
     }
@@ -300,27 +335,75 @@ final class SettingsButtonRow: NSView, SettingsSizing {
   }
 }
 
-/// A plain push button that runs a closure (grey, never the system accent).
-final class SettingsButton: NSButton {
+/// Settings' one button, in `ButtonLook` (as panels' buttons): grey for a row or a card (Change…, Import…, Edit,
+/// Cancel), `primary` for a form's Save (the profile's colour), `destructive` in red letters on the grey (Delete…). 28 pt,
+/// 13 pt text (Settings' size). A pane's call to action is an `AccentButton`.
+final class SettingsButton: NSControl {
   var onClick: (() -> Void)?
+  private let label: NSTextField
+  private let primary: Bool
+  private let destructive: Bool
+  private var hovered = false
+  private var down = false
+  /// On a card's fill (`SettingsCard`): one step darker, so it still reads.
+  var onCard = false { didSet { needsDisplay = true } }
 
-  init(_ title: String, destructive: Bool = false, action: (() -> Void)? = nil) {
+  init(_ title: String, primary: Bool = false, destructive: Bool = false, action: (() -> Void)? = nil) {
+    label = settingsLabel(title, size: 13, weight: primary ? .semibold : .medium)
+    self.primary = primary
+    self.destructive = destructive
     super.init(frame: .zero)
-    self.title = title
-    bezelStyle = .push
-    controlSize = .regular
-    font = .systemFont(ofSize: 13)
-    hasDestructiveAction = destructive
-    target = self
-    self.action = #selector(clicked)
     onClick = action
+    wantsLayer = true
+    ButtonLook.shape(layer)
+    label.alignment = .center
+    addSubview(label)
+    setAccessibilityElement(true)
+    setAccessibilityRole(.button)
+    setAccessibilityLabel(title)
+    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
-  override var fittingSize: NSSize { intrinsicContentSize }
+  var title: String { label.stringValue }
 
-  @objc private func clicked() { onClick?() }
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+  override var mouseDownCanMoveWindow: Bool { false }
+  // The text measured whole: a truncating label's intrinsic width runs a few points short.
+  override var intrinsicContentSize: NSSize { NSSize(width: ceil(label.attributedStringValue.size().width) + 4 + 24, height: 28) }
+  override var fittingSize: NSSize { intrinsicContentSize }
+  override var isEnabled: Bool { didSet { needsDisplay = true } }
+
+  override func updateLayer() {
+    let kind: ButtonLook.Kind = primary ? .primary : .plain
+    let lit = hovered && isEnabled || onCard && !primary
+    layer?.backgroundColor = ButtonLook.fill(kind, hovered: lit, pressed: down).cgColor
+    label.textColor = destructive && !primary ? .systemRed : ButtonLook.ink(kind)
+    alphaValue = isEnabled ? 1 : ButtonLook.disabledAlpha
+  }
+
+  override func layout() {
+    super.layout()
+    let height = ceil(label.intrinsicContentSize.height)
+    label.frame = NSRect(x: 0, y: ((bounds.height - height) / 2).rounded(), width: bounds.width, height: height)
+  }
+
+  override func mouseEntered(with event: NSEvent) { hovered = true; needsDisplay = true }
+  override func mouseExited(with event: NSEvent) { hovered = false; needsDisplay = true }
+  override func mouseDown(with event: NSEvent) { guard isEnabled else { return }; down = true; needsDisplay = true }
+
+  override func mouseUp(with event: NSEvent) {
+    guard down else { return }
+    down = false
+    needsDisplay = true
+    if isEnabled, bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+  }
+
+  /// A click as the mouse would make it (tests, VoiceOver).
+  override func performClick(_ sender: Any?) { if isEnabled { onClick?() } }
+  override func accessibilityPerformPress() -> Bool { performClick(nil); return isEnabled }
 
   /// A test's click, only when a person could click it.
   func press() -> Bool {
@@ -377,15 +460,26 @@ final class SettingsPopUp: NSPopUpButton {
 
 // MARK: Confirm
 
-/// The question before a destructive action (Remove an extension, Clear Site Data), as a panel over the Settings
-/// window (a sheet when that window isn't on screen). Following the security checklist: Cancel is the default (Return
-/// and Escape cancel), the action's button ignores clicks for its first half second, and the message names exactly
-/// what goes (the full origin, the extension and its ID).
+/// The question before an action that destroys something or gives it away (Remove an extension, Clear Site Data,
+/// Delete a password, Export passwords), as a panel over the Settings window. Following the security checklist: Cancel
+/// is the default (Return and Escape cancel), the action's button ignores clicks for its first half second, and the
+/// message names exactly what goes (the full origin, the extension and its ID). One at a time.
 enum SettingsConfirm {
-  private static var open: (question: PanelQuestion, message: String, detail: String)?
+  private static var open: (question: PanelQuestion, kind: String, message: String, detail: String)?
 
+  /// What is being asked ("removePassword", "exportPasswords", …), never its text (which names a site).
+  static var pending: String? { open?.kind }
+
+  /// A destructive question; `then` runs only on its action. With the Settings window off screen, an alert asks.
   static func ask(_ message: String, detail: String, action: String, in window: NSWindow?, then: @escaping () -> Void) {
-    guard open == nil else { return }
+    ask("settingsConfirm", title: message, message: detail, confirm: action, alert: true) { if $0 { then() } }
+  }
+
+  /// `destructive`: the action's button is red (Delete); else it's the profile's colour (Export…). `alert`: with the
+  /// Settings window off screen, ask in an alert; else that answers no.
+  static func ask(_ kind: String, title: String, message: String, confirm: String, destructive: Bool = true,
+                  alert: Bool = false, then: @escaping (Bool) -> Void) {
+    guard open == nil else { return then(false) }
     var answered = false
     var close: (() -> Void)?
     let finish = { (accepted: Bool) in
@@ -393,24 +487,25 @@ enum SettingsConfirm {
       answered = true
       open = nil
       close?()
-      if accepted { then() }
+      then(accepted)
     }
-    let question = PanelQuestion(title: message, message: detail,
-                                 answers: [("Cancel", false, false), (action, false, true)]) { finish($0 == 1) }
-    let confirm = question.buttons[1]
-    confirm.isEnabled = false
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { confirm.isEnabled = true }
-    open = (question, message, detail)
+    let question = PanelQuestion(title: title, message: message,
+                                 answers: [("Cancel", false, false), (confirm, !destructive, destructive)]) { finish($0 == 1) }
+    let action = question.buttons[1]
+    action.isEnabled = false
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { action.isEnabled = true }
+    open = (question, kind, title, message)
     guard let handle = SettingsWindowController.shared.askQuestion(
-      "settingsConfirm", question, onReturn: { finish(false) }, onClose: { finish(false) }) else {
+      kind, question, onReturn: { finish(false) }, onClose: { finish(false) }) else {
       open = nil
+      guard alert else { return then(false) }
       let alert = NSAlert()
       alert.alertStyle = .warning
-      alert.messageText = message
-      alert.informativeText = detail
+      alert.messageText = title
+      alert.informativeText = message
       alert.addButton(withTitle: "Cancel")
-      alert.addButton(withTitle: action).hasDestructiveAction = true
-      if alert.runModal() == .alertSecondButtonReturn { then() }
+      alert.addButton(withTitle: confirm).hasDestructiveAction = destructive
+      then(alert.runModal() == .alertSecondButtonReturn)
       return
     }
     close = { handle.close() }
@@ -418,7 +513,7 @@ enum SettingsConfirm {
 
   /// For tests: the question showing, if any.
   static var debug: [String: Any]? {
-    open.map { ["message": $0.message, "detail": $0.detail, "ready": $0.question.buttons[1].isEnabled] }
+    open.map { ["kind": $0.kind, "message": $0.message, "detail": $0.detail, "ready": $0.question.buttons[1].isEnabled] }
   }
 
   /// For tests: answers as a click would; a click on the action in its first half second does nothing.
@@ -429,6 +524,9 @@ enum SettingsConfirm {
     button.performClick(nil)
     return "ok"
   }
+
+  /// Closes a question still up (the window is closing), as Cancel.
+  static func dismiss() { _ = answer(accept: false) }
 }
 
 // MARK: Pages

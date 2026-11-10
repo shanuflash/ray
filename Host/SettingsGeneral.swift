@@ -62,7 +62,7 @@ final class GeneralPaneContent: SettingsPaneContent {
   private var loginRow: SettingsRowView?
   private let loginSwitch = RaySwitch()
   private var folderRow: SettingsRowView?
-  private let folderButton = NSButton(title: "Change…", target: nil, action: nil)
+  private let folderButton = SettingsButton("Change…")
   private let askSwitch = RaySwitch()
   private let updateRows = SettingsSlot()
   /// Whether the update rows were built for an updater (switches and Check Now) or for none (the version alone).
@@ -70,8 +70,8 @@ final class GeneralPaneContent: SettingsPaneContent {
   private let checkSwitch = RaySwitch()
   private let installSwitch = RaySwitch()
   private var versionRow: SettingsRowView?
-  private let checkNow = NSButton(title: "Check Now", target: nil, action: nil)
-  private let importButton = NSButton(title: "Import…", target: nil, action: nil)
+  private let checkNow = SettingsButton("Check Now")
+  private let importButton = SettingsButton("Import…")
   private var observer: NSObjectProtocol?
 
   init() {
@@ -131,9 +131,7 @@ final class GeneralPaneContent: SettingsPaneContent {
   }
 
   private func downloadsSection() -> SettingsSection {
-    folderButton.bezelStyle = .rounded
-    folderButton.target = self
-    folderButton.action = #selector(chooseFolder)
+    folderButton.onClick = { [weak self] in self?.chooseFolder() }
     askSwitch.setAccessibilityLabel("Ask where to save each file")
     askSwitch.onChange = { [weak self] on in self?.system.downloads.set(askWhereToSave: on) }
     let folder = SettingsRowView(title: "Downloads folder", detail: "", control: folderButton)
@@ -156,9 +154,7 @@ final class GeneralPaneContent: SettingsPaneContent {
     checkSwitch.onChange = { [weak self] on in self?.system.setAutomaticChecks(on) }
     installSwitch.setAccessibilityLabel("Install updates automatically")
     installSwitch.onChange = { [weak self] on in self?.system.setAutomaticInstall(on) }
-    checkNow.bezelStyle = .rounded
-    checkNow.target = self
-    checkNow.action = #selector(checkForUpdates)
+    checkNow.onClick = { [weak self] in self?.checkForUpdates() }
     buildUpdateRows()
     var search = [SettingsSearchEntry(title: "Check for updates now", detail: "Ray's version, and whether a newer one is out",
                                       keywords: ["update", "version", "sparkle", "upgrade"])]
@@ -196,9 +192,7 @@ final class GeneralPaneContent: SettingsPaneContent {
   }
 
   private func importSection() -> SettingsSection {
-    importButton.bezelStyle = .rounded
-    importButton.target = self
-    importButton.action = #selector(importFromBrowser)
+    importButton.onClick = { [weak self] in self?.importFromBrowser() }
     let row = SettingsRowView(
       title: "Import from another browser",
       detail: "Arc, Chrome, Safari, Firefox and more.",
@@ -264,7 +258,7 @@ final class GeneralPaneContent: SettingsPaneContent {
 
   private func makeDefault() { system.makeDefaultBrowser() }
 
-  @objc private func chooseFolder() {
+  private func chooseFolder() {
     let panel = NSOpenPanel()
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
@@ -280,9 +274,9 @@ final class GeneralPaneContent: SettingsPaneContent {
     if let window = folderButton.window { panel.beginSheetModal(for: window, completionHandler: done) } else { done(panel.runModal()) }
   }
 
-  @objc private func checkForUpdates() { system.checkForUpdates() }
+  private func checkForUpdates() { system.checkForUpdates() }
 
-  @objc private func importFromBrowser() { AppController.shared.importFromBrowser(nil) }
+  private func importFromBrowser() { AppController.shared.importFromBrowser(nil) }
 
   // MARK: Tests
 

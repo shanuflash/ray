@@ -51,7 +51,7 @@ final class PasswordPrompts {
     if state == "saved" {
       // Saved without asking (a password Chrome suggested): say so, as Chrome's confirmation does.
       if tab === controller?.activeTab {
-        controller?.notes.show(Note("Password saved", icon: .symbol("key.fill"), key: "passwordSaved"))
+        controller?.notes.show(Note("Password Saved", icon: .symbol("key.fill"), key: "passwordSaved"))
       }
       last = "savedNote"
       onChange?()

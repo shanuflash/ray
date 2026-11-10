@@ -136,12 +136,7 @@ final class PermissionPromptView: NSView {
   func animateIn() {
     guard let layer else { return }
     if !Panels.reduceMotion {
-      let drop = CASpringAnimation(keyPath: "transform.translation.y")
-      drop.fromValue = 8
-      drop.toValue = 0
-      drop.stiffness = pow(2 * .pi / Notes.response, 2)
-      drop.damping = 4 * .pi * Notes.dampingRatio / Notes.response
-      drop.duration = drop.settlingDuration
+      let drop = Spring.caAnimation(keyPath: "transform.translation.y", from: 8, to: 0)
       layer.add(drop, forKey: "drop")
     }
     let fade = CABasicAnimation(keyPath: "opacity")

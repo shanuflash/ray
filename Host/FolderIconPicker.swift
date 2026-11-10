@@ -39,7 +39,9 @@ final class FolderIconPicker: NSView {
     selection.cornerRadius = 9
     selection.cornerCurve = .continuous
     layer?.addSublayer(selection)
-    title.font = .systemFont(ofSize: 15, weight: .semibold)
+    // Panels' titles: 13 pt semibold grey (as Downloads').
+    title.font = .systemFont(ofSize: 13, weight: .semibold)
+    title.textColor = .secondaryLabelColor
     title.alignment = .center
     addSubview(title)
     trash.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Remove Icon")
@@ -98,10 +100,9 @@ final class FolderIconPicker: NSView {
 
   override func updateLayer() {
     effectiveAppearance.performAsCurrentDrawingAppearance {
-      let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
       CATransaction.begin()
       CATransaction.setDisableActions(true)
-      selection.backgroundColor = (dark ? NSColor(white: 1, alpha: 0.16) : NSColor(white: 0, alpha: 0.08)).cgColor
+      selection.backgroundColor = SelectedRow.fill(over: SurfaceBackdrop.solidFill).cgColor
       CATransaction.commit()
     }
   }

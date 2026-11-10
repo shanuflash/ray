@@ -242,7 +242,7 @@ extension AnySettingKey {
     "jumpCloudRelay", default: false,
     ui: SettingUI(
       pane: .passwords, group: .signIn, title: "Sign in with JumpCloud Go through Chrome",
-      detail: "Opens a small Chrome window for Touch ID.", about: "On JumpCloud's sign-in page, a small Google Chrome window opens for Touch ID, then you're signed in here.",
+      detail: "Chrome runs in the background for Touch ID.", about: "On JumpCloud's sign-in page, Ray's own Google Chrome signs in out of sight (Touch ID), then you're signed in here. If that stalls, a small Chrome window opens to finish.",
       keywords: ["jumpcloud", "jumpcloud go", "sso", "single sign-on", "touch id", "passwordless", "work", "chrome"],
       control: .toggle))
 

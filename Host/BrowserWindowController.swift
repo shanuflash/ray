@@ -2694,6 +2694,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         "keepReady": downloadsList?.row(for: $0.id)?.keepReady ?? false,
       ] },
       "downloadsOpen": downloadsOpen,
+      "downloadAnswer": downloads.lastAnswer ?? NSNull(),
       "downloadsButton": {
         let button = sidebar.downloadsAnchor
         guard !button.isHidden, let height = window.contentView?.bounds.height else { return "" }

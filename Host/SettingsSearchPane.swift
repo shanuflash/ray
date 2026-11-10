@@ -551,10 +551,10 @@ private final class SiteSearchEditor: NSView, NSTextFieldDelegate {
   private let keyword = EditorField(placeholder: "Keyword, e.g. w")
   private let address = EditorField(placeholder: "https://en.wikipedia.org/w/index.php?search=%s")
   private let problemLabel = NSTextField(wrappingLabelWithString: "")
-  private let save = AccentButton(title: "Add")
-  private let saveTitle = AccentButton(title: "Save")
-  private let cancel = LinkButton(title: "Cancel")
-  private let removeLink = LinkButton(title: "Remove")
+  private let save = SettingsButton("Add", primary: true)
+  private let saveTitle = SettingsButton("Save", primary: true)
+  private let cancel = SettingsButton("Cancel")
+  private let removeLink = SettingsButton("Remove", destructive: true)
   private var isEditingExisting = false
 
   var firstField: NSView { name.field }
@@ -636,10 +636,9 @@ private final class SiteSearchEditor: NSView, NSTextFieldDelegate {
     let size = button.intrinsicContentSize
     button.frame = NSRect(x: width - size.width, y: y, width: size.width, height: size.height)
     let cancelSize = cancel.intrinsicContentSize
-    cancel.frame = NSRect(x: button.frame.minX - 16 - cancelSize.width, y: y + ((size.height - cancelSize.height) / 2).rounded(),
-                          width: cancelSize.width, height: cancelSize.height)
+    cancel.frame = NSRect(x: button.frame.minX - 8 - cancelSize.width, y: y, width: cancelSize.width, height: cancelSize.height)
     let removeSize = removeLink.intrinsicContentSize
-    removeLink.frame = NSRect(x: 0, y: cancel.frame.minY, width: removeSize.width, height: removeSize.height)
+    removeLink.frame = NSRect(x: 0, y: y, width: removeSize.width, height: removeSize.height)
   }
 
   func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -649,41 +648,5 @@ private final class SiteSearchEditor: NSView, NSTextFieldDelegate {
     default: return false
     }
     return true
-  }
-}
-
-/// A one-line text field on a rounded fill, as the window's search field is: no system focus ring.
-private final class EditorField: NSView {
-  let field = NSTextField()
-
-  init(placeholder: String) {
-    super.init(frame: .zero)
-    wantsLayer = true
-    layer?.cornerRadius = 7
-    layer?.cornerCurve = .continuous
-    field.isBezeled = false
-    field.isBordered = false
-    field.drawsBackground = false
-    field.focusRingType = .none
-    field.font = .systemFont(ofSize: 13)
-    field.placeholderString = placeholder
-    field.cell?.isScrollable = true
-    field.cell?.wraps = false
-    field.cell?.usesSingleLineMode = true
-    addSubview(field)
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override var isFlipped: Bool { true }
-  override var wantsUpdateLayer: Bool { true }
-  override var mouseDownCanMoveWindow: Bool { false }
-  override func updateLayer() { layer?.backgroundColor = SettingsColors.track.cgColor }
-  override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
-
-  override func layout() {
-    super.layout()
-    let height = ceil(field.intrinsicContentSize.height)
-    field.frame = NSRect(x: 9, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 18, height: height)
   }
 }
