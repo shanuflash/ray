@@ -326,6 +326,25 @@ publicly or create accounts.
   (`confirmDownloads`, in General below). Test commands `pagequestion press <n>|check|escape`, `crashed reload`,
   `warning ready`; state log `pageQuestion`, `blockedPopups`, `crashedPage`; checks `app-link-prompt`, `popup-blocked`,
   `crashed-page`, `page-unresponsive` (waits for the engine's 15 s), `quit-with-downloads`.
+- Screen sharing (`Host/ScreenShare.swift`, `Host/SharePicker.swift`, `BrowserWindowController` `// MARK: Screen
+  sharing`; owner's picks in `docs/mocks/screen-share.html`: picker B, note B, marks A). The page script wraps
+  `getDisplayMedia` (every frame; refuses without a click or the display-capture policy, as Chrome does) and posts
+  `displayMedia`; `SharePicker` (one per window, one request per tab, put away by a tab switch, cancelled by another
+  site) shows `SharePickerView` from `questionAnchor`: Tabs / Windows / Screen cards with pictures, nothing chosen,
+  Share dead 0.5 s and until a pick, Return nothing, the asking frame's full origin. Share calls
+  `RayCoreEngine.allowDesktopCapture` (that source, frame and origin, 15 s) and answers the frame, which opens it with
+  getUserMedia. Windows are `window:<id>:0`: macOS captures them, Ray's own included (Chrome's picker gave Ray's window,
+  a views widget, a widget id and captured Chrome's compositor, which never draws Ray: that's why it failed).
+  `ShareSources`: ScreenCaptureKit lists and pictures, only with Screen Recording permission (else a line and Open
+  Settings); test builds fake them (`share permission on|off`). `ScreenShares` (app-wide) follows the engine's
+  `didChangeMediaAccess` `screen`, with what Ray granted: kind, origin, the shared tab; Share This Tab Instead
+  (`shareThisTabInstead`) restarts the capture, so an end counts after 1.5 s. `ChromeShareBar` hides Chrome's floating
+  bar (borderless views widget, status level, all Spaces) for 4 s after a window or screen share starts.
+  `ShareIndicators`: the held `screenShare` note at the top centre (Stop Sharing, Share This Tab, ✕; gives way to a
+  panel, back when it closes), `SharedPageRing` over the shared page card, and the rows' share marks
+  (`SidebarView.share(for:)`, in the sound mark's slot; click stops). Test commands `share segment|pick|double <n>`,
+  `share audio`, `share press share|cancel|settings`, `share escape|stop|fakebar|mark <id>`, `share snap|windowsnap
+  <path>`; state log `screenShare`, `sidebarFrames.shareMarks`; check `screen-share` (pictures with `SNAP_DIR`).
 - `TabSwitcher` (`Host/TabSwitcher.swift`, `BrowserWindowController` `// MARK: Tab switcher`): Arc's ⌃Tab switcher
   (sizes from Cra's measurements of Arc 1.170 and the owner's recording; look B of the mocks, owner 2026-11-04). With
   `recentTabCycling` on, ⌃Tab opens a walk over the up to 5 most recent tabs (current first, as many as fit the

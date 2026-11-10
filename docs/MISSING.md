@@ -69,7 +69,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
    draws it); see Known limitations 45.
 4. ~~Links that open other apps: `mailto:`, Zoom, Slack… (`externalAppRequest`)~~ (Done).
 5. Device pickers: WebUSB, Bluetooth, HID, Serial (`deviceChooser`); requests get nothing.
-6. Screen-share picker (`allowDesktopCapture`, "share this tab instead").
+6. ~~Screen-share picker (`allowDesktopCapture`, "share this tab instead")~~ (Done). See Known limitations 49.
 7. Cast (`castDialog`, `castRoutes`).
 8. ~~A note when a popup is blocked, with "always allow" (`didBlockPopup`, `openBlockedPopup`)~~ (Done).
 9. ~~Crashed tab page and the "page unresponsive" dialog (`rendererGone`, `tabBecameUnresponsive`)~~ (Done).
@@ -355,11 +355,20 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     bar with no folder choice (Chrome remembers the last folder). No bookmarks bar, on purpose. No Export Bookmarks
     (engine call `ac_bookmarks_export_html` comes with the next engine, Chrome 16 above). Fix: a drag source on
     `BookmarkRowView` and `ac_bookmarks_apply`'s `move`, plus outside drops on `SidebarView`.
+49. **Screen sharing gaps** (2026-11-10). Chrome's floating share bar is hidden by Ray after it appears (found by its
+    shape: a borderless views widget at the status level on every Space); an engine fixup that skips it when Ray's
+    grant applies would be cleaner (next engine rebuild). Windows and screens need macOS Screen Recording permission;
+    Crest's way (macOS's own content-sharing picker, no permission) needs engine work (a `DesktopMediaPicker` that
+    opens `SCContentSharingPicker`). Capturing Ray's own window goes through macOS (`window:<id>:0`): unverified in
+    tests (no permission there), check on a real Mac. Extensions' `chrome.desktopCapture` still gets Chrome's
+    picker. Shares started without Ray's picker show as "Sharing your screen" (Ray can't tell the kind). The note
+    shows only in windows of the sharing tab's profile; Chrome's tab-sharing infobar stays undrawn.
 
 ## Done
 
 | What | When |
 |---|---|
+| Screen sharing in Ray's own look: a picker over the asking tab (Tabs / Windows / Screen with pictures, deny by default, full origin, 0.5 s guard), a held note at the top centre (Stop Sharing, Share This Tab), share marks on the rows, a ring round the shared page; Chrome's picker and floating bar gone; Ray's own window shares through macOS | 2026-11-10, `feat: own screen share picker and indicators` |
 | Asks to be the default browser: an onboarding step after the import ("Open links in Ray?") and a rare note at launch (bottom right, 14 days apart, 3 times at most, Never for good) | 2026-11-05, `feat: ask to be default browser` |
 | Bookmarks: a panel from the sidebar's footer (⌥⌘B: search, folders in place, open, ⌘-click behind, Rename…, Delete with Undo, Add to Pinned, Open All), the menu bar's Bookmarks menu (Bookmark This Tab…, Bookmark All Tabs…, the bookmarks as menus), "Bookmark" rows in the command bar | 2026-11-05, `feat: bookmarks panel` |
 | Link address on hover at the page's bottom left (above a download's note, aside from the pointer); a sound icon on tabs and favorites (click to mute); back/forward history lists on right-click or hold | 2026-11-05, `feat: link preview, tab sound, history lists` |

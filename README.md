@@ -57,6 +57,7 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Offers to save addresses and cards from forms
   - Asks before a link opens another app; shows blocked pop-ups
   - Its own crashed-page and "not responding" prompts
+  - Its own screen-sharing picker, sharing note and shared-tab marks
   - Asks before quitting cancels downloads
   - Bookmarks in a panel, the menu bar and the command bar
   - JumpCloud Go sign-in
@@ -76,6 +77,7 @@ Full list: [docs/MISSING.md](docs/MISSING.md).
 Pages run in Chromium's sandbox with site isolation; Ray's own code never parses web content. No Safe Browsing
 (Helium compiles it out). Passwords and cookies are encrypted with Ray's own key in your login keychain. Imports read
 another browser only when you ask, and send nothing anywhere. Updates are signed and checked before they install.
+A site that asks to share your screen gets only the tab, window or screen you pick in Ray's picker.
 
 ## Build from source
 

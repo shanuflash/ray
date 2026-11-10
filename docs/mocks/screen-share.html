@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Screen Sharing</title>
+<style>
+:root {
+  --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --ink3: #A1A1A6; --hair: rgba(0,0,0,.08);
+  --side: #E8E5EF; --sideInk: #3A3A3F; --page: #FFFFFF; --line: #EDEDF0; --chip: #FFFFFF;
+  --card: #FFFFFF; --cardInk: #1C1C1E; --cardInk2: #6C6C70; --edge: rgba(0,0,0,.075);
+  --tile: rgba(0,0,0,.045); --tileHover: rgba(0,0,0,.07); --sel: rgba(40,30,70,.10); --sep: rgba(0,0,0,.08);
+  --glass: rgba(255,255,255,.68); --thumb: #F1F0F4;
+  --shadow: 0 1px 1.5px rgba(0,0,0,.05), 0 6px 14px -4px rgba(0,0,0,.08), 0 22px 48px -12px rgba(0,0,0,.22);
+  --accent: #8257E5; --onAccent: #fff; --red: #E5484D; --onRed: #fff;
+}
+:root[data-theme="dark"] {
+  --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --ink3: #6C6C72; --hair: rgba(255,255,255,.09);
+  --side: #1D1B22; --sideInk: #D8D6DE; --page: #242428; --line: #2F2F34; --chip: #28282D;
+  --card: #2C2C31; --cardInk: #F5F5F7; --cardInk2: #A1A1A9; --edge: rgba(255,255,255,.09);
+  --tile: rgba(255,255,255,.07); --tileHover: rgba(255,255,255,.1); --sel: rgba(0,0,0,.3); --sep: rgba(255,255,255,.09);
+  --glass: rgba(40,40,46,.66); --thumb: #36363C;
+  --shadow: 0 1px 1.5px rgba(0,0,0,.3), 0 6px 14px -4px rgba(0,0,0,.3), 0 24px 52px -12px rgba(0,0,0,.6);
+  --accent: #A486F0; --onAccent: #000; --red: #FF6369; --onRed: #fff;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px 64px; }
+h1 { font-size: 22px; font-weight: 600; margin: 26px 0 4px; letter-spacing: -.01em; }
+.sub { color: var(--ink2); margin: 0 0 14px; max-width: 800px; }
+h3 { font-size: 13px; font-weight: 600; margin: 26px 0 8px; }
+.bar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--desk) 86%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 10px 0; border-bottom: 1px solid var(--hair); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.row + .row { margin-top: 6px; }
+.lab { color: var(--ink2); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; min-width: 58px; }
+button.t { font: inherit; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--chip); border: 1px solid var(--hair); border-radius: 7px; padding: 4px 9px; cursor: pointer; white-space: nowrap; }
+button.t:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+button.t[aria-pressed="true"] { background: var(--accent); color: var(--onAccent); border-color: transparent; }
+.rec { display: inline-block; font-size: 10px; font-weight: 700; color: var(--onAccent); background: var(--accent); border-radius: 4px; padding: 1px 5px; margin-left: 4px; vertical-align: 1px; }
+
+/* Window */
+.win { position: relative; margin-top: 16px; height: 600px; border-radius: 12px; background: var(--side); overflow: hidden;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.2), 0 20px 50px -12px rgba(0,0,0,.28); display: flex; }
+.side { width: 212px; flex: none; padding: 12px 10px; color: var(--sideInk); display: flex; flex-direction: column; }
+.lights { display: flex; gap: 8px; margin: 3px 0 16px 5px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; } .lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+.addr { height: 34px; border-radius: 9px; background: rgba(0,0,0,.05); margin-bottom: 12px; display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root[data-theme="dark"] .addr { background: rgba(255,255,255,.06); }
+.sect { font-size: 10.5px; color: var(--ink3); font-weight: 600; margin: 10px 8px 4px; }
+.tab { position: relative; height: 34px; border-radius: 8px; margin-bottom: 2px; display: flex; align-items: center; gap: 9px; padding: 0 9px; font-size: 12.5px; white-space: nowrap; overflow: hidden; }
+.tab.on { background: var(--page); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.tab .fav { position: relative; width: 16px; height: 16px; border-radius: 4px; background: var(--c); flex: none; }
+.tab .title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tab .mark { width: 14px; height: 14px; flex: none; display: grid; place-items: center; }
+.tab .mark svg { width: 14px; height: 14px; }
+.badge { position: absolute; right: -4px; bottom: -4px; width: 11px; height: 11px; border-radius: 50%; display: grid; place-items: center; box-shadow: 0 0 0 1.5px var(--side); }
+.tab.on .badge { box-shadow: 0 0 0 1.5px var(--page); }
+.badge svg { width: 7px; height: 7px; }
+.foot { margin-top: auto; padding: 0 4px; color: var(--ink2); display: flex; align-items: center; gap: 10px; }
+.foot svg { width: 16px; height: 16px; }
+.pill { margin: 0 0 10px; height: 32px; border-radius: 9px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 10px; font-size: 12px; color: var(--sideInk); background: color-mix(in srgb, var(--red) 12%, transparent); }
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); flex: none; animation: pulse 2s ease-in-out infinite; }
+.pill span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill .btn { height: 22px; font-size: 11.5px; padding: 0 8px; }
+@keyframes pulse { 50% { opacity: .45; } }
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.page { position: relative; flex: 1; margin: 8px 8px 8px 0; border-radius: 10px; background: var(--page); box-shadow: 0 0 0 .5px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.06); overflow: hidden; display: flex; flex-direction: column; }
+.ring { position: absolute; inset: 0; border-radius: 10px; pointer-events: none; z-index: 30; }
+.ring.accent { box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 18px -6px color-mix(in srgb, var(--accent) 70%, transparent); }
+.ring.red { box-shadow: inset 0 0 0 2px var(--red), inset 0 0 18px -6px color-mix(in srgb, var(--red) 70%, transparent); }
+.ring .chip { position: absolute; top: 0; left: 50%; transform: translateX(-50%); height: 20px; padding: 0 9px 0 7px; border-radius: 0 0 8px 8px; font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+.ring.accent .chip { background: var(--accent); color: var(--onAccent); }
+.ring.red .chip { background: var(--red); color: var(--onRed); }
+.ring .chip svg { width: 11px; height: 11px; }
+.strip { flex: none; height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--ink2); }
+.strip b { color: var(--ink); font-weight: 600; }
+.strip .sp { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.strip .btn { height: 24px; font-size: 12px; padding: 0 10px; }
+.ico { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--red); color: var(--onRed); }
+.ico svg { width: 11px; height: 11px; }
+.content { position: relative; flex: 1; overflow: hidden; }
+.meet { position: absolute; inset: 0; background: #202124; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px 14px 68px; }
+.meet .tile { border-radius: 10px; background: #3C4043; position: relative; }
+.meet .tile:nth-child(1) { background: linear-gradient(140deg, #5B6B8C, #2E3A52); }
+.meet .tile:nth-child(2) { background: linear-gradient(140deg, #7A5C4E, #3A2A24); }
+.meet .ctl { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 10px; }
+.meet .ctl i { width: 38px; height: 38px; border-radius: 50%; background: #3C4043; }
+.meet .ctl i.end { width: 54px; border-radius: 19px; background: #EA4335; }
+.site-pg nav { height: 52px; display: flex; align-items: center; gap: 18px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+.site-pg nav .logo { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, #F24E1E, #A259FF); }
+.site-pg nav i { width: 46px; height: 7px; border-radius: 4px; background: var(--line); }
+.site-pg .hero { margin: 26px 28px 0; height: 170px; border-radius: 14px; background: radial-gradient(120% 140% at 85% 0%, #FFB86B 0%, #FF6A88 35%, #7B61FF 70%, #2D7FF9 100%); }
+.site-pg .text { padding: 22px 28px; } .site-pg .text div { height: 9px; border-radius: 5px; background: var(--line); margin-bottom: 12px; }
+.layer { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
+.layer > * { pointer-events: auto; }
+
+/* Surfaces: the notes' and panels' look */
+.surf { position: absolute; border-radius: 14px; color: var(--cardInk); background: var(--card); box-shadow: 0 0 0 .5px var(--edge), var(--shadow); }
+.glass .surf { background: var(--glass); backdrop-filter: blur(34px) saturate(190%); -webkit-backdrop-filter: blur(34px) saturate(190%); }
+.btn { height: 28px; border-radius: 8px; border: 0; background: var(--tile); color: var(--cardInk); font: inherit; font-size: 12.5px; font-weight: 500; padding: 0 12px; cursor: default; white-space: nowrap; }
+.btn.primary { background: var(--accent); color: var(--onAccent); font-weight: 600; }
+.btn.stop { background: var(--red); color: var(--onRed); font-weight: 600; }
+.btn.wait { opacity: .45; }
+.btn.off { opacity: .45; }
+.btn.x { width: 24px; padding: 0; display: grid; place-items: center; background: transparent; color: var(--cardInk2); }
+.btn.x svg { width: 10px; height: 10px; }
+
+/* Picker */
+.pick { left: 50%; top: 10px; transform: translateX(-50%); width: 400px; padding: 14px 6px 12px; animation: drop .32s cubic-bezier(.2,.9,.3,1); }
+.pick .head { display: flex; gap: 11px; align-items: flex-start; padding: 0 8px; }
+.pick .icon { width: 36px; height: 36px; border-radius: 9px; flex: none; display: grid; place-items: center; background: var(--tile); color: var(--cardInk2); }
+.pick .icon svg { width: 20px; height: 20px; }
+.pick h4 { margin: 1px 0 1px; font-size: 13.5px; font-weight: 600; }
+.pick .org { font-size: 12px; color: var(--cardInk2); word-break: break-all; }
+.list { max-height: 300px; overflow: auto; margin: 10px 0 0; padding: 0 0; }
+.lh { font-size: 11px; font-weight: 600; color: var(--cardInk2); padding: 8px 14px 4px; }
+.src { height: 32px; margin: 0 6px; border-radius: 7px; display: flex; align-items: center; gap: 9px; padding: 0 8px; font-size: 12.5px; }
+.src:hover { background: var(--tileHover); }
+.src.sel { background: var(--sel); }
+.src .fv { width: 16px; height: 16px; border-radius: 4px; background: var(--c); flex: none; }
+.src .app { width: 18px; height: 18px; border-radius: 5px; background: var(--c); flex: none; }
+.src .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.src .dt { color: var(--cardInk2); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 2; }
+.src .ck { margin-left: auto; color: var(--accent); width: 14px; height: 14px; flex: none; }
+.screens { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 6px; }
+.scr { border-radius: 9px; padding: 8px; text-align: center; font-size: 12px; }
+.scr:hover { background: var(--tileHover); }
+.scr.sel { background: var(--sel); }
+.scr .th { height: 70px; border-radius: 6px; background: var(--thumb); box-shadow: inset 0 0 0 1px var(--edge); display: grid; place-items: center; color: var(--cardInk2); margin-bottom: 6px; }
+.scr.sel .th { box-shadow: inset 0 0 0 2px var(--accent); }
+.scr small { display: block; color: var(--cardInk2); font-size: 11px; font-variant-numeric: tabular-nums; }
+.perm { margin: 2px 14px 4px; padding: 10px 11px; border-radius: 9px; background: var(--tile); font-size: 12px; color: var(--cardInk2); display: flex; align-items: center; gap: 10px; }
+.perm span { flex: 1; }
+.perm .btn { height: 24px; font-size: 12px; padding: 0 9px; }
+.pf { display: flex; align-items: center; gap: 6px; padding: 12px 14px 0; border-top: 1px solid var(--sep); margin-top: 8px; }
+.chk { display: flex; align-items: center; gap: 7px; font-size: 12px; margin-right: auto; }
+.chk i { width: 14px; height: 14px; border-radius: 4px; background: var(--accent); flex: none; display: grid; place-items: center; }
+.chk i svg { width: 9px; height: 9px; color: var(--onAccent); }
+.seg { display: flex; margin: 12px 14px 4px; padding: 2px; border-radius: 8px; background: var(--tile); }
+.seg span { flex: 1; text-align: center; font-size: 12px; font-weight: 500; padding: 4px 0; border-radius: 6px; color: var(--cardInk2); }
+.seg span.on { background: var(--card); color: var(--cardInk); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; padding: 6px 8px 0; }
+.grid .scr .th { height: 62px; background-size: cover; }
+
+/* Share note */
+.note { display: flex; align-items: center; gap: 10px; padding: 7px 7px 7px 10px; border-radius: 13px; animation: drop .32s cubic-bezier(.2,.9,.3,1); font-size: 12.5px; }
+.note.tc { left: 50%; top: 10px; transform: translateX(-50%); }
+.note.br { right: 10px; bottom: 10px; }
+.note .nt { display: flex; flex-direction: column; min-width: 0; white-space: nowrap; }
+.note .nt b { font-weight: 600; } .note .nt span { font-size: 11.5px; color: var(--cardInk2); }
+.note .btn { height: 26px; padding: 0 10px; font-size: 12px; }
+@keyframes drop { from { opacity: 0; translate: 0 -8px; } to { opacity: 1; translate: 0 0; } }
+
+.desc { margin-top: 14px; }
+.desc ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink2); } .desc li { margin: 4px 0; }
+.desc b { color: var(--ink); font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--page); border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 1px var(--hair); }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+th { font-weight: 600; color: var(--ink2); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+.tw { overflow-x: auto; }
+@media (max-width: 760px) { .side { display: none; } .page { margin-left: 8px; } .pick { width: 330px; } }
+</style>
+</head>
+<body>
+<div class="bar"><div class="wrap" style="padding-bottom:0">
+  <div class="row" id="scenes">
+    <span class="lab">Part</span>
+    <button class="t" data-scene="picker">1 · Picker</button>
+    <button class="t" data-scene="bar">2 · Share bar</button>
+    <button class="t" data-scene="marks">3 · Tab and page marks</button>
+  </div>
+  <div class="row" id="variants"><span class="lab">Variant</span></div>
+  <div class="row" id="states"><span class="lab">State</span></div>
+  <div class="row">
+    <span class="lab">Look</span>
+    <button class="t" id="glassB" aria-pressed="true">Glass</button>
+    <button class="t" id="solidB" aria-pressed="false">Solid</button>
+    <span style="width:8px"></span>
+    <button class="t" id="lightB" aria-pressed="true">Light</button>
+    <button class="t" id="darkB" aria-pressed="false">Dark</button>
+    <span style="width:8px"></span>
+    <button class="t" id="waitB" aria-pressed="false">First 0.5 s</button>
+  </div>
+</div></div>
+<div class="wrap">
+  <h1>Screen sharing</h1>
+  <p class="sub">Today a site's “share your screen” gets Chrome's grey picker, Ray's own window can't be shared from it, Chrome's floating “… is sharing a window · Stop sharing · Hide” bar sits at the bottom of the screen, and a shared tab looks like any other. Three parts to pick: the picker, the bar while sharing, and the marks on a shared tab. The first variant of each is my recommendation.</p>
+  <div class="win glass" id="win">
+    <div class="side">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="addr" id="sideAddr">meet.google.com/abc-defg-hij</div>
+      <div class="sect">Today</div>
+      <div class="tab" id="tMeet"><span class="fav" style="--c:#00897B"></span><span class="title">Weekly sync · Meet</span></div>
+      <div class="tab" id="tFigma"><span class="fav" style="--c:#A259FF"></span><span class="title">Ray sidebar · Figma</span></div>
+      <div class="tab" id="tGh"><span class="fav" style="--c:#24292F"></span><span class="title">shanuflash/ray</span></div>
+      <div class="tab" id="tDocs"><span class="fav" style="--c:#1A73E8"></span><span class="title">Q4 plan · Docs</span></div>
+      <div style="margin-top:auto"></div>
+      <div id="pillSpot"></div>
+      <div class="foot"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v6M5.6 8.6L8 11l2.4-2.4"/></svg><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4 2.5h8v11l-4-3-4 3z"/></svg></div>
+    </div>
+    <div class="main">
+      <div class="page" id="page">
+        <div id="stripSpot"></div>
+        <div class="content" id="content"></div>
+        <div class="ring" id="ring"></div>
+        <div class="layer" id="pageLayer"></div>
+      </div>
+    </div>
+  </div>
+  <div class="desc" id="desc"></div>
+
+  <h3>Why sharing Ray's own window failed</h3>
+  <p class="sub" style="color:var(--ink)">Ray's window is a Chrome window under the hood (a views widget, so the engine can host the page). Chrome's picker sees that and, as it does for its own windows, records it as “capture this widget through Chrome's compositor” instead of asking macOS for its pixels. Chrome's compositor never draws Ray's sidebar or the page's own layers, so the capture fails. Ray's picker asks for every window, Ray's included, by its macOS window number only, so macOS captures what's on screen like any other app's window. Ray's own windows stay in the list (Chrome lists its own too); the picker itself is inside the window and closes before sharing starts.</p>
+
+  <h3>What the references do</h3>
+  <div class="tw"><table>
+    <tr><th></th><th>Chrome</th><th>Ardia</th><th>Crest</th><th>Cra</th></tr>
+    <tr><td>Picker</td><td>Tab-modal dialog: Chrome Tab / Window / Entire Screen tabs, thumbnail grids, “Also share tab audio”, Cancel / Share. Lists its own windows, captured through its compositor.</td><td>Popover from the page's top: “Share your screen with <i>host</i>”, one list (Tabs, Screens as tiles, Windows with app icons), audio box, Cancel / Share. Leaves its own windows out.</td><td>Panel: the profile's tabs only, then “Window or Screen…” opens macOS's own picker (no Screen Recording permission needed; needs engine work Ray's paused engine doesn't have).</td><td>Chrome's picker.</td></tr>
+    <tr><td>While sharing</td><td>Tab: an infobar strip on the shared tab and the capturing tab (“Sharing this tab to …”, Stop / Share this tab instead), a blue border round the shared page. Window or screen: the floating bar at the bottom of the screen.</td><td>A 38 pt strip on every tab of the profile: “Sharing this tab / another tab with <i>host</i>”, Stop Sharing or Share This Tab Instead, Dismiss. No border.</td><td>Marks on the two tabs; no bar.</td><td>Chrome's.</td></tr>
+    <tr><td>Tab marks</td><td>Tab strip alert icons: the capturing tab gets a red record dot, the shared tab a blue “being shared” icon.</td><td>A red badge on the favicon of the capturing tab (screen glyph).</td><td>“Sharing” and “Shared” marks on both rows.</td><td>None.</td></tr>
+  </table></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const win = $('#win'), layer = $('#pageLayer'), desc = $('#desc');
+let scene = 'picker', variant = 0, state = 0, waiting = false;
+const svg = {
+  share: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="2" y="3.5" width="16" height="11" rx="2.2"/><path d="M7 17h6M10 14.5V17" stroke-linecap="round"/><path d="M10 11.5V6.5M7.8 8.6L10 6.4l2.2 2.2" stroke-linecap="round"/></svg>',
+  shared: '<svg viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="2" width="10" height="7.5" rx="1.6"/><rect x="3.5" y="10.2" width="5" height="1.2" rx=".6"/></svg>',
+  check: '<svg class="ck" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.4l2.7 2.6L11 4.4"/></svg>',
+  tick: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.2l2 2L8 3"/></svg>',
+  display: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20h6M12 16.5V20" stroke-linecap="round"/></svg>',
+  x: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l6 6M8 2L2 8"/></svg>',
+  dot: '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4" fill="currentColor"/></svg>',
+};
+const w = () => waiting ? ' wait' : '';
+const meet = '<div class="meet"><div class="tile"></div><div class="tile"></div><div class="ctl"><i></i><i></i><i></i><i class="end"></i></div></div>';
+const figma = '<div class="site-pg"><nav><span class="logo"></span><i></i><i></i><i></i></nav><div class="hero"></div><div class="text"><div style="width:44%;height:16px"></div><div></div><div style="width:90%"></div><div style="width:76%"></div></div></div>';
+
+const tabsList = (sel) => `
+  <div class="lh">Tabs</div>
+  <div class="src${sel==='meet'?' sel':''}"><span class="fv" style="--c:#00897B"></span><span class="nm">Weekly sync · Meet</span><span class="dt">This Tab</span>${sel==='meet'?svg.check:''}</div>
+  <div class="src${sel==='figma'?' sel':''}"><span class="fv" style="--c:#A259FF"></span><span class="nm">Ray sidebar · Figma</span><span class="dt">figma.com</span>${sel==='figma'?svg.check:''}</div>
+  <div class="src"><span class="fv" style="--c:#24292F"></span><span class="nm">shanuflash/ray</span><span class="dt">github.com</span></div>
+  <div class="src"><span class="fv" style="--c:#1A73E8"></span><span class="nm">Q4 plan · Docs</span><span class="dt">docs.google.com</span></div>`;
+const windowsList = (sel, perm) => perm ? `<div class="lh">Windows</div>
+  <div class="src${sel==='ray'?' sel':''}"><span class="app" style="--c:linear-gradient(135deg,#8257E5,#5FB4FF)"></span><span class="nm">Weekly sync · Meet</span><span class="dt">Ray</span>${sel==='ray'?svg.check:''}</div>
+  <div class="src${sel==='xcode'?' sel':''}"><span class="app" style="--c:#1D8CF8"></span><span class="nm">Ray — BrowserWindowController.swift</span><span class="dt">Xcode</span>${sel==='xcode'?svg.check:''}</div>
+  <div class="src"><span class="app" style="--c:#F24E1E"></span><span class="nm">Ray sidebar</span><span class="dt">Figma</span></div>
+  <div class="src"><span class="app" style="--c:#4A154B"></span><span class="nm">#ray-dev</span><span class="dt">Slack</span></div>` : '';
+const screensList = (sel, perm) => perm ? `<div class="lh">Screens</div>
+  <div class="screens"><div class="scr${sel==='scr1'?' sel':''}"><div class="th">${svg.display}</div>Built-in Retina Display<small>1512 × 982</small></div><div class="scr${sel==='scr2'?' sel':''}"><div class="th">${svg.display}</div>Studio Display<small>2560 × 1440</small></div></div>`
+  : `<div class="lh">Windows and screens</div><div class="perm"><span>Ray needs Screen Recording permission to share them.</span><button class="btn">Open Settings</button></div>`;
+const head = `<div class="head"><div class="icon">${svg.share}</div><div style="flex:1;min-width:0"><h4>Choose what to share</h4><div class="org">https://meet.google.com</div></div></div>`;
+const foot = (sel, audio) => `<div class="pf">${audio ? `<label class="chk"><i>${svg.tick}</i>${audio}</label>` : '<span style="margin-right:auto"></span>'}<button class="btn${w()}">Cancel</button><button class="btn primary${w()}${sel ? '' : ' off'}">Share</button></div>`;
+
+const scenes = {
+  picker: { content: meet, active: 'tMeet', variants: [
+    { name: 'A · One list', states: ['Nothing chosen', 'A tab chosen', 'Ray window chosen', 'No permission'],
+      html: () => { const sel = [null, 'figma', 'ray', 'figma'][state], perm = state !== 3;
+        return `<div class="surf pick">${head}<div class="list">${tabsList(sel)}${windowsList(sel, perm)}${screensList(sel, perm)}</div>${foot(sel, sel==='figma' ? 'Share tab audio' : null)}</div>`; },
+      text: `<ul><li><b>Where:</b> a <code>Panels</code> question from the page's top centre (the same spot as Open “App”? and the quit warning), 400 pt, Ray's surface (Glass or Solid). Only over its own tab: a tab switch puts it away, coming back shows it again; the page navigating away cancels it.</li><li><b>One list</b> (Ardia's): this window's profile's open tabs in sidebar order (the asking tab first, “This Tab”), then windows (title, app name, the app's icon; Ray's own included), then screens as two tiles with their size. Refreshes every 2.5 s while open.</li><li><b>Deny by default:</b> nothing chosen when it opens; Share is grey until a row is picked. Cancel, Escape, a click outside or closing the tab is “don't share”. Buttons dead 0.5 s; Return does nothing (a page brought it). Full origin under the title, never the page's own text.</li><li><b>Audio:</b> “Share tab audio” (ticked) when a tab is chosen and the page asked for audio; “Share system audio” for a screen when macOS can. Windows: none.</li><li><b>No Screen Recording permission:</b> tabs still work (they don't need it); windows and screens fold into one line with Open Settings (macOS's Privacy › Screen Recording). Ray never asks macOS itself until you press it.</li></ul>` },
+    { name: 'B · Tabs, Windows, Screen', states: ['Tabs', 'Windows', 'Screen'],
+      html: () => { const seg = ['Tabs', 'Windows', 'Screen'].map((t, i) => `<span class="${i===state?'on':''}">${t}</span>`).join('');
+        const g = state === 0 ? [['#00897B','Weekly sync · Meet'],['#A259FF','Ray sidebar · Figma'],['#24292F','shanuflash/ray'],['#1A73E8','Q4 plan · Docs']] : state === 1 ? [['#8257E5','Ray'],['#1D8CF8','Xcode'],['#F24E1E','Figma'],['#4A154B','Slack'],['#0A84FF','Finder']] : [['#555','Built-in Retina'],['#555','Studio Display']];
+        const cells = g.map(([c, n], i) => `<div class="scr${i===1?' sel':''}"><div class="th" style="background:linear-gradient(160deg,color-mix(in srgb,${c} 35%,var(--thumb)),var(--thumb))"></div><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${n}</div></div>`).join('');
+        return `<div class="surf pick" style="width:460px">${head}<div class="seg">${seg}</div><div class="grid">${cells}</div>${foot(true, state === 0 ? 'Share tab audio' : null)}</div>`; },
+      text: `<ul><li>Chrome's layout on Ray's surface: a segmented control and a grid of live pictures. Familiar from Chrome and Meet's own help pages, and pictures help tell windows apart. Costs: a window's picture needs Screen Recording permission and a capture per window every refresh; a hidden tab has no picture (only shown pages have one), so many tab cards would be blank. Wider (460 pt).</li></ul>` },
+  ]},
+  bar: { content: meet, active: 'tMeet', variants: [
+    { name: 'A · Strip on the page', states: ['Sharing a window', 'Tab: the shared tab', 'Tab: another tab'],
+      html: () => '', strip: () => [
+        `<div class="strip"><span class="ico">${svg.shared}</span><span class="sp">Sharing a window with <b>meet.google.com</b></span><button class="btn stop${w()}">Stop Sharing</button><button class="btn x">${svg.x}</button></div>`,
+        `<div class="strip"><span class="ico">${svg.shared}</span><span class="sp">Sharing <b>this tab</b> with <b>meet.google.com</b></span><button class="btn stop${w()}">Stop Sharing</button><button class="btn x">${svg.x}</button></div>`,
+        `<div class="strip"><span class="ico">${svg.shared}</span><span class="sp">Sharing <b>another tab</b> with <b>meet.google.com</b></span><button class="btn${w()}">Share This Tab Instead</button><button class="btn stop${w()}">Stop</button><button class="btn x">${svg.x}</button></div>`][state],
+      contentFor: () => state === 0 ? meet : figma, activeFor: () => state === 0 ? 'tMeet' : 'tFigma',
+      text: `<ul><li><b>Replaces Chrome's floating bar</b> (Ray hides it the moment it appears; Chrome's own Hide does the same) and Chrome's tab-sharing strip, which Ray never drew.</li><li><b>Where:</b> a 36 pt strip at the top of the page card (Ardia's, Chrome's infobar spot), on every tab of the window while a share is live. It pushes the page down, so it never covers a meeting's own controls (Meet's sit at the bottom centre). Slides in on the sidebar's spring.</li><li><b>Words:</b> “Sharing a window / your screen / this tab / another tab with <i>host</i>”. On another tab while a tab is shared: <b>Share This Tab Instead</b> (Chrome's) and Stop. ✕ hides it on that tab only; the row marks stay.</li><li><b>Stop Sharing</b> ends every share that site's tab started. Buttons dead 0.5 s, Return nothing.</li></ul>` },
+    { name: 'B · Note at the top', states: ['Sharing a window', 'Tab: another tab'],
+      html: () => [
+        `<div class="surf note tc"><span class="ico">${svg.shared}</span><div class="nt"><b>Sharing a window</b><span>https://meet.google.com</span></div><button class="btn stop${w()}">Stop Sharing</button><button class="btn x">${svg.x}</button></div>`,
+        `<div class="surf note tc"><span class="ico">${svg.shared}</span><div class="nt"><b>Sharing another tab</b><span>https://meet.google.com</span></div><button class="btn${w()}">Share This Tab</button><button class="btn stop${w()}">Stop</button></div>`][state],
+      contentFor: () => state === 0 ? meet : figma, activeFor: () => state === 0 ? 'tMeet' : 'tFigma',
+      text: `<ul><li>A held note in the top-centre spot, the notes' look. Closest to Chrome's bar in spirit and lighter than a strip, but it floats over the page's top (search boxes, a doc's toolbar) for as long as you share; ✕ hides it.</li></ul>` },
+    { name: 'C · In the sidebar', states: ['Sharing a window', 'Sidebar hidden'],
+      html: () => state === 1 ? `<div class="surf note br"><span class="ico">${svg.shared}</span><div class="nt"><b>Sharing a window</b></div><button class="btn stop${w()}">Stop</button></div>` : '',
+      pill: () => state === 0 ? `<div class="pill"><span class="dot"></span><span>Sharing a window</span><button class="btn stop${w()}">Stop</button></div>` : '',
+      text: `<ul><li>A small pill above the sidebar footer, out of the page entirely: the calmest, Arc-like. Share This Tab Instead goes to the shared tab's row menu. With the sidebar hidden, a small held note at the bottom right instead. Easy to miss when you're looking at the page, which is the point of a “you're sharing” reminder.</li></ul>` },
+  ]},
+  marks: { content: figma, active: 'tFigma', variants: [
+    { name: 'A · Row mark + profile-colour ring', states: ['Shared tab shown', 'Meeting tab shown'],
+      rows: { tFigma: 'shared', tMeet: 'sharing' }, ring: () => state === 0 ? 'accent' : '',
+      contentFor: () => state === 0 ? figma : meet, activeFor: () => state === 0 ? 'tFigma' : 'tMeet',
+      text: `<ul><li><b>Shared tab's row:</b> a filled screen mark right after the favicon, in the sound mark's slot (title moves over 18 pt), in the profile colour; a click stops sharing it (as the sound mark's click mutes). Favorites: a small mark at the tile's bottom right, no click.</li><li><b>Sharing tab's row</b> (the meeting): a red dot in the same slot, as Chrome's record dot and Ardia's badge; it also stands for camera or microphone in use, which Ray doesn't mark yet.</li><li><b>Shared page:</b> a 2 pt ring in the profile colour inside the page card's corners with a faint inner glow, and a small “Shared” tab at its top centre (Chrome's border, Ray's colour). On screen only: it's Ray's layer over the page, so the people watching never see it.</li></ul>` },
+    { name: 'B · Favicon badges + red ring', states: ['Shared tab shown', 'Meeting tab shown'],
+      rows: { tFigma: 'badge-shared', tMeet: 'badge-sharing' }, ring: () => state === 0 ? 'red' : '',
+      contentFor: () => state === 0 ? figma : meet, activeFor: () => state === 0 ? 'tFigma' : 'tMeet',
+      text: `<ul><li>Ardia's: badges on the favicons' corner instead of a mark beside them (no room taken, harder to see at 16 pt), and the ring in red, the usual “recording” colour. Red reads louder and clashes with a red profile colour.</li></ul>` },
+  ]},
+};
+const rowMark = {
+  shared: `<span class="mark" style="color:var(--accent)">${svg.shared}</span>`,
+  sharing: `<span class="mark" style="color:var(--red)">${svg.dot}</span>`,
+};
+const badge = {
+  'badge-shared': `<span class="badge" style="background:var(--accent);color:var(--onAccent)">${svg.shared}</span>`,
+  'badge-sharing': `<span class="badge" style="background:var(--red);color:var(--onRed)">${svg.shared}</span>`,
+};
+function setRows(rows, active) {
+  document.querySelectorAll('.side .tab').forEach(t => {
+    t.classList.toggle('on', t.id === active);
+    t.querySelectorAll('.mark, .badge').forEach(m => m.remove());
+    const r = rows && rows[t.id];
+    if (!r) return;
+    if (rowMark[r]) t.querySelector('.fav').insertAdjacentHTML('afterend', rowMark[r]);
+    if (badge[r]) t.querySelector('.fav').insertAdjacentHTML('beforeend', badge[r]);
+  });
+}
+function render() {
+  const s = scenes[scene], v = s.variants[variant];
+  if (state >= v.states.length) state = 0;
+  const active = v.activeFor ? v.activeFor() : s.active;
+  $('#content').innerHTML = v.contentFor ? v.contentFor() : s.content;
+  $('#sideAddr').textContent = active === 'tMeet' ? 'meet.google.com/abc-defg-hij' : 'figma.com/design/x7Lr…';
+  let rows = v.rows;
+  if (scene === 'bar') rows = { tFigma: 'shared', tMeet: 'sharing' };
+  if (scene === 'bar' && state === 0 && variant !== 1) rows = { tMeet: 'sharing' };
+  if (scene === 'bar' && variant === 1 && state === 0) rows = { tMeet: 'sharing' };
+  setRows(rows, active);
+  layer.innerHTML = v.html ? v.html() : '';
+  $('#stripSpot').innerHTML = v.strip ? v.strip() : '';
+  $('#pillSpot').innerHTML = v.pill ? v.pill() : '';
+  const ring = v.ring ? v.ring() : (scene === 'bar' && variant === 0 && state === 1 ? 'accent' : '');
+  $('#ring').className = 'ring ' + ring;
+  $('#ring').innerHTML = ring ? `<span class="chip">${svg.shared}Shared</span>` : '';
+  desc.innerHTML = `<h3 style="margin-top:6px">${v.name}</h3>` + (v.text || '');
+  document.querySelectorAll('#scenes [data-scene]').forEach(b => b.setAttribute('aria-pressed', b.dataset.scene === scene));
+  const vr = $('#variants'); vr.innerHTML = '<span class="lab">Variant</span>';
+  s.variants.forEach((x, i) => { const b = document.createElement('button'); b.className = 't'; b.innerHTML = x.name + (i === 0 ? '<span class="rec">Pick</span>' : ''); b.setAttribute('aria-pressed', i === variant); b.onclick = () => { variant = i; state = 0; render(); }; vr.appendChild(b); });
+  const st = $('#states'); st.innerHTML = '<span class="lab">State</span>';
+  v.states.forEach((x, i) => { const b = document.createElement('button'); b.className = 't'; b.textContent = x; b.setAttribute('aria-pressed', i === state); b.onclick = () => { state = i; render(); }; st.appendChild(b); });
+}
+document.querySelectorAll('#scenes [data-scene]').forEach(b => b.onclick = () => { scene = b.dataset.scene; variant = 0; state = 0; render(); });
+const pair = (a, b, on) => { $(a).setAttribute('aria-pressed', on); $(b).setAttribute('aria-pressed', !on); };
+$('#glassB').onclick = () => { win.classList.add('glass'); pair('#glassB', '#solidB', true); };
+$('#solidB').onclick = () => { win.classList.remove('glass'); pair('#glassB', '#solidB', false); };
+$('#lightB').onclick = () => { document.documentElement.dataset.theme = 'light'; pair('#lightB', '#darkB', true); };
+$('#darkB').onclick = () => { document.documentElement.dataset.theme = 'dark'; pair('#lightB', '#darkB', false); };
+$('#waitB').onclick = () => { waiting = !waiting; $('#waitB').setAttribute('aria-pressed', waiting); render(); };
+if (matchMedia('(prefers-color-scheme: dark)').matches) $('#darkB').click();
+render();
+</script>
+</body>
+</html>

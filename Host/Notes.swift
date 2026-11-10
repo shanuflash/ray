@@ -39,13 +39,16 @@ struct NoteAction {
   let label: String
   /// Whether pressing it closes the note (Share leaves it, so the share menu has somewhere to hang).
   let closesNote: Bool
+  /// Filled red (Stop Sharing).
+  var destructive = false
   let run: (NSView) -> Void
 
-  init(_ title: String, run: @escaping () -> Void) {
+  init(_ title: String, destructive: Bool = false, run: @escaping () -> Void) {
     self.title = title
     symbol = nil
     label = title
     closesNote = true
+    self.destructive = destructive
     self.run = { _ in run() }
   }
 
@@ -713,7 +716,7 @@ final class NoteContentView: NSView {
       layer?.insertSublayer(tile, at: 0)
     }
     for (index, action) in note.actions.enumerated() {
-      let primary = note.asks && index == note.actions.count - 1 && action.title != nil
+      let primary = note.asks && index == note.actions.count - 1 && action.title != nil && !action.destructive
       let button = NoteButton(action, primary: primary)
       button.onClick = { [weak self, weak button] in
         guard let self, let button else { return }
@@ -1087,7 +1090,7 @@ final class NoteButton: NSView {
     ButtonLook.shape(layer)
     if let title = action.title {
       label.stringValue = title
-      label.font = primary ? Self.boldFont : Self.font
+      label.font = primary || action.destructive ? Self.boldFont : Self.font
       label.alignment = .center
       addSubview(label)
     } else if let symbol = action.symbol {
@@ -1113,7 +1116,7 @@ final class NoteButton: NSView {
   }
 
   override func updateLayer() {
-    let kind: ButtonLook.Kind = primary ? .primary : .plain
+    let kind: ButtonLook.Kind = action.destructive ? .destructive : primary ? .primary : .plain
     layer?.backgroundColor = ButtonLook.fill(kind, hovered: hovered, pressed: down).cgColor
     label.textColor = ButtonLook.ink(kind)
   }
