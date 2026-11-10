@@ -74,6 +74,14 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     guard let completedFrom else { return text }
     return (text as NSString).substring(to: min(completedFrom, (text as NSString).length))
   }
+  /// For tests: how far the field's, the chip's and the hint's middles sit from the search icon's (0: one line).
+  var lineOffsets: [String: CGFloat] {
+    layoutSubtreeIfNeeded()
+    var offsets = ["field": field.frame.midY - searchIcon.frame.midY]
+    if !chip.isHidden { offsets["chip"] = chip.frame.midY - searchIcon.frame.midY }
+    if !hint.isHidden { offsets["hint"] = hint.frame.midY - searchIcon.frame.midY }
+    return offsets
+  }
   /// For tests: the hint at the field's end, when shown.
   var hintText: String? { hint.isHidden ? nil : hint.text }
   /// For tests: the host completed inline, if any.
@@ -318,7 +326,10 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     let hintWidth = hint.isHidden ? 0 : hint.intrinsicContentSize.width
     hint.frame = NSRect(x: width - 18 - hintWidth, y: ((Self.fieldHeight - 22) / 2).rounded(), width: hintWidth, height: 22)
     let fieldEnd = hint.isHidden ? width - 24 : hint.frame.minX - 12
-    field.frame = NSRect(x: fieldX, y: (Self.fieldHeight - 26) / 2, width: max(40, fieldEnd - fieldX), height: 26)
+    // One line tall and centred on the icon: a text field draws from the top of its frame, so a taller one rode high.
+    let fieldLine = ceil(field.intrinsicContentSize.height)
+    field.frame = NSRect(
+      x: fieldX, y: ((Self.fieldHeight - fieldLine) / 2).rounded(), width: max(40, fieldEnd - fieldX), height: fieldLine)
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     glow.frame = panel.frame
@@ -697,7 +708,8 @@ private final class ScopeHint: NSView {
 
   override var isFlipped: Bool { true }
   override var intrinsicContentSize: NSSize {
-    NSSize(width: ceil(label.intrinsicContentSize.width) + 7 + ceil(key.intrinsicContentSize.width) + 12, height: 22)
+    // A label's own width leaves its last glyph a hair short (as "Switch to Tab"'s): room for it.
+    NSSize(width: ceil(label.intrinsicContentSize.width) + 4 + 7 + ceil(key.intrinsicContentSize.width) + 4 + 12, height: 22)
   }
 
   override func viewDidChangeEffectiveAppearance() {
@@ -707,10 +719,11 @@ private final class ScopeHint: NSView {
 
   override func layout() {
     super.layout()
-    let keyWidth = ceil(key.intrinsicContentSize.width) + 12
+    let keyWidth = ceil(key.intrinsicContentSize.width) + 4 + 12
     keyBox.frame = NSRect(x: bounds.width - keyWidth, y: 1, width: keyWidth, height: 20)
     let keyHeight = ceil(key.intrinsicContentSize.height)
     key.frame = NSRect(x: 6, y: ((20 - keyHeight) / 2).rounded(), width: keyWidth - 12, height: keyHeight)
+    key.alignment = .center
     let height = ceil(label.intrinsicContentSize.height)
     label.frame = NSRect(x: 0, y: ((bounds.height - height) / 2).rounded(), width: keyBox.frame.minX - 7, height: height)
     effectiveAppearance.performAsCurrentDrawingAppearance {

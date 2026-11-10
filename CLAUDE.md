@@ -51,7 +51,8 @@ publicly or create accounts.
   unless under 3:1, `CommandBarView.brandInk`). Entering pulses the bar in that colour (a glow under the panel, a tint over it: 100 ms up, gone
   in 1.1 s; none with Reduce Motion). The colour (`scopeFill`): `SearchScope.brand` (Arc's table), else the site's
   favicon's main hue (`IconAccent`, `FaviconCache.accent`), else the profile's, moved by `ProfileColor.legible` to
-  show on the card. Delete with nothing typed leaves the scope with what you typed back. Checks `tab-to-search`,
+  show on the card. Delete with nothing typed leaves the scope with what you typed back. The field is one line tall,
+  centred on the icon, as are the chip and hint (state log `commandBar.lineOffsets`). Checks `tab-to-search`,
   `site-search`, `search-engine`, `search-suggestions-off`.
 - `SearchEngines` (`Host/SearchEngines.swift`): what the bar searches with. Ray's own list (Google, DuckDuckGo, Bing,
   Brave Search, Ecosia, Kagi, Startpage, Perplexity; Ardia's minus its regional and AI-chat extras), not Chrome's

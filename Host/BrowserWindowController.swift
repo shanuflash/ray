@@ -3229,7 +3229,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
           "filledRow": bar.filledRow ?? NSNull(),
           "scope": Self.debugScope(of: bar) ?? NSNull(),
           "offered": bar.offered.map { ["name": $0.name, "keyword": $0.keyword] } ?? NSNull(),
-          "hint": bar.hintText ?? NSNull(), "pulses": bar.pulses,
+          "hint": bar.hintText ?? NSNull(), "pulses": bar.pulses, "lineOffsets": bar.lineOffsets,
           "rowsFullyVisible": bar.rowsFullyVisible,
           "firstVisibleRow": bar.shownRows.first, "visibleRows": bar.shownRows.count,
           "rows": bar.suggestions.map { row -> [String: Any] in
