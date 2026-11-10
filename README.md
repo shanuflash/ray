@@ -51,6 +51,7 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Address bar above the page, like Dia
   - A link's address at the bottom corner on hover
   - Back and forward history lists: right-click or hold
+  - Swiping back or forward shows a frosted chip that ticks when letting go will navigate
   - Edge-to-edge full screen
   - Settings in the command bar
   - Your own colour and shortcuts

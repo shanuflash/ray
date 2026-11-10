@@ -414,6 +414,19 @@ publicly or create accounts.
   sits on a bottom corner note (`Notes.settledFrame`, the downloads note) instead of under it; never takes a click;
   a tab switch hides it (`Panels.onTabSwitch`). Test command `linkpreview status <url>|clear|pointer <x> <y>|hide`;
   state log `linkPreview`; check `link-preview` (a real hover through DevTools).
+- `SwipeIndicator` (`Host/SwipeIndicator.swift`, `BrowserWindowController` `// MARK: Swipe indicator`): the back/forward
+  swipe's chip, Dia's (owner's pick A of `docs/mocks/swipe-indicator.html`, sizes from Ardia's `SwipeOverlay.tsx`): the
+  panels' frosted surface as a 72 pt circle with a bold chevron at half strength, sliding in from the page's edge with
+  Chrome's progress and stopping 14 pt in; armed (letting go navigates) it grows to 82 pt on the sidebar's spring, the
+  chevron goes solid, a white wash in light mode and a `.levelChange` haptic. Let go: shrinks and fades if Chrome
+  navigated, else slides back out (1 s deadline); Reduce Motion fades in place. In a clip view on the page's rect,
+  below `floating`; a tab switch hides it. Chrome still recognises the gesture (`HistorySwiper`); `ChromeSwipeHook`
+  wraps `HistoryOverlayController`'s `showPanelForView:`, `setProgress:finished:` and `dismiss` and
+  `ChromeRenderWidgetHostViewMacDelegate`'s `navigateInDirection:onWindow:` through the Objective-C runtime (installed
+  with the first window's indicator) and hides Chrome's half-circle view; if an engine bump renames them, Chrome's
+  overlay comes back and `swipe-indicator` fails. Test command `swipe start back|forward|progress <n> [finished]|
+  navigate|dismiss` (Chrome's real overlay on the active tab, its real delegate navigating), `swipe reducemotion
+  on|off|system`; state log `swipeIndicator` (`target` is the settled frame, `steps`, `haptics`, `chromeHidden`).
 - Sound mark (`SidebarView.sound(for:)`, `BrowserWindowController` `// MARK: Tab sound`): `tabDidChangeAudio`
   refreshes the entry; a row shows Ardia's 12 pt `speaker.wave.2` / `speaker.slash` button right after the favicon
   (title and slash move over 18 pt) while the tab is audible (the engine holds it 2 s after sound stops) or muted, and

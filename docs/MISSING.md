@@ -91,7 +91,9 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
     0.2.44-nightly.3, `docs/ARDIA-WATCH.md`).
 
 19. Back and Forward history lists: the buttons' lists are done; left is Dia's two-finger swipe-and-hold list (it
-    opens upward under the fingers; Ardia 0.2.44-nightly.6, `docs/ARDIA-WATCH.md` "Ray should" 16).
+    opens upward under the fingers; Ardia 0.2.44-nightly.6, `docs/ARDIA-WATCH.md` "Ray should" 16). The swipe's chip
+    is Ray's (Dia's look) but Chrome still recognises the gesture, and Chrome's swiper cancels on vertical motion, so
+    the list needs Ray's own swipe code (Ardia's `ArdiaSwipe`).
 
 **Already working through Chrome's defaults:** right-click menus, spell check, `chrome://` pages.
 
@@ -368,6 +370,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
+| Back/forward swipe shows Dia's frosted chip with a chevron (grows and ticks once letting go navigates) instead of Chrome's dark half-circle | 2026-11-10, `feat: dia swipe chip` |
 | Automatic picture in picture (Settings › Tabs, on by default): a playing video or a call pops out when you switch tabs or leave the window, and goes back when you return | 2026-11-10, `feat: auto picture in picture` |
 | Settings' new look: rows on rounded cards (Dia's, Ardia's), a group's live picture across the top of its card instead of beside a row, a calmer segmented control and sidebar; Check Now beside the version in About Ray | 2026-11-10, `feat: settings cards look` |
 | Asks to be the default browser: an onboarding step after the import ("Open links in Ray?") and a rare note at launch (bottom right, 14 days apart, 3 times at most, Never for good) | 2026-11-05, `feat: ask to be default browser` |

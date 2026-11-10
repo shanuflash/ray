@@ -328,6 +328,24 @@ enum TestCommands {
     return "ok"
   }
 
+  /// `swipe start back|forward | progress <0…1> [finished] | navigate | dismiss`: Chrome's own swipe overlay on the
+  /// active tab, driven as its swiper would (`SwipeIndicator.swift`); `swipe reducemotion on|off|system`.
+  private static func swipe(_ argument: String) -> String {
+    #if RAY_TEST_HOOKS
+    guard let controller = AppController.shared.current else { return "no window" }
+    let parts = argument.split(separator: " ").map(String.init)
+    if parts.first == "reducemotion", parts.count == 2 {
+      SwipeIndicator.reduceMotionOverride = parts[1] == "system" ? nil : parts[1] == "on"
+      return "ok"
+    }
+    let result = ChromeSwipeHook.drive(parts, page: controller.activePageView)
+    controller.logState("swipeIndicator")
+    return result
+    #else
+    return "test builds only"
+    #endif
+  }
+
   /// `navhistory open|press back|forward toolbar|sidebar [click|hold|drag|right|control]`, `navhistory pick <n> [cmd]`,
   /// `navhistory key up|down|return`: back's and forward's history lists.
   private static func navHistory(_ argument: String) -> String {
@@ -567,6 +585,8 @@ enum TestCommands {
       }
     case "linkpreview":
       result = linkPreview(argument)
+    case "swipe":
+      result = swipe(argument)
     case "navhistory":
       result = navHistory(argument)
     case "extinstall":
