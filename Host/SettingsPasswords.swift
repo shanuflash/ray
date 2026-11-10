@@ -40,7 +40,7 @@ final class PasswordsPaneContent: SettingsPaneContent {
   func sections() -> [SettingsSection] {
     [
       SettingsSection(
-        id: "passwords.saved", place: .after(SettingGroup.passwordsSaving.id), view: saved,
+        id: "passwords.saved", place: .after(SettingGroup.passwordsSaving.id), view: saved, card: false,
         search: [
           SettingsSearchEntry(title: "Saved passwords", detail: "See, copy and change the passwords Ray keeps",
                               keywords: ["passwords", "logins", "usernames", "unlock", "touch id", "reveal", "show password"]),
@@ -152,6 +152,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
 
   override init(frame: NSRect) {
     super.init(frame: frame)
+    stack.cards = true
     addSubview(stack)
     search.placeholderString = "Search"
     search.delegate = self
@@ -197,7 +198,7 @@ final class SavedPasswordsView: NSView, SettingsSizing, NSSearchFieldDelegate {
       if list.isEmpty {
         items.append(.init(view: SettingsNote(query.isEmpty
           ? "No saved passwords yet"
-          : "No saved passwords match")))
+          : "No saved passwords match", inset: SettingsNote.rowInset)))
       }
       for (index, login) in list.enumerated() {
         let row = SettingsItemRow(symbol: "key.fill", title: Self.host(of: login.origin),

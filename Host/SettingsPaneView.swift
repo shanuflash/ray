@@ -1,15 +1,21 @@
 import AppKit
 
-/// One pane of the Settings window, the scroll view's document: the pane's name large, a grey line saying what it is
-/// for, its call to action, then its groups. Rows come from the catalog (`SettingPane.shownSettings`, grouped by
-/// `group`, rare ones at the end of their group); the pane's `SettingsPaneContent` adds sections,
-/// header controls, custom controls and live pictures. One column, at most 600 pt wide with 24 pt sides; 44 pt rows
-/// split by hairlines, no boxes. Every control sets its setting through `RaySettings.apply`, as the test command
-/// `setting` does.
+/// One pane of the Settings window, the scroll view's document: the pane's name large, its call to action, then its
+/// groups. Rows come from the catalog (`SettingPane.shownSettings`, grouped by `group`, rare ones at the end of their
+/// group); the pane's `SettingsPaneContent` adds sections, header controls, custom controls and live pictures. One
+/// column, at most 600 pt wide with 24 pt sides, on the content grey; each group is a header (13 pt semibold, 7 pt
+/// above its card) and a rounded card (`SettingsCardBox`: 10 pt corners, rows 14 pt in, 44 pt rows split by inset
+/// hairlines), 24 pt apart. Every control sets its setting through `RaySettings.apply`, as the test command `setting`
+/// does.
 final class SettingsPaneView: NSView {
   static let maxColumn: CGFloat = 600
   static let side: CGFloat = 24
-  static let top: CGFloat = 40
+  static let top: CGFloat = 34
+  /// Between groups (and sections), and from a header to its card.
+  static let groupGap: CGFloat = 24
+  static let headerGap: CGFloat = 7
+  /// A header's text starts this far in from the card's edge.
+  static let headerInset: CGFloat = 4
 
   let pane: SettingPane
 
@@ -26,7 +32,9 @@ final class SettingsPaneView: NSView {
   private enum Block {
     case callToAction(NSView)
     case group(SettingsGroupView)
-    case section(id: String, header: NSTextField?, view: NSView)
+    case section(id: String, header: NSTextField?, view: NSView, box: SettingsCardBox?)
+    /// An untitled section right after a group: it joins that group's card. Only its anchor is the pane's to know.
+    case merged(id: String, view: NSView)
   }
 
   private let titleLabel: NSTextField
@@ -41,7 +49,7 @@ final class SettingsPaneView: NSView {
 
   init(pane: SettingPane) {
     self.pane = pane
-    titleLabel = settingsLabel(pane.title, size: 22, weight: .medium)
+    titleLabel = settingsLabel(pane.title, size: 22, weight: .semibold)
     subtitleLabel = NSTextField(wrappingLabelWithString: "")  // The pane's title says it; its subtitle is for search.
     super.init(frame: .zero)
     subtitleLabel.font = .systemFont(ofSize: 13)
@@ -61,10 +69,12 @@ final class SettingsPaneView: NSView {
   private func build() {
     if let strip = content?.callToAction() { add(.callToAction(strip)) }
     let sections = SettingsPanes.sections(for: pane)
+    // Sections already in a group's card.
+    var joined: Set<String> = []
     func addSections(where test: (SettingsSection.Place) -> Bool) {
-      for section in sections where test(section.place) {
+      for section in sections where test(section.place) && !joined.contains(section.id) {
         let header = section.title.map { settingsLabel($0, size: 13, weight: .semibold) }
-        add(.section(id: section.id, header: header, view: section.view))
+        add(.section(id: section.id, header: header, view: section.view, box: section.card ? SettingsCardBox(section.view) : nil))
       }
     }
     addSections { if case .top = $0 { return true } else { return false } }
@@ -79,10 +89,20 @@ final class SettingsPaneView: NSView {
     }
     for (group, keys) in groups {
       let rows = keys.map { (key: $0, row: row(for: $0)) }
+      // The group's live picture: the first one its settings have, across the top of its card.
+      let picture = keys.lazy.compactMap { key in self.content?.picture(for: key).map { (key: key.id, view: $0) } }.first
+      // Untitled sections that follow the group join its card; titled ones are cards of their own.
+      let follows = sections.filter { if case .after(let id) = $0.place { return id == group.id } else { return false } }
+      let joining = follows.filter { $0.title == nil && $0.card }
       let view = SettingsGroupView(
         group: group, accessory: content?.headerAccessory(for: group),
-        rows: rows.filter { !$0.key.ui.rare }.map(\.row) + rows.filter { $0.key.ui.rare }.map(\.row))
+        rows: rows.filter { !$0.key.ui.rare }.map(\.row) + rows.filter { $0.key.ui.rare }.map(\.row),
+        extra: joining.map(\.view), picture: picture)
       add(.group(view))
+      for section in joining {
+        add(.merged(id: section.id, view: section.view))
+        joined.insert(section.id)
+      }
       addSections { if case .after(let id) = $0 { return id == group.id } else { return false } }
     }
     // Sections placed after a group this pane doesn't show go at the end with the rest.
@@ -101,17 +121,17 @@ final class SettingsPaneView: NSView {
     switch block {
     case .callToAction(let view): addSubview(view)
     case .group(let view): addSubview(view)
-    case .section(_, let header, let view):
+    case .section(_, let header, let view, let box):
       if let header { addSubview(header) }
-      addSubview(view)
+      addSubview(box ?? view)
+    case .merged: break  // The group's card holds it.
     }
   }
 
-  /// A setting's row: its control on the right (or under its text for swatches and pictures), and its live picture
-  /// if the pane has one. Every control sets the setting through `RaySettings.apply`.
+  /// A setting's row: its control on the right (pictures and wide lists under its text). Every control sets the
+  /// setting through `RaySettings.apply`.
   private func row(for key: AnySettingKey) -> SettingsRowView {
     let ui = key.ui
-    let picture = content?.picture(for: key)
     let settings = RaySettings.shared
     let made: SettingsRowView
     switch ui.control {
@@ -120,7 +140,7 @@ final class SettingsPaneView: NSView {
       control.setAccessibilityLabel(ui.title)
       control.onChange = { on in settings.apply(key, on ? "on" : "off") }
       controls.append((key, .toggle(control)))
-      made = SettingsRowView(title: ui.title, detail: ui.detail, control: control, picture: picture)
+      made = SettingsRowView(title: ui.title, detail: ui.detail, control: control)
     case .choice(let options):
       let control = NSPopUpButton(frame: .zero, pullsDown: false)
       for option in options {
@@ -131,32 +151,33 @@ final class SettingsPaneView: NSView {
       control.action = #selector(choiceChosen(_:))
       control.setAccessibilityLabel(ui.title)
       controls.append((key, .choice(control)))
-      made = SettingsRowView(title: ui.title, detail: ui.detail, control: control, picture: picture)
+      made = SettingsRowView(title: ui.title, detail: ui.detail, control: control)
     case .segmented(let options):
       let control = RaySegmentedControl(titles: options.map(\.title))
       control.setAccessibilityLabel(ui.title)
       control.onChoose = { index in settings.apply(key, options[index].value) }
       controls.append((key, .segmented(control, options)))
-      made = SettingsRowView(title: ui.title, detail: ui.detail, control: control, picture: picture)
+      made = SettingsRowView(title: ui.title, detail: ui.detail, control: control)
     case .picture(let options, let draw):
       let control = PictureChoiceControl(choices: options, picture: draw)
       control.setAccessibilityLabel(ui.title)
       control.onChoose = { value in settings.apply(key, value) }
       controls.append((key, .picture(control)))
-      made = SettingsRowView(title: ui.title, detail: ui.detail, picture: picture, accessory: control)
+      // The pictures and their captions say it: no title over them.
+      made = SettingsRowView(title: "", detail: ui.detail, accessory: control)
     case .colour:
       let swatches = SwatchRow()
+      swatches.compact = true
       swatches.onChoose = { hex in settings.apply(key, hex ?? "default") }
       swatches.onCustom = { [weak self] in self?.openColorPanel(for: key) }
       controls.append((key, .colour(swatches)))
-      made = SettingsRowView(title: ui.title, detail: ui.detail, picture: picture, accessory: swatches)
+      made = SettingsRowView(title: ui.title, detail: ui.detail, control: swatches)
     case .custom(let name):
       let control = content?.control(named: name, for: key)
       if let control { controls.append((key, .custom(control))) }
       // A list (Settings › Search's engines) sits under the row's text at full width, as swatches do.
       let wide = control is SettingsWideControl
-      made = SettingsRowView(
-        title: ui.title, detail: ui.detail, control: wide ? nil : control, picture: picture, accessory: wide ? control : nil)
+      made = SettingsRowView(title: ui.title, detail: ui.detail, control: wide ? nil : control, accessory: wide ? control : nil)
     }
     made.anchor = key.id
     return made
@@ -193,7 +214,8 @@ final class SettingsPaneView: NSView {
       switch block {
       case .group(let group):
         if let row = group.row(anchored: id) { return row }
-      case .section(let sectionID, _, let view) where sectionID == id: return view
+      case .section(let sectionID, _, let view, _) where sectionID == id: return view
+      case .merged(let sectionID, let view) where sectionID == id: return view
       default: continue
       }
     }
@@ -205,7 +227,7 @@ final class SettingsPaneView: NSView {
     blocks.flatMap { block -> [String] in
       switch block {
       case .group(let group): return group.anchors
-      case .section(let id, _, _): return [id]
+      case .section(let id, _, _, _), .merged(let id, _): return [id]
       case .callToAction: return []
       }
     }
@@ -266,14 +288,12 @@ final class SettingsPaneView: NSView {
     return out
   }
 
-  /// The live pictures beside rows, by setting id.
+  /// The live pictures on top of groups' cards, by the setting id that gave them.
   var picturesDebug: [String: Any] {
     var out: [String: Any] = [:]
     for block in blocks {
-      if case .group(let group) = block {
-        for row in group.allRows {
-          if let anchor = row.anchor, let picture = row.picture as? SettingsLivePicture { out[anchor] = picture.debug }
-        }
+      if case .group(let group) = block, let picture = group.picture, let live = picture.view as? SettingsLivePicture {
+        out[picture.key] = live.debug
       }
     }
     return out
@@ -336,34 +356,36 @@ final class SettingsPaneView: NSView {
     let (x, inner) = column(width)
     var y = Self.top
     let titleHeight = ceil(titleLabel.intrinsicContentSize.height)
-    if apply { titleLabel.frame = NSRect(x: x, y: y, width: inner, height: titleHeight) }
-    y += titleHeight + 3
+    if apply { titleLabel.frame = NSRect(x: x + 2, y: y, width: inner - 2, height: titleHeight) }
+    y += titleHeight
     let subtitleHeight = textHeight(subtitleLabel, width: inner)
     if apply { subtitleLabel.frame = NSRect(x: x, y: y, width: inner, height: subtitleHeight) }
-    y += subtitleHeight > 0 ? subtitleHeight + 6 : 4
+    y += subtitleHeight > 0 ? subtitleHeight + 6 : 0
     for block in blocks {
       switch block {
       case .callToAction(let view):
         guard !view.isHidden else { continue }  // Done already (Ray is the default browser): no room kept.
-        y += 16
+        y += 20
         let height = sizedHeight(view, width: inner)
         if apply { view.frame = NSRect(x: x, y: y, width: inner, height: height) }
         y += height
       case .group(let group):
-        y += 22
+        y += Self.groupGap
         let height = group.height(forWidth: inner)
         if apply { group.frame = NSRect(x: x, y: y, width: inner, height: height) }
         y += height
-      case .section(_, let header, let view):
-        y += 22
+      case .section(_, let header, let view, let box):
+        y += Self.groupGap
         if let header {
           let height = ceil(header.intrinsicContentSize.height)
-          if apply { header.frame = NSRect(x: x, y: y, width: inner, height: height) }
-          y += height + 8
+          if apply { header.frame = NSRect(x: x + Self.headerInset, y: y, width: inner - Self.headerInset, height: height) }
+          y += height + Self.headerGap
         }
-        let height = sizedHeight(view, width: inner)
-        if apply { view.frame = NSRect(x: x, y: y, width: inner, height: height) }
+        let shown: NSView = box ?? view
+        let height = sizedHeight(shown, width: inner)
+        if apply { shown.frame = NSRect(x: x, y: y, width: inner, height: height) }
         y += height
+      case .merged: continue
       }
     }
     return y + 32
@@ -383,33 +405,47 @@ func sizedHeight(_ view: NSView, width: CGFloat) -> CGFloat {
 
 // MARK: Group
 
-/// A group of rows: its header (13 pt semibold, 8 pt above the rows, with room for one control on the right), its
-/// rows with hairlines between them (rare ones last).
+/// A group: its header (13 pt semibold, 4 pt in, 7 pt above the card, with room for one control on the right), then
+/// its card: the group's live picture across the top on a band, if it has one, then its rows (rare ones last, and
+/// untitled sections placed after the group) with inset hairlines between them.
 final class SettingsGroupView: NSView {
   let group: SettingGroup
   private let header: NSTextField?
   private let accessory: NSView?
   private let rows: [SettingsRowView]
-  private var lines: [NSView] = []
+  private let extra: [NSView]
+  /// The live picture on top of the card, and the setting it came from.
+  let picture: (key: String, view: NSView)?
+  private let card: SettingsCardBox
+  private let list: SettingsRowList
+  private let band: SettingsPictureBand?
 
   var allRows: [SettingsRowView] { rows }
   var anchors: [String] { allRows.compactMap(\.anchor) }
 
-  init(group: SettingGroup, accessory: NSView?, rows: [SettingsRowView]) {
+  init(group: SettingGroup, accessory: NSView?, rows: [SettingsRowView], extra: [NSView] = [],
+       picture: (key: String, view: NSView)? = nil) {
     self.group = group
     header = group.title.map { settingsLabel($0, size: 13, weight: .semibold) }
     self.accessory = accessory
     self.rows = rows
+    self.extra = extra
+    self.picture = picture
+    list = SettingsRowList(rows: rows + extra)
+    band = picture.map { SettingsPictureBand($0.view) }
+    let content: NSView
+    if let band {
+      let stack = SettingsStack()
+      stack.set([.init(view: band, bleeds: true), .init(view: list)])
+      content = stack
+    } else {
+      content = list
+    }
+    card = SettingsCardBox(content)
     super.init(frame: .zero)
     if let header { addSubview(header) }
     if let accessory { addSubview(accessory) }
-    for row in rows { addSubview(row) }
-    // A hairline between each two rows.
-    for _ in 0..<max(0, rows.count - 1) {
-      let line = Hairline()
-      lines.append(line)
-      addSubview(line)
-    }
+    addSubview(card)
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -418,42 +454,114 @@ final class SettingsGroupView: NSView {
 
   func row(anchored id: String) -> SettingsRowView? { allRows.first { $0.anchor == id } }
 
-  /// What the list shows, in order.
-  private var listed: [NSView] { rows }
-
   private var headerHeight: CGFloat {
     guard let header else { return 0 }
-    return max(ceil(header.intrinsicContentSize.height), accessory?.fittingSize.height ?? 0) + 8
+    return max(ceil(header.intrinsicContentSize.height), accessory?.fittingSize.height ?? 0) + SettingsPaneView.headerGap
   }
 
   func height(forWidth width: CGFloat) -> CGFloat {
-    headerHeight + listed.reduce(0) { $0 + sizedHeight($1, width: width) }
+    headerHeight + card.height(forWidth: width)
   }
 
   override func layout() {
     super.layout()
-    var y: CGFloat = 0
     if let header {
       let height = ceil(header.intrinsicContentSize.height)
-      let room = headerHeight - 8
-      header.frame = NSRect(x: 0, y: ((room - height) / 2).rounded(), width: bounds.width * 0.6, height: height)
+      let room = headerHeight - SettingsPaneView.headerGap
+      // On the line's baseline with a taller control beside it: the text sits at the bottom of the room.
+      header.frame = NSRect(x: SettingsPaneView.headerInset, y: room - height, width: bounds.width * 0.6, height: height)
       if let accessory {
         let size = accessory.fittingSize
-        accessory.frame = NSRect(x: bounds.width - size.width, y: ((room - size.height) / 2).rounded(), width: size.width, height: size.height)
+        accessory.frame = NSRect(x: bounds.width - size.width, y: room - size.height, width: size.width, height: size.height)
       }
-      y = headerHeight
     }
-    let shown = listed
-    for line in lines { line.isHidden = true }
-    for (index, view) in shown.enumerated() {
-      let height = sizedHeight(view, width: bounds.width)
-      view.frame = NSRect(x: 0, y: y, width: bounds.width, height: height)
-      if index > 0, index - 1 < lines.count {
-        lines[index - 1].isHidden = false
-        lines[index - 1].frame = NSRect(x: 0, y: y, width: bounds.width, height: 1)
-      }
-      y += height
-    }
+    card.frame = NSRect(x: 0, y: headerHeight, width: bounds.width, height: card.height(forWidth: bounds.width))
+  }
+}
+
+// MARK: Card
+
+/// A group's card: rounded (10 pt), the card colour with a 0.5 pt edge, its content 14 pt in from each side. Groups,
+/// pane sections (unless they draw their own, `SettingsSection.card`) and the data panes' stacks
+/// (`SettingsStack.cards`) sit on one.
+final class SettingsCardBox: NSView, SettingsSizing {
+  static let inset: CGFloat = 14
+  static let radius: CGFloat = 10
+  let content: NSView
+  private let back = SettingsCardBackground()
+
+  init(_ content: NSView) {
+    self.content = content
+    super.init(frame: .zero)
+    addSubview(back)
+    addSubview(content)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+
+  func height(forWidth width: CGFloat) -> CGFloat { sizedHeight(content, width: width - Self.inset * 2) }
+
+  override func layout() {
+    super.layout()
+    back.frame = bounds
+    content.frame = NSRect(x: Self.inset, y: 0, width: bounds.width - Self.inset * 2, height: bounds.height)
+  }
+}
+
+/// The card's look alone, behind rows laid out by someone else (`SettingsStack`'s runs).
+final class SettingsCardBackground: NSView {
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.cornerRadius = SettingsCardBox.radius
+    layer?.cornerCurve = .continuous
+    layer?.borderWidth = 0.5
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var wantsUpdateLayer: Bool { true }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+  override func updateLayer() {
+    layer?.backgroundColor = SettingsColors.card.cgColor
+    layer?.borderColor = SettingsColors.cardEdge.cgColor
+  }
+}
+
+/// A group's live picture on top of its card: centred on a band in a slightly different grey, 16 pt above and below,
+/// a hairline under it. It spans the card edge to edge (the card's inset is undone), its top corners the card's.
+final class SettingsPictureBand: NSView, SettingsSizing {
+  private let picture: NSView
+  private let line = Hairline()
+  private static let padding: CGFloat = 16
+
+  init(_ picture: NSView) {
+    self.picture = picture
+    super.init(frame: .zero)
+    wantsLayer = true
+    layer?.cornerRadius = SettingsCardBox.radius
+    layer?.cornerCurve = .continuous
+    layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]  // The top ones (layers aren't flipped).
+    addSubview(picture)
+    addSubview(line)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+  override func updateLayer() { layer?.backgroundColor = SettingsColors.band.cgColor }
+
+  func height(forWidth width: CGFloat) -> CGFloat { picture.fittingSize.height + Self.padding * 2 + 1 }
+
+  override func layout() {
+    super.layout()
+    let size = picture.fittingSize
+    picture.frame = NSRect(x: ((bounds.width - size.width) / 2).rounded(), y: Self.padding, width: size.width, height: size.height)
+    line.frame = NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1)
   }
 }
 
@@ -477,9 +585,9 @@ final class Hairline: NSView {
 
 // MARK: Rows
 
-/// One row: a 13 pt title over a 12 pt grey description on the left; a control on the right with a live picture
-/// before it; or a wider accessory (swatches, pictures) under the text. At least 44 pt. Panes' own sections use it
-/// too (`SettingsRowList`), so they look like the generated rows.
+/// One row: a 13 pt title over a 12 pt grey description on the left and a control on the right; or a wider accessory
+/// (picture choices, a list) under the text, or alone with no title. At least 44 pt. Panes' own sections use it too
+/// (`SettingsRowList`), so they look like the generated rows.
 final class SettingsRowView: NSView, SettingsSizing {
   private static let padding = NSEdgeInsets(top: 11, left: 0, bottom: 11, right: 0)
   static let minHeight: CGFloat = 44
@@ -489,14 +597,12 @@ final class SettingsRowView: NSView, SettingsSizing {
   private let titleLabel: NSTextField
   private let detailLabel: NSTextField
   let control: NSView?
-  let picture: NSView?
   let accessory: NSView?
 
-  init(title: String, detail: String, control: NSView? = nil, picture: NSView? = nil, accessory: NSView? = nil) {
+  init(title: String, detail: String, control: NSView? = nil, accessory: NSView? = nil) {
     titleLabel = NSTextField(wrappingLabelWithString: title)
     detailLabel = NSTextField(wrappingLabelWithString: detail)
     self.control = control
-    self.picture = picture
     self.accessory = accessory
     super.init(frame: .zero)
     wantsLayer = true
@@ -509,7 +615,6 @@ final class SettingsRowView: NSView, SettingsSizing {
       label.cell?.truncatesLastVisibleLine = false
       addSubview(label)
     }
-    if let picture { addSubview(picture) }
     if let control { addSubview(control) }
     if let accessory { addSubview(accessory) }
   }
@@ -530,25 +635,26 @@ final class SettingsRowView: NSView, SettingsSizing {
   }
 
   private var controlSize: NSSize { control.map { $0.fittingSize } ?? .zero }
-  private var pictureSize: NSSize { picture.map { $0.fittingSize } ?? .zero }
 
   private func textWidth(_ width: CGFloat) -> CGFloat {
-    var used: CGFloat = 0
-    if control != nil { used += controlSize.width + 20 }
-    if picture != nil { used += pictureSize.width + 20 }
-    return max(80, width - used)
+    max(80, width - (control != nil ? controlSize.width + 20 : 0))
   }
 
   private func textBlock(_ width: CGFloat) -> (title: CGFloat, detail: CGFloat, total: CGFloat) {
     let text = textWidth(width)
     let title = textHeight(titleLabel, width: text), detail = textHeight(detailLabel, width: text)
-    return (title, detail, title + (detail > 0 ? 2 + detail : 0))
+    return (title, detail, title + (detail > 0 ? (title > 0 ? 2 : 0) + detail : 0))
   }
 
+  /// The part above an accessory: the text and the control, or nothing with neither.
+  private func topHeight(_ width: CGFloat) -> CGFloat { max(textBlock(width).total, controlSize.height) }
+
+  /// From the top part to the accessory: 12 pt, or 3 pt for an accessory alone (with the padding, 14 pt from the top).
+  private func accessoryGap(_ width: CGFloat) -> CGFloat { topHeight(width) > 0 ? 12 : 3 }
+
   func height(forWidth width: CGFloat) -> CGFloat {
-    let block = textBlock(width).total
-    var height = Self.padding.top + max(block, controlSize.height, pictureSize.height) + Self.padding.bottom
-    if let accessory { height += 12 + sizedHeight(accessory, width: width) }
+    var height = Self.padding.top + topHeight(width) + Self.padding.bottom
+    if let accessory { height += accessoryGap(width) + sizedHeight(accessory, width: width) }
     return max(height, Self.minHeight)
   }
 
@@ -559,25 +665,19 @@ final class SettingsRowView: NSView, SettingsSizing {
     let pad = Self.padding
     let text = textWidth(bounds.width)
     let (title, detail, block) = textBlock(bounds.width)
-    let side = max(block, controlSize.height, pictureSize.height)
+    let side = topHeight(bounds.width)
     // Centred on the row, or on the top part above an accessory.
     let middle = accessory == nil ? bounds.height / 2 : pad.top + side / 2
     let top = middle - block / 2
     titleLabel.frame = NSRect(x: 0, y: top.rounded(), width: text, height: title)
-    detailLabel.frame = NSRect(x: 0, y: (top + title + 2).rounded(), width: text, height: detail)
-    var right = bounds.width
+    detailLabel.frame = NSRect(x: 0, y: (top + title + (title > 0 ? 2 : 0)).rounded(), width: text, height: detail)
     if let control {
       let size = controlSize
-      control.frame = NSRect(x: right - size.width, y: (middle - size.height / 2).rounded(), width: size.width, height: size.height)
-      right -= size.width + 20
-    }
-    if let picture {
-      let size = pictureSize
-      picture.frame = NSRect(x: right - size.width, y: (middle - size.height / 2).rounded(), width: size.width, height: size.height)
+      control.frame = NSRect(x: bounds.width - size.width, y: (middle - size.height / 2).rounded(), width: size.width, height: size.height)
     }
     if let accessory {
       let height = sizedHeight(accessory, width: bounds.width)
-      accessory.frame = NSRect(x: 0, y: (pad.top + side + 12).rounded(), width: bounds.width, height: height)
+      accessory.frame = NSRect(x: 0, y: (pad.top + side + accessoryGap(bounds.width)).rounded(), width: bounds.width, height: height)
     }
   }
 }

@@ -105,24 +105,35 @@ publicly or create accounts.
   `onboarded`. Private windows read it, never write to it (their zoomed hosts stay in memory).
 - `SettingsWindow`: Ray's own Settings window, direction G (PLAN.md §13): ⌘, (the pane last shown, else General),
   `ray://settings/<pane>`, or a command bar row. 880×600 (at least 760×480; a saved frame below that opens at the default), full-size content, the traffic lights over a 210 pt
-  sidebar in Ray's sidebar colour: a search field, the panes as 34 pt rows (icon and name; the selected one in
-  `SettingsColors.selectedFill`/`selectedInk`, a wash and a legible tint of the profile's colour), and "All Chrome
-  Settings…" (chrome://settings) at the bottom. Searching (`SettingsSearch`, after Ardia's `searchMatch.ts`: titles,
+  sidebar in Ray's sidebar colour: a 28 pt search field, the panes as 30 pt rows 2 pt apart (icon and name; the
+  selected one in `SettingsColors.selectedFill`/`selectedInk`, a wash and a legible tint of the profile's colour), and
+  "All Chrome Settings…" (chrome://settings) at the bottom as a grey row (`SettingsLinkRow`). Look: the owner's pick
+  A of `docs/mocks/settings-look.html` (2026-11-10), Dia's and Ardia's cards. Searching (`SettingsSearch`, after Ardia's `searchMatch.ts`: titles,
   details, keywords, groups and pane names) replaces the pane list; ↑ ↓ ⏎ and Escape work, and choosing a result
   opens its pane, scrolls to its row and flashes it (`SettingsFlash`: 120 ms in, 900 ms held, 700 ms out, on a
-  layer). `SettingsPaneView` is one pane: title (22 pt; the pane's subtitle is search-only), an optional call-to-action strip, then
-  groups (13 pt semibold headers with room for one trailing control, 44 pt rows split by hairlines, no boxes, rare
-  rows last) in a column of at most 600 pt with 24 pt sides, scrolling with an overlay scroller.
-  `SettingsControls`: `RaySwitch`, `RaySegmentedControl`, `PictureChoiceControl` (2.5 pt ring and a check, in the
-  profile's colour), `SwatchRow`, `SettingsCallToAction` (General's Make Default; a hidden one takes no room), `AccentButton`, `LinkButton`.
+  layer). `SettingsPaneView` is one pane on the content grey (`SettingsColors.content`): title (22 pt semibold, 34 pt
+  from the top; the pane's subtitle is search-only), an optional call-to-action strip, then groups 24 pt apart, each a
+  13 pt semibold header (4 pt in, 7 pt above its card, room for one trailing control) over a card
+  (`SettingsCardBox`: `SettingsColors.card`, 10 pt corners, a 0.5 pt edge, rows 14 pt in, 44 pt rows split by inset
+  hairlines, rare rows last), in a column of at most 600 pt with 24 pt sides, scrolling with an overlay scroller. A
+  group's live picture sits across the top of its card on a band (`SettingsPictureBand`), never beside a row; a
+  picture choice's row has no title (its captions say it); an untitled section placed after a group joins that
+  group's card; a section's view goes on its own card unless it draws its own (`SettingsSection.card` false: the data
+  panes' `SettingsStack` with `cards`, whose headers sit between their cards).
+  `SettingsControls`: `RaySwitch`, `RaySegmentedControl` (the chosen side on a raised grey thumb, not the profile's
+  colour), `PictureChoiceControl` (120×76 pictures; 2.5 pt ring and a check, in the profile's colour), `SwatchRow`
+  (`compact` on Appearance's row, at its right), `SettingsCallToAction` (General's Make Default; a hidden one takes no
+  room), `AccentButton`, `LinkButton`.
   `MiniRayWindow`: a tiny layer-drawn Ray window (sidebar rows, one active or new, the page with or without its
-  address bar, light or dark) for live pictures (`SettingsLivePicture`, beside the minimal URL, address bar and new-tab rows) and
-  picture choices. **Pane content:** `SettingsPanes.swift` defines `SettingsPaneContent` (sections placed top, after
-  a group or bottom, with search entries; a call to action; header controls; `.custom` controls; row pictures) and
+  address bar, light or dark) for live pictures (`SettingsLivePicture`, on top of Address bar's card (both its
+  switches) and New tabs') and picture choices. **Pane content:** `SettingsPanes.swift` defines `SettingsPaneContent`
+  (sections placed top, after a group or bottom, with search entries; a call to action; header controls; `.custom`
+  controls; live pictures) and
   the registry `SettingsPanes.make(_:)`. **Adding a pane's own UI:** one new file (`Host/SettingsPrivacy.swift`,
   a class conforming to `SettingsPaneContent`) plus its line in the registry, and its `ray://settings/<pane>` line
   in `AddressInput.nativeSettingsPaths` once it replaces Chrome's page; the window's layout code doesn't change
-  (example: `SettingsAbout.swift`). `AddressInput.nativeSettingsPane(for:)` recognises the Appearance address (and
+  (example: `SettingsAbout.swift`: the version with Check Now beside it while there's an updater, General's same call;
+  test command `settings press aboutCheckNow`, state log `settingsWindow.controls.aboutCheckNow`). `AddressInput.nativeSettingsPane(for:)` recognises the Appearance address (and
   Profiles) plus General, Tabs, Shortcuts, About and Search: typed or chosen ones open the window and never load;
   Chrome's page navigating itself there goes back. Privacy (Chrome's Site settings), Extensions, Passwords and
   Autofill are Ray's panes too (below). Passwords also holds the JumpCloud Go relay's

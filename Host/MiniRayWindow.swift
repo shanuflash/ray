@@ -2,8 +2,8 @@ import AppKit
 
 /// A tiny Ray window drawn on layers, in the profile's colour: traffic lights, the sidebar with its address pill and
 /// tab rows (one active, maybe one highlighted as new), and the page, with or without its address bar (the host
-/// alone, or the host and the grey rest of the address). Settings uses it for live pictures beside a row and for
-/// picture choices (`appearanceChoice`); it follows the profile's colour and, unless forced, the appearance.
+/// alone, or the host and the grey rest of the address). Settings uses it for live pictures on top of a group's card
+/// and for picture choices (`appearanceChoice`); it follows the profile's colour and, unless forced, the appearance.
 final class MiniRayWindow: NSView {
   enum Row {
     case plain, active, new
@@ -192,15 +192,16 @@ private final class SplitMiniRayWindow: NSView {
   }
 }
 
-/// A `MiniRayWindow` beside a setting's row that shows what the setting does now: `update` sets it up from the
+/// A `MiniRayWindow` on top of a group's card that shows what its settings do now: `update` sets it up from the
 /// settings, at first and after each change of `keys`.
 final class SettingsLivePicture: NSView {
   let mini = MiniRayWindow()
   private var observation: SettingsObservation?
-  static let size = NSSize(width: 96, height: 62)
+  let size: NSSize
 
-  init(following keys: [AnySettingKey], update: @escaping (MiniRayWindow) -> Void) {
-    super.init(frame: NSRect(origin: .zero, size: Self.size))
+  init(size: NSSize, following keys: [AnySettingKey], update: @escaping (MiniRayWindow) -> Void) {
+    self.size = size
+    super.init(frame: NSRect(origin: .zero, size: size))
     addSubview(mini)
     update(mini)
     observation = RaySettings.shared.observe(keys) { [weak self] in
@@ -212,8 +213,8 @@ final class SettingsLivePicture: NSView {
   required init?(coder: NSCoder) { fatalError() }
 
   override var isFlipped: Bool { true }
-  override var fittingSize: NSSize { Self.size }
-  override var intrinsicContentSize: NSSize { Self.size }
+  override var fittingSize: NSSize { size }
+  override var intrinsicContentSize: NSSize { size }
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
   override func layout() {

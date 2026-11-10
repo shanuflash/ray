@@ -46,11 +46,11 @@ final class AutofillPaneContent: SettingsPaneContent {
   func sections() -> [SettingsSection] {
     [
       SettingsSection(
-        id: "autofill.addresses", place: .bottom, view: addresses,
+        id: "autofill.addresses", place: .bottom, view: addresses, card: false,
         search: [SettingsSearchEntry(title: "Addresses", detail: "The addresses Ray fills into forms",
                                      keywords: ["address", "shipping", "billing", "home", "phone", "email", "name"])]),
       SettingsSection(
-        id: "autofill.cards", place: .bottom, view: cards,
+        id: "autofill.cards", place: .bottom, view: cards, card: false,
         search: [SettingsSearchEntry(title: "Cards", detail: "The cards Ray fills in when you pay",
                                      keywords: ["credit card", "debit card", "payment", "card number", "expiry"])]),
     ]
@@ -153,6 +153,7 @@ final class AutofillAddressesView: NSView, SettingsSizing {
 
   override init(frame: NSRect) {
     super.init(frame: frame)
+    stack.cards = true
     addSubview(stack)
     header.setTrailing([addButton])
     SettingsDataGuard.shared.register { [weak self] in self?.forget() }
@@ -201,7 +202,7 @@ final class AutofillAddressesView: NSView, SettingsSizing {
     var items: [SettingsStack.Item] = [.init(view: header)]
     if adding, let formCard { items.append(.init(view: formCard, gap: 4)) }
     if list.isEmpty, !adding {
-      items.append(.init(view: SettingsNote("No saved addresses")))
+      items.append(.init(view: SettingsNote("No saved addresses", inset: SettingsNote.rowInset)))
     }
     for (index, address) in list.enumerated() {
       let id = address["id"] ?? ""
@@ -408,6 +409,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
 
   override init(frame: NSRect) {
     super.init(frame: frame)
+    stack.cards = true
     addSubview(stack)
     header.setTrailing([addButton])
     SettingsDataGuard.shared.register { [weak self] in self?.forget() }
@@ -505,7 +507,7 @@ final class AutofillCardsView: NSView, SettingsSizing {
     var items: [SettingsStack.Item] = [.init(view: header)]
     if adding, let formCard { items.append(.init(view: formCard, gap: 4)) }
     if list.isEmpty, !adding {
-      items.append(.init(view: SettingsNote("No saved cards")))
+      items.append(.init(view: SettingsNote("No saved cards", inset: SettingsNote.rowInset)))
     }
     for (index, card) in list.enumerated() {
       let expiry = Self.expiry(card)

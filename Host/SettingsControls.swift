@@ -6,8 +6,17 @@ import AppKit
 enum SettingsColors {
   /// The window's sidebar: Ray's own sidebar colour, darker than the content.
   static let sidebar = SidebarColors.background
-  /// The content column behind the rows.
-  static let content = NSColor.dynamic(light: NSColor(white: 1, alpha: 1), dark: NSColor(white: 0.135, alpha: 1))
+  /// The content column behind the cards.
+  static let content = NSColor.dynamic(
+    light: NSColor(srgbRed: 0.949, green: 0.949, blue: 0.957, alpha: 1), dark: NSColor(white: 0.118, alpha: 1))
+  /// A group's card, which its rows sit on (`SettingsCardBox`), and its 0.5 pt edge.
+  static let card = NSColor.dynamic(light: NSColor(white: 1, alpha: 1), dark: NSColor(white: 0.157, alpha: 1))
+  static let cardEdge = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.06), dark: NSColor(white: 1, alpha: 0.07))
+  /// The band across the top of a card that holds its live picture.
+  static let band = NSColor.dynamic(
+    light: NSColor(srgbRed: 0.969, green: 0.969, blue: 0.976, alpha: 1), dark: NSColor(white: 0.14, alpha: 1))
+  /// A segmented control's chosen side: a raised thumb, not the profile's colour.
+  static let thumb = NSColor.dynamic(light: NSColor(white: 1, alpha: 1), dark: NSColor(white: 1, alpha: 0.17))
   /// Kept for the welcome, which sits on the sidebar colour.
   static let background = SidebarColors.background
   static let separator = PanelColors.border
@@ -35,9 +44,9 @@ enum SettingsColors {
     },
     on: selectedFill, minimum: 4.5)
   /// A search hit's flash over its row.
-  static var flash: NSColor { ProfileColor.mix(NSColor(name: nil) { _ in ProfileColor.accent }, over: content, 0.16, dark: 0.26) }
-  /// Accent marks on the content: rings, checks, links.
-  static let mark = ProfileColor.visible(on: content)
+  static var flash: NSColor { ProfileColor.mix(NSColor(name: nil) { _ in ProfileColor.accent }, over: card, 0.16, dark: 0.26) }
+  /// Accent marks on the cards: rings, checks, links.
+  static let mark = ProfileColor.visible(on: card)
   /// The call-to-action strip.
   static let strip = ProfileColor.mix(NSColor(name: nil) { _ in ProfileColor.accent }, over: content, 0.1, dark: 0.18)
 }
@@ -150,8 +159,8 @@ final class RaySwitch: NSControl {
 
 // MARK: Segmented
 
-/// Two or three options side by side: a track in the sidebar's fill, the chosen one filled with the profile's colour
-/// and its title in the white or black that reads on it.
+/// Two or three options side by side: a track in the sidebar's fill, the chosen one on a raised thumb (white in light
+/// mode, a lighter grey in dark), as macOS's own; the profile's colour stays for switches and rings.
 final class RaySegmentedControl: NSControl {
   var onChoose: ((Int) -> Void)?
   let titles: [String]
@@ -175,6 +184,8 @@ final class RaySegmentedControl: NSControl {
     layer?.cornerCurve = .continuous
     thumb.cornerRadius = 5
     thumb.cornerCurve = .continuous
+    thumb.shadowOffset = CGSize(width: 0, height: -0.5)
+    thumb.shadowRadius = 1
     layer?.addSublayer(thumb)
     for title in titles {
       let label = settingsLabel(title, size: 12, weight: .medium)
@@ -204,10 +215,12 @@ final class RaySegmentedControl: NSControl {
 
   override func updateLayer() {
     layer?.backgroundColor = SettingsColors.track.cgColor
-    thumb.backgroundColor = ProfileColor.accent.cgColor
+    thumb.backgroundColor = SettingsColors.thumb.cgColor
+    let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    thumb.shadowOpacity = dark ? 0 : 0.18
     thumb.isHidden = selectedIndex < 0
     for (index, label) in labels.enumerated() {
-      label.textColor = index == selectedIndex ? ProfileColor.foreground(on: ProfileColor.accent) : .labelColor
+      label.textColor = index == selectedIndex ? .labelColor : .secondaryLabelColor
     }
   }
 
@@ -265,7 +278,7 @@ final class PictureChoiceControl: NSView, SettingsSizing {
     didSet { cards.forEach { $0.isSelected = $0.value == selection } }
   }
 
-  static let pictureSize = NSSize(width: 112, height: 72)
+  static let pictureSize = NSSize(width: 120, height: 76)
 
   init(choices: [SettingChoice], picture: (String) -> NSView) {
     super.init(frame: .zero)
@@ -523,6 +536,9 @@ final class SwatchRow: NSView {
   private let custom = SwatchButton(hex: nil, isCustom: true, name: "Custom Colour…")
 
   var count: Int { buttons.count + 1 }
+  /// Smaller swatches closer together, on a row's right (Settings › Appearance); the onboarding keeps the big ones.
+  var compact = false { didSet { needsLayout = true } }
+  private var metrics: (size: CGFloat, gap: CGFloat) { compact ? (24, 5) : (28, 10) }
 
   /// The chosen colour as `#RRGGBB`, nil for the default.
   var selection: String? {
@@ -541,7 +557,10 @@ final class SwatchRow: NSView {
   }
 
   override var isFlipped: Bool { true }
-  override var fittingSize: NSSize { NSSize(width: 340, height: 28) }
+  override var fittingSize: NSSize {
+    let (size, gap) = metrics
+    return compact ? NSSize(width: CGFloat(count) * (size + gap) - gap, height: size) : NSSize(width: 340, height: size)
+  }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -572,7 +591,7 @@ final class SwatchRow: NSView {
 
   override func layout() {
     super.layout()
-    let size: CGFloat = 28, gap: CGFloat = 10
+    let (size, gap) = metrics
     for (index, button) in (buttons + [custom]).enumerated() {
       button.frame = NSRect(x: CGFloat(index) * (size + gap), y: 0, width: size, height: size)
     }
@@ -717,7 +736,7 @@ final class EditorField: NSView {
 final class LinkButton: NSButton {
   var onClick: (() -> Void)?
   /// What the link sits on, for its contrast.
-  var background: NSColor = SettingsColors.content
+  var background: NSColor = SettingsColors.card
 
   init(title: String) {
     super.init(frame: .zero)
