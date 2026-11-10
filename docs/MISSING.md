@@ -323,8 +323,8 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     checks (it froze input on the owner's Mac in Ardia's test). Ardia's engine now refuses native display capture
     unless the host's picker asked (`b18165de`, v0.2.45). Fix: that engine (`docs/ARDIA-WATCH.md` item 1a) or an
     `engine-ray` fixup, then a picker behind a click; add a check. Found 2026-11-10.
-42. **Command bar: arrowing moves only the highlight.** Chrome, Dia and now Ardia (0.2.45) put the chosen row in the
-    field (a search's query, a page's address) and Escape restores what you typed. Found 2026-11-10.
+42. ~~**Command bar: arrowing moves only the highlight.**~~ (Done 2026-11-10: ↑ ↓ and Tab put the row in the field,
+    Escape restores what you typed.)
 43. **Engine leaves Gemini in Chrome (glic) on.** Helium keeps `kGlic`, so every tab carries glic's tab features
     (an Ardia crash, #954, was in one's destructor). Fix: disable the glic features in `ac_main_delegate.cc`
     (Ardia `0365b06a`). Found 2026-11-10.
@@ -360,6 +360,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
+| Command bar: ↑ ↓ and Tab put the chosen row in the field (a search's query, a page's address; menu commands and settings keep what you typed), Escape brings back what you typed, typing goes on from the field (Known limitation 42) | 2026-11-10, `feat: bar arrows fill field` |
 | Asks to be the default browser: an onboarding step after the import ("Open links in Ray?") and a rare note at launch (bottom right, 14 days apart, 3 times at most, Never for good) | 2026-11-05, `feat: ask to be default browser` |
 | Bookmarks: a panel from the sidebar's footer (⌥⌘B: search, folders in place, open, ⌘-click behind, Rename…, Delete with Undo, Add to Pinned, Open All), the menu bar's Bookmarks menu (Bookmark This Tab…, Bookmark All Tabs…, the bookmarks as menus), "Bookmark" rows in the command bar | 2026-11-05, `feat: bookmarks panel` |
 | Link address on hover at the page's bottom left (above a download's note, aside from the pointer); a sound icon on tabs and favorites (click to mute); back/forward history lists on right-click or hold | 2026-11-05, `feat: link preview, tab sound, history lists` |

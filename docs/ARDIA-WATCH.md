@@ -43,7 +43,7 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    TabFeatures; Ardia's #954 crashed in `SelectionOverlayController`'s destructor. Ardia `0365b06a` merges Glic,
    GlicActor, GlicActorUi, ApiGlicPrivate, ContextualCueing and GlicZeroStateSuggestions into `--disable-features`.
    Ray's `ac_main_delegate.cc` has no such line: comes with item 1, or an `engine-ray` fixup on its own.
-2. **Command bar: arrowing shows the row in the field** (new, MISSING known limitation 42). Ardia 0.2.45 (PR #782):
+2. ~~**Command bar: arrowing shows the row in the field**~~ (Done 2026-11-10, MISSING known limitation 42). Ardia 0.2.45 (PR #782):
    a search row puts its query in the field, a page row its address, Escape brings back what you typed, as Chrome and
    Dia do. Ray's `CommandBarView.moveSelection` only moves the highlight. App-side, small; mind the inline host
    completion (`complete`) and the scope chip.
@@ -142,7 +142,7 @@ engine). Range `v0.2.44..v0.2.46-nightly.1`: 338 commits, 61 engine files (+1,82
 
 **App features Ray lacks:**
 - Unread counts on tabs (item 17).
-- Command bar arrowing fills the field (item 2).
+- ~~Command bar arrowing fills the field (item 2).~~ Done 2026-11-10.
 - Links from pinned tabs and Top Apps open in a Peek, redirect wrappers unwrapped (Gmail, Slack, Outlook); "Open
   new-tab links in" New tab / Peek / Little Ardia. Peek is an open decision (item 9).
 - Profiles load on first use (8 profiles: 1.5 GB → 390 MB). Ray has one profile (MISSING Arc 2); design input.

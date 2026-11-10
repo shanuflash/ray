@@ -36,7 +36,11 @@ publicly or create accounts.
   search, from 3 characters, every word at a word start of its title or address, frecency ≥ 1.5 (Chromium's
   HistoryQuick: last 10 visits, each worth its recency; an open tab adds 1), never a search results page. Then the
   typed row, actions, settings, the other pages by match + frecency, and search suggestions last, only to fill the 5 shown rows
-  (2 at most). The bar shows 5 rows and scrolls to 10 (overlay scroller). This window's active tab is never offered
+  (2 at most). The bar shows 5 rows and scrolls to 10 (overlay scroller). ↑ ↓ and Tab put the row in the field
+  (Chrome's temporary text, `Suggestion.fieldText`): a search its query, a page its address (`AddressInput.display`,
+  http(s)/chrome/about only); menu commands, settings and "Search …" keep what you typed. Back on the first row, or
+  Escape, brings back what you typed (inline completion too; a second Escape closes); typing goes on from the field;
+  the pointer picking a row puts the typed text back; `typed` stays what you typed meanwhile (check `bar-arrow-fill`). This window's active tab is never offered
   (nor its page as history); another tab on the same address is. Page rows: title, then `Suggestions.shortAddress`
   (host, "…", the path's last ~16 characters; a long host loses its start instead). Check `bar-ranking`.
   Site searches (Chrome's keyword mode): a keyword (a site search's, or a built-in engine's host) then Tab, or a

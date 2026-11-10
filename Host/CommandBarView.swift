@@ -36,10 +36,30 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   private var mayComplete = false
   private var lastTyped = ""
 
-  /// What was typed: the field without its inline completion.
+  /// The field as it was when ↑ ↓ or Tab first moved the selection (Chrome's temporary text): what Escape, or going
+  /// back to `row`, puts back.
+  private struct BeforeArrowing {
+    var text: String
+    var completedFrom: Int?
+    var selection: NSRange
+    var lastTyped: String
+    var mayComplete: Bool
+    var row: String?
+  }
+  private var beforeArrowing: BeforeArrowing?
+  /// The row whose text the field shows in place of what was typed (`Suggestion.fieldText`).
+  private(set) var filledRow: String?
+  private var movingByKey = false
+
+  /// What was typed: the field without its inline completion, or without the row arrowing put in it.
   var typed: String {
-    guard let completedFrom else { return field.stringValue }
-    return (field.stringValue as NSString).substring(to: min(completedFrom, (field.stringValue as NSString).length))
+    if let beforeArrowing { return Self.typedPart(of: beforeArrowing.text, completedFrom: beforeArrowing.completedFrom) }
+    return Self.typedPart(of: field.stringValue, completedFrom: completedFrom)
+  }
+
+  private static func typedPart(of text: String, completedFrom: Int?) -> String {
+    guard let completedFrom else { return text }
+    return (text as NSString).substring(to: min(completedFrom, (text as NSString).length))
   }
   /// For tests: the host completed inline, if any.
   var inlineCompletion: String? { completedFrom == nil ? nil : field.stringValue }
@@ -171,6 +191,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     lastPointer = NSEvent.mouseLocation
     setScope(nil)
     field.stringValue = query
+    beforeArrowing = nil
+    filledRow = nil
     completedFrom = nil
     mayComplete = false
     lastTyped = query
@@ -203,14 +225,22 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     let keepsSelection = previous != nil && self.suggestions.first?.key == suggestions.first?.key
     self.suggestions = suggestions
     needsLayout = true
+    movingByKey = true
     tableView.reloadData()
+    movingByKey = false
     if !suggestions.isEmpty {
       let row = keepsSelection ? suggestions.firstIndex { $0.key == previous } ?? 0 : 0
+      movingByKey = true
       tableView.selectRowIndexes([row], byExtendingSelection: false)
+      movingByKey = false
       // The list's height follows the rows first, so scrolling to the selection lands on whole rows.
       layoutSubtreeIfNeeded()
       if row == 0 { tableView.scroll(.zero) } else { tableView.scrollRowToVisible(row) }
     }
+    // New rows that moved the selection off the row arrowed to put what was typed back.
+    if beforeArrowing != nil, previous == nil || selectedKey != previous { stopArrowing() }
+    // While a row's text is in the field, nothing completes onto it.
+    guard beforeArrowing == nil else { return }
     complete(with: suggestions.first?.completion)
     needsLayout = true
   }
@@ -264,11 +294,77 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     scrollView.verticalScrollElasticity = suggestions.count > Self.shownRowLimit ? .automatic : .none
   }
 
+  /// ↑ ↓ and Tab: the selection moves and the field shows the row (Chrome's, Dia's and Ardia's temporary text).
   func moveSelection(by step: Int) {
     guard !suggestions.isEmpty else { return }
     let next = max(0, min(suggestions.count - 1, tableView.selectedRow + step))
+    if beforeArrowing == nil, next != tableView.selectedRow {
+      let editor = field.currentEditor() as? NSTextView
+      beforeArrowing = BeforeArrowing(
+        text: field.stringValue, completedFrom: completedFrom,
+        selection: editor?.selectedRange() ?? NSRange(location: (field.stringValue as NSString).length, length: 0),
+        lastTyped: lastTyped, mayComplete: mayComplete, row: selectedKey)
+    }
+    movingByKey = true
     tableView.selectRowIndexes([next], byExtendingSelection: false)
+    movingByKey = false
     tableView.scrollRowToVisible(next)
+    guard let before = beforeArrowing else { return }
+    let row = suggestions[next]
+    // Back on the row you were on, the field is what you typed again (its inline completion too), and Escape closes.
+    if row.key == before.row { return stopArrowing() }
+    // Menu commands, settings and "Search …" keep what you typed in the field, as Chrome's actions do.
+    guard let text = row.fieldText else { return showTyped(before) }
+    setField(text, selection: NSRange(location: (text as NSString).length, length: 0))
+    completedFrom = nil
+    lastTyped = text
+    mayComplete = false
+    filledRow = row.key
+  }
+
+  private var selectedKey: String? {
+    let row = tableView.selectedRow
+    return row >= 0 && row < suggestions.count ? suggestions[row].key : nil
+  }
+
+  /// Escape while the field shows a row: what you typed comes back, on the row you were on. False when there's no row to
+  /// take back (Escape then closes the bar).
+  private func revertArrowing() -> Bool {
+    guard let before = beforeArrowing else { return false }
+    if let row = suggestions.firstIndex(where: { $0.key == before.row }) {
+      movingByKey = true
+      tableView.selectRowIndexes([row], byExtendingSelection: false)
+      movingByKey = false
+      tableView.scrollRowToVisible(row)
+    }
+    stopArrowing()
+    return true
+  }
+
+  /// The field as it was before arrowing, which is what was typed from here on.
+  private func stopArrowing() {
+    guard let before = beforeArrowing else { return }
+    showTyped(before)
+    beforeArrowing = nil
+  }
+
+  private func showTyped(_ before: BeforeArrowing) {
+    setField(before.text, selection: before.selection)
+    completedFrom = before.completedFrom
+    lastTyped = before.lastTyped
+    mayComplete = before.mayComplete
+    filledRow = nil
+  }
+
+  private func setField(_ text: String, selection: NSRange) {
+    guard let editor = field.currentEditor() as? NSTextView else {
+      field.stringValue = text
+      return
+    }
+    if editor.string != text { editor.string = text }
+    let length = (text as NSString).length
+    editor.setSelectedRange(NSRange(location: min(selection.location, length),
+                                    length: min(selection.length, length - min(selection.location, length))))
   }
 
   func chooseSelected() {
@@ -284,7 +380,10 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   }
 
   func controlTextDidChange(_ notification: Notification) {
-    // Typing replaced (or Delete removed) any completion: the field is what was typed.
+    // Typing replaced (or Delete removed) any completion: the field is what was typed. Typing on a row arrowing put
+    // in the field goes on from it.
+    beforeArrowing = nil
+    filledRow = nil
     completedFrom = nil
     mayComplete = (field.stringValue as NSString).length > (lastTyped as NSString).length
     lastTyped = field.stringValue
@@ -300,6 +399,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
 
   /// Scopes the bar to `scope`, the field holding `query` (what follows the keyword).
   func enter(_ scope: SearchScope, query: String = "") {
+    beforeArrowing = nil
+    filledRow = nil
     completedFrom = nil
     setScope(scope)
     if let editor = field.currentEditor() as? NSTextView {
@@ -325,8 +426,9 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     if scope == nil {
       let row = selectedIndex >= 0 && selectedIndex < suggestions.count ? suggestions[selectedIndex] : nil
       if case .scope(let offered)? = row?.kind { return enter(offered) }
+      // A row's text that arrowing put in the field isn't a keyword you typed.
       let text = field.stringValue.trimmingCharacters(in: .whitespaces)
-      if !text.isEmpty, !text.contains(" "), let found = SearchEngines.scope(forKeyword: text) { return enter(found) }
+      if filledRow == nil, !text.isEmpty, !text.contains(" "), let found = SearchEngines.scope(forKeyword: text) { return enter(found) }
     }
     moveSelection(by: 1)
   }
@@ -351,7 +453,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     case #selector(NSResponder.insertNewline(_:)):
       chooseSelected()
     case #selector(NSResponder.cancelOperation(_:)):
-      delegate?.commandBarDismiss(self)
+      if !revertArrowing() { delegate?.commandBarDismiss(self) }
     case #selector(NSResponder.deleteBackward(_:)):
       return leaveScope()
     case #selector(NSResponder.insertTab(_:)):
@@ -382,6 +484,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
 
   func tableViewSelectionDidChange(_ notification: Notification) {
     defer { onSelectionChange?() }
+    // The pointer picking a row puts what was typed back: the field shows only rows the keys went to.
+    if !movingByKey { stopArrowing() }
     for row in 0..<suggestions.count {
       (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? SuggestionCell)?
         .selected = row == tableView.selectedRow

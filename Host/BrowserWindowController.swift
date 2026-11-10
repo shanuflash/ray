@@ -3204,6 +3204,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "commandBar": commandBar.map { bar in
         [
           "mode": commandBarMode.rawValue, "query": bar.typed, "field": bar.field.stringValue, "completion": bar.inlineCompletion ?? NSNull(), "selected": bar.selectedIndex,
+          "filledRow": bar.filledRow ?? NSNull(),
           "scope": bar.scope.map { ["name": $0.name, "keyword": $0.keyword] } ?? NSNull(),
           "rowsFullyVisible": bar.rowsFullyVisible,
           "firstVisibleRow": bar.shownRows.first, "visibleRows": bar.shownRows.count,

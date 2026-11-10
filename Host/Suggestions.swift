@@ -35,6 +35,24 @@ struct Suggestion {
     }
   }
 
+  /// What ↑ ↓ or Tab to this row puts in the bar's field (Chrome's temporary text): a search its query, a page its
+  /// address (the engine's, through `AddressInput.display`: no `user:pass@`, percent-encoded). Nil keeps what was typed:
+  /// menu commands, settings and "Search …" (Chrome's actions keep it too), and an address the bar doesn't show
+  /// (`javascript:`, `data:`, `file:`).
+  var fieldText: String? {
+    switch kind {
+    case .search: return title
+    case .tab(let tab): return Self.fieldAddress(tab.url)
+    case .url(let url), .history(let url), .bookmark(let url): return Self.fieldAddress(url)
+    case .action, .setting, .scope: return nil
+    }
+  }
+
+  private static func fieldAddress(_ url: String) -> String? {
+    guard !url.isEmpty, BrowserWindowController.isPinnable(AddressInput.innerURL(of: url)) else { return nil }
+    return AddressInput.display(for: url)
+  }
+
   var kindName: String {
     switch kind {
     case .tab: return "tab"

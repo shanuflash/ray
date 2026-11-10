@@ -817,6 +817,96 @@ const checks = {
     await send("Target.closeTarget", { targetId: (await session(`${site}/b?site`)).target.targetId });
     await until("site tab closed", async () => { await command("state"); return !tabFor(`${site}/b?site`); });
   },
+  async "bar-arrow-fill"() {
+    // ↑ ↓ and Tab put the chosen row in the field, as Chrome's omnibox, Dia and Ardia do: a search its query, a page
+    // its address. Back on the first row (or Escape) what you typed comes back, inline completion too; a second Escape
+    // closes. Typing goes on from the field. A scoped bar still searches its site, and Delete still leaves the scope.
+    const port = new URL(origin).port;
+    const site = `zzarrow.ray.test:${port}`;
+    pages["/arrowfill"] = `<title>Zzarrow page</title><p>arrow</p>`;
+    await send("Target.createTarget", { url: `${origin}/arrowfill` });
+    const { target: visited, sessionId } = await session("/arrowfill");
+    await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+    await send("Target.closeTarget", { targetId: visited.targetId });
+    await send("Target.createTarget", { url: `http://${site}/b` });
+    const siteTab = await until("site tab", () => tabFor(`${site}/b`));
+    const { target: a } = await session("/a");
+    await send("Target.activateTarget", { targetId: a.targetId });
+    await until("/a active", () => state().active === tabFor("/a").id);
+    const bar = async (what, ready) => {
+      let last;
+      return until(what, async () => { await command("state"); last = state().commandBar; return last && ready(last) && last; }, 8000)
+        .catch((error) => { throw new Error(`${error.message}: ${JSON.stringify(last)}`); });
+    };
+    const open = async () => {
+      await command("menu newTab");
+      await command("type zzarrow");
+      return bar("rows", (b) => b.completion === "zzarrow.ray.test" && b.rows.some((r) => r.kind === "history" && r.url === `${origin}/arrowfill`) &&
+        b.rows.some((r) => r.suggested && r.title === "zzarrow one"));
+    };
+    let shown = await open();
+    assert(shown.rows[0].kind === "tab" && shown.rows[0].tab === siteTab.id && shown.rows[1].kind === "search" && shown.rows[1].title === "zzarrow",
+      `rows ${JSON.stringify(shown.rows)}`);
+    const page = shown.rows.findIndex((r) => r.kind === "history" && r.url === `${origin}/arrowfill`);
+    const suggested = shown.rows.findIndex((r) => r.suggested && r.title === "zzarrow one");
+    // A search row: its query, the completion gone.
+    await command("down");
+    shown = await bar("search row", (b) => b.selected === 1);
+    assert(shown.field === "zzarrow" && shown.completion === null && shown.query === "zzarrow" && shown.filledRow?.startsWith("search:"),
+      `on the search row ${JSON.stringify(shown)}`);
+    // A page row: its address.
+    for (let i = 1; i < page; i++) await command("down");
+    shown = await bar("page row", (b) => b.selected === page);
+    assert(shown.field === `${origin}/arrowfill` && shown.query === "zzarrow" && shown.filledRow === `history:${origin}/arrowfill`,
+      `on the page row ${JSON.stringify(shown)}`);
+    // Back on the first row: what you typed, completed inline again.
+    for (let i = 0; i < page; i++) await command("up");
+    shown = await bar("first row", (b) => b.selected === 0);
+    assert(shown.field === "zzarrow.ray.test" && shown.completion === "zzarrow.ray.test" && shown.query === "zzarrow" && shown.filledRow === null,
+      `back on the first row ${JSON.stringify(shown)}`);
+    // A suggestion's text, then Escape puts back what you typed and keeps the bar; a second Escape closes it.
+    for (let i = 0; i < suggested; i++) await command("down");
+    shown = await bar("suggestion", (b) => b.selected === suggested);
+    assert(shown.field === "zzarrow one" && shown.query === "zzarrow", `on the suggestion ${JSON.stringify(shown)}`);
+    await command("escape");
+    shown = await bar("escaped", (b) => b.selected === 0);
+    assert(shown.field === "zzarrow.ray.test" && shown.completion === "zzarrow.ray.test" && shown.filledRow === null, `after Escape ${JSON.stringify(shown)}`);
+    await command("escape");
+    await until("bar closed", async () => { await command("state"); return state().commandBar === null; });
+    // Tab moves and fills as ↓ does; typing on a page's address goes on from it, and Escape then closes.
+    await open();
+    await command("tab");
+    shown = await bar("tabbed", (b) => b.selected === 1);
+    assert(shown.field === "zzarrow" && shown.scope === null, `after Tab ${JSON.stringify(shown)}`);
+    for (let i = 1; i < page; i++) await command("down");
+    await bar("page row again", (b) => b.selected === page && b.field === `${origin}/arrowfill`);
+    await command("type x");
+    shown = await bar("typed on", (b) => b.query === `${origin}/arrowfillx`);
+    assert(shown.field === `${origin}/arrowfillx` && shown.filledRow === null, `typing on ${JSON.stringify(shown)}`);
+    await command("escape");
+    await until("bar closed after typing", async () => { await command("state"); return state().commandBar === null; });
+    // Scoped: one row, ↓ changes nothing, and Delete with nothing typed still leaves the scope.
+    await command("menu newTab");
+    await command("type duckduckgo.com");
+    await bar("duckduckgo typed", (b) => b.query === "duckduckgo.com");
+    await command("tab");
+    await bar("scoped", (b) => b.scope?.name === "DuckDuckGo");
+    await command("type zz");
+    await bar("scoped row", (b) => b.query === "zz" && b.rows.length === 1);
+    await command("down");
+    await command("state");
+    shown = state().commandBar;
+    assert(shown.field === "zz" && shown.selected === 0 && shown.filledRow === null && shown.scope?.name === "DuckDuckGo", `scoped ↓ ${JSON.stringify(shown)}`);
+    await command("backspace");
+    await command("backspace");
+    await bar("emptied", (b) => b.field === "" && b.scope?.name === "DuckDuckGo");
+    await command("backspace");
+    await bar("scope left", (b) => b.scope === null && b.query === "duckduckgo.com");
+    await command("escape");
+    await until("bar closed after scope", async () => { await command("state"); return state().commandBar === null; });
+    await send("Target.closeTarget", { targetId: (await session(`${site}/b`)).target.targetId });
+    await until("site tab closed", async () => { await command("state"); return !tabFor(`${site}/b`); });
+  },
   async "bar-ranking"() {
     // Arc's order: a page you go to that matches leads (Enter opens it), then what you typed, then the other pages;
     // the search engine's suggestions (the fixture's, for "zz…") only fill what's left of the five rows shown at once.
