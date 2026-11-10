@@ -206,7 +206,7 @@ export const areas = {
   "Host/SettingsPanes.swift": settings,
   "Host/SettingsAppearance.swift": ["settings-panes", "settings-window", "settings-page-address-bar"],
   "Host/SettingsTabs.swift": ["settings-panes", "settings-window"],
-  "Host/SettingsAbout.swift": ["settings-panes", "settings-search"],
+  "Host/SettingsAbout.swift": ["settings-panes", "settings-search", "settings-general"],
   "Host/SettingsGeneral.swift": ["settings-general", "settings-panes", "settings-search", "warn-before-quitting", "updater-config",
     "default-browser-ask", "onboarding"],
   "Host/CloseWarnings.swift": ["panels", "warn-before-quitting", "warn-before-closing-window", "close-last-window", "private-window",
@@ -218,7 +218,8 @@ export const areas = {
   // Settings › Passwords and › Autofill (on the engine's ac_passwords_* and ac_autofill_*), and their shared pieces.
   "Host/SettingsPasswords.swift": ["settings-passwords", "settings-panes", "settings-search", "jumpcloud-relay", "password-prompt"],
   "Host/SettingsAutofill.swift": ["settings-autofill", "settings-panes", "settings-search", "autofill-prompt"],
-  "Host/SettingsDataViews.swift": ["settings-passwords", "settings-autofill"],
+  // Its stack also holds a group's live picture over its rows.
+  "Host/SettingsDataViews.swift": ["settings-passwords", "settings-autofill", "settings-panes", "settings-window"],
   // Settings › Search: its rows and controls, and the engines and site searches the command bar searches with.
   "Host/SettingsSearchPane.swift": ["search-engine", "search-suggestions-off", "site-search", "settings-catalog", "settings-panes",
     "settings-window", "settings-search", "settings-bar", "settings-persist"],

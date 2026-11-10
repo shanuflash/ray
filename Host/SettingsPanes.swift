@@ -20,7 +20,8 @@ protocol SettingsPaneContent: AnyObject {
   func headerAccessory(for group: SettingGroup) -> NSView?
   /// The control for a `.custom(name)` setting of this pane.
   func control(named name: String, for key: AnySettingKey) -> NSView?
-  /// A small live picture beside a setting's row (a `MiniRayWindow` showing what the setting does), or nil.
+  /// A live picture of what a setting does (a `SettingsLivePicture`), or nil: the first one a group's settings have
+  /// goes across the top of the group's card.
   func picture(for key: AnySettingKey) -> NSView?
 }
 
@@ -53,13 +54,18 @@ struct SettingsSection {
   let place: Place
   let view: NSView
   let search: [SettingsSearchEntry]
+  /// The pane puts the view on a card (an untitled one placed after a group joins that group's card); false for a
+  /// view that draws its own (a data list's `SettingsStack` with `cards`, whose headers sit between its cards).
+  let card: Bool
 
-  init(id: String, title: String? = nil, place: Place = .bottom, view: NSView, search: [SettingsSearchEntry] = []) {
+  init(id: String, title: String? = nil, place: Place = .bottom, view: NSView, card: Bool = true,
+       search: [SettingsSearchEntry] = []) {
     self.id = id
     self.title = title
     self.place = place
     self.view = view
     self.search = search
+    self.card = card
   }
 }
 

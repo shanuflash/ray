@@ -201,6 +201,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
   var debug: [String: Any] {
     var controls: [String: Any] = ["allSettingsLink": root?.sidebar.linkTitle ?? ""]
+    if paneViews[.about] != nil, let about = SettingsPanes.content(for: .about) as? AboutPaneContent {
+      controls["aboutCheckNow"] = about.checkNowShown
+    }
     var rows: [String: Any] = [:]
     var hidden: [String: Any] = [:]
     var pictures: [String: Any] = [:]
@@ -274,6 +277,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   /// For tests: a control pressed as a click would (a switch by name, `<id> <n>` for a pop-up's item, a segment, a
   /// picture or a swatch), in whichever pane it is.
   func press(_ words: [String]) -> Bool {
+    if words == ["aboutCheckNow"] { return (SettingsPanes.content(for: .about) as? AboutPaneContent)?.pressCheckNow() ?? false }
     for view in paneViews.values where view.press(words) { return true }
     return false
   }
@@ -375,9 +379,10 @@ private final class SettingsRootView: NSView {
 
 // MARK: Sidebar
 
-/// The window's sidebar: search on top, the panes (or search results while there is a query), and the link to
-/// Chrome's own settings at the bottom.
+/// The window's sidebar: a 28 pt search field on top, the panes as 30 pt rows 2 pt apart (or search results while
+/// there is a query), and the row to Chrome's own settings at the bottom, in grey.
 private final class SettingsSidebarView: NSView, NSTextFieldDelegate {
+  static let rowHeight: CGFloat = 30
   var onSelect: ((SettingPane) -> Void)?
   var onChoose: ((SettingsTarget) -> Void)?
   var onAllSettings: (() -> Void)?
@@ -389,7 +394,7 @@ private final class SettingsSidebarView: NSView, NSTextFieldDelegate {
   private let searchField = SettingsSearchField()
   private let scroll = NSScrollView()
   private let list = FlippedView()
-  private let link = LinkButton(title: "All Chrome Settings…")
+  private let link = SettingsLinkRow(title: "All Chrome Settings…", symbol: "arrow.up.right.square")
   private var navRows: [SettingsNavRow] = []
   private var headers: [NSTextField] = []
   private var resultRows: [SettingsResultRow] = []
@@ -408,8 +413,6 @@ private final class SettingsSidebarView: NSView, NSTextFieldDelegate {
     scroll.scrollerStyle = .overlay
     scroll.automaticallyAdjustsContentInsets = false
     scroll.documentView = list
-    link.background = SettingsColors.sidebar
-    link.font = .systemFont(ofSize: 12, weight: .medium)
     link.onClick = { [weak self] in self?.onAllSettings?() }
     empty.alignment = .center
     addSubview(searchField)
@@ -544,10 +547,9 @@ private final class SettingsSidebarView: NSView, NSTextFieldDelegate {
     super.layout()
     let inset: CGFloat = 10
     // Under the traffic lights.
-    searchField.frame = NSRect(x: inset, y: 42, width: bounds.width - inset * 2, height: 30)
-    let linkSize = link.intrinsicContentSize
-    link.frame = NSRect(x: inset + 10, y: bounds.height - 18 - linkSize.height, width: linkSize.width, height: linkSize.height)
-    scroll.frame = NSRect(x: 0, y: 82, width: bounds.width, height: max(0, link.frame.minY - 12 - 82))
+    searchField.frame = NSRect(x: inset, y: 44, width: bounds.width - inset * 2, height: 28)
+    link.frame = NSRect(x: inset, y: bounds.height - 12 - Self.rowHeight, width: bounds.width - inset * 2, height: Self.rowHeight)
+    scroll.frame = NSRect(x: 0, y: 82, width: bounds.width, height: max(0, link.frame.minY - 8 - 82))
     let width = scroll.contentSize.width
     var y: CGFloat = 0
     if query.isEmpty {
@@ -555,16 +557,16 @@ private final class SettingsSidebarView: NSView, NSTextFieldDelegate {
       var section: SettingPane.Section?
       for row in navRows {
         if row.pane.section != section, row.pane.section.title != nil, headerIndex < headers.count {
-          y += 12
+          y += 14
           let header = headers[headerIndex]
           let height = ceil(header.intrinsicContentSize.height)
           header.frame = NSRect(x: inset + 10, y: y, width: width - inset * 2 - 10, height: height)
-          y += height + 6
+          y += height + 4
           headerIndex += 1
         }
         section = row.pane.section
-        row.frame = NSRect(x: inset, y: y, width: width - inset * 2, height: 34)
-        y += 34 + 1
+        row.frame = NSRect(x: inset, y: y, width: width - inset * 2, height: Self.rowHeight)
+        y += Self.rowHeight + 2
       }
     } else if results.isEmpty {
       empty.frame = NSRect(x: inset, y: 24, width: width - inset * 2, height: ceil(empty.intrinsicContentSize.height))
@@ -651,7 +653,7 @@ private class SettingsSidebarRow: NSView {
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    layer?.cornerRadius = 9
+    layer?.cornerRadius = 8
     layer?.cornerCurve = .continuous
     addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
@@ -684,7 +686,7 @@ private class SettingsSidebarRow: NSView {
   }
 }
 
-/// A pane in the sidebar: its icon and name, 34 pt.
+/// A pane in the sidebar: its icon and name, 30 pt.
 private final class SettingsNavRow: SettingsSidebarRow {
   let pane: SettingPane
   private let icon = NSImageView()
@@ -711,6 +713,39 @@ private final class SettingsNavRow: SettingsSidebarRow {
     label.textColor = ink ?? .labelColor
     label.font = .systemFont(ofSize: 13, weight: ink == nil ? .regular : .medium)
   }
+
+  override func layout() {
+    super.layout()
+    icon.frame = NSRect(x: 8, y: ((bounds.height - 20) / 2).rounded(), width: 22, height: 20)
+    let height = ceil(label.intrinsicContentSize.height)
+    label.frame = NSRect(x: 36, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 44, height: height)
+  }
+}
+
+/// The link to Chrome's own settings: a row like a pane's, its icon and name in grey (it leaves the window).
+private final class SettingsLinkRow: SettingsSidebarRow {
+  let title: String
+  private let icon = NSImageView()
+  private let label: NSTextField
+
+  init(title: String, symbol: String) {
+    self.title = title
+    label = settingsLabel(title, size: 13, color: .secondaryLabelColor)
+    super.init(frame: .zero)
+    icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+    icon.symbolConfiguration = .init(pointSize: 13, weight: .regular)
+    icon.imageScaling = .scaleNone
+    icon.contentTintColor = .secondaryLabelColor
+    addSubview(icon)
+    addSubview(label)
+    setAccessibilityElement(true)
+    setAccessibilityRole(.link)
+    setAccessibilityLabel(title)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
   override func layout() {
     super.layout()

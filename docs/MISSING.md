@@ -360,6 +360,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
+| Settings' new look: rows on rounded cards (Dia's, Ardia's), a group's live picture across the top of its card instead of beside a row, a calmer segmented control and sidebar; Check Now beside the version in About Ray | 2026-11-10, `feat: settings cards look` |
 | Asks to be the default browser: an onboarding step after the import ("Open links in Ray?") and a rare note at launch (bottom right, 14 days apart, 3 times at most, Never for good) | 2026-11-05, `feat: ask to be default browser` |
 | Bookmarks: a panel from the sidebar's footer (⌥⌘B: search, folders in place, open, ⌘-click behind, Rename…, Delete with Undo, Add to Pinned, Open All), the menu bar's Bookmarks menu (Bookmark This Tab…, Bookmark All Tabs…, the bookmarks as menus), "Bookmark" rows in the command bar | 2026-11-05, `feat: bookmarks panel` |
 | Link address on hover at the page's bottom left (above a download's note, aside from the pointer); a sound icon on tabs and favorites (click to mute); back/forward history lists on right-click or hold | 2026-11-05, `feat: link preview, tab sound, history lists` |

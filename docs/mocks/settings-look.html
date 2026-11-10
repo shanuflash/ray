@@ -1,0 +1,351 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings Look Mock</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 16px 80px; background: #d8d6de; color: #1d1d1f;
+    font: 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #0e0e10; color: #eee; } p.lead, li { color: #aaa !important; } }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  h2 { font-size: 18px; margin: 48px 0 4px; }
+  h2 .pick { font-size: 12px; font-weight: 600; background: #8257E5; color: #fff; border-radius: 6px; padding: 2px 8px; margin-left: 8px; vertical-align: 2px; }
+  p.lead { margin: 4px 0; color: #555; max-width: 1100px; line-height: 1.5; }
+  ul { margin: 6px 0 0; padding-left: 20px; max-width: 1100px; }
+  li { color: #444; line-height: 1.5; }
+  .pair { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 14px; align-items: flex-start; }
+  .slot { flex: 1 1 560px; min-width: 0; }
+  .slot .cap { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #777; margin: 0 0 6px 2px; }
+  .fit { width: 880px; transform-origin: top left; }
+  .holder { overflow: hidden; }
+
+  /* Themes: Ray's own colours. */
+  .light {
+    --accent: #8257E5; --on-accent: #fff; --ink-sel: #5b34c4;
+    --content: #ffffff; --sidebar: #e6e6e6; --label: #1d1d1f; --grey: #6e6e73; --tert: #a7a7ac;
+    --hair: rgba(0,0,0,.09); --track: rgba(0,0,0,.06); --switch-off: rgba(0,0,0,.2);
+    --sel: color-mix(in srgb, var(--accent) 22%, var(--sidebar));
+    --mini-side: #e6e6e6; --mini-page: #fff; --mini-fill: rgba(0,0,0,.07); --mini-sel: #fff; --mini-ink: 0,0,0;
+    --mini-edge: rgba(0,0,0,.12); --page-edge: rgba(0,0,0,.08); --hero: rgba(130,87,229,.3);
+    /* Cards. */
+    --c-content: #f2f2f4; --card: #ffffff; --card-edge: rgba(0,0,0,.06); --band: #f7f7f9; --thumb: #fff; --thumb-shadow: 0 .5px 2px rgba(0,0,0,.18);
+  }
+  .dark {
+    --accent: #A486F0; --on-accent: #000; --ink-sel: #cdbaf9;
+    --content: #232323; --sidebar: #131313; --label: #f2f2f4; --grey: #a1a1a6; --tert: #636366;
+    --hair: rgba(255,255,255,.1); --track: rgba(255,255,255,.08); --switch-off: rgba(255,255,255,.25);
+    --sel: color-mix(in srgb, var(--accent) 30%, var(--sidebar));
+    --mini-side: #131313; --mini-page: #2b2b2b; --mini-fill: rgba(255,255,255,.09); --mini-sel: rgba(255,255,255,.13); --mini-ink: 255,255,255;
+    --mini-edge: rgba(255,255,255,.14); --page-edge: rgba(255,255,255,.08); --hero: rgba(164,134,240,.42);
+    --c-content: #1e1e1e; --card: rgba(255,255,255,.045); --card-edge: rgba(255,255,255,.07); --band: rgba(255,255,255,.025); --thumb: rgba(255,255,255,.17); --thumb-shadow: none;
+  }
+
+  /* The window. */
+  .win { display: flex; border-radius: 12px; overflow: hidden; color: var(--label); box-shadow: 0 20px 50px rgba(0,0,0,.28), 0 0 0 .5px rgba(0,0,0,.25); position: relative; }
+  .side { width: 210px; flex: none; background: var(--sidebar); padding: 42px 10px 16px; display: flex; flex-direction: column; position: relative; }
+  .lights { position: absolute; left: 20px; top: 18px; display: flex; gap: 8px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .search { height: 30px; border-radius: 8px; background: var(--track); display: flex; align-items: center; gap: 6px; padding: 0 10px; color: var(--grey); font-size: 13px; }
+  .nav { height: 34px; border-radius: 9px; display: flex; align-items: center; gap: 10px; padding: 0 10px; font-size: 13px; margin-top: 1px; }
+  .nav .g { width: 20px; text-align: center; font-size: 15px; color: var(--grey); }
+  .nav.on { background: var(--sel); color: var(--ink-sel); font-weight: 500; }
+  .nav.on .g { color: var(--ink-sel); }
+  .sec { font-size: 11px; font-weight: 600; color: var(--grey); margin: 16px 0 4px 14px; }
+  .spacer { flex: 1; min-height: 30px; }
+  .chrome { font-size: 12px; font-weight: 500; color: var(--accent); padding: 0 10px; }
+  .main { flex: 1; background: var(--content); }
+  .pane { width: 600px; margin: 0 auto; padding: 40px 0 32px; }
+  .ptitle { font-size: 22px; font-weight: 500; margin-bottom: 4px; }
+
+  /* Controls. */
+  .sw { width: 38px; height: 22px; border-radius: 11px; background: var(--switch-off); position: relative; flex: none; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .sw.on { background: var(--accent); }
+  .sw.on::after { left: 18px; }
+  .seg { display: inline-flex; background: var(--track); border-radius: 8px; padding: 2px; flex: none; }
+  .seg span { padding: 0 12px; height: 22px; display: flex; align-items: center; border-radius: 6px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+  .seg span.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .quiet .seg span.on { background: var(--thumb); color: var(--label); box-shadow: var(--thumb-shadow); font-weight: 500; }
+  .pop { height: 24px; border-radius: 7px; background: var(--track); display: inline-flex; align-items: center; gap: 10px; padding: 0 8px 0 12px; font-size: 13px; flex: none; }
+  .btn { height: 26px; border-radius: 8px; background: var(--track); display: inline-flex; align-items: center; padding: 0 12px; font-size: 13px; font-weight: 500; flex: none; white-space: nowrap; }
+  .val { color: var(--grey); font-size: 13px; flex: none; }
+  .det { display: block; font-size: 12px; color: var(--grey); margin-top: 2px; }
+  .pop::after { content: "⌃⌄"; font-size: 9px; letter-spacing: -2px; writing-mode: vertical-lr; color: var(--grey); line-height: 1; }
+  .sws { display: flex; gap: 12px; align-items: center; }
+  .sws i { width: 26px; height: 26px; border-radius: 50%; display: block; position: relative; }
+  .sws i.on { box-shadow: 0 0 0 2.5px var(--content), 0 0 0 4.5px var(--grey); }
+  .sws i.on::after { content: "✓"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px; }
+  .small .sws { gap: 8px; }
+  .small .sws i { width: 20px; height: 20px; }
+  .small .sws i.on { box-shadow: 0 0 0 2px var(--card-bg, var(--content)), 0 0 0 3.5px var(--grey); }
+  .small .sws i.on::after { font-size: 11px; }
+  .choices { display: flex; gap: 18px; }
+  .choice { display: flex; flex-direction: column; align-items: center; gap: 7px; font-size: 12.5px; color: var(--grey); }
+  .choice .frame { border-radius: 10px; padding: 3px; box-shadow: 0 0 0 1px transparent; }
+  .choice.on .frame { box-shadow: 0 0 0 2.5px var(--accent); }
+  .choice.on { color: var(--label); font-weight: 500; }
+  .choice.on .lab::before { content: "✓ "; color: var(--accent); font-weight: 700; }
+
+  /* Mini Ray window. */
+  .mini { position: relative; overflow: hidden; flex: none; }
+  .mini b { position: absolute; display: block; }
+
+  /* Current: flat list, 44 pt rows, hairlines. */
+  .cur .group { margin-top: 22px; }
+  .cur .ghead { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .cur .row { min-height: 44px; padding: 11px 0; display: flex; align-items: center; gap: 20px; }
+  .cur .row + .row { border-top: 1px solid var(--hair); }
+  .cur .row .t { flex: 1; font-size: 13px; }
+  .cur .row.stack { flex-direction: column; align-items: stretch; gap: 12px; }
+
+  /* B: open list, refined. */
+  .b .pane { padding-top: 34px; }
+  .b .group { margin-top: 30px; }
+  .b .ghead { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .b .row { padding: 0; border-top: 1px solid var(--hair); }
+  .b .group .row:first-of-type { border-top: 0; }
+  .b .line { height: 44px; display: flex; align-items: center; gap: 16px; }
+  .b .line .t { flex: 1; }
+  .b .under { padding: 0 0 14px; }
+
+  /* Cards (A and C). */
+  .cards .main { background: var(--c-content); }
+  .cards .pane { padding-top: 34px; --card-bg: var(--c-content); }
+  .cards .ptitle { font-size: 22px; font-weight: 600; margin: 0 0 2px 2px; }
+  .cards .group { margin-top: 24px; }
+  .cards .ghead { font-size: 13px; font-weight: 600; margin: 0 0 7px 4px; }
+  .cards .card { background: var(--card); border-radius: 10px; box-shadow: 0 0 0 .5px var(--card-edge); overflow: hidden; }
+  .cards .row { min-height: 44px; padding: 0 14px; display: flex; align-items: center; gap: 16px; position: relative; }
+  .cards .row + .row::before { content: ""; position: absolute; left: 14px; right: 14px; top: 0; height: 1px; background: var(--hair); }
+  .cards .row .t { flex: 1; }
+  .cards .row.stack { flex-direction: column; align-items: flex-start; gap: 10px; padding-top: 12px; padding-bottom: 14px; }
+  .cards .row.pics { padding-top: 14px; padding-bottom: 12px; }
+  .band { display: flex; justify-content: center; padding: 16px 0; background: var(--band); position: relative; }
+  .band + .row::before { left: 0 !important; right: 0 !important; }
+  .newside .side { padding-top: 46px; }
+  .newside .search { height: 28px; }
+  .newside .nav { height: 30px; margin-top: 2px; border-radius: 8px; }
+  .newside .nav .g { font-size: 14px; }
+  .newside .sec { margin-top: 18px; }
+  .newside .chrome { color: var(--grey); font-weight: 400; font-size: 13px; display: flex; gap: 10px; align-items: center; height: 30px; }
+  .newside .chrome::before { content: "↗"; width: 20px; text-align: center; }
+
+  .excerpt .side { display: none; }
+  .excerpt .pane { padding: 6px 0 24px; }
+  .excerpt .group:first-child { margin-top: 10px; }
+</style>
+</head>
+<body>
+<h1>Settings: a calmer window</h1>
+<p class="lead">Each direction: the Appearance pane at full height (the real window is 600 pt tall and scrolls), light and dark, then Tabs and sidebar › New tabs, then About Ray. New in A, B and C: Check Now beside the version (General’s same button and call, only when there’s an updater; General keeps its own). Profile colour: the default lavender.</p>
+<p class="lead"><b>What's ugly today, beyond the picture rows:</b></p>
+<ul>
+  <li>Picture rows are 84 pt, nearly twice a plain row: the picture floats mid-row and the switch hangs off its right.</li>
+  <li>No grouping: rows float on the page and hairlines run edge to edge, so a group header reads like one more row (both 13 pt).</li>
+  <li>Header to first row is the same gap as group to group, so groups don't hold together.</li>
+  <li>"Theme", then "Theme colour", then the swatches: three stacked labels before anything to click; the light/dark pictures leave half the row empty.</li>
+  <li>Trailing controls change height row to row (switch 22, segmented 26, pop-up 24, button 28) and the segmented control's lavender pill shouts louder than the switches.</li>
+  <li>Sidebar: 34 pt rows and a heavy 30 pt search field feel large next to 13 pt text; "All Chrome Settings…" in the accent colour competes with the selected pane.</li>
+</ul>
+<p class="lead"><b>References:</b> Dia (Cra measured it) and Ardia put rows in rounded cards: 43 pt rows, 10–14 pt insets, inset dividers, 13 pt semibold headers just above the card. Ardia shows pictures only as choices (Light / Dark / Automatic, app icon) above or inside a card, never next to a switch. Arc's own settings also use rounded boxes. Crest uses macOS's grouped form, also cards.</p>
+
+<section id="cur"></section>
+<section id="a"></section>
+<section id="b"></section>
+<section id="c"></section>
+
+<script>
+const A = { light: "#8257E5", dark: "#A486F0" };
+const swatchColours = ["#8257E5", "#3f6fe0", "#3f9f94", "#4e9f4b", "#e8b23f", "#e06c4f", "#d75c9b", "#6c7280", "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)"];
+
+// A port of MiniRayWindow.draw: same proportions, in divs.
+function mini({ w, h, theme, bar = true, minimal = false, rows = ["p", "a", "p", "p"] }) {
+  const dark = theme === "dark";
+  const ink = (a) => `rgba(var(--mini-ink),${a})`;
+  const r = Math.max(5, Math.min(9, w / 16));
+  const dot = Math.max(2.6, w / 34);
+  const side = Math.max(26, Math.round(w * 0.3));
+  const unit = Math.max(5, h / 11);
+  const box = (x, y, bw, bh, bg, rad = 0, extra = "") => `<b style="left:${x}px;top:${y}px;width:${bw}px;height:${bh}px;background:${bg};border-radius:${rad}px;${extra}"></b>`;
+  let s = "";
+  ["#FF5F57", "#FEBC2E", "#28C840"].forEach((c, i) => (s += box(5 + i * (dot + 1.6), 5, dot, dot, c, dot / 2)));
+  s += box(4, 6 + dot + 3, side - 8, unit, "var(--mini-fill)", unit / 2.4);
+  let y = 6 + dot + 3 + unit + 5;
+  const fr = [0.62, 0.48, 0.7, 0.55, 0.4, 0.66];
+  const acc = A[theme];
+  rows.forEach((row, i) => {
+    const rw = side - 8;
+    if (row === "a") s += box(4, y, rw, unit, "var(--mini-sel)", unit / 3);
+    if (row === "n") s += box(4, y, rw, unit, `color-mix(in srgb, ${acc} ${dark ? 32 : 22}%, transparent)`, unit / 3, `box-shadow: inset 0 0 0 .75px ${acc}`);
+    const mark = row === "n" ? acc : ink(row === "a" ? 0.55 : 0.28);
+    const icon = unit * 0.5;
+    s += box(6.5, y + unit / 2 - icon / 2, icon, icon, mark, 1);
+    s += box(4 + icon + 5, y + unit / 2 - 0.9, Math.max(4, (rw - icon - 8) * fr[i % 6]), 1.8, mark, 0.9);
+    y += unit + 2.5;
+  });
+  const pw = w - side - 4, ph = h - 8;
+  let p = "";
+  let top = 0;
+  if (bar) {
+    const bh = Math.max(7, unit + 2), mid = bh / 2;
+    for (let i = 0; i < 2; i++) p += box(4 + i * 4.5, mid - 1.2, 2.4, 2.4, ink(0.3), 1.2);
+    const host = pw * 0.2;
+    p += box(15, mid - 1.1, host, 2.2, ink(0.75), 1.1);
+    if (!minimal) p += box(15 + host + 2, mid - 1.1, pw * 0.32, 2.2, ink(0.25), 1.1);
+    p += box(0, bh, pw, 0.5, ink(0.12));
+    top = bh + 0.5;
+  }
+  const heroH = Math.max(8, (ph - top) * 0.32);
+  p += box(6, top + 5, pw - 12, heroH, `color-mix(in srgb, ${acc} ${dark ? 42 : 30}%, transparent)`, 2.5);
+  let line = top + 5 + heroH + 5;
+  for (const f of [0.86, 0.7, 0.8, 0.5]) { if (line + 2 >= ph - 3) break; p += box(6, line, (pw - 12) * f, 1.8, ink(0.18), 0.9); line += 5; }
+  s += `<b style="left:${side}px;top:4px;width:${pw}px;height:${ph}px;background:var(--mini-page);border-radius:${Math.max(3, r - 3)}px;overflow:hidden;box-shadow:inset 0 0 0 .5px var(--page-edge)">${p}</b>`;
+  return `<div class="mini ${theme}" style="width:${w}px;height:${h}px;border-radius:${r}px;background:var(--mini-side);box-shadow:inset 0 0 0 .75px var(--mini-edge)">${s}</div>`;
+}
+function autoMini(o) {
+  const half = Math.round(o.w / 2);
+  return `<div style="position:relative;width:${o.w}px;height:${o.h}px;flex:none">
+    <div style="position:absolute;left:0;top:0;width:${half}px;height:${o.h}px;overflow:hidden">${mini({ ...o, theme: "light" })}</div>
+    <div style="position:absolute;left:${half}px;top:0;width:${o.w - half}px;height:${o.h}px;overflow:hidden"><div style="margin-left:-${half}px">${mini({ ...o, theme: "dark" })}</div></div></div>`;
+}
+
+const sw = (on) => `<div class="sw${on ? " on" : ""}"></div>`;
+const seg = (titles, on) => `<div class="seg">${titles.map((t, i) => `<span class="${i === on ? "on" : ""}">${t}</span>`).join("")}</div>`;
+const pop = (t) => `<div class="pop">${t}</div>`;
+const swatches = () => `<div class="sws">${swatchColours.map((c, i) => `<i class="${i === 0 ? "on" : ""}" style="background:${c}"></i>`).join("")}</div>`;
+function choice(label, pic, on) { return `<div class="choice${on ? " on" : ""}"><div class="frame">${pic}</div><div class="lab">${label}</div></div>`; }
+function lightDark(theme, w, h) {
+  return `<div class="choices">${choice("Automatic", autoMini({ w, h }), true)}${choice("Light", mini({ w, h, theme: "light" }))}${choice("Dark", mini({ w, h, theme: "dark" }))}</div>`;
+}
+
+function sidebar(newLook) {
+  const nav = (g, t, on) => `<div class="nav${on ? " on" : ""}"><span class="g">${g}</span>${t}</div>`;
+  return `<div class="side"><div class="lights"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></div>
+    <div class="search">⌕ Search</div><div style="height:${newLook ? 10 : 12}px"></div>
+    ${nav("⚙︎", "General")}${nav("◧", "Tabs and sidebar")}${nav("◐", "Appearance", true)}${nav("⌕", "Search")}
+    <div class="sec">Your data</div>${nav("◔", "Privacy")}${nav("⚿", "Passwords")}${nav("▭", "Autofill")}${nav("⧉", "Extensions")}
+    <div class="sec">More</div>${nav("⌘", "Shortcuts")}${nav("ⓘ", "About Ray")}
+    <div class="spacer"></div><div class="chrome">All Chrome Settings…</div></div>`;
+}
+const group = (head, body) => `<div class="group"><div class="ghead">${head}</div>${body}</div>`;
+function window_(cls, theme, sideNew, paneHTML, title) {
+  return `<div class="holder"><div class="fit"><div class="win ${theme} ${cls}">${sidebar(sideNew)}<div class="main"><div class="pane">${title ? `<div class="ptitle">${title}</div>` : ""}${paneHTML}</div></div></div></div></div>`;
+}
+
+const ver = `<span class="val">0.9.0 (90)</span>`;
+const eng = `<span class="val">157.0.8103.51</span>`;
+const check = `<span class="btn">Check Now</span>`;
+const engTitle = `Engine<span class="det">Chromium without Google.</span>`;
+
+// ---------- Current ----------
+function current(theme, tabs) {
+  const row = (t, ctl, pic = "") => `<div class="row"><div class="t">${t}</div>${pic}${ctl}</div>`;
+  if (tabs === "about") return group("Ray", row("Version", ver) + row(engTitle, eng));
+  if (tabs) return group("New tabs", row("New tabs open", seg(["At the top", "Below current"], 0), mini({ w: 96, h: 62, theme, bar: false, rows: ["n", "p", "a", "p"] })));
+  return group("Theme",
+      `<div class="row stack"><div class="t">Theme colour</div>${swatches()}</div>` +
+      `<div class="row stack"><div class="t">Light or dark</div>${lightDark(theme, 110, 70)}</div>` +
+      row("Panels and notes", seg(["Glass", "Solid"], 0))) +
+    group("Address bar",
+      row("Show only the site in the address bar", sw(false), mini({ w: 96, h: 62, theme })) +
+      row("Show loading progress", sw(true)) +
+      row("Show the address bar above the page", sw(true), mini({ w: 96, h: 62, theme }))) +
+    group("Pages", row("Page zoom", pop("100%")) + row("Show scroll bars", seg(["Automatic", "When scrolling", "Always"], 0)));
+}
+
+// ---------- A: cards, live picture as a band at the top of its card ----------
+function dirA(theme, tabs) {
+  const row = (t, ctl) => `<div class="row"><div class="t">${t}</div>${ctl}</div>`;
+  if (tabs === "about") return group("Ray", `<div class="card">${row("Version", ver + check)}${row(engTitle, eng)}</div>`);
+  if (tabs) return group("New tabs", `<div class="card"><div class="band">${mini({ w: 200, h: 124, theme, bar: false, rows: ["n", "p", "a", "p"] })}</div>${row("New tabs open", seg(["At the top", "Below current"], 0))}</div>`);
+  return group("Theme", `<div class="card">` +
+      `<div class="row small" style="--card-bg:var(--card)"><div class="t">Colour</div>${swatches()}</div>` +
+      `<div class="row pics">${lightDark(theme, 120, 76)}</div>` +
+      row("Panels and notes", seg(["Glass", "Solid"], 0)) + `</div>`) +
+    group("Address bar", `<div class="card"><div class="band">${mini({ w: 232, h: 144, theme })}</div>` +
+      row("Show only the site in the address bar", sw(false)) +
+      row("Show loading progress", sw(true)) +
+      row("Show the address bar above the page", sw(true)) + `</div>`) +
+    group("Pages", `<div class="card">${row("Page zoom", pop("100%"))}${row("Show scroll bars", seg(["Automatic", "When scrolling", "Always"], 0))}</div>`);
+}
+
+// ---------- B: open list, refined; pictures under the title ----------
+function dirB(theme, tabs) {
+  const row = (t, ctl, under = "") => `<div class="row"><div class="line"><div class="t">${t}</div>${ctl}</div>${under ? `<div class="under">${under}</div>` : ""}</div>`;
+  if (tabs === "about") return group("Ray", row("Version", ver + check) + row(engTitle, eng));
+  if (tabs) return group("New tabs", row("New tabs open", seg(["At the top", "Below current"], 0), mini({ w: 168, h: 104, theme, bar: false, rows: ["n", "p", "a", "p"] })));
+  return group("Theme",
+      row("Colour", "", swatches()) +
+      row("Light or dark", "", lightDark(theme, 120, 76)) +
+      row("Panels and notes", seg(["Glass", "Solid"], 0))) +
+    group("Address bar",
+      row("Show only the site in the address bar", sw(false), mini({ w: 168, h: 104, theme, minimal: false })) +
+      row("Show loading progress", sw(true)) +
+      row("Show the address bar above the page", sw(true), mini({ w: 168, h: 104, theme }))) +
+    group("Pages", row("Page zoom", pop("100%")) + row("Show scroll bars", seg(["Automatic", "When scrolling", "Always"], 0)));
+}
+
+// ---------- C: cards, pictures only as choices ----------
+function dirC(theme, tabs) {
+  const row = (t, ctl) => `<div class="row"><div class="t">${t}</div>${ctl}</div>`;
+  const pics = (items) => `<div class="row pics"><div class="choices">${items.join("")}</div></div>`;
+  if (tabs === "about") return group("Ray", `<div class="card">${row("Version", ver + check)}${row(engTitle, eng)}</div>`);
+  if (tabs) return group("New tabs", `<div class="card">${pics([
+      choice("At the top", mini({ w: 150, h: 94, theme, bar: false, rows: ["n", "p", "a", "p"] }), true),
+      choice("Below current", mini({ w: 150, h: 94, theme, bar: false, rows: ["p", "a", "n", "p"] }))])}</div>`);
+  return group("Theme", `<div class="card">` +
+      `<div class="row small" style="--card-bg:var(--card)"><div class="t">Colour</div>${swatches()}</div>` +
+      `<div class="row pics">${lightDark(theme, 150, 94)}</div>` +
+      row("Panels and notes", seg(["Glass", "Solid"], 0)) + `</div>`) +
+    group("Address bar", `<div class="card">` + pics([
+      choice("In the sidebar", mini({ w: 150, h: 94, theme, bar: false })),
+      choice("Above the page", mini({ w: 150, h: 94, theme }), true)]) +
+      row("Show only the site", sw(false)) +
+      row("Show loading progress", sw(true)) + `</div>`) +
+    group("Pages", `<div class="card">${row("Page zoom", pop("100%"))}${row("Show scroll bars", seg(["Automatic", "When scrolling", "Always"], 0))}</div>`);
+}
+
+const dirs = [
+  { id: "cur", title: "Today", cls: "cur", side: false, fn: current, notes: [] },
+  { id: "a", title: "A · Cards, the picture on top of its card", cls: "cards newside quiet", side: true, fn: dirA, notes: [
+    "Rows in rounded cards (Dia, Ardia, Arc, macOS): 44 pt rows, 14 pt inset, dividers inset, 10 pt corners; the header sits 7 pt above its card, groups 24 pt apart.",
+    "A group's live picture becomes one bigger picture across the top of its card; every row under it is a plain 44 pt row. Address bar's picture shows both switches at once.",
+    "\"Theme colour\" becomes \"Colour\" with the swatches on its right; the light/dark pictures sit in the card on their own.",
+    "Segmented controls' chosen side is a raised grey thumb, not lavender (switches and rings keep the colour). Sidebar: 30 pt rows, 28 pt search, \"All Chrome Settings…\" a grey row."] },
+  { id: "b", title: "B · Open list, pictures under the title", cls: "b newside quiet", side: true, fn: dirB, notes: [
+    "Keeps today's open look (no cards), fixes the rhythm: headers 15 pt, 30 pt between groups, 4 pt to their first row.",
+    "Every row's title and control share one 44 pt line, so switches line up down the page; a picture, swatches or choices go under the title, left-aligned.",
+    "Same sidebar and segmented changes as A."] },
+  { id: "c", title: "C · Cards, pictures only as choices", cls: "cards newside quiet", side: true, fn: dirC, pick: true, notes: [
+    "A's cards, but no picture ever sits beside a switch: a picture is something you click. Light or dark, Address bar (In the sidebar / Above the page) and New tabs (At the top / Below current) are picture choices, Ardia's way.",
+    "\"Show the address bar above the page\" becomes the Address bar choice (same setting, View menu unchanged); \"Show only the site\" loses its picture (the choice's pictures show it live). New tabs' segmented control becomes its pictures.",
+    "Every other row is a plain 44 pt row, so the window has two shapes only: a row, or a row of pictures.",
+    "Same sidebar and segmented changes as A."] },
+];
+
+for (const d of dirs) {
+  const el = document.getElementById(d.id);
+  el.innerHTML = `<h2>${d.title}${d.pick ? '<span class="pick">Recommended</span>' : ""}</h2>` +
+    (d.notes.length ? `<ul>${d.notes.map((n) => `<li>${n}</li>`).join("")}</ul>` : `<p class="lead">Ray 0.9.0 as it is (drawn from \`settings snap\`).</p>`) +
+    `<div class="pair">${["light", "dark"].map((t) => `<div class="slot"><div class="cap">Appearance · ${t}</div>${window_(d.cls, t, d.side, d.fn(t, false), "Appearance")}</div>`).join("")}</div>` +
+    `<div class="pair">${["light", "dark"].map((t) => `<div class="slot"><div class="cap">Tabs and sidebar › New tabs · ${t}</div>${window_(d.cls + " excerpt", t, d.side, d.fn(t, true), "")}</div>`).join("")}</div>` +
+    `<div class="pair">${["light", "dark"].map((t) => `<div class="slot"><div class="cap">About Ray · ${t}${d.id === "cur" ? "" : " · new: Check Now"}</div>${window_(d.cls + " excerpt", t, d.side, d.fn(t, "about"), "")}</div>`).join("")}</div>`;
+}
+
+function fit() {
+  for (const h of document.querySelectorAll(".holder")) {
+    const f = h.firstElementChild;
+    const z = Math.min(1, h.clientWidth / 880);
+    f.style.transform = `scale(${z})`;
+    h.style.height = f.offsetHeight * z + "px";
+  }
+}
+addEventListener("resize", fit);
+fit();
+</script>
+</body>
+</html>

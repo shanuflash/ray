@@ -37,16 +37,21 @@ func settingsScrollIntoView(_ view: NSView) {
 // MARK: Stack
 
 /// Views one under another, each with the gap above it and, optionally, a hairline above it. `set` replaces them
-/// (views it keeps stay where they are in the tree).
+/// (views it keeps stay where they are in the tree). With `cards` on (a data pane's own list), each run of items
+/// between headers (`SettingsDataHeader`) sits on a card, 14 pt in, as a group's rows do; headers stay outside, 4 pt in.
 final class SettingsStack: NSView, SettingsSizing {
   struct Item {
     let view: NSView
     var gap: CGFloat = 0
     var line = false
+    /// Spans the card it's on edge to edge (a picture band), past the card's inset.
+    var bleeds = false
   }
 
   private(set) var items: [Item] = []
   private var lines: [Hairline] = []
+  var cards = false { didSet { needsLayout = true } }
+  private var backs: [SettingsCardBackground] = []
 
   override var isFlipped: Bool { true }
 
@@ -67,23 +72,52 @@ final class SettingsStack: NSView, SettingsSizing {
     needsLayout = true
   }
 
+  private func isHeader(_ item: Item) -> Bool { cards && item.view is SettingsDataHeader }
+
+  /// Each item's frame (x, width) at `width`: on a card 14 pt in, a header 4 pt in, else the full width.
+  private func span(_ item: Item, _ width: CGFloat) -> (x: CGFloat, width: CGFloat) {
+    guard cards else { return item.bleeds ? (-SettingsCardBox.inset, width + SettingsCardBox.inset * 2) : (0, width) }
+    if isHeader(item) { return (SettingsPaneView.headerInset, width - SettingsPaneView.headerInset) }
+    return item.bleeds ? (0, width) : (SettingsCardBox.inset, width - SettingsCardBox.inset * 2)
+  }
+
   func height(forWidth width: CGFloat) -> CGFloat {
-    items.reduce(0) { $0 + $1.gap + sizedHeight($1.view, width: width) }
+    items.reduce(0) { $0 + $1.gap + sizedHeight($1.view, width: span($1, width).width) }
   }
 
   override func layout() {
     super.layout()
     var y: CGFloat = 0
     var line = 0
+    // Card runs: where each starts and ends.
+    var runs: [(top: CGFloat, bottom: CGFloat)] = []
+    var runTop: CGFloat?
     for item in items {
+      if isHeader(item) {
+        if let top = runTop { runs.append((top, y)) }
+        runTop = nil
+      } else if cards, runTop == nil {
+        runTop = y + item.gap
+      }
       y += item.gap
+      let (x, width) = span(item, bounds.width)
       if item.line, line < lines.count {
-        lines[line].frame = NSRect(x: 0, y: y, width: bounds.width, height: 1)
+        lines[line].frame = NSRect(x: x, y: y, width: width, height: 1)
         line += 1
       }
-      let height = sizedHeight(item.view, width: bounds.width)
-      item.view.frame = NSRect(x: 0, y: y, width: bounds.width, height: height)
+      let height = sizedHeight(item.view, width: width)
+      item.view.frame = NSRect(x: x, y: y, width: width, height: height)
       y += height
+    }
+    if let top = runTop { runs.append((top, y)) }
+    while backs.count < runs.count {
+      let back = SettingsCardBackground()
+      backs.append(back)
+      addSubview(back, positioned: .below, relativeTo: nil)
+    }
+    while backs.count > runs.count { backs.removeLast().removeFromSuperview() }
+    for (back, run) in zip(backs, runs) {
+      back.frame = NSRect(x: 0, y: run.top, width: bounds.width, height: run.bottom - run.top)
     }
   }
 }
@@ -145,6 +179,8 @@ final class SettingsDataHeader: NSView, SettingsSizing {
 
 /// A line of grey text that wraps (an empty list, a status after an export).
 final class SettingsNote: NSView, SettingsSizing {
+  /// An empty list's note on its card: one line as tall as a row (44 pt).
+  static let rowInset: CGFloat = 14
   private let label: NSTextField
   private let inset: CGFloat
 
@@ -321,7 +357,7 @@ final class SettingsForm: NSView, SettingsSizing {
            width: CGFloat? = nil) -> NSTextField {
     // On the card's fill: the content's colour.
     let box = EditorField(placeholder: placeholder, secure: secure)
-    box.fill = SettingsColors.content
+    box.fill = SettingsColors.card
     let field = box.field
     field.stringValue = value
     field.setAccessibilityLabel(label)

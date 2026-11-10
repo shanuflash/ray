@@ -7204,8 +7204,16 @@ const checks = {
     assert(pane().versionDetail === "Not checked yet.", `version detail ${pane().versionDetail}`);
     await command("general checknow");
     await seen("checked", () => gen().updates.checks === 1 && pane().versionDetail.startsWith("Last checked"));
+    // About has the same Check Now beside the version, the same call, only while there's an updater.
+    await command("settings open about");
+    await seen("about's check now", () => win().pane === "about" && win().controls.aboutCheckNow === true);
+    assert((await commandResult("settings press aboutCheckNow")) === "ok", "about's check now");
+    await seen("checked from about", () => gen().updates.checks === 2);
     await command("general updater none");
     await seen("no updater", () => pane().updateRows.length === 1 && !pane().checkNowShown && pane().versionDetail === "Updates aren't set up for this build.");
+    await seen("about without check now", () => win().controls.aboutCheckNow === false);
+    assert((await commandResult("settings press aboutCheckNow")) !== "ok", "about's check now pressed with no updater");
+    await command("settings open general");
     if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-general-no-updater.png")}`);
     await command("general updater fake");
     await seen("updater back", () => pane().updateRows.length === 3);
