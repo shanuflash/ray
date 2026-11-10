@@ -202,11 +202,8 @@ final class LinkPreview {
     view.frame = target
     guard animated, target.size == old.size, view.alphaValue > 0, let layer = view.layer, let from,
           !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
-    let move = CASpringAnimation(perceptualDuration: Notes.response, bounce: 1 - Notes.dampingRatio)
-    move.keyPath = "position"
-    move.fromValue = NSValue(point: from)
-    move.toValue = NSValue(point: layer.position)
-    layer.add(move, forKey: "move")
+    layer.add(Spring.caAnimation(keyPath: "position", from: NSValue(point: from), to: NSValue(point: layer.position)),
+              forKey: "move")
   }
 
   // MARK: Pointer
