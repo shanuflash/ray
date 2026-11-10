@@ -923,11 +923,16 @@ const checks = {
     await command("type y");
     let shown = await bar("offered", (b) => b.query === "y" && b.offered);
     assert(shown.offered.name === "YouTube" && shown.hint === "Search YouTube" && shown.scope === null, `"y" offers ${JSON.stringify(shown)}`);
+    // The field's text, the hint and (scoped) the chip sit on the search icon's line.
+    const onLine = (b) => Object.values(b.lineOffsets).every((d) => Math.abs(d) <= 1);
+    assert(onLine(shown) && "hint" in shown.lineOffsets, `off the icon's line ${JSON.stringify(shown.lineOffsets)}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-tab-hint.png")}`);
     const pulses = shown.pulses;
     await command("tab");
     shown = await bar("scoped", (b) => b.scope?.name === "YouTube");
     assert(shown.query === "" && shown.rows.length === 0 && shown.hint === null && shown.scope.brand === "#FF0000" &&
       shown.scope.fill === "#FF0000" && shown.scope.ink === "#FFFFFF" && shown.pulses === pulses + 1, `scoped ${JSON.stringify(shown)}`);
+    assert(onLine(shown) && "chip" in shown.lineOffsets, `scoped, off the icon's line ${JSON.stringify(shown.lineOffsets)}`);
     if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-tab-to-search.png")}`);
     await command("type test");
     shown = await bar("scoped row", (b) => b.query === "test" && b.rows.length === 1);
