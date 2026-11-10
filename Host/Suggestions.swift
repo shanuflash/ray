@@ -329,8 +329,8 @@ final class SearchSuggestions {
 }
 
 /// The command bar's rows, ranked as Arc ranks them: a page you go to often that matches what you typed leads (Enter
-/// opens it), then what you typed, then the other pages, and the search engine's suggestions only to fill what's left
-/// of the five rows the bar shows at once.
+/// opens it), then what you typed, then the other pages, and the search engine's suggestions to fill what's left of
+/// the five rows the bar shows at once (all ten, scrolling, when nothing of yours matches).
 enum Suggestions {
   /// Rows in all; the bar shows `visibleRows` of them at once and scrolls to the rest.
   static let limit = 10
@@ -340,7 +340,6 @@ enum Suggestions {
   private static let magnifier = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
   private static let command = NSImage(systemSymbolName: "command", accessibilityDescription: nil)
 
-  static let maxSearchSuggestions = 2
   static let emptyQueryRows = 5
   /// A page takes the first row from this many typed characters (Chromium autocompletes titles from 3).
   static let leadMinimumLength = 3
@@ -500,8 +499,11 @@ enum Suggestions {
     rows += actionRows
     rows += settingRows
     rows += pages.map(\.row).filter { row in !rows.contains { same($0, row) } }
-    // Search suggestions only fill what's left of the rows the bar shows at once, two at most, after the pages.
-    let room = min(maxSearchSuggestions, max(0, visibleRows - rows.count))
+    // Search suggestions fill what's left of the five rows the bar shows at once, after your own rows, so once those
+    // and what you typed take three they get two at most. With nothing of yours (no site, tab, page, bookmark,
+    // command or setting), they fill all ten rows, as Chrome's and Arc's lists do.
+    let own = rows.filter { row in typed.map { $0.key != row.key } ?? true }.count
+    let room = own == 0 ? limit - rows.count : max(0, visibleRows - rows.count)
     rows += searches
       .filter { $0.lowercased() != lower }
       .prefix(room)

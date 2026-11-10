@@ -14,7 +14,7 @@ const permissions = ["permission", "permission-allow"];
 const pagePrompts = ["app-link-prompt", "popup-blocked", "crashed-page", "page-unresponsive"];
 const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-switch-to-tab", "bar-history",
   "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions", "bar-search-google", "bar-actions",
-  "bar-ranking", "bar-sites", "bar-arrow-fill", "tab-to-search", "settings-bar",
+  "bar-ranking", "bar-sites", "bar-arrow-fill", "tab-to-search", "bar-fills-rows", "settings-bar",
   "search-engine", "search-suggestions-off", "site-search", "bookmarks"];
 const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];

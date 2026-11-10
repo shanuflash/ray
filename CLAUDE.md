@@ -35,8 +35,8 @@ publicly or create accounts.
   "settings" with no host, command or page matching (check `settings-bar`). Ranking is Arc's: when nothing else leads, a page you go to leads over the typed search (Enter opens it): only for a
   search, from 3 characters, every word at a word start of its title or address, frecency ≥ 1.5 (Chromium's
   HistoryQuick: last 10 visits, each worth its recency; an open tab adds 1), never a search results page. Then the
-  typed row, actions, settings, the other pages by match + frecency, and search suggestions last, only to fill the 5 shown rows
-  (2 at most). The bar shows 5 rows and scrolls to 10 (overlay scroller). ↑ ↓ and Tab put the row in the field
+  typed row, actions, settings, the other pages by match + frecency, and search suggestions last, filling what's left of the 5 shown rows (so
+  2 at most once your rows and the typed one take 3), or all 10 when nothing of yours matches (check `bar-fills-rows`). The bar shows 5 rows and scrolls to 10 (overlay scroller). ↑ ↓ and Tab put the row in the field
   (Chrome's temporary text, `Suggestion.fieldText`): a search its query, a page its address (`AddressInput.display`,
   http(s)/chrome/about only); menu commands, settings and "Search …" keep what you typed. Back on the first row, or
   Escape, brings back what you typed (inline completion too; a second Escape closes); typing goes on from the field;

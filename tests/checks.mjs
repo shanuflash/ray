@@ -89,7 +89,9 @@ function serve(req, res) {
     const q = url.searchParams.get("q") ?? "";
     suggestRequests.push({ q, engine: url.searchParams.get("engine") });
     res.writeHead(200, { "content-type": "application/json" });
-    return res.end(JSON.stringify([q, q.startsWith("zz") ? [`${q} one`, `${q} two`, q] : []]));
+    // "zzmany…" gets nine suggestions, as a real engine gives (the bar-fills-rows check).
+    const many = Array.from({ length: 9 }, (_, i) => `${q} ${i + 1}`);
+    return res.end(JSON.stringify([q, q.startsWith("zzmany") ? many : q.startsWith("zz") ? [`${q} one`, `${q} two`, q] : []]));
   }
   if (url.pathname.startsWith("/files/")) {
     // Attachments for the download checks.
@@ -958,6 +960,38 @@ const checks = {
     await command("type zzqx");
     shown = await bar("no offer", (b) => b.query === "zzqx");
     assert(shown.offered === null && shown.hint === null, `"zzqx" offers ${JSON.stringify(shown)}`);
+    await command("escape");
+  },
+  async "bar-fills-rows"() {
+    // Typed with nothing of yours matching, the engine's suggestions fill the list: the five rows shown, and on to ten
+    // (it scrolls), as Chrome and Arc do. With pages of yours that match, suggestions only fill what's left of the
+    // five shown: two at most once your rows and the search take three.
+    const rows = async (text, ready) => {
+      await command("menu newTab");
+      await command(`type ${text}`);
+      let last;
+      return until(`rows for ${text}`, async () => { await command("state"); last = state().commandBar; return last?.query === text && ready(last) && last; }, 8000)
+        .catch((error) => { throw new Error(`${error.message}: ${JSON.stringify(last)}`); });
+    };
+    let bar = await rows("zzmanyq", (b) => b.rows.some((r) => r.title === "zzmanyq 9"));
+    assert(bar.rows.length === 10 && bar.rows[0].kind === "search" && bar.rows[0].title === "zzmanyq" &&
+      bar.rows.slice(1).every((r) => r.suggested) && bar.visibleRows === 5 && bar.rowsFullyVisible,
+      `no-match rows ${JSON.stringify(bar.rows.map((r) => r.title))}, shown ${bar.visibleRows}`);
+    await command("escape");
+    // Pages of yours that match: they come first, suggestions fill the rest of the five shown, two at most.
+    for (const n of ["one", "two"]) {
+      pages[`/fill-${n}`] = `<title>Zzmanyp page ${n}</title><p>${n}</p>`;
+      await send("Target.createTarget", { url: `${origin}/fill-${n}` });
+      const { target, sessionId } = await session(`/fill-${n}`);
+      await until("loaded", async () => (await evaluate(sessionId, `document.readyState`)) === "complete");
+      await send("Target.closeTarget", { targetId: target.targetId });
+    }
+    bar = await rows("zzmanyp", (b) => b.rows.filter((r) => r.kind === "history" && r.title.startsWith("Zzmanyp page")).length === 2 &&
+      b.rows.some((r) => r.suggested));
+    const own = bar.rows.filter((r) => !r.suggested).length;
+    const suggested = bar.rows.filter((r) => r.suggested).length;
+    assert(own === 3 && suggested === 2 && bar.rows.length === 5 && bar.rows.slice(own).every((r) => r.suggested),
+      `with pages: ${JSON.stringify(bar.rows.map((r) => [r.kind, r.title]))}`);
     await command("escape");
   },
   async "bar-ranking"() {
