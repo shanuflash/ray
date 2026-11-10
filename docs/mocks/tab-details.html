@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Tab Details</title>
+<style>
+:root {
+  --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --hair: rgba(0,0,0,.08);
+  --side: #E8E5EF; --sideInk: #3A3A3F; --page: #FFFFFF; --line: #EDEDF0; --chip: #FFFFFF;
+  --card: #FFFFFF; --cardInk: #1C1C1E; --cardInk2: #6C6C70; --edge: rgba(0,0,0,.075);
+  --tile: rgba(0,0,0,.045); --tileHover: rgba(0,0,0,.08); --sep: rgba(0,0,0,.08);
+  --glass: rgba(255,255,255,.68);
+  --shadow: 0 1px 1.5px rgba(0,0,0,.05), 0 6px 14px -4px rgba(0,0,0,.08), 0 22px 48px -12px rgba(0,0,0,.22);
+  --accent: #8257E5; --wash: color-mix(in srgb, var(--accent) 16%, transparent);
+  --menu: rgba(246,246,246,.86); --menuSel: #2F6FEB;
+}
+:root[data-theme="dark"] {
+  --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09);
+  --side: #1D1B22; --sideInk: #D8D6DE; --page: #242428; --line: #2F2F34; --chip: #28282D;
+  --card: #2C2C31; --cardInk: #F5F5F7; --cardInk2: #A1A1A9; --edge: rgba(255,255,255,.09);
+  --tile: rgba(255,255,255,.07); --tileHover: rgba(255,255,255,.12); --sep: rgba(255,255,255,.09);
+  --glass: rgba(40,40,46,.66);
+  --shadow: 0 1px 1.5px rgba(0,0,0,.3), 0 6px 14px -4px rgba(0,0,0,.3), 0 24px 52px -12px rgba(0,0,0,.6);
+  --accent: #A486F0; --menu: rgba(40,40,44,.88);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px 64px; }
+h1 { font-size: 22px; font-weight: 600; margin: 26px 0 4px; letter-spacing: -.01em; }
+h2 { font-size: 16px; font-weight: 600; margin: 40px 0 2px; }
+.sub { color: var(--ink2); margin: 0 0 12px; max-width: 760px; }
+.bar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--desk) 86%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 10px 0; border-bottom: 1px solid var(--hair); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.row + .row { margin-top: 6px; }
+.lab { color: var(--ink2); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; min-width: 66px; }
+button.t { font: inherit; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--chip); border: 1px solid var(--hair); border-radius: 7px; padding: 4px 9px; cursor: pointer; white-space: nowrap; }
+button.t:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+button.t[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: transparent; }
+.rec { font-size: 10px; font-weight: 700; color: var(--accent); margin-left: 3px; }
+button.t[aria-pressed="true"] .rec { color: #fff; opacity: .85; }
+ul.notes { color: var(--ink2); margin: 10px 0 0; padding-left: 18px; max-width: 800px; }
+ul.notes li { margin: 3px 0; }
+
+/* Window */
+.win { position: relative; margin-top: 12px; height: 440px; border-radius: 12px; background: var(--side); overflow: hidden;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.2), 0 20px 50px -12px rgba(0,0,0,.28); display: flex; }
+.side { width: 220px; flex: none; padding: 12px 10px; color: var(--sideInk); display: flex; flex-direction: column; position: relative; }
+.top { display: flex; align-items: center; margin: 0 0 12px 5px; height: 22px; }
+.lights { display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; } .lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+.navs { margin-left: auto; display: flex; gap: 2px; }
+.ibtn { width: 26px; height: 26px; border-radius: 7px; border: 0; background: transparent; color: var(--ink2); display: grid; place-items: center; cursor: pointer; padding: 0; user-select: none; }
+.ibtn:hover, .ibtn.on { background: var(--tile); color: var(--ink); }
+.ibtn svg { width: 14px; height: 14px; }
+.pill { height: 32px; border-radius: 9px; background: var(--tile); margin-bottom: 12px; display: flex; align-items: center; padding: 0 10px; color: var(--ink2); font-size: 12.5px; }
+.favs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; }
+.fav { position: relative; height: 40px; border-radius: 10px; background: var(--tile); display: grid; place-items: center; }
+.fav b { width: 16px; height: 16px; border-radius: 4px; background: var(--c); }
+.tab { position: relative; height: 34px; border-radius: 9px; margin-bottom: 2px; display: flex; align-items: center; gap: 9px; padding: 0 6px 0 9px; font-size: 12.5px; white-space: nowrap; }
+.tab:hover { background: var(--tile); }
+.tab.on { background: var(--page); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.tab .fi { position: relative; width: 16px; height: 16px; border-radius: 4px; background: var(--c); flex: none; }
+.tab .tt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tab .x { width: 22px; height: 22px; border-radius: 6px; display: none; place-items: center; color: var(--ink2); flex: none; }
+.tab .x:hover { background: var(--tileHover); color: var(--ink); }
+.tab:hover .x { display: grid; }
+.tab .x svg { width: 10px; height: 10px; }
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.toolbar { height: 41px; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 8px; }
+.toolbar .addr { flex: 1; display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink2); min-width: 0; padding-left: 8px; }
+.toolbar .addr b { color: var(--ink); font-weight: 500; }
+.page { position: relative; flex: 1; margin: 0 8px 8px 0; border-radius: 10px; background: var(--page); box-shadow: 0 0 0 .5px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
+.doc { padding: 26px 30px; }
+.doc .h { height: 14px; width: 46%; border-radius: 6px; background: var(--line); margin-bottom: 18px; }
+.doc p { margin: 0 0 12px; color: var(--ink2); max-width: 520px; }
+.doc a { color: #2F6FEB; text-decoration: none; cursor: pointer; }
+:root[data-theme="dark"] .doc a { color: #6FA0FF; }
+.doc a:hover { text-decoration: underline; }
+.doc .lines div { height: 8px; border-radius: 4px; background: var(--line); margin-bottom: 10px; }
+
+/* Surface: notes' and panels' look */
+.surface { color: var(--cardInk); background: var(--card); box-shadow: 0 0 0 .5px var(--edge), var(--shadow); }
+.glass .surface { background: var(--glass); backdrop-filter: blur(34px) saturate(190%); -webkit-backdrop-filter: blur(34px) saturate(190%); }
+
+/* 1. Link preview */
+.lp { position: absolute; bottom: 0; left: 0; max-width: calc(100% - 12px); font-size: 12px; line-height: 16px; padding: 3px 8px;
+  white-space: nowrap; overflow: hidden; opacity: 0; pointer-events: none; transition: opacity .2s ease-in .25s; z-index: 10; }
+.lp.show { opacity: 1; transition: opacity .12s ease-out; }
+.lp .host { font-weight: 500; }
+.lp .rest { color: var(--cardInk2); }
+.lp.flush { border-radius: 0 7px 0 0; box-shadow: 0 0 0 .5px var(--edge); }
+.lp.flush.right { border-radius: 7px 0 0 0; }
+.lp.float { border-radius: 7px; bottom: 6px; left: 6px; height: 22px; padding: 3px 8px; }
+.lp.full { max-width: calc(100% - 16px); }
+.lp.right { left: auto; right: 0; }
+.lp.float.right { right: 6px; }
+.lp.lifted { bottom: 58px; }
+.dlnote { position: absolute; left: 8px; bottom: 8px; width: 238px; height: 44px; border-radius: 12px; display: none; align-items: center; gap: 10px; padding: 0 12px; font-size: 12px; z-index: 9; }
+.dlnote.show { display: flex; }
+.dlnote .ring { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--sep); border-top-color: var(--accent); flex: none; }
+.dlnote small { color: var(--cardInk2); display: block; font-size: 11px; }
+.corner-hot { position: absolute; left: 0; bottom: 0; width: 260px; height: 54px; border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 0 10px 0 10px; display: grid; place-items: center; color: var(--ink2); font-size: 11px; }
+
+/* 2. Sound */
+.snd { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: var(--ink2); flex: none; cursor: pointer; }
+.snd:hover { background: var(--tileHover); color: var(--ink); }
+.snd svg { width: 14px; height: 14px; }
+.snd.muted { color: var(--ink2); opacity: .8; }
+.badge { position: absolute; right: -5px; bottom: -5px; width: 14px; height: 14px; border-radius: 50%; background: var(--card); box-shadow: 0 0 0 .5px var(--edge), 0 1px 2px rgba(0,0,0,.2); display: grid; place-items: center; color: var(--ink); cursor: pointer; }
+.badge svg { width: 9px; height: 9px; }
+.fav .badge { right: 3px; bottom: 3px; }
+.tab .snd.lead { margin: 0 -4px 0 -4px; }
+.wave path.w { animation: pulse 1.6s ease-in-out infinite; }
+.wave path.w2 { animation-delay: .25s; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.static .wave path.w { animation: none; }
+
+/* 3. History list */
+.hl { position: absolute; z-index: 30; border-radius: 12px; padding: 6px; width: 300px; transform-origin: top left; opacity: 0; transform: translateY(-4px) scale(.97); pointer-events: none; transition: opacity .14s, transform .26s cubic-bezier(.2,.9,.25,1); }
+.hl.show { opacity: 1; transform: none; pointer-events: auto; }
+.hl .it { height: 32px; display: flex; align-items: center; gap: 9px; padding: 0 9px; border-radius: 7px; font-size: 12.5px; cursor: default; white-space: nowrap; }
+.hl .it b { width: 16px; height: 16px; border-radius: 4px; background: var(--c); flex: none; }
+.hl .it span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hl .it:hover, .hl .it.kb { background: var(--wash); }
+.hl .it.cur { font-weight: 600; }
+.hl .it .ck { color: var(--accent); width: 12px; flex: none; }
+.hl .sep { height: 1px; background: var(--sep); margin: 4px 8px; }
+.hl .it.all { color: var(--cardInk2); }
+.hl .it.all kbd { margin-left: auto; font: inherit; color: var(--cardInk2); opacity: .8; }
+.hl.menu { border-radius: 7px; padding: 5px 0; background: var(--menu); color: var(--ink); width: 264px; transition: none; transform: none; box-shadow: 0 0 0 .5px rgba(0,0,0,.25), 0 10px 30px rgba(0,0,0,.28);
+  backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); }
+.hl.menu .it { height: 22px; border-radius: 4px; margin: 0 5px; padding: 0 8px; font-size: 13px; }
+.hl.menu .it:hover { background: var(--menuSel); color: #fff; }
+.hl.menu .it.all:hover { color: #fff; }
+.hl.menu .it.cur { font-weight: 400; }
+.hl.menu .sep { margin: 5px 10px; }
+.hold { position: absolute; inset: 0; border-radius: 7px; box-shadow: inset 0 0 0 2px var(--accent); opacity: 0; pointer-events: none; }
+.ibtn { position: relative; }
+.ibtn.holding .hold { opacity: 1; transition: opacity .45s linear; }
+</style>
+</head>
+<body>
+<div class="bar"><div class="wrap">
+  <div class="row"><span class="lab">Look</span>
+    <button class="t" data-g="theme" data-v="light" aria-pressed="true">Light</button>
+    <button class="t" data-g="theme" data-v="dark">Dark</button>
+    <span style="width:12px"></span>
+    <button class="t" data-g="surf" data-v="glass" aria-pressed="true">Glass</button>
+    <button class="t" data-g="surf" data-v="solid">Solid</button>
+  </div>
+</div></div>
+
+<div class="wrap">
+<h1>Tab details</h1>
+<p class="sub">Three small things Chrome and Arc have: the link's address on hover, a sound icon on tabs, and the back/forward history list. Pick a look for each.</p>
+
+<!-- 1. LINK PREVIEW -->
+<h2>1. Link address on hover</h2>
+<p class="sub">Hover the links. Then move the pointer into the dashed corner: the address moves to the other corner.</p>
+<div class="row"><span class="lab">Look</span>
+  <button class="t" data-g="lp" data-v="float" aria-pressed="true">A · Floating pill<span class="rec">REC</span></button>
+  <button class="t" data-g="lp" data-v="flush">B · Chrome's corner tab</button>
+</div>
+<div class="row"><span class="lab">Download</span>
+  <button class="t" id="dl" aria-pressed="false">Downloading note in the corner</button>
+  <button class="t" data-g="dlway" data-v="above" aria-pressed="true">Address sits above it<span class="rec">REC</span></button>
+  <button class="t" data-g="dlway" data-v="right">Address goes right</button>
+</div>
+<div class="win" id="w1">
+  <div class="side">
+    <div class="top"><div class="lights"><i></i><i></i><i></i></div></div>
+    <div class="pill">wikipedia.org</div>
+    <div class="tab on"><b class="fi" style="--c:#888"></b><span class="tt">Lighthouse – Wikipedia</span></div>
+    <div class="tab"><b class="fi" style="--c:#E85D3F"></b><span class="tt">Hacker News</span></div>
+  </div>
+  <div class="main">
+    <div class="toolbar"><div class="addr"><span><b>en.wikipedia.org</b>/wiki/Lighthouse</span></div></div>
+    <div class="page">
+      <div class="doc">
+        <div class="h"></div>
+        <p>A lighthouse is a tower designed to emit light from a system of lamps and lenses, used as an aid to
+        <a data-u="https://en.wikipedia.org/wiki/Navigation">navigation</a> for maritime pilots. Long address:
+        <a data-u="https://www.nationalgeographic.com/travel/article/the-worlds-most-remote-lighthouses-and-the-keepers-who-lived-there?utm_source=wiki&amp;ref=1234567890">remote lighthouses</a>.</p>
+        <p>Credentials hidden: <a data-u="https://user:secret@example.com/private/page">secret link</a>. Mail:
+        <a data-u="mailto:keeper@lighthouse.org">keeper@lighthouse.org</a>. Script:
+        <a data-u="javascript:void(0)">menu</a>. Encoded:
+        <a data-u="https://ja.wikipedia.org/wiki/%E7%81%AF%E5%8F%B0">灯台</a>.</p>
+        <div class="lines"><div style="width:90%"></div><div style="width:84%"></div><div style="width:70%"></div><div style="width:88%"></div></div>
+      </div>
+      <div class="corner-hot" id="hot">pointer here → address moves</div>
+      <div class="dlnote surface" id="dlnote"><span class="ring"></span><span>lighthouse-plans.pdf<small>4.2 of 12 MB</small></span></div>
+      <div class="lp surface float" id="lp"></div>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li>Chrome's timing: shows 80 ms after the pointer reaches a link (120 ms fade), waits 250 ms after it leaves, then fades over 200 ms; moving between links swaps the text with no fade.</li>
+  <li>Pill A is Ardia's size: 6 pt in, 22 pt tall, 7 pt corners, 12 pt text, on the notes' surface. B is Chrome's corner tab.</li>
+  <li>At most a third of the page wide (Chrome's); after 1.6 s still on a link, a cut address grows to the page's width.</li>
+  <li>Host in medium weight, the rest grey, cut from the end; the host is kept whole. <code>user:pass@</code> hidden, percent-encoding kept (punycode hosts, as the address bar). <code>javascript:</code> shows as just that word.</li>
+  <li>Moving aside: Chrome slides its bubble down off the page as the pointer nears; Arc and this mock jump to the other corner. Ardia, Crest and Cra don't move at all.</li>
+  <li>Never shown while the command bar, find bar or a panel covers that corner. Over the page's own pixels only, below the sidebar peek.</li>
+</ul>
+
+<!-- 2. SOUND -->
+<h2>2. Sound icon on tabs</h2>
+<p class="sub">Click the speaker to mute or unmute. Hover a row to see the close button beside it.</p>
+<div class="row"><span class="lab">Row</span>
+  <button class="t" data-g="snd" data-v="trail" aria-pressed="true">A · At the row's end<span class="rec">REC</span></button>
+  <button class="t" data-g="snd" data-v="lead">B · After the favicon (Ardia)</button>
+  <button class="t" data-g="snd" data-v="badge">C · Badge on the favicon (Crest)</button>
+</div>
+<div class="row"><span class="lab">Motion</span>
+  <button class="t" data-g="mot" data-v="still" aria-pressed="true">Still icon<span class="rec">REC</span></button>
+  <button class="t" data-g="mot" data-v="pulse">Waves pulse while playing</button>
+</div>
+<div class="win" id="w2" style="height:300px">
+  <div class="side" style="width:260px">
+    <div class="top"><div class="lights"><i></i><i></i><i></i></div></div>
+    <div class="favs">
+      <div class="fav" data-a="play"><b style="--c:#FF3B30"></b></div>
+      <div class="fav"><b style="--c:#1DB954"></b></div>
+      <div class="fav"><b style="--c:#5865F2"></b></div>
+      <div class="fav"><b style="--c:#0A66C2"></b></div>
+    </div>
+    <div class="tab on" data-a="play"><b class="fi" style="--c:#1DB954"></b><span class="tt">Discover Weekly – Spotify</span><span class="x"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span></div>
+    <div class="tab" data-a="muted"><b class="fi" style="--c:#FF0000"></b><span class="tt">Lo-fi beats to study to – YouTube</span><span class="x"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span></div>
+    <div class="tab"><b class="fi" style="--c:#888"></b><span class="tt">Lighthouse – Wikipedia</span><span class="x"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span></div>
+  </div>
+  <div class="main"><div class="toolbar"><div class="addr"><span><b>open.spotify.com</b>/playlist</span></div></div><div class="page"><div class="doc"><div class="h"></div><div class="lines"><div style="width:80%"></div><div style="width:64%"></div></div></div></div></div>
+</div>
+<ul class="notes">
+  <li>Shows while the tab is audible (Chrome counts a tab audible for 2 s after sound stops, so pauses between songs don't flicker) and stays while muted. Fades in 200 ms, out 1 s (Chrome's).</li>
+  <li>References: Chrome's tab strip and Cra put it at the tab's end; Ardia right after the favicon, always shown; Crest a badge on the favicon's corner.</li>
+  <li><code>speaker.wave.2.fill</code> playing, <code>speaker.slash.fill</code> muted, grey like the close button; a click mutes or unmutes the tab only (the row menu's Mute, ⌥ for Mute Site later).</li>
+  <li>Favorites: the badge on the tile's corner either way (no room for a row end). Unloaded and silent tabs: nothing.</li>
+  <li>Not now: media controls in the sidebar (now playing, play/pause). Noted as a later step.</li>
+</ul>
+
+<!-- 3. HISTORY LIST -->
+<h2>3. Back / forward history list</h2>
+<p class="sub">Right-click back or forward, or press and hold (0.5 s). Choose a page to go there. Try both the page bar and the sidebar's buttons.</p>
+<div class="row"><span class="lab">Look</span>
+  <button class="t" data-g="hl" data-v="panel" aria-pressed="true">A · Ray panel<span class="rec">REC</span></button>
+  <button class="t" data-g="hl" data-v="menu">B · macOS menu</button>
+</div>
+<div class="win" id="w3" style="height:400px">
+  <div class="side">
+    <div class="top"><div class="lights"><i></i><i></i><i></i></div>
+      <div class="navs">
+        <button class="ibtn nav" data-dir="back"><span class="hold"></span><svg viewBox="0 0 14 14"><path d="M12 7H2.5M6.5 3 2.5 7l4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="ibtn nav" data-dir="fwd"><span class="hold"></span><svg viewBox="0 0 14 14"><path d="M2 7h9.5M7.5 3l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="ibtn"><svg viewBox="0 0 14 14"><path d="M11.5 7a4.5 4.5 0 1 1-1.4-3.3M11.5 2v2.8H8.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+    </div>
+    <div class="pill">news.ycombinator.com</div>
+    <div class="tab on"><b class="fi" style="--c:#E85D3F"></b><span class="tt">Show HN: a tiny browser</span></div>
+    <div class="tab"><b class="fi" style="--c:#888"></b><span class="tt">Lighthouse – Wikipedia</span></div>
+  </div>
+  <div class="main">
+    <div class="toolbar">
+      <button class="ibtn nav" data-dir="back"><span class="hold"></span><svg viewBox="0 0 14 14"><path d="M8.5 2.5 4 7l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="ibtn nav" data-dir="fwd"><span class="hold"></span><svg viewBox="0 0 14 14"><path d="M5.5 2.5 10 7l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div class="addr"><span><b>news.ycombinator.com</b>/item?id=41022</span></div>
+    </div>
+    <div class="page"><div class="doc"><div class="h"></div><div class="lines"><div style="width:86%"></div><div style="width:72%"></div><div style="width:80%"></div><div style="width:60%"></div></div></div></div>
+  </div>
+  <div class="hl surface" id="hl"></div>
+</div>
+<ul class="notes">
+  <li>Newest step first (the page you'd reach with one click on top), at most 12, then "Show Full History" (⌘Y), as Chrome's list (no "Show Full History" in private windows). Panel 300 pt wide, 32 pt rows (Ardia's).</li>
+  <li>Titles from the engine's history entries; the favicon from Chrome's favicon store (an entry without one gets a globe). A page with no title shows its address.</li>
+  <li>The panel opens from the button on the panels' spring, below the button (over the sidebar for the sidebar's buttons); ↑ ↓ ⏎ and Escape work. ⌘-click a row opens it in a new tab.</li>
+  <li>Hold: the list opens after 0.5 s with the button still down (Chrome's 500 ms; Ardia 450 ms), or at once on a drag down; a quick click still goes back. Crest has right-click only, Cra none. Out of scope: Dia's two-finger swipe-and-hold list (noted for later).</li>
+</ul>
+</div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const state = { lp: "float", dlway: "above", snd: "trail", mot: "still", hl: "panel" };
+function group(g, v) {
+  $$(`button[data-g="${g}"]`).forEach(b => b.setAttribute("aria-pressed", b.dataset.v === v));
+  state[g] = v;
+  if (g === "theme") document.documentElement.dataset.theme = v;
+  if (g === "surf") document.body.classList.toggle("glass", v === "glass");
+  if (g === "lp") { lp.className = "lp surface " + v; }
+  if (g === "snd" || g === "mot") drawSound();
+  if (g === "hl") closeList();
+}
+$$("button[data-g]").forEach(b => b.addEventListener("click", () => group(b.dataset.g, b.dataset.v)));
+document.body.classList.add("glass");
+
+/* 1. Link preview */
+const lp = $("#lp"), hot = $("#hot"), dl = $("#dl"), dlnote = $("#dlnote");
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function parts(u) {
+  if (/^javascript:/i.test(u)) return ["", "javascript:"];
+  const m = u.match(/^(https?):\/\/(?:[^@\/]*@)?([^\/?#]+)(.*)$/i);
+  if (!m) return ["", u];
+  const host = m[2].replace(/^www\./, "");
+  return [host, m[3] === "/" ? "" : m[3]];
+}
+let showT, hideT, growT, current = null, pointerInCorner = false;
+function place() {
+  const right = pointerInCorner || (dl.getAttribute("aria-pressed") === "true" && state.dlway === "right");
+  lp.classList.toggle("right", right);
+  lp.classList.toggle("lifted", !right && dl.getAttribute("aria-pressed") === "true" && state.dlway === "above");
+}
+function show(u) {
+  const [h, r] = parts(u);
+  lp.innerHTML = h ? `<span class="host">${esc(h)}</span><span class="rest">${esc(r)}</span>` : `<span class="rest">${esc(r)}</span>`;
+  lp.style.maxWidth = "min(62%, 460px)";
+  lp.style.textOverflow = "ellipsis";
+  place();
+  lp.classList.add("show");
+  clearTimeout(growT);
+  growT = setTimeout(() => { lp.style.maxWidth = "calc(100% - 16px)"; }, 1600);
+}
+$$("#w1 a").forEach(a => {
+  a.addEventListener("mouseenter", () => {
+    clearTimeout(hideT); current = a.dataset.u;
+    if (lp.classList.contains("show")) show(current); else { clearTimeout(showT); showT = setTimeout(() => show(current), 80); }
+  });
+  a.addEventListener("mouseleave", () => { current = null; clearTimeout(showT); clearTimeout(growT); hideT = setTimeout(() => lp.classList.remove("show"), 0); });
+  a.addEventListener("click", e => e.preventDefault());
+});
+hot.addEventListener("mouseenter", () => { pointerInCorner = true; place(); if (!current) { show("https://en.wikipedia.org/wiki/Fresnel_lens"); } });
+hot.addEventListener("mouseleave", () => { pointerInCorner = false; place(); hideT = setTimeout(() => lp.classList.remove("show"), 0); });
+dl.addEventListener("click", () => { const on = dl.getAttribute("aria-pressed") !== "true"; dl.setAttribute("aria-pressed", on); dlnote.classList.toggle("show", on); place(); });
+$$('button[data-g="dlway"]').forEach(b => b.addEventListener("click", place));
+
+/* 2. Sound */
+const ico = {
+  play: `<svg class="wave" viewBox="0 0 16 16"><path d="M2 6h2.2L7.4 3.2c.3-.3.8-.1.8.4v8.8c0 .5-.5.7-.8.4L4.2 10H2a.8.8 0 0 1-.8-.8V6.8C1.2 6.4 1.6 6 2 6Z" fill="currentColor"/><path class="w" d="M10.3 5.6a3.3 3.3 0 0 1 0 4.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path class="w w2" d="M12.3 3.8a6 6 0 0 1 0 8.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`,
+  muted: `<svg viewBox="0 0 16 16"><path d="M2 6h2.2L7.4 3.2c.3-.3.8-.1.8.4v8.8c0 .5-.5.7-.8.4L4.2 10H2a.8.8 0 0 1-.8-.8V6.8C1.2 6.4 1.6 6 2 6Z" fill="currentColor"/><path d="M10.5 6l4 4M14.5 6l-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`
+};
+function drawSound() {
+  const w = $("#w2"); w.classList.toggle("static", state.mot === "still");
+  $$(".snd, .badge", w).forEach(n => n.remove());
+  $$("[data-a]", w).forEach(row => {
+    const a = row.dataset.a, el = document.createElement("span");
+    const isFav = row.classList.contains("fav");
+    el.className = (isFav || state.snd === "badge") ? "badge" : "snd" + (a === "muted" ? " muted" : "");
+    el.innerHTML = ico[a]; el.title = a === "muted" ? "Unmute Tab" : "Mute Tab";
+    el.addEventListener("click", e => { e.stopPropagation(); row.dataset.a = a === "muted" ? "play" : "muted"; drawSound(); });
+    if (isFav) row.appendChild(el);
+    else if (state.snd === "badge") $(".fi", row).appendChild(el);
+    else if (state.snd === "lead") { el.classList.add("lead"); row.insertBefore(el, $(".tt", row)); }
+    else row.insertBefore(el, $(".x", row));
+  });
+}
+drawSound();
+
+/* 3. History list */
+const hl = $("#hl"), w3 = $("#w3");
+const back = [["Hacker News", "#E85D3F"], ["Ask HN: What are you working on?", "#E85D3F"], ["GitHub – shanuflash/ray", "#333"], ["Lighthouse – Wikipedia", "#888"], ["en.wikipedia.org/wiki/Fresnel_lens", ""], ["Google Search: arc browser shutdown", "#4285F4"]];
+const fwd = [["Show HN: a tiny browser — comments", "#E85D3F"], ["tiny-browser/README.md at main", "#333"]];
+let openFor = null;
+function closeList() { hl.classList.remove("show"); openFor = null; $$(".ibtn.on", w3).forEach(b => b.classList.remove("on")); }
+function openList(btn) {
+  const dir = btn.dataset.dir, list = dir === "back" ? back : fwd;
+  hl.className = "hl surface " + (state.hl === "menu" ? "menu" : "");
+  hl.innerHTML = list.map(([t, c]) => `<div class="it"><b style="--c:${c || "transparent"};${c ? "" : "box-shadow:inset 0 0 0 1.5px var(--cardInk2);border-radius:50%"}"></b><span>${esc(t)}</span></div>`).join("") +
+    `<div class="sep"></div><div class="it all"><b style="--c:transparent"></b><span>Show Full History</span><kbd>⌘Y</kbd></div>`;
+  const r = btn.getBoundingClientRect(), wr = w3.getBoundingClientRect();
+  hl.style.left = Math.min(r.left - wr.left, wr.width - 290) + "px";
+  hl.style.top = (r.bottom - wr.top + (state.hl === "menu" ? 2 : 6)) + "px";
+  requestAnimationFrame(() => hl.classList.add("show"));
+  $$(".ibtn.on", w3).forEach(b => b.classList.remove("on")); btn.classList.add("on");
+  openFor = btn;
+  $$(".it", hl).forEach(it => it.addEventListener("click", closeList));
+}
+$$(".nav", w3).forEach(btn => {
+  let holdT;
+  btn.addEventListener("contextmenu", e => { e.preventDefault(); openList(btn); });
+  btn.addEventListener("mousedown", e => { if (e.button) return; btn.classList.add("holding"); holdT = setTimeout(() => { btn.classList.remove("holding"); openList(btn); }, 500); });
+  ["mouseup", "mouseleave"].forEach(ev => btn.addEventListener(ev, () => { clearTimeout(holdT); btn.classList.remove("holding"); }));
+});
+document.addEventListener("mousedown", e => { if (openFor && !hl.contains(e.target) && !e.target.closest(".nav")) closeList(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeList(); });
+</script>
+</body>
+</html>

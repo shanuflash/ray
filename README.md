@@ -36,6 +36,7 @@ Ray updates itself after that (Ray › Check for Updates…).
 - **Sidebar**
   - Rename tabs
   - Arc's right-click menus: duplicate, mute, move, tab icons
+  - A sound icon on playing tabs: click to mute
   - Folder colours and icons
   - Select several tabs
   - ⌃Tab switcher with page previews, like Arc
@@ -46,6 +47,8 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Tabs, folders, history, bookmarks, passwords and cookies
 - **Other**
   - Address bar above the page, like Dia
+  - A link's address at the bottom corner on hover
+  - Back and forward history lists: right-click or hold
   - Edge-to-edge full screen
   - Settings in the command bar
   - Your own colour and shortcuts

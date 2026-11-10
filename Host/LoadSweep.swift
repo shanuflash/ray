@@ -121,6 +121,12 @@ extension RayCoreTab {
     goForward()
   }
 
+  /// A page from back or forward's history list.
+  func userGoToOffset(_ offset: Int) {
+    LoadSweeps.shared.expect(self)
+    go(toOffset: Int32(offset))
+  }
+
   func userLoad(_ url: String) {
     LoadSweeps.shared.expect(self)
     loadURL(url, userInitiated: true)

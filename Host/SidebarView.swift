@@ -43,6 +43,7 @@ protocol SidebarViewDelegate: AnyObject {
   func sidebarOpenAddress(_ sidebar: SidebarView)
   func sidebarToggle(_ sidebar: SidebarView)
   func sidebarBack(_ sidebar: SidebarView)
+  func sidebarHistory(_ sidebar: SidebarView, forward: Bool, from button: HistoryButton)
   func sidebarForward(_ sidebar: SidebarView)
   func sidebarReload(_ sidebar: SidebarView)
   func sidebarIcon(for entry: SidebarEntry) -> NSImage?
@@ -147,8 +148,8 @@ final class SidebarView: NSView {
 
   private let windowLights = WindowLights()
   private let toggleButton = HoverIconButton.make("sidebar.left", label: "Hide Sidebar", size: 15)
-  private let backButton = HoverIconButton.make("arrow.left", label: "Back", size: 15)
-  private let forwardButton = HoverIconButton.make("arrow.right", label: "Forward", size: 15)
+  private let backButton = HoverIconButton.make("arrow.left", label: "Back", size: 15, history: true)
+  private let forwardButton = HoverIconButton.make("arrow.right", label: "Forward", size: 15, history: true)
   private let reloadButton = HoverIconButton.make("arrow.clockwise", label: "Reload", size: 15)
   private let downloadsButton = HoverIconButton.make("arrow.down.circle", label: "Downloads", size: 15)
   private let privateBadge = PrivateBadge()
@@ -211,12 +212,27 @@ final class SidebarView: NSView {
     !entry.isFolder && !entry.isLive && RaySettings.shared[.fadeUnloadedTabs] ? 0.45 : 1
   }
 
+  enum Sound: String { case playing, muted }
+
+  /// A tab's sound mark: while it plays (the engine counts it audible until 2 s after the sound stops, so a pause
+  /// between songs doesn't flicker) and for as long as it's muted. None for unloaded or silent tabs.
+  static func sound(for entry: SidebarEntry) -> Sound? {
+    guard !entry.isFolder, entry.isLive, let tab = entry.tab, !tab.closed else { return nil }
+    return tab.muted ? .muted : tab.audible ? .playing : nil
+  }
+
   override init(frame: NSRect) {
     super.init(frame: frame)
     toggleButton.target = self
     toggleButton.action = #selector(toggle)
     backButton.target = self
     backButton.action = #selector(back)
+    for (button, forward) in [(backButton, false), (forwardButton, true)] {
+      (button as? HistoryButton)?.onHistory = { [weak self, weak button] in
+        guard let self, let button = button as? HistoryButton else { return }
+        self.delegate?.sidebarHistory(self, forward: forward, from: button)
+      }
+    }
     forwardButton.target = self
     forwardButton.action = #selector(forward)
     reloadButton.target = self
@@ -325,6 +341,10 @@ final class SidebarView: NSView {
       row.onClose = { [weak self] in
         guard let self else { return }
         self.delegate?.sidebar(self, perform: entry.kind == .today ? .close : .unload, on: entry)
+      }
+      row.onSound = { [weak self] in
+        guard let self else { return }
+        self.delegate?.sidebar(self, perform: .toggleMute, on: entry)
       }
       row.menuProvider = { [weak self] in self?.menu(for: entry) }
     }
@@ -1091,6 +1111,12 @@ final class SidebarView: NSView {
       + Array(zip(todayRows as [NSView], today))
   }
 
+  /// For tests: a click on the sound mark of an entry's row; false when the row shows none.
+  func pressSound(of id: UUID) -> Bool {
+    guard let row = shownViews.first(where: { $0.1.id == id })?.0 as? SidebarRowView else { return false }
+    return row.pressSound()
+  }
+
   /// Frames of the tiles and rows in window coordinates with a top-left origin, for tests.
   var debugFrames: [String: String] {
     guard let window, let height = window.contentView?.bounds.height else { return [:] }
@@ -1131,6 +1157,9 @@ final class SidebarView: NSView {
       let icon = (view as? SidebarRowView)?.iconView ?? (view as? FavoriteTileView)?.iconView
       return icon.map { PixelGrid.offGrid($0) > 0.01 } ?? false
     }.map { $0.1.id.uuidString }.joined(separator: ",")
+    frames["sounds"] = shownViews.compactMap { view, entry in
+      ((view as? SidebarRowView)?.soundShown ?? (view as? FavoriteTileView)?.soundShown).map { "\(entry.id.uuidString)=\($0.rawValue)" }
+    }.sorted().joined(separator: "|")
     frames["fadedIcons"] = shownViews.filter { view, _ in
       (view as? SidebarRowView)?.iconFaded ?? (view as? FavoriteTileView)?.iconFaded ?? false
     }.map { $0.1.id.uuidString }.joined(separator: ",")
@@ -1529,6 +1558,8 @@ final class SidebarView: NSView {
   }
 
   var downloadsAnchor: NSView { downloadsButton }
+  /// The back or forward button, for its history list.
+  func historyButton(forward: Bool) -> HistoryButton? { (forward ? forwardButton : backButton) as? HistoryButton }
 
   private func reuse<V: NSView>(_ views: [V], count: Int, in parent: NSView, make: () -> V) -> [V] {
     var views = views
@@ -1649,9 +1680,10 @@ final class WindowLightButton: NSView {
 
 /// An icon button of Ray's chrome (the sidebar, the page's toolbar, the find bar, downloads): a grey SF Symbol, a fill
 /// under the pointer, and its name for VoiceOver and as its tooltip.
-final class HoverIconButton: NSButton {
-  static func make(_ symbol: String, label: String, size: CGFloat, weight: NSFont.Weight = .medium) -> HoverIconButton {
-    let button = HoverIconButton()
+class HoverIconButton: NSButton {
+  static func make(_ symbol: String, label: String, size: CGFloat, weight: NSFont.Weight = .medium,
+                   history: Bool = false) -> HoverIconButton {
+    let button = history ? HistoryButton() : HoverIconButton()
     button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
     button.symbolConfiguration = .init(pointSize: size, weight: weight)
     button.isBordered = false
@@ -1666,7 +1698,6 @@ final class HoverIconButton: NSButton {
   private var hovered = false
   /// Keeps the hover fill while what the button opens is showing.
   var isHeld = false { didSet { needsDisplay = true } }
-
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
@@ -1693,6 +1724,80 @@ final class HoverIconButton: NSButton {
   override func mouseExited(with event: NSEvent) {
     hovered = false
     needsDisplay = true
+  }
+}
+
+/// Back and forward (page bar and sidebar): a right-click, ⌃-click, a press held 0.5 s (Chrome's
+/// `toolbar_button.cc`) or a drag down past 5 pt opens their history list (`HistoryList.swift`) instead of going; a
+/// quick click still goes. Its own class: overriding `mouseDown` changes how AppKit tracks every button's press.
+final class HistoryButton: HoverIconButton {
+  var onHistory: (() -> Void)?
+  static let holdDelay: TimeInterval = 0.5
+  /// How the last press on a history button ended, for the state log: click, hold, drag, right or control.
+  static var lastPress = ""
+
+  override func mouseDown(with event: NSEvent) {
+    guard let onHistory, isEnabled, let window else { return super.mouseDown(with: event) }
+    if event.modifierFlags.contains(.control) {
+      Self.lastPress = "control"
+      return onHistory()
+    }
+    isHighlighted = true
+    let start = event.locationInWindow
+    let deadline = Date().addingTimeInterval(Self.holdDelay)
+    while true {
+      guard let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged], until: deadline,
+                                        inMode: .eventTracking, dequeue: true) else {
+        isHighlighted = false
+        Self.lastPress = "hold"
+        return onHistory()
+      }
+      if next.type == .leftMouseUp {
+        isHighlighted = false
+        Self.lastPress = "click"
+        if bounds.contains(convert(next.locationInWindow, from: nil)) { sendAction(action, to: target) }
+        return
+      }
+      // Window coordinates run up: a drag down lowers y.
+      if start.y - next.locationInWindow.y > 5 {
+        isHighlighted = false
+        Self.lastPress = "drag"
+        return onHistory()
+      }
+    }
+  }
+
+  override func rightMouseDown(with event: NSEvent) {
+    guard let onHistory, isEnabled else { return super.rightMouseDown(with: event) }
+    Self.lastPress = "right"
+    onHistory()
+  }
+
+  /// For tests: a press as the pointer would make it, at the button's middle: `click` (released at once), `hold`
+  /// (never released), `drag` (moved down 20 pt), `right` or `control`.
+  func simulatePress(_ how: String) -> Bool {
+    guard let window else { return false }
+    let point = convert(NSPoint(x: bounds.midX, y: bounds.midY), to: nil)
+    func event(_ type: NSEvent.EventType, _ at: NSPoint, _ flags: NSEvent.ModifierFlags = []) -> NSEvent? {
+      NSEvent.mouseEvent(with: type, location: at, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                         windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+    }
+    switch how {
+    case "click", "hold", "drag":
+      if how == "click", let up = event(.leftMouseUp, point) { NSApp.postEvent(up, atStart: false) }
+      if how == "drag", let drag = event(.leftMouseDragged, NSPoint(x: point.x, y: point.y - 20)) { NSApp.postEvent(drag, atStart: false) }
+      guard let down = event(.leftMouseDown, point) else { return false }
+      mouseDown(with: down)
+    case "right":
+      guard let down = event(.rightMouseDown, point) else { return false }
+      rightMouseDown(with: down)
+    case "control":
+      guard let down = event(.leftMouseDown, point, .control) else { return false }
+      mouseDown(with: down)
+    default:
+      return false
+    }
+    return true
   }
 }
 
@@ -1835,6 +1940,10 @@ final class FavoriteTileView: NSView, Liftable {
   private let selection = TileSelectionLayer()
   private var favicon: NSImage?
   var ringShown: Bool { !selection.isHidden }
+  /// Ardia's sound mark on a favorite: an 8 pt filled speaker in the tile's bottom right (3 pt up, 4 pt in). The row
+  /// menu mutes; the mark takes no click.
+  private let soundBadge = NSImageView()
+  private(set) var soundShown: SidebarView.Sound?
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -1848,6 +1957,10 @@ final class FavoriteTileView: NSView, Liftable {
     layer?.addSublayer(hoverFill)
     icon.imageScaling = .scaleProportionallyUpOrDown
     addSubview(icon)
+    soundBadge.symbolConfiguration = .init(pointSize: 8, weight: .regular)
+    soundBadge.contentTintColor = .secondaryLabelColor
+    soundBadge.isHidden = true
+    addSubview(soundBadge)
     addTrackingArea(NSTrackingArea(
       rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
@@ -1878,6 +1991,7 @@ final class FavoriteTileView: NSView, Liftable {
     updateSelection()
     // Arc's 16 pt favicon.
     icon.frame = PixelGrid.align(NSRect(x: (bounds.width - 16) / 2, y: (bounds.height - 16) / 2, width: 16, height: 16), in: self)
+    soundBadge.frame = NSRect(x: bounds.width - 4 - 12, y: 3, width: 12, height: 10)
     residency.placeDot(at: CGPoint(x: bounds.midX, y: 6))
   }
 
@@ -1942,6 +2056,14 @@ final class FavoriteTileView: NSView, Liftable {
     icon.contentTintColor = image == nil ? .secondaryLabelColor : nil
     icon.alphaValue = SidebarView.iconAlpha(for: entry)
     residency.show(entry, in: self)
+    let sound = SidebarView.sound(for: entry)
+    if sound != soundShown {
+      soundShown = sound
+      soundBadge.isHidden = sound == nil
+      soundBadge.image = sound.flatMap {
+        NSImage(systemSymbolName: $0 == .muted ? "speaker.slash.fill" : "speaker.wave.2.fill", accessibilityDescription: nil)
+      }
+    }
     toolTip = entry.displayTitle
     needsDisplay = true
     updateHover()
@@ -1994,8 +2116,14 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   private var showsCount = false
   private var folderIsOpen = true
   var onClose: (() -> Void)?
+  /// The sound mark's click: mute or unmute the tab.
+  var onSound: (() -> Void)?
   private let icon = NSImageView()
   var iconFaded: Bool { icon.alphaValue < 1 }
+  /// Ardia's: right after the favicon, an 18 × 16 pt button with a 12 pt speaker, shown while the tab plays or is
+  /// muted (owner's pick, `docs/mocks/tab-details.html`), never hidden by the hover's close button.
+  private let soundButton = NSButton()
+  private(set) var soundShown: SidebarView.Sound?
   private let slash = NSTextField(labelWithString: "/")
   private let title = NSTextField(labelWithString: "")
   private let subtitle = NSTextField(labelWithString: "")
@@ -2032,6 +2160,15 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     closeButton.target = self
     closeButton.action = #selector(close)
     closeButton.refusesFirstResponder = true
+    soundButton.isBordered = false
+    soundButton.imagePosition = .imageOnly
+    soundButton.symbolConfiguration = .init(pointSize: 12, weight: .regular)
+    soundButton.contentTintColor = .secondaryLabelColor
+    soundButton.target = self
+    soundButton.action = #selector(toggleSound)
+    soundButton.refusesFirstResponder = true
+    soundButton.isHidden = true
+    soundButton.wantsLayer = true
     chevron.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)
     chevron.symbolConfiguration = .init(pointSize: 9, weight: .semibold)
     chevron.contentTintColor = .tertiaryLabelColor
@@ -2054,7 +2191,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     countLabel.alignment = .right
     countLabel.isHidden = true
     folderIcon.isHidden = true
-    [icon, folderIcon, slash, title, subtitle, closeButton, chevron, countLabel].forEach(addSubview)
+    [icon, folderIcon, soundButton, slash, title, subtitle, closeButton, chevron, countLabel].forEach(addSubview)
     addTrackingArea(NSTrackingArea(
       rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
@@ -2088,7 +2225,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     if collapsing { return nil }
     guard let hit = super.hitTest(point) else { return nil }
     if let editor, hit === editor || hit.isDescendant(of: editor) { return hit }
-    if hit === doneButton { return hit }
+    if hit === doneButton || hit === soundButton { return hit }
     return hit === closeButton || hit.isDescendant(of: closeButton) ? hit : self
   }
 
@@ -2138,6 +2275,36 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   var iconView: NSView { isFolderRow ? folderIcon : icon }
 
   @objc private func close() { onClose?() }
+  @objc private func toggleSound() { onSound?() }
+
+  /// For tests: the sound mark's own click.
+  func pressSound() -> Bool {
+    guard soundShown != nil, !soundButton.isHidden else { return false }
+    soundButton.performClick(nil)
+    return true
+  }
+
+  private func showSound(_ sound: SidebarView.Sound?) {
+    guard sound != soundShown else { return }
+    let appearing = soundShown == nil
+    soundShown = sound
+    soundButton.isHidden = sound == nil
+    needsLayout = true
+    guard let sound else { return }
+    let muted = sound == .muted
+    soundButton.image = NSImage(systemSymbolName: muted ? "speaker.slash" : "speaker.wave.2",
+                                accessibilityDescription: muted ? "Unmute Tab" : "Mute Tab")
+    soundButton.toolTip = muted ? "Unmute Tab" : "Mute Tab"
+    // Chrome's alert indicator fades in over 200 ms.
+    if appearing, window != nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+      let fade = CABasicAnimation(keyPath: "opacity")
+      fade.fromValue = 0
+      fade.toValue = 1
+      fade.duration = 0.2
+      fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
+      soundButton.layer?.add(fade, forKey: "appear")
+    }
+  }
 
   func setSelected(_ selected: Bool) {
     guard self.selected != selected else { return }
@@ -2156,6 +2323,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     subtitle.isHidden = true
     slash.isHidden = true
     closeButton.isHidden = true
+    showSound(nil)
   }
 
   func show(_ entry: SidebarEntry, icon image: NSImage?, selected: Bool) {
@@ -2175,6 +2343,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     icon.contentTintColor = image == nil ? .secondaryLabelColor : nil
     icon.alphaValue = SidebarView.iconAlpha(for: entry)
     residency.show(entry, in: self)
+    showSound(SidebarView.sound(for: entry))
     slash.isHidden = !away
     title.stringValue = entry.displayTitle
     title.textColor = .labelColor
@@ -2199,6 +2368,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     let open = entry.isOpen ?? true
     let turns = animatesFold && shownFolder == entry.id && chevronOpen != nil && chevronOpen != open
     icon.isHidden = true
+    showSound(nil)
     folderIcon.isHidden = false
     folderIcon.show(color: entry.color, icon: entry.icon)
     folderIsOpen = open
@@ -2385,8 +2555,11 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     // To the half point: rows are 41 pt, so a whole-point frame put the icon 0.5 pt off their middle.
     folderIcon.frame = PixelGrid.align(NSRect(x: 7, y: ((mid - 9) * 2).rounded() / 2, width: 20, height: 18), in: self)
     residency.placeDot(at: CGPoint(x: 3.5, y: mid))
-    slash.frame = NSRect(x: 28, y: mid - 11, width: 10, height: 22)
-    let textX: CGFloat = away ? 41 : 35
+    // The sound mark between the favicon and the title (or the pinned tab's slash), which move over for it.
+    let soundShift: CGFloat = soundShown == nil ? 0 : 18
+    soundButton.frame = NSRect(x: 29, y: mid - 8, width: 18, height: 16)
+    slash.frame = NSRect(x: 28 + soundShift, y: mid - 11, width: 10, height: 22)
+    let textX: CGFloat = (away ? 41 : 35) + soundShift
     closeButton.frame = NSRect(x: bounds.width - 30, y: mid - 11, width: 22, height: 22)
     chevron.frame = NSRect(x: bounds.width - 26, y: mid - 7, width: 14, height: 14)
     let doneWidth: CGFloat = 44
