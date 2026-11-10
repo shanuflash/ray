@@ -40,7 +40,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 8. Media controls in the sidebar (now playing, play/pause; the sound icon on tabs is done). Mute Site as its own
    choice behind ⌥ (Ardia 0.2.43-nightly.4 moved to this after a site-wide mute surprised users;
    `docs/ARDIA-WATCH.md`).
-9. Automatic picture-in-picture when you switch away from a playing video (`setAutoPictureInPicture`).
+9. *(Done: automatic picture in picture, see Done. The number stays for references elsewhere.)*
 10. Arc's row-menu items that wait on other features: Add Split View (tabs) and Turn "<folder>" into Space (folders)
     once Split View and Spaces exist; Share Folder… as Arc's shared-folder link (Ray shares the folder's links).
 11. Boosts: per-site CSS/JS, zapping elements.
@@ -355,11 +355,20 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     bar with no folder choice (Chrome remembers the last folder). No bookmarks bar, on purpose. No Export Bookmarks
     (engine call `ac_bookmarks_export_html` comes with the next engine, Chrome 16 above). Fix: a drag source on
     `BookmarkRowView` and `ac_bookmarks_apply`'s `move`, plus outside drops on `SidebarView`.
+49. **Automatic picture in picture gaps** (2026-11-10). Chrome's rules decide: a video pops out only while it plays
+    with sound (a muted video never does), on https or a file, and Chrome's safe-URL check comes first; a call
+    (camera or microphone) pops out only on sites that ask for it (Meet does); never in a private window (Chrome's
+    incognito rule). Leaving the window counts only when it's covered, minimised or on another Space (its
+    occlusion), not when another app is merely in front; Arc's exact rule there is unconfirmed. Coming back closes only a PiP Chrome opened by itself: one opened by hand stays (Ardia
+    and Crest close it too). The video route is untested in checks (test instances run with `--mute-audio`, so no
+    page is audible); `auto-picture-in-picture` covers the call route on Chrome's fake camera. No "back to tab" or
+    sidebar control for the PiP window beyond Chrome's own.
 
 ## Done
 
 | What | When |
 |---|---|
+| Automatic picture in picture (Settings › Tabs, on by default): a playing video or a call pops out when you switch tabs or leave the window, and goes back when you return | 2026-11-10, `feat: auto picture in picture` |
 | Asks to be the default browser: an onboarding step after the import ("Open links in Ray?") and a rare note at launch (bottom right, 14 days apart, 3 times at most, Never for good) | 2026-11-05, `feat: ask to be default browser` |
 | Bookmarks: a panel from the sidebar's footer (⌥⌘B: search, folders in place, open, ⌘-click behind, Rename…, Delete with Undo, Add to Pinned, Open All), the menu bar's Bookmarks menu (Bookmark This Tab…, Bookmark All Tabs…, the bookmarks as menus), "Bookmark" rows in the command bar | 2026-11-05, `feat: bookmarks panel` |
 | Link address on hover at the page's bottom left (above a download's note, aside from the pointer); a sound icon on tabs and favorites (click to mute); back/forward history lists on right-click or hold | 2026-11-05, `feat: link preview, tab sound, history lists` |

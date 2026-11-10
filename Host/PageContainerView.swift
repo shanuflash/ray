@@ -44,7 +44,7 @@ final class PageContainerView: NSView {
   var debugState: [String: Any] {
     let page = shown?.view
     var state: [String: Any] = ["pageFrame": page.map { NSStringFromRect($0.frame) } ?? "", "progressLine": progressShown,
-                                 "progressColor": progressColor]
+                                 "progressColor": progressColor, "windowSeen": windowSeen]
     if let page {
       state["pageSubviews"] = page.subviews.map {
         "\(type(of: $0)) \(NSStringFromRect($0.frame)) hidden=\($0.isHidden)"
@@ -124,7 +124,7 @@ final class PageContainerView: NSView {
     let drawn = !tab.view.isHidden
     tab.view.alphaValue = 1
     tab.view.isHidden = false
-    tab.noteShown(byHost: true)
+    tab.noteShown(byHost: windowSeen)
     hideGeneration[tab.tabId, default: 0] += 1
     bringToFront(tab.view)
     if let onScreen, onScreen !== tab {
@@ -344,9 +344,70 @@ final class PageContainerView: NSView {
   private func noteHiddenLater(_ tab: RayCoreTab) {
     let generation = hideGeneration[tab.tabId, default: 0]
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self, weak tab] in
-      guard let self, let tab, !tab.closed, tab !== self.shown,
+      guard let self, let tab, !tab.closed, tab !== self.shown || !self.windowSeen,
             self.hideGeneration[tab.tabId, default: 0] == generation else { return }
       tab.noteShown(byHost: false)
+    }
+  }
+
+  // MARK: Window sight
+
+  /// Whether the user can see this window: on screen and not covered, in full screen, or going in or out of it
+  /// (Ardia's `seenByUser`). The shown page of a window they can't see is hidden to the engine, as a tab left is, so
+  /// Chrome's automatic picture in picture pops its video out when you leave the window, and puts it back when the
+  /// window shows again. A locked screen changes nothing. A test window, never on screen, counts as seen unless a
+  /// test says otherwise (`sight hidden|visible|off`).
+  private(set) var windowSeen = true
+  private var fullScreenTransition = false
+  private var sightObservers: [NSObjectProtocol] = []
+  var fakeSight: Bool? {
+    didSet { updateSight() }
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    sightObservers.forEach(NotificationCenter.default.removeObserver)
+    sightObservers = []
+    guard let window else { return }
+    let names: [NSNotification.Name] = [
+      NSWindow.didChangeOcclusionStateNotification, NSWindow.willEnterFullScreenNotification,
+      NSWindow.didEnterFullScreenNotification, NSWindow.willExitFullScreenNotification,
+      NSWindow.didExitFullScreenNotification,
+    ]
+    sightObservers = names.map { name in
+      NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] note in
+        guard let self else { return }
+        if note.name == NSWindow.willEnterFullScreenNotification || note.name == NSWindow.willExitFullScreenNotification {
+          self.fullScreenTransition = true
+        } else if note.name == NSWindow.didEnterFullScreenNotification || note.name == NSWindow.didExitFullScreenNotification {
+          self.fullScreenTransition = false
+        }
+        self.updateSight()
+      }
+    }
+    updateSight()
+  }
+
+  private func updateSight() {
+    guard let window else { return }
+    let seen: Bool
+    if let fakeSight {
+      seen = fakeSight
+    } else if launchedInBackground {
+      seen = true
+    } else {
+      let locked = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool == true
+      if locked { return }
+      seen = fullScreenTransition || window.occlusionState.contains(.visible) || window.styleMask.contains(.fullScreen)
+    }
+    guard seen != windowSeen else { return }
+    windowSeen = seen
+    guard let tab = shown, !tab.closed else { return }
+    hideGeneration[tab.tabId, default: 0] += 1
+    if seen {
+      tab.noteShown(byHost: true)
+    } else {
+      noteHiddenLater(tab)
     }
   }
 }

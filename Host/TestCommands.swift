@@ -557,6 +557,14 @@ enum TestCommands {
       if let id = UUID(uuidString: argument), AppController.shared.current?.pressSound(of: id) == true {} else {
         result = "no sound mark"
       }
+    case "sight":
+      // `sight hidden|visible|off`: the current window as the user would see it (covered, on another Space) or not,
+      // or back to what macOS says.
+      if ["hidden", "visible", "off"].contains(argument), let controller = AppController.shared.current {
+        controller.fakeWindowSight(argument == "off" ? nil : argument == "visible")
+      } else {
+        result = "usage: sight hidden|visible|off"
+      }
     case "linkpreview":
       result = linkPreview(argument)
     case "navhistory":

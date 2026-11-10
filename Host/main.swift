@@ -99,6 +99,22 @@ if launchedInBackground {
   engineArguments += ["--mute-audio", "--disable-modal-animations", "--disable-backgrounding-occluded-windows"]
 }
 
+// MARK: Picture in picture
+
+// Automatic picture in picture (`AutoPictureInPicture`) for any page's one playing video, not only pages that ask for
+// it with a media session action (Ardia passes it too; Arc pops out any video).
+engineArguments = engineArguments.map {
+  $0.hasPrefix("--enable-features=") ? $0 + ",BrowserInitiatedAutomaticPictureInPicture" : $0
+}
+#if RAY_TEST_HOOKS
+// RAY_FAKE_MEDIA=1: Chrome's fake camera and microphone (no macOS prompt, no real device), in a background instance
+// whose picture-in-picture windows the engine keeps invisible (`--ray-background`).
+if launchedInBackground, TestEnvironment["RAY_FAKE_MEDIA"] == "1" {
+  engineArguments.append("--use-fake-device-for-media-stream")
+  if !engineArguments.contains("--ray-background") { engineArguments.append("--ray-background") }
+}
+#endif
+
 let argv = engineArguments.map { UnsafePointer<CChar>(strdup($0)!) }
 let argvBuffer = UnsafeMutablePointer<UnsafePointer<CChar>>.allocate(capacity: argv.count)
 argvBuffer.initialize(from: argv, count: argv.count)

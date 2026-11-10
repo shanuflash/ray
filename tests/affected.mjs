@@ -127,6 +127,8 @@ export const areas = {
   "Host/BrowserWindowController.swift#Link preview": ["link-preview", "notes"],
   // A tab's sound mark in the sidebar (rows and favorites) as its sound starts, stops or is muted.
   "Host/BrowserWindowController.swift#Tab sound": ["tab-sound", "row-menus"],
+  // Chrome's picture-in-picture window opening and closing, in the state log.
+  "Host/BrowserWindowController.swift#Picture in picture": ["auto-picture-in-picture"],
   // Back's and forward's history lists: the panel, the buttons' presses, going there.
   "Host/BrowserWindowController.swift#History list": ["back-forward-list", "panels"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
@@ -252,7 +254,14 @@ export const areas = {
   "Host/BrowserWindowController.swift#Bookmarks": ["bookmarks"],
   "Host/Extensions.swift": ["extensions", "extension-prompt", "site-controls", "panels"],
   "Host/FindBar.swift": ["find-in-page", "notes"],
-  "Host/PageContainerView.swift": pageSurface,
+  // Which page the engine is told the user sees (`noteShown(byHost:)`): automatic picture in picture and the
+  // permission prompts follow it.
+  "Host/PageContainerView.swift": [...pageSurface, ...permissions, "auto-picture-in-picture"],
+  "Host/PageContainerView.swift#Window sight": [...permissions, "auto-picture-in-picture", "switch-no-blank"],
+  // Settings › Tabs › Automatic Picture in Picture: the engine's switch, and the engine feature main.swift passes.
+  "Host/AutoPictureInPicture.swift": ["auto-picture-in-picture", "settings-panes"],
+  // The section runs to the end of the file (the launch's last lines, which change rarely).
+  "Host/main.swift#Picture in picture": ["auto-picture-in-picture"],
   // When a page that was just shown has drawn (the tab switch holds the page left until then).
   "Host/PageFrameWatch.swift": pageSurface,
   "Host/PageToolbar.swift": ["pending-security", "pending-address", "new-tab-sweep", "page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle",
@@ -289,7 +298,8 @@ export const areas = {
   "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "icons-on-pixels", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
     "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes",
-    "row-menus", "multi-select", "folders", "password-prompt", "autofill-prompt", "link-preview", "tab-sound", "back-forward-list"],
+    "row-menus", "multi-select", "folders", "password-prompt", "autofill-prompt", "link-preview", "tab-sound", "back-forward-list",
+    "auto-picture-in-picture"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

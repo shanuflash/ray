@@ -446,9 +446,10 @@ still to build (numbers are `docs/MISSING.md`, "From Ardia's settings"). Default
   import from another browser. Outside Settings: the onboarding's "Open links in Ray?" step and a rare launch note
   (`DefaultBrowserAsk`, 2026-11-05).
 - **Tabs and sidebar** ✓ (`d2c6ed0`): new tabs at the top or below current, ✓; ⌃Tab in recent order, on ✓; show the
-  sidebar button, on ✓; fade icons of unloaded tabs, off ✓; haptic on reorder, on ✓. Unbuilt rows (test builds
-  only): Clear button (9), hide the address bar while scrolling (8), media controls and auto picture-in-picture
-  (Arc #8, #9). New tabs at the bottom and the New Tab button's place (5).
+  sidebar button, on ✓; fade icons of unloaded tabs, off ✓; haptic on reorder, on ✓; automatic picture in picture,
+  on ✓ (2026-11-10, Chrome's own with `BrowserInitiatedAutomaticPictureInPicture`). Unbuilt rows (test builds
+  only): Clear button (9), hide the address bar while scrolling (8), media controls (Arc #8). New tabs at the bottom
+  and the New Tab button's place (5).
 - **Appearance** ✓ (`d2c6ed0`): theme colour, Lavender ✓ (a gradient with Spaces, 3); Light, Dark or Automatic,
   Automatic ✓; address bar on the page, on ✓ (the View menu flips the same setting); minimal URL, off ✓; loading
   progress, on ✓; default page zoom 100% ✓; scroll bars Automatic ✓; app icon, unbuilt until designed (7).

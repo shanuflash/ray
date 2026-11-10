@@ -37,6 +37,7 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Rename tabs
   - Arc's right-click menus: duplicate, mute, move, tab icons
   - A sound icon on playing tabs: click to mute
+  - Videos pop out into picture in picture when you switch away
   - Folder colours and icons
   - Select several tabs
   - ⌃Tab switcher with page previews, like Arc
