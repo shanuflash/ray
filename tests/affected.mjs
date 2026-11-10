@@ -34,7 +34,7 @@ const settings = ["settings-window", "settings-catalog", "settings-minimal-url",
 // Settings › General (SettingsGeneral.swift, CloseWarnings.swift): its pane, the two warnings and Start fresh.
 settings.push("settings-general", "warn-before-quitting", "warn-before-closing-window");
 settings.push("settings-privacy", "settings-extensions");
-settings.push("settings-passwords", "settings-autofill", "password-prompt");
+settings.push("settings-passwords", "settings-autofill", "password-prompt", "autofill-prompt");
 // What a setting's value or its change notice reaches: the settings checks, the welcome (theme, keys), and the
 // features they drive (address bar, loading, site controls' zoom reset, ⇧⌘C, ⌘S, menu keys in the command bar).
 const settingReaders = [...settings, "onboarding", "page-toolbar", "page-loading", "load-sweep-once", "address-fragment",
@@ -115,7 +115,8 @@ export const areas = {
   "Host/BrowserWindowController.swift#Browser import": ["import-browser", "arc-import", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Onboarding": ["onboarding"],
   "Host/BrowserWindowController.swift#Permission prompts": permissions,
-  "Host/BrowserWindowController.swift#Password prompts": ["password-prompt"],
+  "Host/BrowserWindowController.swift#Password prompts": ["password-prompt", "autofill-prompt"],
+  "Host/BrowserWindowController.swift#Autofill prompts": ["autofill-prompt", "password-prompt"],
   "Host/BrowserWindowController.swift#Panels": ["panels", "site-controls"],
   "Host/BrowserWindowController.swift#Notes": ["notes", "copy-url", "page-commands", "find-in-page"],
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
@@ -200,10 +201,10 @@ export const areas = {
   // Settings › Privacy and Settings › Extensions, over the engine's data calls, and the pieces they share.
   "Host/SettingsPrivacy.swift": ["settings-privacy", "settings-panes", "settings-search", "site-controls"],
   "Host/SettingsExtensions.swift": ["settings-extensions", "settings-panes", "settings-search", "extensions"],
-  "Host/SettingsDataRows.swift": ["settings-privacy", "settings-extensions"],
+  "Host/SettingsDataRows.swift": ["settings-privacy", "settings-extensions", "settings-autofill", "autofill-prompt"],
   // Settings › Passwords and › Autofill (on the engine's ac_passwords_* and ac_autofill_*), and their shared pieces.
   "Host/SettingsPasswords.swift": ["settings-passwords", "settings-panes", "settings-search", "jumpcloud-relay", "password-prompt"],
-  "Host/SettingsAutofill.swift": ["settings-autofill", "settings-panes", "settings-search"],
+  "Host/SettingsAutofill.swift": ["settings-autofill", "settings-panes", "settings-search", "autofill-prompt"],
   "Host/SettingsDataViews.swift": ["settings-passwords", "settings-autofill"],
   // Settings › Search: its rows and controls, and the engines and site searches the command bar searches with.
   "Host/SettingsSearchPane.swift": ["search-engine", "search-suggestions-off", "site-search", "settings-catalog", "settings-panes",
@@ -238,9 +239,11 @@ export const areas = {
     "top-strip-click", "settings-sidebar-button"],
   // Which loads the address field sweeps for.
   "Host/LoadSweep.swift": ["new-tab-sweep", "page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar"],
-  "Host/PermissionPrompt.swift": [...permissions, "password-prompt"],
+  "Host/PermissionPrompt.swift": [...permissions, "password-prompt", "autofill-prompt"],
   // "Save password?" (its panel, the setting that drives Chrome's switch) and the fill dropdown's report.
-  "Host/PasswordPrompt.swift": ["password-prompt", "panels"],
+  "Host/PasswordPrompt.swift": ["password-prompt", "autofill-prompt", "panels"],
+  // "Save address?", "Update address?", "Save card?" (the password prompt's card) and the switches behind them.
+  "Host/AutofillPrompt.swift": ["autofill-prompt", "password-prompt"],
   "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/TabSwitcher.swift": ["settings-recent-tab-cycling", "tab-switcher"],
@@ -261,7 +264,7 @@ export const areas = {
   "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "icons-on-pixels", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
     "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes",
-    "row-menus", "multi-select", "folders", "password-prompt"],
+    "row-menus", "multi-select", "folders", "password-prompt", "autofill-prompt"],
 
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],

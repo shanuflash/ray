@@ -456,7 +456,7 @@ still to build (numbers are `docs/MISSING.md`, "From Ardia's settings"). Default
   browsing data; content blocker if decided (Arc #7).
 - **Passwords** ✓ (`d34b5c4`): saved passwords behind Touch ID, CSV import and export; offer to save and fill, on,
   once Ray has the prompts (Chrome #2).
-- **Autofill** ✓ (`d34b5c4`): addresses and cards; save and fill switches once Ray has the prompts (Chrome #3).
+- **Autofill** ✓ (`d34b5c4`): addresses and cards; save and fill switches with the save prompts (2026-11-05).
 - **Extensions** ✓ (`0eaf904`): installed list with switches, site access, private windows, options, reload,
   remove, Web Store, load unpacked; add from a link and extension shortcuts later (Chrome #13, #14).
 - **Shortcuts:** ⇧⌘C copies the link, on ✓; ⌘S toggles the sidebar, on ✓; ⌘Z reopens a closed tab outside text,

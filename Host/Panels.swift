@@ -650,38 +650,71 @@ final class PanelButton: NSView {
   override func accessibilityPerformPress() -> Bool { performClick(nil); return isEnabled }
 }
 
-/// A question in a panel: a title, a grey message (both wrapping), an optional icon at the left and an optional "Don't
-/// ask again" box, then its buttons at the bottom right. `PanelKit.question` builds one; `buttons` are in order.
+/// What a question can carry under its title and icon (a save prompt's well): it sizes itself to the width it's given.
+protocol PanelQuestionAccessory: NSView {
+  func height(forWidth width: CGFloat) -> CGFloat
+}
+
+/// A question in a panel: a title, an optional site (its full origin, grey, wrapping anywhere), a grey message (both
+/// wrapping), an optional icon at the left (on a tile with `tile`), an optional accessory at full width under them and
+/// an optional "Don't ask again" box, then its buttons at the bottom right. `PanelKit.question` builds one; `buttons`
+/// are in order. With `wait`, the buttons take no clicks for that long each time it appears.
 final class PanelQuestion: NSView {
   let buttons: [PanelButton]
   let check: NSButton?
+  let accessory: PanelQuestionAccessory?
   private let icon: NSImageView?
+  private let tile: Bool
   private let title: NSTextField
+  private let site: NSTextField?
   private let message: NSTextField
   private let width: CGFloat
+  private let wait: TimeInterval
+  private var shownCount = 0
+  /// Its buttons take clicks (the wait is over).
+  private(set) var ready: Bool
 
   /// `answers`: (title, primary, destructive); `wait`: their buttons take no clicks for that long after it appears.
-  init(title: String, message: String, icon: NSImage? = nil, check: String? = nil, width: CGFloat = 320,
+  init(title: String, site: String? = nil, message: String, icon: NSImage? = nil, tile: Bool = false,
+       accessory: PanelQuestionAccessory? = nil, check: String? = nil, width: CGFloat = 320,
        answers: [(title: String, primary: Bool, destructive: Bool)], wait: TimeInterval = 0, onAnswer: @escaping (Int) -> Void) {
     self.width = width
+    self.wait = wait
+    self.tile = tile
+    self.accessory = accessory
     self.title = NSTextField(wrappingLabelWithString: title)
+    self.site = site.map { NSTextField(wrappingLabelWithString: $0) }
     self.message = NSTextField(wrappingLabelWithString: message)
     self.icon = icon.map { NSImageView(image: $0) }
     self.check = check.map { NSButton(checkboxWithTitle: $0, target: nil, action: nil) }
     buttons = answers.map { PanelButton(title: $0.title, primary: $0.primary, destructive: $0.destructive) }
+    ready = wait <= 0
     super.init(frame: .zero)
     self.title.font = .systemFont(ofSize: 13.5, weight: .semibold)
-    self.message.font = .systemFont(ofSize: 12)
-    self.message.textColor = .secondaryLabelColor
-    for label in [self.title, self.message] {
+    for label in [self.site, self.message].compactMap({ $0 }) {
+      label.font = .systemFont(ofSize: 12)
+      label.textColor = .secondaryLabelColor
+    }
+    self.site?.lineBreakMode = .byCharWrapping
+    for label in [self.title, self.site, self.message].compactMap({ $0 }) {
       label.isSelectable = false
       addSubview(label)
     }
     self.message.isHidden = message.isEmpty
     if let icon = self.icon {
-      icon.imageScaling = .scaleProportionallyUpOrDown
+      if tile {
+        icon.imageScaling = .scaleNone
+        icon.symbolConfiguration = .init(pointSize: 14, weight: .semibold)
+        icon.contentTintColor = .secondaryLabelColor
+        icon.wantsLayer = true
+        icon.layer?.cornerRadius = 8
+        icon.layer?.cornerCurve = .continuous
+      } else {
+        icon.imageScaling = .scaleProportionallyUpOrDown
+      }
       addSubview(icon)
     }
+    if let accessory { addSubview(accessory) }
     if let check = self.check {
       check.font = .systemFont(ofSize: 12)
       check.refusesFirstResponder = true
@@ -689,11 +722,8 @@ final class PanelQuestion: NSView {
     }
     for (index, button) in buttons.enumerated() {
       button.onClick = { onAnswer(index) }
+      button.isEnabled = ready
       addSubview(button)
-    }
-    if wait > 0 {
-      buttons.forEach { $0.isEnabled = false }
-      DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in self?.buttons.forEach { $0.isEnabled = true } }
     }
     let height = layoutContent(apply: false)
     frame = NSRect(x: 0, y: 0, width: width, height: height)
@@ -703,11 +733,38 @@ final class PanelQuestion: NSView {
 
   override var isFlipped: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
+  override var wantsUpdateLayer: Bool { true }
+
+  override func updateLayer() {
+    if tile { icon?.layer?.backgroundColor = PanelColors.tile.cgColor }
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    needsDisplay = true
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    guard window != nil, wait > 0 else { return }
+    // Each time it appears its buttons wait, so a click meant for the page can't land on one.
+    shownCount += 1
+    let shown = shownCount
+    ready = false
+    buttons.forEach { $0.isEnabled = false }
+    DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+      guard let self, self.window != nil, self.shownCount == shown else { return }
+      self.ready = true
+      self.buttons.forEach { $0.isEnabled = true }
+    }
+  }
 
   override func layout() {
     super.layout()
     _ = layoutContent(apply: true)
   }
+
+  var siteText: String { site?.stringValue ?? "" }
 
   private func layoutContent(apply: Bool) -> CGFloat {
     let pad: CGFloat = 16
@@ -724,6 +781,12 @@ final class PanelQuestion: NSView {
       title.frame = NSRect(x: left - 2, y: y, width: textWidth + 4, height: titleHeight)
     }
     y += titleHeight
+    if let site {
+      y += 2
+      let siteHeight = height(site)
+      if apply { site.frame = NSRect(x: left - 2, y: y, width: textWidth + 4, height: siteHeight) }
+      y += siteHeight
+    }
     if !message.isHidden {
       y += 4
       let messageHeight = height(message)
@@ -731,6 +794,13 @@ final class PanelQuestion: NSView {
       y += messageHeight
     }
     if icon != nil { y = max(y, pad + 32) }
+    if let accessory {
+      y += 12
+      let fullWidth = width - pad * 2
+      let accessoryHeight = accessory.height(forWidth: fullWidth)
+      if apply { accessory.frame = NSRect(x: pad, y: y, width: fullWidth, height: accessoryHeight) }
+      y += accessoryHeight
+    }
     if let check {
       y += 10
       if apply { check.frame = NSRect(x: left - 2, y: y, width: textWidth + 4, height: 18) }

@@ -572,6 +572,8 @@ enum TestCommands {
       result = openFromOtherApp(argument)
     case "pwprompt":
       result = AppController.shared.current?.passwords.test(argument) ?? "no window"
+    case "afprompt":
+      result = AppController.shared.current?.autofill.test(argument) ?? "no window"
     case "perm":
       if AppController.shared.current?.permissions.press(argument) != true { result = "not ready" }
     case "aboutsnap":
