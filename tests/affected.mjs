@@ -85,6 +85,8 @@ export const areas = {
   "Host/main.swift": "all",
   "Host/Bridging.h": "all",
   "Resources/": "all",
+  // The page script: the page channel's hello and getDisplayMedia's way to Ray's picker.
+  "Resources/page_script.js": [...pages, "screen-share"],
   "engine/": "all",
   // Tab-modal dialogs (print preview): where they sit and their corners.
   "engine/raycore/src/ray/core/ac_modal_dialog_host.mm": ["page-commands"],
@@ -121,7 +123,9 @@ export const areas = {
   "Host/BrowserWindowController.swift#Password prompts": ["password-prompt", "autofill-prompt"],
   "Host/BrowserWindowController.swift#Autofill prompts": ["autofill-prompt", "password-prompt"],
   "Host/BrowserWindowController.swift#Page prompts": [...pagePrompts, "quit-with-downloads", "panels"],
-  "Host/BrowserWindowController.swift#Panels": ["panels", "site-controls", "link-preview", "swipe-indicator"],
+  "Host/BrowserWindowController.swift#Panels": ["panels", "site-controls", "link-preview", "swipe-indicator", "screen-share"],
+  // Screen sharing: the picker over the asking tab, the share note, the rows' marks and the shared page's ring.
+  "Host/BrowserWindowController.swift#Screen sharing": ["screen-share"],
   "Host/BrowserWindowController.swift#Notes": ["notes", "copy-url", "page-commands", "find-in-page", "link-preview", "swipe-indicator"],
   // The hovered link's address at the page's bottom left, and the engine's status text for it.
   "Host/BrowserWindowController.swift#Link preview": ["link-preview", "notes"],
@@ -169,7 +173,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#State log": [],
 
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
-  "Host/SidebarView.swift": [...drag, ...folders, "tile-hover", "row-hover-close", "favorites", "pin-unload-restore",
+  "Host/SidebarView.swift": [...drag, ...folders, "screen-share", "tile-hover", "row-hover-close", "favorites", "pin-unload-restore",
     "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment", "tab-rename",
     "settings-sidebar-button", "settings-fade-unloaded", "row-menus", "icons-on-pixels", "tab-sound", "back-forward-list", "bookmarks"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
@@ -281,10 +285,15 @@ export const areas = {
   "Host/AutofillPrompt.swift": ["autofill-prompt", "password-prompt"],
   "Host/PagePrompts.swift": ["app-link-prompt", "popup-blocked", "page-unresponsive", "panels", "notes"],
   "Host/CrashedPage.swift": ["crashed-page", "page-unresponsive"],
+  // Screen sharing (ScreenShare.swift: live shares, Chrome's bar, the note, ring and marks; SharePicker.swift: the
+  // picker and its sources).
+  "Host/ScreenShare.swift": ["screen-share", "notes", "surfaces-snap"],
+  "Host/SharePicker.swift": ["screen-share", "panels", "surfaces-snap"],
   "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/TabSwitcher.swift": ["settings-recent-tab-cycling", "tab-switcher"],
-  "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay", "link-preview", "default-browser-ask"],
+  "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay", "link-preview", "default-browser-ask",
+    "screen-share"],
   "Host/Panels.swift": ["panels", "site-controls", "link-preview", "back-forward-list", "extensions", "extension-prompt", "settings-privacy", "warn-before-quitting", "warn-before-closing-window", ...folders],
   "Host/Surface.swift": ["surfaces-snap", "panels", "notes", "site-controls", "permission", "permission-allow", "downloads"],
   "Host/Updater.swift": ["updater-config", "settings-general"],
@@ -299,7 +308,7 @@ export const areas = {
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
   "Host/TestCommands.swift#Bookmarks": ["bookmarks"],
-  "Host/TestCommands.swift": ["site-search", "search-engine", "folder-rename", "tile-hover", "icons-on-pixels", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
+  "Host/TestCommands.swift": ["screen-share", "site-search", "search-engine", "folder-rename", "tile-hover", "icons-on-pixels", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
     "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes",
     "row-menus", "multi-select", "folders", "password-prompt", "autofill-prompt", "link-preview", "tab-sound", "back-forward-list",

@@ -506,6 +506,33 @@ enum TestCommands {
     }
   }
 
+  /// `share permission on|off` (the fake Screen Recording permission), `share fakebar` (a window shaped as Chrome's
+  /// share bar, then a scan for it), `share mark <entry id>` (a click on a row's share mark), `share stop` (the active
+  /// tab's share, as the note's Stop), and the open picker's `SharePicker.test` commands.
+  private static func share(_ argument: String) -> String {
+    let words = argument.split(separator: " ").map(String.init)
+    guard let controller = AppController.shared.current else { return "no window" }
+    switch words.first {
+    #if RAY_TEST_HOOKS
+    case "permission" where words.count == 2:
+      ShareSources.testPermission = words[1] == "on"
+      return "ok"
+    case "fakebar":
+      return ChromeShareBar.testFake() ? "ok" : "not hidden"
+    case "windowsnap" where words.count == 2:
+      return ShareSnapshot.draw(controller.window.contentView!, to: words[1]) ? "ok" : "no picture"
+    #endif
+    case "mark" where words.count == 2:
+      guard let id = UUID(uuidString: words[1]), controller.pressShareMark(of: id) else { return "no share mark" }
+      return "ok"
+    case "stop":
+      guard let tab = controller.activeTab, ScreenShares.shared.stopSharing(tab) else { return "no share" }
+      return "ok"
+    default:
+      return controller.sharePicker.test(argument)
+    }
+  }
+
   private static func run(_ line: String) {
     let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
     guard let command = parts.first else { return }
@@ -583,6 +610,8 @@ enum TestCommands {
       } else {
         result = "usage: sight hidden|visible|off"
       }
+    case "share":
+      result = share(argument)
     case "linkpreview":
       result = linkPreview(argument)
     case "swipe":

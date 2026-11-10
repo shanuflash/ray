@@ -225,6 +225,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       crashed.frame = pages.frame
       crashed.layer?.cornerRadius = pages.cornerRadius
     }
+    shareIndicators.layout()
     permissions.update()
     layoutSiteControls()
     if let findBar {
@@ -1014,17 +1015,63 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     CloseWarnings.confirmDownloads(Int(count), quitting: AppController.shared.quitting, on: self, then: completion)
   }
 
+  // MARK: Screen sharing
+
+  /// Ray's screen-sharing picker (`SharePicker.swift`), over the tab that asked.
+  private(set) lazy var sharePicker: SharePicker = {
+    let picker = SharePicker(controller: self)
+    picker.onChange = { [weak self] in self?.logState("screenShare") }
+    return picker
+  }()
+
+  /// The note, the shared page's ring and the rows' marks while a share runs (`ScreenShare.swift`).
+  private(set) lazy var shareIndicators: ShareIndicators = {
+    let indicators = ShareIndicators(controller: self)
+    indicators.onChange = { [weak self] in self?.logState("screenShare") }
+    return indicators
+  }()
+
+  /// The engine says whether a tab captures a tab, a window or a screen (`screen`); camera and microphone too.
+  func tab(_ tab: RayCoreTab, didChangeMediaAccess access: [String: NSNumber]) {
+    ScreenShares.shared.accessChanged(tab, screen: access["screen"]?.boolValue == true)
+  }
+
+  /// The ring goes right over the page card (above a crashed page's view), under the toolbar, panels and notes.
+  func placeSharedPageRing(_ ring: SharedPageRing) {
+    if ring.superview !== root { root.addSubview(ring, positioned: .above, relativeTo: crashedPages.view?.superview === root ? crashedPages.view : pages) }
+    ring.frame = pages.frame
+    ring.layer?.cornerRadius = pages.cornerRadius
+    ring.needsLayout = true
+  }
+
+  /// The ⌃Tab switcher's picture of a tab, for the picker's cards.
+  func tabPicture(of entry: SidebarEntry) -> CGImage? { tabPictures.picture(of: entry) }
+
+  func refreshRow(_ entry: SidebarEntry) { sidebar.refresh(entry) }
+
+  /// For tests: a click on the share mark of an entry's row; false when the row shows none.
+  func pressShareMark(of id: UUID) -> Bool { sidebar.pressShareMark(of: id) }
+
   // MARK: Panels
 
   /// This window's panel over the page (`Panels.swift`): one at a time, from a button.
   private(set) lazy var panels: Panels = {
     let panels = Panels(host: root) { [weak self] in self?.floating }
-    panels.onChange = { [weak self] in self?.logState("panels") }
+    panels.onChange = { [weak self] in
+      self?.logState("panels")
+      // The share note gives the top centre to a panel and comes back when it's gone.
+      if self?.panels.isOpen == false { self?.shareIndicators.refresh() }
+    }
     panels.onOpen = { [weak self] frame in self?.notes.dismiss(overlapping: frame) }
-    // A hovered link's address belongs to the tab left.
     panels.onTabSwitch = { [weak self] in
+      // A hovered link's address belongs to the tab left.
       self?.linkPreview.hide()
       self?.swipeIndicator.hide()
+      // The tab shown now (once it's the active one): its share picker, the share note's words and the ring.
+      DispatchQueue.main.async {
+        self?.sharePicker.update()
+        self?.shareIndicators.refresh()
+      }
     }
     return panels
   }()
@@ -1534,6 +1581,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       guard let tab = entry.tab, entry.isLive else { return }
       tab.muted = !tab.muted
       logState("mute")
+      return
+    case .stopSharing:
+      guard let tab = entry.tab, entry.isLive else { return }
+      _ = ScreenShares.shared.stopSharing(tab)
       return
     case .moveToPinned:
       move(entry, to: .pinned(state.pinned.count, parent: nil))
@@ -2795,6 +2846,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func window(_ window: RayCoreWindow, didRemove tab: RayCoreTab) {
+    ScreenShares.shared.forget(tab)
     guard let entry = state.entry(for: tab) else { return }
     if closing {
       pages.detach(tab)
@@ -2821,6 +2873,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     changed("remove")
     crashedPages.update()
+    sharePicker.update()
   }
 
   func window(_ window: RayCoreWindow, didActivate tab: RayCoreTab) {
@@ -2951,6 +3004,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     origin: String
   ) {
     if kind == "hello" && main { TestEnvironment.log("page channel ready in tab \(tab.tabId) (\(origin))") }
+    if kind == "displayMedia" { sharePicker.asked(json, tab: tab, frame: frameId, origin: origin) }
   }
 
   // MARK: Settings
@@ -3216,6 +3270,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "blockedPopups": popups.state,
       "crashedPage": crashedPages.state,
       "pictureInPicture": ["steps": pictureInPictureSteps, "windowSeen": pages.windowSeen],
+      "screenShare": [
+        "picker": sharePicker.state, "shares": ScreenShares.shared.state, "window": shareIndicators.state,
+      ] as [String: Any],
       "autofillSuggestions": autofillSuggestions ?? NSNull(),
       "find": findBar.map { bar -> [String: Any] in
         let frame = bar.convert(bar.bounds, to: nil)

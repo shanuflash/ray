@@ -3984,6 +3984,43 @@ const checks = {
       await evaluate(sessionId, `(() => { const a = document.createElement("a"); a.href = "/files/notes.txt"; a.click(); })()`);
       await until("download note", async () => { await command("state"); return state().notes.spots.bottomLeading; }, 8000);
       await snap("download-note");
+      // Screen sharing: the picker (tabs, then fake windows), then a shared tab's ring and note, light and dark.
+      await goTo(`${origin}/b?snapshared`, true);
+      await until("shared tab", async () => { await command("state"); return activeTabState()?.url.endsWith("snapshared"); });
+      const sharedSnap = entryFor(state().active).id;
+      for (const mode of ["light", "dark"]) {
+        await setSetting("appearanceMode", mode);
+        await command(`row ${entryFor(tabFor("/a").id).id}`);
+        await until("/a again", () => state().active === tabFor("/a").id);
+        await evaluate(sessionId, `navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }).then((s) => { window.__snap = s; }); 0`);
+        await until("share picker", async () => { await command("state"); return state().screenShare.picker.open; });
+        await sleep(600);
+        const items = state().screenShare.picker.open.items;
+        await command(`share pick ${Math.max(0, items.findIndex((i) => i.title === "Page B"))}`);
+        await snap(`${mode}-share-picker-tabs`);
+        if (mode === "light") {
+          await command("share segment 1");
+          await snap("share-picker-no-permission");
+          await command("share permission on");
+          await command("share segment 1");
+          await command("share pick 0");
+          await snap("share-picker-windows");
+          await command("share permission off");
+          await command("share segment 0");
+          await command(`share pick ${Math.max(0, items.findIndex((i) => i.title === "Page B"))}`);
+        }
+        await command("share press share");
+        await until("sharing", async () => { await command("state"); return state().screenShare.shares.live.length > 0; });
+        await snap(`${mode}-share-note-sharing-tab`);
+        await command(`row ${sharedSnap}`);
+        await until("ring", async () => { await command("state"); return state().screenShare.window.ring; });
+        await snap(`${mode}-share-shared-tab`);
+        await command("share stop");
+        await until("share over", async () => { await command("state"); return state().screenShare.shares.live.length === 0; }, 5000);
+      }
+      await setSetting("appearanceMode", "light");
+      await command(`row ${sharedSnap}`);
+      await command("menu closeTab");
       // Change Icon… on a new Today folder.
       const tab = state().sidebar.today.find((e) => e.live && e.kind !== "folder");
       await command(`rowaction newfolder ${tab.id}`);
@@ -7173,6 +7210,155 @@ const checks = {
     } finally {
       socket?.close();
       await it.stop();
+    }
+  },
+  async "screen-share"() {
+    // A page's getDisplayMedia() gets Ray's picker (Tabs / Windows / Screen), never Chrome's: deny by default, the
+    // frame's full origin, buttons dead for 0.5 s, Return nothing, Escape / Cancel / closing is "no". A shared tab
+    // (real: tab capture needs no Screen Recording permission) shows the note at the top centre, the rows' marks and
+    // the shared page's ring; Share This Tab moves it; the row mark stops it. Windows and screens are fake in test
+    // builds (no permission), and Chrome's floating share bar is hidden (a stand-in shaped as it is).
+    pages["/share"] = `<title>Share</title><p>share</p>`;
+    // SNAP_DIR=<folder>: pictures of the picker and the window drawn from Ray's layers (pages draw nothing there).
+    const snapDir = process.env.SNAP_DIR;
+    const snapShare = async (what, name) => { if (snapDir) await commandResult(`share ${what} ${join(snapDir, `share-${name}`)}`); };
+    const ss = () => state().screenShare;
+    const picker = async () => { await command("state"); return ss().picker.open; };
+    const shared = `${origin}/b?shared`, other = `${origin}/c?other`, page = `${origin}/share`;
+    for (const url of [shared, other, page]) {
+      await goTo(url, true);
+      await until(`tab ${url}`, async () => { await command("state"); return activeTabState()?.url === url; });
+    }
+    const { sessionId } = await session("/share");
+    const plain = async (expression) =>
+      (await send("Runtime.evaluate", { expression, userGesture: false, awaitPromise: true, returnByValue: true }, sessionId)).result.value;
+    await until("loaded", async () => (await plain(`document.readyState`)) === "complete");
+    // Without a click: refused at once, no picker (the engine wouldn't pass it either).
+    const noClick = await plain(`navigator.mediaDevices.getDisplayMedia({ video: true }).then(() => "ok", (e) => e.name)`);
+    assert(noClick === "InvalidStateError", `without a click: ${noClick}`);
+    await settle();
+    assert(ss().picker.open === null, "a picker opened without a click");
+    const ask = (options) => evaluate(sessionId, `window.__share = navigator.mediaDevices.getDisplayMedia(${options}).then(
+      (s) => { window.__stream = s; return "ok:" + s.getVideoTracks()[0].getSettings().displaySurface; }, (e) => "err:" + e.name); "asked"`);
+    const outcome = () => until("page's answer", async () => {
+      const r = await evaluate(sessionId, `window.__share`);
+      return typeof r === "string" ? r : null;
+    }, 8000);
+    const track = () => evaluate(sessionId, `window.__stream ? window.__stream.getVideoTracks()[0].readyState : "none"`);
+    const pageEntry = entryOfTab(tabFor("/share").id).id, sharedEntry = entryOfTab(tabFor("?shared").id).id,
+      otherEntry = entryOfTab(tabFor("?other").id).id;
+
+    // The picker: Tabs first, this tab first, nothing chosen, the frame's origin.
+    await ask(`{ video: true, audio: true }`);
+    const seen = Date.now();
+    let p = await until("picker", picker);
+    assert(p.origin === origin && p.segment === "Tabs" && p.selected === null && !p.shareEnabled && p.activeTab &&
+      p.items[0].self && p.items[0].title === "Share", `picker ${JSON.stringify(p)}`);
+    assert(state().panels.open?.name === "sharePicker", `panel ${JSON.stringify(state().panels.open)}`);
+    const early = await commandResult("share press cancel");
+    if (Date.now() - seen < 350) assert(early === "not ready", `a press in the first 0.5 s: ${early}`);
+    await sleep(600);
+    p = await picker();
+    const index = p.items.findIndex((i) => i.title === "Page B");
+    assert(index > 0 && p.items.some((i) => i.title === "Page C"), `tabs ${JSON.stringify(p.items)}`);
+    assert((await commandResult("share press share")) === "nothing chosen", "Share worked with nothing chosen");
+    await command(`share pick ${index}`);
+    await snapShare("snap", "picker-tabs");
+    p = await picker();
+    assert(p.selected === index && p.shareEnabled && p.audio?.label === "Share tab audio" && p.audio.on, `chosen ${JSON.stringify(p)}`);
+    await command("share press share");
+    const answer = await outcome();
+    assert(answer === "ok:browser", `page got ${answer}`);
+    assert(ss().picker.last?.answer === "share" && ss().picker.last.kind === "tab" && ss().picker.last.audio === "tab", `last ${JSON.stringify(ss().picker.last)}`);
+
+    // Sharing: the marks, the note on the sharing tab, the ring on the shared one.
+    const live = () => ss().shares.live;
+    await until("share live", async () => { await command("state"); return live().some((l) => l.capturer === tabFor("/share").id && l.kind === "tab" && l.captured === tabFor("?shared").id); });
+    const marks = async () => { await command("state"); return state().sidebarFrames.shareMarks ?? ""; };
+    await until("row marks", async () => { const m = await marks(); return m.includes(`${sharedEntry}=shared`) && m.includes(`${pageEntry}=sharing`); }, 3000);
+    await until("note", async () => { await command("state"); return ss().window.note === "Sharing another tab" && state().noteText.includes("Sharing another tab"); }, 3000);
+    await sleep(500);
+    await snapShare("windowsnap", "window-sharing-tab");
+    assert(state().notes.spots.top?.detail === origin && state().notes.spots.top.held && !ss().window.ring, `note ${JSON.stringify(state().notes.spots.top)}`);
+    await command(`row ${sharedEntry}`);
+    await until("this tab", async () => { await command("state"); return ss().window.note === "Sharing this tab" && ss().window.ring; }, 3000);
+    assert(state().notes.spots.top.actions.join() === "Stop Sharing,Hide", `actions ${JSON.stringify(state().notes.spots.top.actions)}`);
+    assert(!ss().window.ringTag, "the ring's tag shows under the note");
+    await sleep(500);
+    await snapShare("windowsnap", "window-shared-tab");
+    // ✕ puts the note away: the ring's own "Shared" tag says it instead.
+    await sleep(100);
+    await command("note press top 2");
+    await until("tag", async () => { await command("state"); return ss().window.note === null && ss().window.ringTag; }, 3000);
+    // Another tab: Share This Tab moves the share there; the stream goes on.
+    await command(`row ${otherEntry}`);
+    await until("other tab", async () => { await command("state"); return ss().window.note === "Sharing another tab" && !ss().window.ring; }, 3000);
+    assert(state().notes.spots.top.actions.join() === "Share This Tab,Stop,Hide", `actions ${JSON.stringify(state().notes.spots.top.actions)}`);
+    await sleep(600);
+    await command("note press top 1");
+    await until("moved", async () => { await command("state"); return live().some((l) => l.captured === tabFor("?other").id) && ss().window.ring; }, 5000);
+    await until("marks moved", async () => { const m = await marks(); return m.includes(`${otherEntry}=shared`) && !m.includes(sharedEntry); }, 3000);
+    assert((await track()) === "live", "the stream ended on Share This Tab");
+    // The shared row's mark stops it: the track ends, and the marks, note and ring go.
+    await command(`share mark ${otherEntry}`);
+    await until("track ended", async () => (await track()) === "ended", 5000);
+    await until("share over", async () => { await command("state"); return live().length === 0 && ss().window.note === null && !ss().window.ring && !state().noteText.includes("Sharing"); }, 5000);
+    assert(!(await marks()).includes("="), `marks left ${state().sidebarFrames.shareMarks}`);
+
+    // Cancel; a tab switch puts it away and back shows it again; Escape is "no"; Return does nothing.
+    await command(`row ${pageEntry}`);
+    await until("page again", async () => { await command("state"); return activeTabState()?.url === page; });
+    await ask(`{ video: true }`);
+    await until("picker again", picker);
+    await sleep(600);
+    await command("key return");
+    assert(await picker(), "Return closed the picker");
+    await command("share press cancel");
+    assert((await outcome()) === "err:NotAllowedError", "Cancel didn't refuse");
+    await ask(`{ video: true }`);
+    await until("picker for the switch", picker);
+    await command(`row ${sharedEntry}`);
+    await until("put away", async () => { await command("state"); return ss().picker.open === null && ss().picker.waiting === 1; });
+    await command(`row ${pageEntry}`);
+    await until("shown again", picker);
+    await command("share escape");
+    assert((await outcome()) === "err:NotAllowedError", "Escape didn't refuse");
+
+    // A page that asks for a window opens on Windows: no permission, so a line and Open Settings, nothing listed.
+    await ask(`{ video: { displaySurface: "window" }, selfBrowserSurface: "exclude" }`);
+    p = await until("window picker", picker);
+    assert(p.segment === "Windows" && p.needsPermission && p.items.length === 0 && /Screen Recording/.test(p.message), `windows ${JSON.stringify(p)}`);
+    await snapShare("snap", "picker-no-permission");
+    await sleep(600);
+    await command("share press settings");
+    await command("share segment 0");
+    p = await picker();
+    assert(!p.items.some((i) => i.self), `own tab listed though excluded ${JSON.stringify(p.items)}`);
+    await command("share permission on");
+    await command("share segment 2");
+    p = await until("screens", async () => { const o = await picker(); return o.items.length === 1 && o; });
+    assert(p.segment === "Screen" && p.items[0].kind === "screen" && !p.needsPermission, `screens ${JSON.stringify(p)}`);
+    await command("share segment 1");
+    p = await until("windows", async () => { const o = await picker(); return o.items.length === 2 && o; });
+    await command("share pick 0");
+    await snapShare("snap", "picker-windows");
+    p = await picker();
+    assert(p.audio === null, `audio offered without audio asked ${JSON.stringify(p.audio)}`);
+    await command("share press share");
+    const windowAnswer = await outcome();
+    assert(windowAnswer.startsWith("err:"), `a fake window shared: ${windowAnswer}`);
+    assert(ss().picker.last?.kind === "window" && ss().picker.last.source === "window:4242:0", `last ${JSON.stringify(ss().picker.last)}`);
+    await command("share permission off");
+    // Chrome's own bar: hidden as soon as it's there.
+    // (The window attempt above can bring Chrome's real bar up before its capture fails; it's hidden too.)
+    await command("state");
+    const bars = ss().shares.hiddenBars;
+    await command("share fakebar");
+    await settle();
+    assert(ss().shares.hiddenBars === bars + 1, `hidden bars ${ss().shares.hiddenBars}`);
+    for (const id of [pageEntry, otherEntry, sharedEntry]) {
+      await command(`row ${id}`);
+      await command("menu closeTab");
     }
   },
   async "back-forward-list"() {

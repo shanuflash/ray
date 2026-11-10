@@ -14,6 +14,8 @@ enum SidebarRowAction {
   case duplicate
   /// Mute or Unmute: the tab's sound.
   case toggleMute
+  /// The share mark's click: stops the share the tab is in (shared or sharing).
+  case stopSharing
   /// Move to › Pinned (the end of the pinned tabs) and Move to › Today (its top), from anywhere.
   case moveToPinned, moveToToday
   /// Edit Pinned Page › Replace Pinned URL with Current, and Edit…'s inline field (`setPinnedURL` commits it).
@@ -223,6 +225,12 @@ final class SidebarView: NSView {
     return tab.muted ? .muted : tab.audible ? .playing : nil
   }
 
+  /// A tab's share mark (`ScreenShares`): the tab being shared, or the tab sharing.
+  static func share(for entry: SidebarEntry) -> ShareMark? {
+    guard !entry.isFolder, entry.isLive, let tab = entry.tab, !tab.closed else { return nil }
+    return ScreenShares.shared.mark(for: tab)
+  }
+
   override init(frame: NSRect) {
     super.init(frame: frame)
     toggleButton.target = self
@@ -350,6 +358,10 @@ final class SidebarView: NSView {
       row.onSound = { [weak self] in
         guard let self else { return }
         self.delegate?.sidebar(self, perform: .toggleMute, on: entry)
+      }
+      row.onShare = { [weak self] in
+        guard let self else { return }
+        self.delegate?.sidebar(self, perform: .stopSharing, on: entry)
       }
       row.menuProvider = { [weak self] in self?.menu(for: entry) }
     }
@@ -1123,6 +1135,12 @@ final class SidebarView: NSView {
     return row.pressSound()
   }
 
+  /// For tests: a click on the share mark of an entry's row; false when the row shows none.
+  func pressShareMark(of id: UUID) -> Bool {
+    guard let row = shownViews.first(where: { $0.1.id == id })?.0 as? SidebarRowView else { return false }
+    return row.pressShare()
+  }
+
   /// Frames of the tiles and rows in window coordinates with a top-left origin, for tests.
   var debugFrames: [String: String] {
     guard let window, let height = window.contentView?.bounds.height else { return [:] }
@@ -1163,6 +1181,9 @@ final class SidebarView: NSView {
       let icon = (view as? SidebarRowView)?.iconView ?? (view as? FavoriteTileView)?.iconView
       return icon.map { PixelGrid.offGrid($0) > 0.01 } ?? false
     }.map { $0.1.id.uuidString }.joined(separator: ",")
+    frames["shareMarks"] = shownViews.compactMap { view, entry in
+      ((view as? SidebarRowView)?.shareShown ?? (view as? FavoriteTileView)?.shareShown).map { "\(entry.id.uuidString)=\($0.rawValue)" }
+    }.sorted().joined(separator: "|")
     frames["sounds"] = shownViews.compactMap { view, entry in
       ((view as? SidebarRowView)?.soundShown ?? (view as? FavoriteTileView)?.soundShown).map { "\(entry.id.uuidString)=\($0.rawValue)" }
     }.sorted().joined(separator: "|")
@@ -1954,6 +1975,10 @@ final class FavoriteTileView: NSView, Liftable {
   /// menu mutes; the mark takes no click.
   private let soundBadge = NSImageView()
   private(set) var soundShown: SidebarView.Sound?
+  /// The share mark on a favorite: an 8 pt filled screen (shared, in the profile's colour) or a red dot (sharing) in
+  /// the tile's bottom left. The row menu has nothing for it; it takes no click.
+  private let shareBadge = NSImageView()
+  private(set) var shareShown: ShareMark?
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -1971,6 +1996,9 @@ final class FavoriteTileView: NSView, Liftable {
     soundBadge.contentTintColor = .secondaryLabelColor
     soundBadge.isHidden = true
     addSubview(soundBadge)
+    shareBadge.symbolConfiguration = .init(pointSize: 8, weight: .regular)
+    shareBadge.isHidden = true
+    addSubview(shareBadge)
     addTrackingArea(NSTrackingArea(
       rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
@@ -2002,6 +2030,7 @@ final class FavoriteTileView: NSView, Liftable {
     // Arc's 16 pt favicon.
     icon.frame = PixelGrid.align(NSRect(x: (bounds.width - 16) / 2, y: (bounds.height - 16) / 2, width: 16, height: 16), in: self)
     soundBadge.frame = NSRect(x: bounds.width - 4 - 12, y: 3, width: 12, height: 10)
+    shareBadge.frame = NSRect(x: 4, y: 3, width: 12, height: 10)
     residency.placeDot(at: CGPoint(x: bounds.midX, y: 6))
   }
 
@@ -2074,6 +2103,15 @@ final class FavoriteTileView: NSView, Liftable {
         NSImage(systemSymbolName: $0 == .muted ? "speaker.slash.fill" : "speaker.wave.2.fill", accessibilityDescription: nil)
       }
     }
+    let share = SidebarView.share(for: entry)
+    if share != shareShown {
+      shareShown = share
+      shareBadge.isHidden = share == nil
+      shareBadge.image = share.flatMap {
+        NSImage(systemSymbolName: $0 == .shared ? "rectangle.inset.filled" : "circle.fill", accessibilityDescription: nil)
+      }
+      shareBadge.contentTintColor = share == .shared ? ProfileColor.accent : .systemRed
+    }
     toolTip = entry.displayTitle
     needsDisplay = true
     updateHover()
@@ -2134,6 +2172,12 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   /// muted (owner's pick, `docs/mocks/tab-details.html`), never hidden by the hover's close button.
   private let soundButton = NSButton()
   private(set) var soundShown: SidebarView.Sound?
+  /// The share mark, in the sound mark's slot (the sound mark moves after it): the shared tab's filled screen in the
+  /// profile's colour, the sharing tab's red dot (owner's pick A, `docs/mocks/screen-share.html`). Its click stops
+  /// the share.
+  var onShare: (() -> Void)?
+  private let shareButton = NSButton()
+  private(set) var shareShown: ShareMark?
   private let slash = NSTextField(labelWithString: "/")
   private let title = NSTextField(labelWithString: "")
   private let subtitle = NSTextField(labelWithString: "")
@@ -2179,6 +2223,13 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     soundButton.refusesFirstResponder = true
     soundButton.isHidden = true
     soundButton.wantsLayer = true
+    shareButton.isBordered = false
+    shareButton.imagePosition = .imageOnly
+    shareButton.target = self
+    shareButton.action = #selector(stopSharing)
+    shareButton.refusesFirstResponder = true
+    shareButton.isHidden = true
+    shareButton.wantsLayer = true
     chevron.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)
     chevron.symbolConfiguration = .init(pointSize: 9, weight: .semibold)
     chevron.contentTintColor = .tertiaryLabelColor
@@ -2201,7 +2252,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     countLabel.alignment = .right
     countLabel.isHidden = true
     folderIcon.isHidden = true
-    [icon, folderIcon, soundButton, slash, title, subtitle, closeButton, chevron, countLabel].forEach(addSubview)
+    [icon, folderIcon, soundButton, shareButton, slash, title, subtitle, closeButton, chevron, countLabel].forEach(addSubview)
     addTrackingArea(NSTrackingArea(
       rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
@@ -2235,7 +2286,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     if collapsing { return nil }
     guard let hit = super.hitTest(point) else { return nil }
     if let editor, hit === editor || hit.isDescendant(of: editor) { return hit }
-    if hit === doneButton || hit === soundButton { return hit }
+    if hit === doneButton || hit === soundButton || hit === shareButton { return hit }
     return hit === closeButton || hit.isDescendant(of: closeButton) ? hit : self
   }
 
@@ -2286,6 +2337,39 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
 
   @objc private func close() { onClose?() }
   @objc private func toggleSound() { onSound?() }
+  @objc private func stopSharing() { onShare?() }
+
+  /// For tests: the share mark's own click.
+  func pressShare() -> Bool {
+    guard shareShown != nil, !shareButton.isHidden else { return false }
+    shareButton.performClick(nil)
+    return true
+  }
+
+  private func showShare(_ share: ShareMark?) {
+    // The profile's colour may have changed since.
+    if let share { shareButton.contentTintColor = share == .shared ? ProfileColor.accent : .systemRed }
+    guard share != shareShown else { return }
+    let appearing = shareShown == nil
+    shareShown = share
+    shareButton.isHidden = share == nil
+    needsLayout = true
+    guard let share else { return }
+    let shared = share == .shared
+    shareButton.image = NSImage(systemSymbolName: shared ? "rectangle.inset.filled" : "circle.fill",
+                                accessibilityDescription: "Stop Sharing")
+    shareButton.symbolConfiguration = .init(pointSize: shared ? 12 : 7, weight: .regular)
+    shareButton.contentTintColor = shared ? ProfileColor.accent : .systemRed
+    shareButton.toolTip = "Stop Sharing"
+    if appearing, window != nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+      let fade = CABasicAnimation(keyPath: "opacity")
+      fade.fromValue = 0
+      fade.toValue = 1
+      fade.duration = 0.2
+      fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
+      shareButton.layer?.add(fade, forKey: "appear")
+    }
+  }
 
   /// For tests: the sound mark's own click.
   func pressSound() -> Bool {
@@ -2334,6 +2418,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     slash.isHidden = true
     closeButton.isHidden = true
     showSound(nil)
+    showShare(nil)
   }
 
   func show(_ entry: SidebarEntry, icon image: NSImage?, selected: Bool) {
@@ -2354,6 +2439,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     icon.alphaValue = SidebarView.iconAlpha(for: entry)
     residency.show(entry, in: self)
     showSound(SidebarView.sound(for: entry))
+    showShare(SidebarView.share(for: entry))
     slash.isHidden = !away
     title.stringValue = entry.displayTitle
     title.textColor = .labelColor
@@ -2379,6 +2465,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     let turns = animatesFold && shownFolder == entry.id && chevronOpen != nil && chevronOpen != open
     icon.isHidden = true
     showSound(nil)
+    showShare(nil)
     folderIcon.isHidden = false
     folderIcon.show(color: entry.color, icon: entry.icon)
     folderIsOpen = open
@@ -2565,9 +2652,12 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     // To the half point: rows are 41 pt, so a whole-point frame put the icon 0.5 pt off their middle.
     folderIcon.frame = PixelGrid.align(NSRect(x: 7, y: ((mid - 9) * 2).rounded() / 2, width: 20, height: 18), in: self)
     residency.placeDot(at: CGPoint(x: 3.5, y: mid))
-    // The sound mark between the favicon and the title (or the pinned tab's slash), which move over for it.
-    let soundShift: CGFloat = soundShown == nil ? 0 : 18
-    soundButton.frame = NSRect(x: 29, y: mid - 8, width: 18, height: 16)
+    // The share and sound marks between the favicon and the title (or the pinned tab's slash), which move over for
+    // them.
+    let shareShift: CGFloat = shareShown == nil ? 0 : 18
+    let soundShift: CGFloat = shareShift + (soundShown == nil ? 0 : 18)
+    shareButton.frame = NSRect(x: 29, y: mid - 8, width: 18, height: 16)
+    soundButton.frame = NSRect(x: 29 + shareShift, y: mid - 8, width: 18, height: 16)
     slash.frame = NSRect(x: 28 + soundShift, y: mid - 11, width: 10, height: 22)
     let textX: CGFloat = (away ? 41 : 35) + soundShift
     closeButton.frame = NSRect(x: bounds.width - 30, y: mid - 11, width: 22, height: 22)

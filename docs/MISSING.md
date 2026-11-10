@@ -69,7 +69,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
    draws it); see Known limitations 45.
 4. ~~Links that open other apps: `mailto:`, Zoom, Slack… (`externalAppRequest`)~~ (Done).
 5. Device pickers: WebUSB, Bluetooth, HID, Serial (`deviceChooser`); requests get nothing.
-6. Screen-share picker (`allowDesktopCapture`, "share this tab instead").
+6. ~~Screen-share picker (`allowDesktopCapture`, "share this tab instead")~~ (Done). See Known limitations 51.
 7. Cast (`castDialog`, `castRoutes`).
 8. ~~A note when a popup is blocked, with "always allow" (`didBlockPopup`, `openBlockedPopup`)~~ (Done).
 9. ~~Crashed tab page and the "page unresponsive" dialog (`rendererGone`, `tabBecameUnresponsive`)~~ (Done).
@@ -370,11 +370,20 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     your own takes its icon's colour only once that icon is cached (its front page visited), else the profile's.
     The unscoped field keeps the magnifier; Arc shows the default engine's icon there. Fix: list the built-ins in
     `SettingsSearchPane` with a switch each; fetch the icon by host.
+51. **Screen sharing gaps** (2026-11-10). Chrome's floating share bar is hidden by Ray after it appears (found by its
+    shape: a borderless views widget at the status level on every Space); an engine fixup that skips it when Ray's
+    grant applies would be cleaner (next engine rebuild). Windows and screens need macOS Screen Recording permission;
+    Crest's way (macOS's own content-sharing picker, no permission) needs engine work (a `DesktopMediaPicker` that
+    opens `SCContentSharingPicker`). Capturing Ray's own window goes through macOS (`window:<id>:0`): unverified in
+    tests (no permission there), check on a real Mac. Extensions' `chrome.desktopCapture` still gets Chrome's
+    picker. Shares started without Ray's picker show as "Sharing your screen" (Ray can't tell the kind). The note
+    shows only in windows of the sharing tab's profile; Chrome's tab-sharing infobar stays undrawn.
 
 ## Done
 
 | What | When |
 |---|---|
+| Screen sharing in Ray's own look: a picker over the asking tab (Tabs / Windows / Screen with pictures, deny by default, full origin, 0.5 s guard), a held note at the top centre (Stop Sharing, Share This Tab), share marks on the rows, a ring round the shared page; Chrome's picker and floating bar gone; Ray's own window shares through macOS | 2026-11-10, `feat: own screen share picker and indicators` |
 | Back/forward swipe shows Dia's frosted chip with a chevron (grows and ticks once letting go navigates) instead of Chrome's dark half-circle | 2026-11-10, `feat: dia swipe chip` |
 | Arc's Tab to Search: the start of a site's name offers "Search YouTube  Tab" at the field's end; Tab scopes with a pill in the site's colour, a pulse of it and the row filled with it; Arc's built-in site searches (YouTube, Wikipedia, GitHub, Google Maps…) | 2026-11-10, `feat: arc tab to search` |
 | Command bar: ↑ ↓ and Tab put the chosen row in the field (a search's query, a page's address; menu commands and settings keep what you typed), Escape brings back what you typed, typing goes on from the field (Known limitation 42) | 2026-11-10, `feat: bar arrows fill field` |
