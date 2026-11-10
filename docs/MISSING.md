@@ -52,6 +52,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 16. Sync between Macs.
 17. Collapse the pinned section: a "Pinned" toggle on the divider above Today; collapsed, only the entry holding
     the active tab shows (Ardia 0.2.43-nightly.4, its most-asked issue).
+18. Unread counts on tabs: a web app's count on its pinned tab, favorite or row, from the page title, the Badging
+    API or a favicon dot (Ardia 0.2.45; Arc showed favicons' own dots only).
 
 **Left out on purpose:** Arc Max's AI features.
 
@@ -259,7 +261,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 29. **Private-window guard lives in Host only.** Ray's engine (Ardia 0.2.42) lets most `ac_*` calls run with
     `offTheRecord` unchecked and relies on Host to refuse; Ardia's engine-4d8c64033b08 refuses every call for a
     private profile unless it is marked `kAllow`, rejects empty args for sensitive calls, and zeroes decrypted
-    passwords (two new patches). Fix: take that engine (`docs/ARDIA-WATCH.md` item 2). Found 2026-10-30.
+    passwords (two new patches). Fix: take that engine (`docs/ARDIA-WATCH.md` item 1). Found 2026-10-30.
 
 30. **Folders: what's left.** (Found building Today folders, 2026-10-31.)
    - A Today tab reopened with ⇧⌘T comes back outside its folder: `ClosedTab` keeps `parentID` but `reopen` only
@@ -321,6 +323,22 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     fallback, a click or with the window key and on screen), so whether they show in Ray is untried by hand. The
     prompt can't show the password (the engine gives only its length) and there's no key icon to bring a dismissed
     prompt back (Chrome's omnibox has one). No "Passwords" manual fallback (Ardia's `autofill passwords` command).
+41. **Any page can open Chrome's screen-share picker without a click** (security, not tried). Ray has no picker of
+    its own (Chrome 6) and no `getDisplayMedia` shim, so a page calling it while loading, or from an about:blank
+    iframe, gets Chrome's picker, whose live ScreenCaptureKit thumbnails can flood replayd/tccd with permission
+    checks (it froze input on the owner's Mac in Ardia's test). Ardia's engine now refuses native display capture
+    unless the host's picker asked (`b18165de`, v0.2.45). Fix: that engine (`docs/ARDIA-WATCH.md` item 1a) or an
+    `engine-ray` fixup, then a picker behind a click; add a check. Found 2026-11-10.
+42. **Command bar: arrowing moves only the highlight.** Chrome, Dia and now Ardia (0.2.45) put the chosen row in the
+    field (a search's query, a page's address) and Escape restores what you typed. Found 2026-11-10.
+43. **Engine leaves Gemini in Chrome (glic) on.** Helium keeps `kGlic`, so every tab carries glic's tab features
+    (an Ardia crash, #954, was in one's destructor). Fix: disable the glic features in `ac_main_delegate.cc`
+    (Ardia `0365b06a`). Found 2026-11-10.
+44. **Same-site link clicks may flash blank for ~60 ms** (not tried): the RenderViewHost swap hides the old page view,
+    which drops its compositor before the new one draws. Ardia's `chromium-keep-old-frame-on-swap.patch` (v0.2.45)
+    keeps the old frame. Also likely shared, not tried: Apple Store guest checkout ending on "Page Not Found"
+    (`chromium-widevine-without-cdm.patch`), and on macOS 27 a window dragged to another display sliding or shrinking
+    after the drop. Found 2026-11-10.
 
 ## Done
 
