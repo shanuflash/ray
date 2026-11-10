@@ -368,6 +368,212 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     downloadsOpen ? closeDownloads() : showDownloads()
   }
 
+  // MARK: Bookmarks
+
+  /// The bookmarks panel above the sidebar's bookmark button, over the sidebar as the downloads list is
+  /// (`BookmarksPanel.swift`); a peeking sidebar stays out while it's open.
+  private var bookmarksPanel: PanelHandle?
+  private(set) var bookmarksList: BookmarksPanelView?
+  var bookmarksOpen: Bool { bookmarksPanel?.isOpen == true }
+  /// For the state log: what the panel and the menu last opened, and how many tabs Open All last asked about.
+  private var lastBookmarkOpened: [String: Any]?
+  private var openAllAsked: Int?
+  /// Open All's question while it's up (tests answer it).
+  private(set) weak var openAllQuestion: PanelQuestion?
+
+  /// Opens the panel (or, already open, keeps it); `reveal` shows that bookmark, `rename` starts its name field.
+  func showBookmarks(reveal id: String? = nil, rename: Bool = false) {
+    Bookmarks.shared.start()
+    if let list = bookmarksList, bookmarksOpen {
+      if let id { list.reveal(id, rename: rename) }
+      return
+    }
+    if state.sidebarHidden && !peeking { beginPeek() }
+    sidebar.layoutSubtreeIfNeeded()
+    let list = BookmarksPanelView(frame: .zero)
+    list.maxHeight = max(220, root.bounds.height - 120)
+    list.canPin = !isPrivate
+    list.canBookmarkTab = { [weak self] in self?.bookmarkableURL != nil }
+    list.onOpen = { [weak self] node, foreground in
+      guard let self, let url = node.url else { return }
+      if foreground { self.closeBookmarks() }
+      self.openBookmark(url, foreground: foreground)
+    }
+    list.onOpenAll = { [weak self] folder in
+      self?.closeBookmarks()
+      self?.openBookmarks(folder)
+    }
+    list.onPin = { [weak self] node in
+      self?.closeBookmarks()
+      self?.pinBookmark(node)
+    }
+    list.onCopy = { [weak self] url in
+      let pasteboard = Self.pasteboard
+      pasteboard.clearContents()
+      pasteboard.setString(url, forType: .string)
+      self?.notes.show(.copied("Copied Link") { button in
+        guard let link = URL(string: url) else { return }
+        NSSharingServicePicker(items: [link]).show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+      })
+    }
+    list.onDelete = { [weak self] removed in
+      self?.notes.show(Note("Deleted “\(BookmarksMenu.menuTitle(removed.title))”", icon: .symbol("trash"),
+                            actions: [NoteAction("Undo") { Bookmarks.shared.restore(removed) }], key: "bookmarkDeleted"))
+    }
+    list.onBookmarkTab = { [weak self] in self?.bookmarkTab() }
+    list.onManager = { [weak self] in
+      self?.closeBookmarks()
+      AppController.shared.openPage("ray://bookmarks")
+    }
+    list.onClose = { [weak self] in self?.closeBookmarks() }
+    list.onResize = { [weak self] in self?.bookmarksPanel?.contentChanged() }
+    list.onChange = { [weak self] in self?.logState("bookmarks") }
+    bookmarksList = list
+    let button = sidebar.bookmarksAnchor
+    // Its leading edge on the footer's (the downloads button's), as the downloads list's: over the sidebar.
+    let anchor = PanelAnchor(rect: { [weak self] in
+      guard let self else { return .zero }
+      let marks = self.sidebar.bookmarksAnchor, footer = self.sidebar.downloadsAnchor
+      return marks.convert(marks.bounds, to: self.root).union(footer.convert(footer.bounds, to: self.root))
+    }, below: false, align: .leading, button: button, hold: { [weak button] held in (button as? HoverIconButton)?.isHeld = held })
+    bookmarksPanel = panels.open(PanelSpec(
+      name: "bookmarks", content: list, anchor: anchor, closesOn: [.outsideClick, .tabSwitch, .windowInactive],
+      overSidebar: true, onClose: { [weak self, weak list] in
+        guard let self, self.bookmarksList === list else { return }
+        list?.endRename(commit: true)
+        self.bookmarksList = nil
+        self.bookmarksPanel = nil
+        self.logState("bookmarks")
+      }))
+    // Typing searches at once; Escape clears it, then closes (the panel's own keys, not Panels').
+    window.makeFirstResponder(list.field)
+    if let id { list.reveal(id, rename: rename) }
+    logState("bookmarks")
+  }
+
+  func closeBookmarks() { bookmarksPanel?.close() }
+
+  func toggleBookmarks() { bookmarksOpen ? closeBookmarks() : showBookmarks() }
+
+  /// For tests: a click on the sidebar's bookmark button.
+  func pressBookmarksButton() -> Bool {
+    guard let button = sidebar.bookmarksAnchor as? NSButton, !button.isHiddenOrHasHiddenAncestor else { return false }
+    button.performClick(nil)
+    return true
+  }
+
+  /// The active tab's address, when it's one a bookmark can keep (http(s), chrome:, about:).
+  var bookmarkableURL: String? {
+    guard let url = activeEntry?.currentURL, !url.isEmpty, Self.isPinnable(url) else { return nil }
+    return url
+  }
+
+  /// Bookmarks › Bookmark This Tab…: at the end of the bookmarks bar, its name ready to type, in the panel; a page
+  /// already bookmarked is shown there instead (Chrome's star opens its bookmark).
+  func bookmarkTab() {
+    guard let url = bookmarkableURL, let entry = activeEntry else { return }
+    Bookmarks.shared.start()
+    if let existing = Bookmarks.shared.bookmark(for: url) { return showBookmarks(reveal: existing.id) }
+    let title = entry.isLive ? (entry.tab?.title ?? entry.displayTitle) : entry.displayTitle
+    Bookmarks.shared.add(url: url, title: title) { [weak self] id in self?.showBookmarks(reveal: id, rename: true) }
+  }
+
+  /// Bookmarks › Bookmark All Tabs…: Today's tabs into a new folder at the end of the bar, its name ready to type.
+  func bookmarkAllTabs() {
+    let links = state.today.filter { !$0.isFolder && Self.isPinnable($0.currentURL) }
+      .map { (url: $0.currentURL, title: $0.displayTitle) }
+    guard !links.isEmpty else { return }
+    Bookmarks.shared.start()
+    Bookmarks.shared.addFolder("Saved Tabs", links: links) { [weak self] id in self?.showBookmarks(reveal: id, rename: true) }
+  }
+
+  /// A bookmark in a new Today tab (`foreground`: switched to). Only addresses Ray opens anyway (never javascript:).
+  func openBookmark(_ url: String, foreground: Bool) {
+    guard Self.isPinnable(url) else { return }
+    lastBookmarkOpened = ["url": url, "foreground": foreground]
+    if showNativeSettings(for: url) { return }
+    _ = openToday(url, after: nil, foreground: foreground)
+  }
+
+  /// Chrome asks before opening more than this many at once (`bookmarks::kNumBookmarkUrlsBeforePrompting`).
+  static let openAllWithoutAsking = 15
+
+  /// Open All: a folder's pages (folders inside too) as new Today tabs, the first one shown; over 15 asks first.
+  func openBookmarks(_ folder: Bookmark, confirmed: Bool = false) {
+    let links = folder.links.filter(\.opens).compactMap(\.url)
+    guard !links.isEmpty else { return }
+    if links.count > Self.openAllWithoutAsking, !confirmed {
+      openAllAsked = links.count
+      var close: (() -> Void)?
+      let question = PanelQuestion(
+        title: "Open \(links.count) tabs?", message: "", answers: [("Cancel", false, false), ("Open", true, false)]
+      ) { [weak self] index in
+        close?()
+        if index == 1 { self?.openBookmarks(folder, confirmed: true) }
+      }
+      let handle = panels.open(PanelSpec(
+        name: "openAllBookmarks", content: question, anchor: questionAnchor, closesOn: [.escape, .windowInactive],
+        asks: true, onReturn: { [weak self] in
+          close?()
+          self?.openBookmarks(folder, confirmed: true)
+        }))
+      close = { handle.close() }
+      openAllQuestion = question
+      logState("bookmarks")
+      return
+    }
+    lastBookmarkOpened = ["folder": folder.id, "count": links.count]
+    let entries = links.map { openToday($0, after: nil, foreground: false) }
+    if let first = entries.first { select(first) }
+  }
+
+  /// Add to Pinned: the bookmark, or the folder with what's in it (closed), at the end of Pinned, asleep until
+  /// opened. A page already pinned or a favorite isn't added twice (one open in Today is: pinning keeps it); only pages
+  /// Ray opens. The bookmarks stay.
+  func pinBookmark(_ node: Bookmark) {
+    guard !isPrivate else { return }
+    var known = Set((state.favorites + state.pinned).filter { !$0.isFolder }.map { $0.pinnedURL ?? $0.url })
+    var added: [SidebarEntry] = []
+    func add(_ node: Bookmark, in parent: UUID?) {
+      if let url = node.url {
+        guard node.opens, known.insert(url).inserted else { return }
+        let entry = SidebarEntry(kind: .pinned, url: url, title: node.title)
+        entry.parentID = parent
+        added.append(entry)
+        return
+      }
+      let folder = SidebarEntry.folder(BookmarkRowView.title(of: node), in: parent)
+      folder.isOpen = false
+      added.append(folder)
+      let before = added.count
+      node.children.forEach { add($0, in: folder.id) }
+      // Nothing new inside: no empty folder.
+      if added.count == before { added.removeLast() }
+    }
+    add(node, in: nil)
+    guard !added.isEmpty else {
+      notes.show(Note("Already in Pinned", icon: .symbol("pin"), key: "bookmarkPinned"))
+      return
+    }
+    state.pinned += added
+    state.normalizePinned()
+    changed("pinBookmark")
+  }
+
+  var bookmarksState: [String: Any] {
+    [
+      "open": bookmarksOpen, "panel": bookmarksList?.debug ?? NSNull(), "loaded": Bookmarks.shared.loaded,
+      "count": Bookmarks.shared.allLinks.count, "lastOpened": lastBookmarkOpened ?? NSNull(),
+      "openAllAsked": openAllAsked ?? NSNull(),
+      "button": {
+        let button = sidebar.bookmarksAnchor
+        guard !button.isHidden, let height = window.contentView?.bounds.height else { return "" }
+        let frame = button.convert(button.bounds, to: nil)
+        return String(format: "%.1f,%.1f,%.1f,%.1f", frame.minX, height - frame.maxY, frame.width, frame.height)
+      }(),
+    ]
+  }
+
   // MARK: Test snapshots
 
   /// For tests: the sidebar drawn from its layers (folder icons are layer-only) into `<path>-light.png` and
@@ -2241,12 +2447,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     let rows = Suggestions.build(
       query: query, tabs: tabs, active: activeTab, history: history.entries,
-      searches: wantsSearches ? searches.current(for: trimmed) : [], actions: BarActions.available,
+      searches: wantsSearches ? searches.current(for: trimmed) : [], bookmarks: Bookmarks.shared.barItems,
+      actions: BarActions.available,
       settings: SettingsSearch.barMatches, frecency: history.frecency(of:), favicon: favicons.image(for:),
       name: { [weak self] tab in self?.state.entry(for: tab)?.customTitle })
     bar.show(rows)
     let pages = rows.compactMap { row -> String? in
       if case .history(let url) = row.kind { return url }
+      if case .bookmark(let url) = row.kind { return url }
       return nil
     }
     favicons.load(pages, profile: profile) { [weak self] in self?.refreshSuggestions() }
@@ -2300,7 +2508,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       if let tab = activeTab { focusPage(tab) }
       SettingsWindowController.shared.reveal(target)
       return
-    case .url(let target), .search(let target), .history(let target):
+    case .url(let target), .search(let target), .history(let target), .bookmark(let target):
       url = target
     case .scope:
       return
@@ -2474,6 +2682,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   func sidebarDownloads(_ sidebar: SidebarView, anchor: NSView) {
     toggleDownloads()
+  }
+
+  func sidebarBookmarks(_ sidebar: SidebarView, anchor: NSView) {
+    toggleBookmarks()
   }
 
   func sidebarNewTab(_ sidebar: SidebarView) { beginNewTab() }
@@ -2949,6 +3161,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       ] },
       "downloadsOpen": downloadsOpen,
       "downloadAnswer": downloads.lastAnswer ?? NSNull(),
+      "bookmarks": bookmarksState,
       "downloadsButton": {
         let button = sidebar.downloadsAnchor
         guard !button.isHidden, let height = window.contentView?.bounds.height else { return "" }
@@ -3000,6 +3213,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
             if case .tab(let tab) = row.kind { logged["tab"] = Int(tab.tabId) }
             if case .search(let url) = row.kind { logged["url"] = url }
             if case .history(let url) = row.kind { logged["url"] = url }
+            if case .bookmark(let url) = row.kind { logged["url"] = url }
             if case .url(let url) = row.kind { logged["url"] = url }
             return logged
           },

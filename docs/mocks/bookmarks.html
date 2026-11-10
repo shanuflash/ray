@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Bookmarks</title>
+<style>
+  :root {
+    --page: #f4f4f5; --ink: #1d1d1f; --muted: #6e6e73; --card: #fff; --accent: #9F8CF2; --accent-ink: #fff;
+    --side: #e6e6e6; --web: #fff; --label: #1d1d1f; --sec: rgba(0,0,0,.5); --ter: rgba(0,0,0,.3);
+    --sel: rgba(255,255,255,.85); --fill: rgba(0,0,0,.06); --hair: rgba(0,0,0,.1);
+    --surface: rgba(246,246,248,.92); --surface-edge: rgba(0,0,0,.12); --menu: rgba(236,236,238,.94);
+    --menubar: rgba(240,240,242,.9); --hl: #9F8CF2; --wash: rgba(159,140,242,.18); --skeleton: rgba(0,0,0,.06);
+  }
+  :root[data-theme="dark"] {
+    --page: #161618; --ink: #f5f5f7; --muted: #98989d; --card: #1f1f22; --accent: #A99AF4; --accent-ink: #111;
+    --side: #131313; --web: #232325; --label: #f2f2f2; --sec: rgba(255,255,255,.55); --ter: rgba(255,255,255,.32);
+    --sel: rgba(255,255,255,.14); --fill: rgba(255,255,255,.08); --hair: rgba(255,255,255,.1);
+    --surface: rgba(44,44,49,.92); --surface-edge: rgba(255,255,255,.12); --menu: rgba(40,40,44,.94);
+    --menubar: rgba(30,30,32,.9); --hl: #7E6BE0; --wash: rgba(169,154,244,.2); --skeleton: rgba(255,255,255,.06);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 16px 80px; background: var(--page); color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+  main { max-width: 1060px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  h2 { font-size: 18px; margin: 44px 0 4px; display: flex; gap: 10px; align-items: baseline; }
+  h2 .tag { font-size: 12px; font-weight: 600; color: var(--accent); }
+  p { margin: 0 0 8px; max-width: 780px; }
+  .muted { color: var(--muted); }
+  ul.pc { margin: 8px 0 0; padding-left: 18px; max-width: 780px; }
+  ul.pc li { margin: 2px 0; }
+  .plus::marker { content: "+  "; color: #34a853; font-weight: 700; }
+  .minus::marker { content: "−  "; color: #ea4335; font-weight: 700; }
+  .seg { display: inline-flex; background: var(--fill); border-radius: 8px; padding: 2px; margin: 10px 0 4px; }
+  .seg button { border: 0; background: none; color: var(--ink); padding: 5px 14px; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; }
+  .seg button.on { background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+  table.cmp { border-collapse: collapse; margin-top: 14px; font-size: 13px; width: 100%; max-width: 1060px; }
+  table.cmp th, table.cmp td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+  table.cmp th { color: var(--muted); font-weight: 600; }
+  .stage { margin-top: 16px; overflow-x: auto; padding-bottom: 6px; }
+
+  /* ---------- Window ---------- */
+  .desk { position: relative; width: 820px; padding-top: 24px; }
+  .menubar { position: absolute; top: 0; left: 0; right: 0; height: 24px; background: var(--menubar);
+    display: flex; align-items: center; gap: 2px; padding: 0 10px; font-size: 13px; color: var(--label);
+    border-radius: 10px 10px 0 0; backdrop-filter: blur(20px); }
+  .menubar span { padding: 1px 8px; border-radius: 4px; }
+  .menubar .apple { font-size: 14px; }
+  .menubar b { font-weight: 700; }
+  .menubar .open { background: var(--fill); }
+  .win { width: 820px; height: 470px; border-radius: 0 0 12px 12px; overflow: hidden; display: flex; position: relative;
+    background: var(--side); box-shadow: 0 0 0 0.5px rgba(0,0,0,.25), 0 10px 30px rgba(0,0,0,.16); }
+  .win.solo { border-radius: 12px; }
+  .sb { width: 236px; flex: none; padding: 8px 8px 0; position: relative; display: flex; flex-direction: column; }
+  .lights { display: flex; gap: 8px; padding: 6px 6px 12px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+  .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+  .addr { height: 34px; border-radius: 9px; background: var(--fill); color: var(--sec); font-size: 13px;
+    display: flex; align-items: center; padding: 0 11px; margin-bottom: 10px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-bottom: 10px; }
+  .tiles i { height: 40px; border-radius: 9px; background: var(--fill); display: grid; place-items: center; }
+  .row { height: 34px; display: flex; align-items: center; position: relative; color: var(--label); font-size: 13px; cursor: default; }
+  .row .bg { position: absolute; inset: 1px 0; border-radius: 8px; }
+  .row.sel .bg { background: var(--sel); box-shadow: 0 0.5px 1.5px rgba(0,0,0,.12); }
+  .row.new .bg { background: var(--wash); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .row .ic { margin: 0 9px 0 10px; position: relative; }
+  .row .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; padding-right: 8px; }
+  .row .n { color: var(--sec); font-size: 12px; margin-right: 10px; position: relative; }
+  .row.in1 .ic { margin-left: 26px; }
+  .div { height: 1px; background: var(--hair); margin: 8px 6px; }
+  .label { font-size: 11px; font-weight: 600; color: var(--sec); margin: 2px 8px 4px; }
+  .foot { margin-top: auto; height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 4px; }
+  .foot .btn { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--sec); }
+  .foot .btn.on { background: var(--fill); color: var(--label); }
+  .foot .sp { flex: 1; }
+  .pg { flex: 1; margin: 8px 8px 8px 0; border-radius: 8px; background: var(--web); position: relative; overflow: hidden;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,.08); }
+  .sk { position: absolute; left: 40px; right: 40px; border-radius: 6px; background: var(--skeleton); }
+
+  /* favicons */
+  .fav { width: 16px; height: 16px; border-radius: 4px; display: inline-grid; place-items: center; flex: none;
+    font: 700 9px/1 -apple-system, sans-serif; color: #fff; vertical-align: middle; }
+  .f-gh { background: #24292f; } [data-theme="dark"] .f-gh, [data-theme="dark"] .f-no { box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); } .f-li { background: #5e6ad2; } .f-fi { background: #a259ff; } .f-no { background: #111; }
+  .f-yt { background: #ff0033; } .f-md { background: #0a7cff; } .f-re { background: #ff4500; } .f-ny { background: #567b95; }
+  .f-gm { background: #ea4335; } .f-wk { background: #636466; } .f-sl { background: #4a154b; } .f-ca { background: #e8590c; }
+  .fold { width: 16px; height: 14px; position: relative; flex: none; display: inline-block; vertical-align: middle; }
+  .fold::before { content: ""; position: absolute; left: 0; top: 0; width: 7px; height: 4px; border-radius: 2px 2px 0 0; background: var(--fc, #8E8E93); }
+  .fold::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; top: 2.5px; border-radius: 2.5px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--fc, #8E8E93) 75%, #fff), var(--fc, #8E8E93)); }
+  .fold.blue { --fc: #4C8BF5; } .fold.purple { --fc: #A142F4; }
+  svg.sym { width: 14px; height: 14px; display: block; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ---------- macOS menu ---------- */
+  .menu { position: absolute; background: var(--menu); border-radius: 8px; padding: 5px;
+    box-shadow: 0 0 0 0.5px var(--surface-edge), 0 10px 30px rgba(0,0,0,.22); backdrop-filter: blur(30px);
+    font-size: 13px; color: var(--label); z-index: 5; min-width: 230px; }
+  .menu .mi { height: 22px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border-radius: 4px; white-space: nowrap; }
+  .menu .mi.hl { background: var(--hl); color: #fff; }
+  .menu .mi.hl .k, .menu .mi.hl .ch { color: rgba(255,255,255,.85); }
+  .menu .mi .x { flex: 1; }
+  .menu .mi .k { color: var(--sec); font-size: 12.5px; letter-spacing: 1px; }
+  .menu .mi .ch { color: var(--sec); font-size: 10px; }
+  .menu .mi.dim { color: var(--ter); }
+  .menu .sepm { height: 1px; background: var(--hair); margin: 5px 9px; }
+
+  /* ---------- Surfaces (Ray's panels, command bar) ---------- */
+  .surface { position: absolute; background: var(--surface); border-radius: 14px; backdrop-filter: blur(24px);
+    box-shadow: 0 0 0 0.5px var(--surface-edge), 0 14px 40px rgba(0,0,0,.22); color: var(--label); z-index: 4; }
+  .cb { left: 50%; top: 60px; transform: translateX(-50%); width: 600px; padding: 0 0 6px; }
+  .cb .field { height: 52px; display: flex; align-items: center; padding: 0 18px; font-size: 18px; gap: 10px; border-bottom: 0.5px solid var(--hair); }
+  .cb .field .typed { color: var(--label); }
+  .cb .field .caret { width: 1.5px; height: 20px; background: var(--accent); margin-left: -8px; }
+  .cb .r { height: 50px; margin: 0 6px; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 9px; }
+  .cb .r.hl { background: var(--wash); }
+  .cb .r .box { width: 28px; height: 28px; border-radius: 6px; background: var(--fill); display: grid; place-items: center; flex: none; }
+  .cb .r .tx { flex: 1; min-width: 0; display: flex; gap: 8px; align-items: baseline; white-space: nowrap; overflow: hidden; }
+  .cb .r .tx .a { color: var(--sec); font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+  .cb .r .act { font-size: 12px; color: var(--sec); display: flex; gap: 5px; align-items: center; }
+  .cb .r.hl .act { color: var(--label); }
+  .cb .r .act svg { width: 12px; height: 12px; }
+  .callout { position: absolute; font-size: 12px; color: var(--accent); font-weight: 600; z-index: 6; white-space: nowrap; }
+  .callout::before { content: ""; display: inline-block; width: 18px; height: 1.5px; background: var(--accent); vertical-align: middle; margin-right: 6px; }
+
+  /* Bookmarks panel (option B) */
+  .bp { left: 8px; bottom: 46px; width: 320px; padding: 10px 0 8px; }
+  .bp .hd { display: flex; align-items: center; padding: 0 14px 8px; font-weight: 600; font-size: 13px; }
+  .bp .hd .sp { flex: 1; }
+  .bp .hd .plus { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: var(--sec); }
+  .bp .search { margin: 0 10px 6px; height: 28px; border-radius: 7px; background: var(--fill); color: var(--sec); font-size: 13px;
+    display: flex; align-items: center; gap: 6px; padding: 0 9px; }
+  .bp .list { max-height: 270px; overflow: hidden; padding: 0 6px; }
+  .bp .row { height: 30px; }
+  .bp .row .chev { width: 10px; color: var(--ter); font-size: 10px; margin-left: 6px; position: relative; }
+  .bp .row .ic { margin: 0 8px 0 6px; }
+  .bp .row.in1 .chev { margin-left: 22px; }
+  .bp .row.in1 .ic { margin-left: 22px; }
+  .bp .row.in2 .ic { margin-left: 38px; }
+  .bp .row .h { color: var(--sec); font-size: 12px; margin-right: 8px; position: relative; }
+  .bp .row.hov .bg { background: var(--fill); }
+  .bp .ft { border-top: 0.5px solid var(--hair); margin-top: 6px; padding: 8px 14px 0; font-size: 12.5px; color: var(--accent); }
+
+  /* Question (option C) */
+  .q { left: 50%; top: 18px; transform: translateX(-50%); width: 340px; padding: 16px 16px 14px; }
+  .q .qt { display: flex; gap: 12px; }
+  .q .qi { width: 36px; height: 36px; border-radius: 9px; background: var(--wash); display: grid; place-items: center; color: var(--accent); flex: none; }
+  .q .qi svg { width: 18px; height: 18px; }
+  .q h4 { margin: 0 0 3px; font-size: 13.5px; }
+  .q p { margin: 0; font-size: 12.5px; color: var(--sec); }
+  .q .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .pb { height: 28px; padding: 0 14px; border-radius: 7px; font-size: 13px; display: grid; place-items: center; background: var(--fill); color: var(--label); }
+  .pb.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .note { position: absolute; right: 14px; top: 14px; z-index: 4; padding: 8px 12px; border-radius: 10px; font-size: 12.5px;
+    background: var(--surface); box-shadow: 0 0 0 0.5px var(--surface-edge), 0 8px 24px rgba(0,0,0,.16); color: var(--label); }
+  .badge { display: inline-block; margin-left: 4px; font-size: 10.5px; padding: 1px 6px; border-radius: 9px; background: var(--fill); color: var(--sec); position: relative; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Bookmarks in Ray</h1>
+  <p class="muted">MISSING Chrome 1. Today ⌘D pins (Arc's), and imported bookmarks sit in Chrome's model under "Imported from &lt;Browser&gt;", reachable only at chrome://bookmarks. The engine already has what every option needs: <code>ac_bookmarks_tree</code>, <code>ac_bookmarks_apply</code> (add, move, rename, remove), <code>ac_bookmarks_watch</code>, and <code>ac_favicons_get</code>. No engine rebuild for any of them.</p>
+  <div class="seg" id="theme"><button data-t="auto" class="on">Auto</button><button data-t="light">Light</button><button data-t="dark">Dark</button></div>
+
+  <h2>What the others do</h2>
+  <table class="cmp">
+    <tr><th>Arc</th><td>No bookmarks. Import turns them into pinned folders; ⌘D pins. Command bar finds pinned tabs.</td></tr>
+    <tr><th>Chrome</th><td>Bookmarks menu (⌘D, ⇧⌘D all tabs, ⌥⌘B manager, then the bar's folders, Other Bookmarks), bookmarks bar, omnibox ranks bookmarks high.</td></tr>
+    <tr><th>Ardia</th><td>All of Chrome's: menu bar Bookmarks menu built from the model, its own Bookmarks page, a bar (off by default), omnibox rows, "Add to Sidebar as Group" and "Restore Arc Folders as Groups".</td></tr>
+    <tr><th>Crest</th><td>None. ⌘D pins ("Crest keeps a page by pinning its tab").</td></tr>
+    <tr><th>Cra</th><td>None. Import puts bookmarks into the sidebar as pinned folders (Other Bookmarks as its own 🔖 space).</td></tr>
+  </table>
+
+  <!-- ===================== Shared ===================== -->
+  <h2>In every option: the command bar finds bookmarks <span class="tag">shared</span></h2>
+  <p>A bookmark that matches shows as a page row with "Bookmark" on the right (where open tabs say "Switch to Tab"), ranked with the pages you go to; one you've never visited still shows. An open tab on the same address wins and the bookmark row steps aside. Enter opens it in a new Today tab.</p>
+  <div class="stage">
+    <div class="win solo">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="addr">linear.app</div>
+        <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-yt">▶</span></i></div>
+        <div class="row"><span class="bg"></span><span class="ic fold"></span><span class="t">Work</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+        <div class="div"></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+      </div>
+      <div class="pg">
+        <div class="sk" style="top:40px;height:22px;width:40%"></div>
+        <div class="sk" style="top:80px;height:140px"></div>
+        <div class="sk" style="top:240px;height:12px"></div>
+        <div class="sk" style="top:262px;height:12px;right:180px"></div>
+      </div>
+      <div class="surface cb" style="left:258px;width:540px;transform:none">
+        <div class="field"><span class="typed">design sys</span><span class="caret"></span></div>
+        <div class="r hl"><span class="box"><span class="fav f-fi">F</span></span><span class="tx">Design System <span class="a">figma.com/…/Design-System</span></span><span class="act"><svg class="sym" viewBox="0 0 14 14"><path d="M3.5 1.5h7v11L7 10l-3.5 2.5z"/></svg>Bookmark</span></div>
+        <div class="r"><span class="box"><svg class="sym" viewBox="0 0 14 14"><circle cx="6" cy="6" r="4"/><path d="M9 9l3.5 3.5"/></svg></span><span class="tx">design sys</span><span class="act">Search</span></div>
+        <div class="r"><span class="box"><span class="fav f-md">D</span></span><span class="tx">Design Systems Handbook <span class="a">designbetter.co/…/handbook</span></span><span class="act"><svg class="sym" viewBox="0 0 14 14"><path d="M3.5 1.5h7v11L7 10l-3.5 2.5z"/></svg>Bookmark</span></div>
+        <div class="r"><span class="box"><span class="fav f-gh">G</span></span><span class="tx">Design system tokens · Issue #412 <span class="a">github.com/…/issues/412</span></span><span class="act"></span></div>
+        <div class="r"><span class="box"><span class="fav f-li">L</span></span><span class="tx">Design system v2 <span class="a">linear.app/…/DS-118</span></span><span class="act">Switch to Tab</span></div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Where Arc users already look for everything; Chrome users get their bookmarks without learning a new place.</li>
+    <li class="plus">Small: a cached tree from <code>ac_bookmarks_tree</code>, refreshed on <code>bookmarks.changed</code>, matched like page rows.</li>
+  </ul>
+
+  <!-- ===================== A ===================== -->
+  <h2>A. Bookmarks menu in the menu bar <span class="tag">recommended</span></h2>
+  <p>Chrome's and Ardia's menu, built from the model each time it opens: favicons, folders as submenus, "Open All" and "Add to Pinned" at the end of each folder. ⌘D stays Pin Tab (Arc's); "Bookmark This Tab…" has no key until you give it one in Settings › Shortcuts. "Show All Bookmarks" opens chrome://bookmarks, which already works for renaming, sorting and deleting.</p>
+  <div class="stage">
+    <div class="desk">
+      <div class="menubar"><span class="apple"></span><span><b>Ray</b></span><span>File</span><span>Edit</span><span>View</span><span>History</span><span class="open">Bookmarks</span><span>Window</span><span>Help</span></div>
+      <div class="win">
+        <div class="sb">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="addr">github.com</div>
+          <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-yt">▶</span></i></div>
+          <div class="row"><span class="bg"></span><span class="ic fold"></span><span class="t">Work</span></div>
+          <div class="div"></div>
+          <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+        </div>
+        <div class="pg">
+          <div class="sk" style="top:40px;height:22px;width:40%"></div>
+          <div class="sk" style="top:80px;height:140px"></div>
+          <div class="sk" style="top:240px;height:12px"></div>
+        </div>
+      </div>
+      <div class="menu" style="left:304px;top:24px;width:262px">
+        <div class="mi"><span class="x">Bookmark This Tab…</span></div>
+        <div class="mi"><span class="x">Bookmark All Tabs…</span></div>
+        <div class="mi"><span class="x">Show All Bookmarks</span><span class="k">⌥⌘B</span></div>
+        <div class="sepm"></div>
+        <div class="mi hl"><span class="fold blue"></span><span class="x">Imported from Chrome</span><span class="ch">▶</span></div>
+        <div class="mi"><span class="fav f-gh">G</span><span class="x">GitHub</span></div>
+        <div class="mi"><span class="fav f-ny">N</span><span class="x">The New York Times</span></div>
+        <div class="sepm"></div>
+        <div class="mi"><span class="fold"></span><span class="x">Other Bookmarks</span><span class="ch">▶</span></div>
+      </div>
+      <div class="menu" style="left:563px;top:110px;width:236px">
+        <div class="mi"><span class="fav f-li">L</span><span class="x">Linear</span></div>
+        <div class="mi"><span class="fav f-fi">F</span><span class="x">Design System</span></div>
+        <div class="mi"><span class="fav f-no">N</span><span class="x">Team Wiki</span></div>
+        <div class="mi"><span class="fold"></span><span class="x">Reading</span><span class="ch">▶</span></div>
+        <div class="mi"><span class="fold"></span><span class="x">Recipes</span><span class="ch">▶</span></div>
+        <div class="sepm"></div>
+        <div class="mi"><span class="x">Open All (24)</span></div>
+        <div class="mi"><span class="x">Add to Pinned</span></div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Exactly where Chrome switchers look; nothing new on screen for Arc users who never bookmark.</li>
+    <li class="plus">Native <code>NSMenu</code>: no new view to design or animate; searchable from the command bar's actions and macOS's Help search.</li>
+    <li class="plus">"Add to Pinned" turns a folder into a pinned folder (Arc's home for kept pages) whenever you want; the bookmarks stay.</li>
+    <li class="minus">Organising (rename, move, delete) stays on Chrome's chrome://bookmarks page, not Ray's look.</li>
+  </ul>
+
+  <!-- ===================== B ===================== -->
+  <h2>B. Bookmarks panel from the sidebar</h2>
+  <p>A bookmark button in the sidebar footer (next to Downloads; ⌥⌘B) opens an in-window panel over the sidebar, like the downloads list: a search field and the tree as sidebar-like rows, folders opening in place. Right-click: Open in New Tab, Copy Link, Rename…, Delete; a folder adds Open All and Add to Pinned. Rows drag into the sidebar to pin. Plus the menu bar's Bookmarks menu from A.</p>
+  <div class="stage">
+    <div class="win solo">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="addr">github.com</div>
+        <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-yt">▶</span></i></div>
+        <div class="row"><span class="bg"></span><span class="ic fold"></span><span class="t">Work</span></div>
+        <div class="div"></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+        <div class="foot">
+          <span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2v7M4 6.5L7 9.5l3-3M2.5 12h9"/></svg></span>
+          <span class="btn on"><svg class="sym" viewBox="0 0 14 14"><path d="M3.5 1.5h7v11L7 10l-3.5 2.5z"/></svg></span>
+          <span class="sp"></span>
+          <span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2.5v9M2.5 7h9"/></svg></span>
+        </div>
+      </div>
+      <div class="pg">
+        <div class="sk" style="top:40px;height:22px;width:40%"></div>
+        <div class="sk" style="top:80px;height:140px"></div>
+        <div class="sk" style="top:240px;height:12px"></div>
+      </div>
+      <div class="surface bp">
+        <div class="hd">Bookmarks<span class="sp"></span><span class="plus"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2.5v9M2.5 7h9"/></svg></span></div>
+        <div class="search"><svg class="sym" viewBox="0 0 14 14" style="width:12px;height:12px"><circle cx="6" cy="6" r="4"/><path d="M9 9l3.5 3.5"/></svg>Search Bookmarks</div>
+        <div class="list">
+          <div class="row"><span class="bg"></span><span class="chev">▼</span><span class="ic fold blue"></span><span class="t">Imported from Chrome</span><span class="n">24</span></div>
+          <div class="row in1"><span class="bg"></span><span class="chev"></span><span class="ic fav f-li">L</span><span class="t">Linear</span><span class="h">linear.app</span></div>
+          <div class="row in1 hov"><span class="bg"></span><span class="chev"></span><span class="ic fav f-fi">F</span><span class="t">Design System</span><span class="h">figma.com</span></div>
+          <div class="row in1"><span class="bg"></span><span class="chev"></span><span class="ic fav f-no">N</span><span class="t">Team Wiki</span><span class="h">notion.so</span></div>
+          <div class="row in1"><span class="bg"></span><span class="chev">▶</span><span class="ic fold"></span><span class="t">Reading</span><span class="n">9</span></div>
+          <div class="row in1"><span class="bg"></span><span class="chev">▶</span><span class="ic fold"></span><span class="t">Recipes</span><span class="n">6</span></div>
+          <div class="row"><span class="bg"></span><span class="chev"></span><span class="ic fav f-gh">G</span><span class="t">GitHub</span><span class="h">github.com</span></div>
+          <div class="row"><span class="bg"></span><span class="chev">▶</span><span class="ic fold"></span><span class="t">Other Bookmarks</span><span class="n">3</span></div>
+        </div>
+        <div class="ft">Show All Bookmarks</div>
+      </div>
+      <div class="menu" style="left:338px;top:170px;width:200px">
+        <div class="mi"><span class="x">Open in New Tab</span></div>
+        <div class="mi"><span class="x">Copy Link</span></div>
+        <div class="sepm"></div>
+        <div class="mi hl"><span class="x">Pin</span></div>
+        <div class="mi"><span class="x">Rename…</span></div>
+        <div class="sepm"></div>
+        <div class="mi"><span class="x">Delete</span></div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Bookmarks in Ray's own look, organised without leaving the window.</li>
+    <li class="minus">A second place to keep pages next to Pinned: Arc chose one; this muddies it.</li>
+    <li class="minus">Biggest build: a tree view, search, drag between panel and sidebar, rename in place, undo of delete.</li>
+    <li class="minus">One more button in the sidebar footer for something Arc users won't use.</li>
+  </ul>
+
+  <!-- ===================== C ===================== -->
+  <h2>C. Arc's way: bookmarks become pinned</h2>
+  <p>No bookmarks UI. After an import that brought bookmarks (and once for an "Imported from …" folder already there) a question asks to move them into Pinned as a folder, tabs asleep until opened. The command bar still finds whatever stays in Chrome's model, and "Show All Bookmarks" in the command bar opens chrome://bookmarks.</p>
+  <div class="stage">
+    <div class="win solo">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="addr">github.com</div>
+        <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-yt">▶</span></i></div>
+        <div class="row"><span class="bg"></span><span class="ic fold"></span><span class="t">Work</span></div>
+        <div class="row new"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Imported from Chrome</span><span class="n">24</span></div>
+        <div class="row in1"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+        <div class="row in1"><span class="bg"></span><span class="ic fav f-fi">F</span><span class="t">Design System</span></div>
+        <div class="row in1"><span class="bg"></span><span class="ic fold"></span><span class="t">Reading</span><span class="n">9</span></div>
+        <div class="div"></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+      </div>
+      <div class="pg">
+        <div class="sk" style="top:110px;height:22px;width:40%"></div>
+        <div class="sk" style="top:150px;height:140px"></div>
+        <div class="surface q">
+          <div class="qt">
+            <span class="qi"><svg class="sym" viewBox="0 0 14 14"><path d="M3.5 1.5h7v11L7 10l-3.5 2.5z"/></svg></span>
+            <div><h4>Move your Chrome bookmarks to Pinned?</h4><p>24 bookmarks in 3 folders, as one pinned folder.</p></div>
+          </div>
+          <div class="btns"><span class="pb">Not Now</span><span class="pb primary">Move to Pinned</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Most Arc-like: one place for kept pages, nothing new to learn.</li>
+    <li class="minus">Hundreds of bookmarks make a long pinned list (Ray's sidebar is built for tens); Chrome switchers lose the menu they know.</li>
+    <li class="minus">Moving is one way unless we keep both copies; ⌘D in Chrome's sense never exists.</li>
+  </ul>
+</main>
+<script>
+  const root = document.documentElement, seg = document.getElementById("theme");
+  const media = matchMedia("(prefers-color-scheme: dark)");
+  let mode = "auto";
+  const apply = () => root.dataset.theme = mode === "auto" ? (media.matches ? "dark" : "light") : mode;
+  seg.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    mode = b.dataset.t; seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); apply();
+  });
+  media.addEventListener("change", apply); apply();
+</script>
+</body>
+</html>

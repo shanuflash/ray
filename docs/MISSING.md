@@ -60,7 +60,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 ## Chrome features not wired in Ray
 
 **Menus**
-1. Bookmarks UI: ⌘D pins; imported bookmarks live in Chrome's model (`chrome://bookmarks`), with no Ray view.
+1. ~~Bookmarks UI~~ (Done: the Bookmarks panel, menu and command bar rows). Leftovers: Known limitations 41.
 
 **Prompts the engine asks Ray to show (delegate hooks Ray doesn't implement)**
 2. ~~Passwords: the "save password?" prompt~~ (Done). The fill dropdown and "Suggest strong password" are Chrome's own
@@ -354,10 +354,18 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     down off the page as Chrome's, and grows to the page's width at once (Chrome animates it over up to 150 ms); it hasn't been tried with a right-to-left address. The history list has no Chrome "chapter stops" (other sites further back) or favicons for pages the
     favicon store doesn't hold (private windows: none).
 
+41. **Bookmarks panel gaps** (2026-11-05). No drag: rows can't be reordered or moved between folders in the panel,
+    nor dragged into the sidebar to pin (the sidebar takes no drops from outside it; Add to Pinned does it from the
+    menu); moving is Bookmark Manager's (Chrome's page). Bookmark This Tab… puts new ones at the end of the bookmarks
+    bar with no folder choice (Chrome remembers the last folder). No bookmarks bar, on purpose. No Export Bookmarks
+    (engine call `ac_bookmarks_export_html` comes with the next engine, Chrome 16 above). Fix: a drag source on
+    `BookmarkRowView` and `ac_bookmarks_apply`'s `move`, plus outside drops on `SidebarView`.
+
 ## Done
 
 | What | When |
 |---|---|
+| Bookmarks: a panel from the sidebar's footer (⌥⌘B: search, folders in place, open, ⌘-click behind, Rename…, Delete with Undo, Add to Pinned, Open All), the menu bar's Bookmarks menu (Bookmark This Tab…, Bookmark All Tabs…, the bookmarks as menus), "Bookmark" rows in the command bar | 2026-11-05, `feat: bookmarks panel` |
 | Link address on hover at the page's bottom left (above a download's note, aside from the pointer); a sound icon on tabs and favorites (click to mute); back/forward history lists on right-click or hold | 2026-11-05, `feat: link preview, tab sound, history lists` |
 | Page prompts: Ray's own "Open “App”?" for links to other apps (replacing Chrome's dialog; Always allow syncs with Settings › Privacy), "Pop-up blocked" note with Open and Always Allow, a crashed page view with Reload (out of memory, keeps crashing; a tab killed while hidden reloads when shown), "Page not responding" (Wait / Exit Page), "Quit and cancel N downloads?"; fixed two tabs opened in front at once flipping forever (out of memory) | 2026-11-05, `feat: page prompts` |
 | "Save address?", "Update address?" and "Save card?" after a form is sent (Not Now, Save); Settings › Autofill › Save and fill addresses / cards | 2026-11-05, `feat: autofill save prompts` |

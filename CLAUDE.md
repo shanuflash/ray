@@ -488,6 +488,25 @@ publicly or create accounts.
   tab`): Settings › Reopen closed tabs with ⌘Z makes it Edit › Undo's target; outside text it reopens through
   `ClosedTabsMenu`, and in Ray's text fields or an editable page element (the page view's `textInputType`, as
   Ardia reads it) it sends `undo:` on down the responder chain. Check `settings-undo-reopens`.
+- `Bookmarks` (`Host/Bookmarks.swift`): Chrome's bookmark model, the normal profile's (private windows show the same):
+  `Bookmarks.shared` reads the tree (`ac_bookmarks_tree`, roots "bar" and "other"), changes it with ops
+  (`ac_bookmarks_apply`; add, update, move, remove; ids are lowercase UUIDs Ray makes) and reloads on
+  `bookmarks.changed` (`ac_bookmarks_watch`), posting `Bookmarks.didChange`. Only http(s), chrome and about bookmarks
+  open or pin (`Bookmark.opens`; a bookmarklet stays greyed). `BookmarksMenu`: the menu bar's Bookmarks menu (its four
+  commands are AppController's, so Shortcuts and the bar list them: Bookmark This Tab…, Bookmark All Tabs…, Show
+  Bookmarks ⌥⌘B, Bookmark Manager = chrome://bookmarks), then the bar's bookmarks and Other Bookmarks, folders as
+  submenus ending in Open All / Add to Pinned, rebuilt only after a change. `BookmarksPanel.swift`: the owner's pick
+  (`docs/mocks/bookmarks.html` B), a `Panels` panel over the sidebar from the bookmark button beside downloads in its
+  footer, leading edge on the footer's: search (it has the keys; ↑ ↓ Return, → ← open and close folders, Escape clears
+  then closes, so the spec leaves Escape out of `closesOn`), rows with Ray's folder icon, a click opens a new Today tab
+  and closes it, ⌘-click behind; row menus (Open in New Tab, Copy Link, Add to Pinned, Rename… in the row, Delete with an Undo
+  note; folders Open All, which asks past 15, and Add to Pinned). `BrowserWindowController` `// MARK: Bookmarks`:
+  the panel, `bookmarkTab` (a page already bookmarked is revealed, else added to the bar with its name field open),
+  `bookmarkAllTabs`, `openBookmark(s)`, `pinBookmark` (skips pages already pinned or favorites, not open Today tabs).
+  The command bar's `.bookmark` rows ("Bookmark" on the right; a bookmark's frecency lift is an open tab's).
+  Test command `bookmarks state|open|toggle|search|key|click|menu|press|rename|renameto|add|remove|folder|addtab|
+  alltabs|tree|menubar|menubarpress|openall`; state log `bookmarks`; check `bookmarks` (and `surfaces-snap` photographs
+  the panel). Leftovers: MISSING Known limitations 41.
 - Address display: `AddressInput.addressParts(for:)` (lead / host / trail, fragment kept, percent-encoded),
   `unwrapped`/`innerURL(of:)` for `view-source:`, `blob:`, `filesystem:` (one level, like Chrome; the security icon
   judges the inner URL); hosts shown as punycode until Ray has an IDN spoof checker (Ardia's `idn.ts`). Check

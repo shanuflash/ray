@@ -49,6 +49,7 @@ protocol SidebarViewDelegate: AnyObject {
   func sidebarIcon(for entry: SidebarEntry) -> NSImage?
   func sidebarSiteControls(_ sidebar: SidebarView)
   func sidebarDownloads(_ sidebar: SidebarView, anchor: NSView)
+  func sidebarBookmarks(_ sidebar: SidebarView, anchor: NSView)
 }
 
 enum SidebarColors {
@@ -152,6 +153,7 @@ final class SidebarView: NSView {
   private let forwardButton = HoverIconButton.make("arrow.right", label: "Forward", size: 15, history: true)
   private let reloadButton = HoverIconButton.make("arrow.clockwise", label: "Reload", size: 15)
   private let downloadsButton = HoverIconButton.make("arrow.down.circle", label: "Downloads", size: 15)
+  private let bookmarksButton = HoverIconButton.make("bookmark", label: "Bookmarks", size: 15)
   private let privateBadge = PrivateBadge()
   /// Settings › Show the sidebar button: off, the top row has none (⌘S still toggles the sidebar).
   var showsToggle = true {
@@ -239,13 +241,16 @@ final class SidebarView: NSView {
     reloadButton.action = #selector(reload)
     downloadsButton.target = self
     downloadsButton.action = #selector(showDownloads)
+    bookmarksButton.target = self
+    bookmarksButton.action = #selector(showBookmarks)
+    bookmarksButton.setAccessibilityLabel("Bookmarks")
     downloadsRing.fillColor = nil
     downloadsRing.lineWidth = 2
     downloadsRing.lineCap = .round
     downloadsRing.strokeEnd = 0
     downloadsButton.wantsLayer = true
     downloadsButton.layer?.addSublayer(downloadsRing)
-    [windowLights, toggleButton, downloadsButton, backButton, forwardButton, reloadButton, addressPill, tilesView, scrollView]
+    [windowLights, toggleButton, downloadsButton, bookmarksButton, backButton, forwardButton, reloadButton, addressPill, tilesView, scrollView]
       .forEach(addSubview)
     privateBadge.isHidden = true
     addSubview(privateBadge)
@@ -424,6 +429,7 @@ final class SidebarView: NSView {
     backButton.frame = forwardButton.frame.offsetBy(dx: -34, dy: 0)
     // Downloads sit in the sidebar's footer, bottom left, where Arc keeps its footer buttons.
     downloadsButton.frame = NSRect(x: 13, y: bounds.height - 8 - 32, width: 32, height: 32)
+    bookmarksButton.frame = downloadsButton.frame.offsetBy(dx: 34, dy: 0)
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     downloadsRing.frame = downloadsButton.bounds
@@ -1560,6 +1566,10 @@ final class SidebarView: NSView {
   var downloadsAnchor: NSView { downloadsButton }
   /// The back or forward button, for its history list.
   func historyButton(forward: Bool) -> HistoryButton? { (forward ? forwardButton : backButton) as? HistoryButton }
+
+  var bookmarksAnchor: NSView { bookmarksButton }
+
+  @objc private func showBookmarks() { delegate?.sidebarBookmarks(self, anchor: bookmarksButton) }
 
   private func reuse<V: NSView>(_ views: [V], count: Int, in parent: NSView, make: () -> V) -> [V] {
     var views = views

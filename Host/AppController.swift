@@ -34,6 +34,7 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     SearchEngines.install()
     AppLook.start()
     MainMenu.install(target: self)
+    Bookmarks.shared.start()
     installReservedKeyRouting()
     TestCommands.start()
     Updater.shared.start()
@@ -296,6 +297,10 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
   @objc func zoomOut(_ sender: Any?) { _ = current?.zoomCommand("out") }
   @objc func actualSize(_ sender: Any?) { _ = current?.zoomCommand("reset") }
   @objc func showHistory(_ sender: Any?) { openPage("ray://history") }
+  @objc func bookmarkTab(_ sender: Any?) { current?.bookmarkTab() }
+  @objc func bookmarkAllTabs(_ sender: Any?) { current?.bookmarkAllTabs() }
+  @objc func showBookmarks(_ sender: Any?) { (current ?? openMainWindow())?.toggleBookmarks() }
+  @objc func bookmarkManager(_ sender: Any?) { openPage("ray://bookmarks") }
   @objc func clearBrowsingData(_ sender: Any?) { openPage("ray://settings/clearBrowserData") }
   @objc func taskManager(_ sender: Any?) { current?.runChromeCommand(.taskManager) }
 
@@ -361,6 +366,10 @@ extension AppController: NSMenuItemValidation {
     case #selector(togglePin(_:)):
       item.title = current?.activeEntry.map { $0.kind != .today } == true ? "Unpin Tab" : "Pin Tab"
       return current?.activeEntry != nil
+    case #selector(bookmarkTab(_:)):
+      return current?.bookmarkableURL != nil
+    case #selector(bookmarkAllTabs(_:)):
+      return current?.state.today.contains { !$0.isFolder } == true
     case #selector(backToPinned(_:)):
       return current?.activeEntry?.isAwayFromPinned == true
     case #selector(clearToday(_:)):

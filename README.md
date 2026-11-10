@@ -57,6 +57,7 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Asks before a link opens another app; shows blocked pop-ups
   - Its own crashed-page and "not responding" prompts
   - Asks before quitting cancels downloads
+  - Bookmarks in a panel, the menu bar and the command bar
   - JumpCloud Go sign-in
 
 ## Coming
