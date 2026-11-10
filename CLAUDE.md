@@ -472,12 +472,21 @@ publicly or create accounts.
   `EngineCalls.callWithSecret`, which wipes the bytes as soon as the engine has parsed them, bookmarks into one
   "Imported from <Browser>" folder with `ac_bookmarks_apply`). Never another browser's settings. Test builds read
   only `RAY_IMPORT_SOURCE_DIR` (fixtures) and `RAY_IMPORT_SECRET`, never the Keychain (checks `import-browser`).
-- `Onboarding`: the first-run overlay (welcome, where you're coming from, what to bring, moving in, your colour,
-  three keys), shown until "Start browsing" sets `onboarded` in Settings.json: on a new data dir and, once, on every
+- `Onboarding`: the first-run overlay (welcome, where you're coming from, what to bring, moving in, open links in Ray
+  (`defaultBrowser`: Make Default is `GeneralSystem.makeDefaultBrowser`, the flow moves on at macOS's answer; "Not
+  Now" skips; left out when Ray already is the default), your colour, three keys), shown until "Start browsing" sets `onboarded` in Settings.json: on a new data dir and, once, on every
   profile from Ray 0.2.0 and earlier (no key),
   File › Import from Browser… (import steps only) and Ray › Show Welcome Again (⌥, also ⌥⌘,). Test builds show it
   only with `RAY_ONBOARDING=1` (check `onboarding`). `ProfileColor.visible(on:)` keeps accent marks at 3:1 against
   their background (a black profile colour on a dark card).
+- `DefaultBrowserAsk` (`Host/DefaultBrowserAsk.swift`): the note that asks to be the default browser (Chrome's infobar,
+  rarely), bottom right, 3 s after the launch's first normal window: "Ray isn't your default browser" with Never and
+  Make Default (`GeneralSystem`, macOS's confirmation), a 10 s question. Never over the onboarding or in a private
+  window; 14 days after the last ask (the onboarding's step counts), 3 asks at most; Never, or Ray being the default
+  at a launch, ends it for good (Settings.json state `defaultBrowserAsks`, `defaultBrowserAskedAt`,
+  `defaultBrowserNever`). Test builds never ask by themselves unless `RAY_DEFAULT_BROWSER_ASK=1`; test command
+  `defaultask run|reset|days <n>` (run applies the rules now and answers why); state log `defaultBrowserAsk`; check
+  `default-browser-ask`.
 - Page commands (`BrowserWindowController` `// MARK: Page commands`): Print, Save Page As and Task Manager run
   Chrome's own commands (`executeChromeCommand`, ids from chrome_command_ids.h); View Source opens a `view-source:`
   tab; History and Clear Browsing Data open (or switch to) Chrome's pages. Check `page-commands`.
@@ -506,7 +515,7 @@ publicly or create accounts.
   The command bar's `.bookmark` rows ("Bookmark" on the right; a bookmark's frecency lift is an open tab's).
   Test command `bookmarks state|open|toggle|search|key|click|menu|press|rename|renameto|add|remove|folder|addtab|
   alltabs|tree|menubar|menubarpress|openall`; state log `bookmarks`; check `bookmarks` (and `surfaces-snap` photographs
-  the panel). Leftovers: MISSING Known limitations 41.
+  the panel). Leftovers: MISSING Known limitations 48.
 - Address display: `AddressInput.addressParts(for:)` (lead / host / trail, fragment kept, percent-encoded),
   `unwrapped`/`innerURL(of:)` for `view-source:`, `blob:`, `filesystem:` (one level, like Chrome; the security icon
   judges the inner URL); hosts shown as punycode until Ray has an IDN spoof checker (Ardia's `idn.ts`). Check

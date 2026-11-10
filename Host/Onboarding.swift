@@ -3,7 +3,8 @@ import AppKit
 // Ray's first run, and File › Import from Browser…: an overlay over the whole browser window. A veil (the window's
 // own content, blurred within the window and washed, as Ardia's onboarding does) and a centred card in Ray's panel
 // colours, whose steps slide on a spring. The first run walks Welcome → where you're coming from → what to bring →
-// moving in → your colour → three keys; the import runs the middle three only. The data comes from `ImportSession`
+// moving in → open links in Ray (only while Ray isn't the default browser) → your colour → three keys; the import runs
+// the middle three only. The data comes from `ImportSession`
 // (the importer's contract) and nothing else; the importer writes into this window's sidebar as items land.
 
 /// The first launch's whole welcome, or File › Import from Browser…'s import steps alone.
@@ -11,12 +12,12 @@ enum OnboardingMode: String {
   case firstRun, importOnly
 
   var steps: [OnboardingStep] {
-    self == .firstRun ? [.welcome, .source, .items, .importing, .theme, .keys] : [.source, .items, .importing]
+    self == .firstRun ? [.welcome, .source, .items, .importing, .defaultBrowser, .theme, .keys] : [.source, .items, .importing]
   }
 }
 
 enum OnboardingStep: String {
-  case welcome, source, items, importing, theme, keys
+  case welcome, source, items, importing, defaultBrowser, theme, keys
 }
 
 /// One chosen item while it moves in.
@@ -93,6 +94,8 @@ final class OnboardingView: NSView {
   static let footerHeight: CGFloat = 64
 
   let mode: OnboardingMode
+  /// The mode's steps, less the default browser's when Ray already is (decided once, so the dots never jump).
+  let steps: [OnboardingStep]
   var onClose: (() -> Void)?
   /// Called on every change, for the state log.
   var onChange: (() -> Void)?
@@ -125,11 +128,14 @@ final class OnboardingView: NSView {
   private(set) var imported = false
   /// The source the last import ran from (its name titles the done state).
   private var importedFrom: ImportSource?
+  /// macOS is asking whether Ray may be the default browser (its own alert); the flow moves on at its answer.
+  private(set) var askingDefault = false
 
   init(mode: OnboardingMode, browser: BrowserWindowController) {
     self.mode = mode
     self.browser = browser
-    step = mode.steps[0]
+    steps = mode.steps.filter { $0 != .defaultBrowser || !GeneralSystem.shared.isDefaultBrowser }
+    step = steps[0]
     super.init(frame: .zero)
     wantsLayer = true
     veil.material = .fullScreenUI
@@ -145,6 +151,7 @@ final class OnboardingView: NSView {
     backend.sources { [weak self] found in self?.sourcesArrived(found) }
     let center = NotificationCenter.default
     center.addObserver(self, selector: #selector(accentChanged), name: ProfileColor.didChange, object: nil)
+    center.addObserver(self, selector: #selector(generalChanged), name: GeneralSystem.didChange, object: nil)
     settingsObservation = RaySettings.shared.observe(AnySettingKey.all) { [weak self] in self?.settingsChanged() }
   }
 
@@ -223,7 +230,7 @@ final class OnboardingView: NSView {
 
   // MARK: Steps
 
-  private var index: Int { mode.steps.firstIndex(of: step) ?? 0 }
+  private var index: Int { steps.firstIndex(of: step) ?? 0 }
 
   /// Room kept above and below the card: it never touches the window's edges, however small the window.
   static let windowMargin: CGFloat = 40
@@ -276,6 +283,9 @@ final class OnboardingView: NSView {
     case .source: view = SourceStepView(flow: self)
     case .items: view = ItemsStepView(flow: self)
     case .importing: view = ImportingStepView(flow: self)
+    case .defaultBrowser:
+      view = DefaultBrowserStepView(flow: self)
+      DefaultBrowserAsk.shared.askedInOnboarding()
     case .theme: view = ThemeStepView(flow: self)
     case .keys: view = KeysStepView(flow: self)
     }
@@ -349,6 +359,7 @@ final class OnboardingView: NSView {
     case .source, .theme: "Continue"
     case .items: "Import"
     case .importing: mode == .importOnly ? "Done" : "Continue"
+    case .defaultBrowser: "Make Default"
     case .keys: "Start browsing"
     }
   }
@@ -358,6 +369,7 @@ final class OnboardingView: NSView {
     case .source: sourcesLoaded && selectedSource != nil
     case .items: !checked.isEmpty
     case .importing: imported
+    case .defaultBrowser: !askingDefault
     default: true
     }
   }
@@ -367,6 +379,7 @@ final class OnboardingView: NSView {
     switch step {
     case .welcome, .importing: nil
     case .source: mode == .importOnly ? "Cancel" : "Back"
+    case .defaultBrowser: "Not Now"
     default: "Back"
     }
   }
@@ -376,7 +389,7 @@ final class OnboardingView: NSView {
     card.primary.isEnabled = primaryEnabled
     card.back.title = backTitle ?? ""
     card.back.isHidden = backTitle == nil
-    card.dots.count = mode.steps.count
+    card.dots.count = steps.count
     card.dots.index = index
     card.needsLayout = true
   }
@@ -393,7 +406,8 @@ final class OnboardingView: NSView {
       go(to: .items)
     case .items: startImport()
     case .importing:
-      if mode == .importOnly { close() } else { go(to: .theme) }
+      if mode == .importOnly { close() } else { go(to: afterImport) }
+    case .defaultBrowser: makeDefault()
     case .theme: go(to: .keys)
     case .keys: finish()
     }
@@ -402,13 +416,39 @@ final class OnboardingView: NSView {
   private func backPressed() {
     guard !closing, backTitle != nil else { return }
     if step == .source && mode == .importOnly { return close() }
+    // "Not Now": on without asking (the import behind it can't be gone back to).
+    if step == .defaultBrowser { return go(to: .theme) }
     goBack()
   }
 
-  /// "Start fresh instead": nothing to import, straight to the colour.
+  /// "Start fresh instead": nothing to import, straight to what comes after it.
   fileprivate func startFresh() {
     guard step == .source, mode == .firstRun else { return }
-    go(to: .theme)
+    go(to: afterImport)
+  }
+
+  /// After the import (or none): the default browser's step if this flow has it, else the colour.
+  private var afterImport: OnboardingStep { steps.contains(.defaultBrowser) ? .defaultBrowser : .theme }
+
+  /// Make Default: macOS asks ("Use Ray or keep …?", Settings › General's own call); whatever the answer, the flow
+  /// moves on once it's given.
+  private func makeDefault() {
+    guard !askingDefault else { return }
+    let system = GeneralSystem.shared
+    if system.isDefaultBrowser { return go(to: .theme) }
+    askingDefault = true
+    updateFooter()
+    changed()
+    system.makeDefaultBrowser()
+    // Settings › General was already asking: no answer will come for this press.
+    if !system.askingDefault { generalChanged() }
+  }
+
+  @objc private func generalChanged() {
+    guard askingDefault, !GeneralSystem.shared.askingDefault else { return }
+    askingDefault = false
+    updateFooter()
+    if step == .defaultBrowser && !closing { go(to: .theme) } else { changed() }
   }
 
   private func finish() {
@@ -633,7 +673,7 @@ final class OnboardingView: NSView {
     let content = window?.contentView?.bounds ?? .zero
     let source = selectedSource
     return [
-      "mode": mode.rawValue, "step": step.rawValue, "steps": mode.steps.map(\.rawValue), "dot": card.dots.index,
+      "mode": mode.rawValue, "step": step.rawValue, "steps": steps.map(\.rawValue), "dot": card.dots.index,
       "dots": card.dots.count, "closing": closing,
       "title": stepView?.titleLabel.stringValue ?? "",
       "sources": sources.map { source -> [String: Any] in
@@ -658,7 +698,7 @@ final class OnboardingView: NSView {
         if case .failed(let reason) = row.state { out["reason"] = reason }
         return out
       },
-      "progress": importProgress, "running": running, "imported": imported,
+      "progress": importProgress, "running": running, "imported": imported, "askingDefault": askingDefault,
       "keys": (stepView as? KeysStepView)?.keys ?? [],
       "swatch": (stepView as? ThemeStepView)?.swatchSelection ?? NSNull(),
       "primary": card.primary.title, "primaryEnabled": card.primary.isEnabled,
@@ -739,6 +779,8 @@ private enum OnboardingColors {
   static let card = NSColor.dynamic(light: NSColor(white: 0.985, alpha: 1), dark: NSColor(white: 0.16, alpha: 1))
   static let idleDot = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.16), dark: NSColor(white: 1, alpha: 0.2))
   static let boxOff = NSColor.dynamic(light: NSColor(white: 0, alpha: 0.25), dark: NSColor(white: 1, alpha: 0.3))
+  /// An app's tile in the default browser step's picture.
+  static let appTile = NSColor.dynamic(light: .white, dark: NSColor(white: 0.26, alpha: 1))
 
   /// The profile's colour for marks on the card (dots, ticks, the progress line, links, tints): the colour itself,
   /// or as near to it as stays visible there (a black profile colour on the dark card). Filled buttons keep the
@@ -1854,6 +1896,93 @@ fileprivate final class ProgressRowView: NSView {
     placeLine(title, x: 34, mid: mid, width: titleWidth)
     let detailX = title.frame.maxX + 12
     placeLine(detail, x: detailX, mid: mid, width: detailRight - detailX)
+  }
+}
+
+// MARK: Open links in Ray
+
+/// Arc's and Dia's step: links from other apps landing in Ray. Make Default (the footer's) asks macOS; Not Now goes on.
+fileprivate final class DefaultBrowserStepView: OnboardingStepView {
+  private let art = LinksArt()
+
+  override init(flow: OnboardingView) {
+    super.init(flow: flow)
+    titleLabel.stringValue = "Open links in Ray?"
+    subtitleLabel.stringValue = "Links from Mail, Slack and other apps open as tabs here."
+    addSubview(art)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override func place(width: CGFloat, apply: Bool) -> CGFloat {
+    let y = placeHeader(width: width, apply: apply)
+    if apply { art.frame = NSRect(x: Self.inset, y: y, width: width - Self.inset * 2, height: LinksArt.height) }
+    return y + LinksArt.height + 20
+  }
+}
+
+/// Two app tiles (mail, messages) and an arrow into Ray's icon, on a wash of the profile's colour.
+fileprivate final class LinksArt: NSView {
+  static let height: CGFloat = 168
+  private static let tileSize: CGFloat = 52
+  private let tiles = [NSView(), NSView()]
+  private let glyphs = ["envelope.fill", "bubble.left.fill"].map { name -> NSImageView in
+    let view = NSImageView()
+    view.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+      .withSymbolConfiguration(.init(pointSize: 21, weight: .medium))
+    view.contentTintColor = .secondaryLabelColor
+    return view
+  }
+  private let arrow = NSImageView()
+  private let icon = NSImageView()
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.cornerRadius = 12
+    for (tile, glyph) in zip(tiles, glyphs) {
+      tile.wantsLayer = true
+      tile.layer?.cornerRadius = 12
+      tile.layer?.shadowOpacity = 0.12
+      tile.layer?.shadowRadius = 4
+      tile.layer?.shadowOffset = CGSize(width: 0, height: -1)
+      addSubview(tile)
+      tile.addSubview(glyph)
+    }
+    arrow.image = NSImage(systemSymbolName: "arrow.right", accessibilityDescription: nil)?
+      .withSymbolConfiguration(.init(pointSize: 18, weight: .semibold))
+    arrow.contentTintColor = .tertiaryLabelColor
+    addSubview(arrow)
+    icon.image = NSApp.applicationIconImage
+    icon.imageScaling = .scaleProportionallyUpOrDown
+    addSubview(icon)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+
+  override func updateLayer() {
+    layer?.backgroundColor = OnboardingColors.accent(0.1, dark: 0.18).cgColor
+    for tile in tiles { tile.layer?.backgroundColor = OnboardingColors.appTile.cgColor }
+  }
+
+  override func layout() {
+    super.layout()
+    let tile = Self.tileSize, gap: CGFloat = 12, iconSize: CGFloat = 104, arrowWidth: CGFloat = 22
+    let total = tile + 22 + arrowWidth + 18 + iconSize
+    var x = ((bounds.width - total) / 2).rounded()
+    let mid = bounds.height / 2
+    for (index, view) in tiles.enumerated() {
+      let y = (mid - tile - gap / 2 + CGFloat(index) * (tile + gap)).rounded()
+      view.frame = NSRect(x: x, y: y, width: tile, height: tile)
+      glyphs[index].frame = view.bounds.insetBy(dx: 12, dy: 12)
+    }
+    x += tile + 22
+    arrow.frame = NSRect(x: x, y: (mid - 11).rounded(), width: arrowWidth, height: 22)
+    x += arrowWidth + 18
+    icon.frame = NSRect(x: x, y: (mid - iconSize / 2).rounded(), width: iconSize, height: iconSize)
   }
 }
 

@@ -6212,7 +6212,8 @@ const checks = {
       // 1. A new data dir: the welcome, over the window, with the keyboard.
       const first = start();
       let o = await reach(first, "welcome", (o) => o.step === "welcome", 25000);
-      assert(o.mode === "firstRun" && o.dots === 6 && o.dot === 0 && o.primary === "Get started" && o.back === null, `welcome ${JSON.stringify(o)}`);
+      assert(o.mode === "firstRun" && o.dots === 7 && o.dot === 0 && o.primary === "Get started" && o.back === null, `welcome ${JSON.stringify(o)}`);
+      assert(o.steps.join() === "welcome,source,items,importing,defaultBrowser,theme,keys", `steps ${o.steps}`);
       const [, , cardW, cardH] = o.cardFrame.split(",").map(Number);
       assert(cardW === 460 && cardH >= 400 && o.cardInWindow, `card frame ${o.cardFrame}`);
       assert(o.focused, "the overlay doesn't have the keyboard");
@@ -6224,6 +6225,8 @@ const checks = {
       const afterKeys = await probe(first);
       assert(afterKeys.onboarding?.step === "welcome" && !afterKeys.onboarding.closing, "Escape dismissed the first run");
       assert(afterKeys.commandBar === null, "the command bar opened under the onboarding");
+      // The default browser's note never asks over the onboarding.
+      await run(first, "defaultask run", "onboarding");
       // 2. Where from: the browsers found (off the main thread), Arc first, recommended and chosen, its profiles in a picker.
       await run(first, "onboarding next");
       o = await reach(first, "source step", (o) => o.step === "source" && o.sourcesLoaded && o.sources[0]?.summary, 15000);
@@ -6291,9 +6294,25 @@ const checks = {
       assert(imported.sidebar.favorites.length === favoritesBefore + 3 && imported.sidebar.pinned.some((e) => e.kind === "folder" && e.title === "Personal"),
         `the sidebar after the import ${JSON.stringify(imported.sidebar)}`);
       await snap(first, "5-moved-in");
-      // 5. Colour: a swatch goes through Settings › Theme's own call, so the profile's colour follows.
+      // 5. Open links in Ray: Make Default asks macOS (Settings › General's call, a fake here), and the flow moves on
+      // at its answer, whatever it is.
+      await run(first, "general accept no");
       await run(first, "onboarding next");
-      await reach(first, "theme step", (o) => o.step === "theme");
+      o = await reach(first, "default browser step", (o) => o.step === "defaultBrowser");
+      assert(o.dot === 4 && o.primary === "Make Default" && o.back === "Not Now" && o.title === "Open links in Ray?", `default browser step ${JSON.stringify(o)}`);
+      await snap(first, "5b-default-browser");
+      await run(first, "onboarding next");
+      o = await reach(first, "theme after declining", (o) => o.step === "theme");
+      let general = (await probe(first)).general;
+      assert(general.defaultRequests.join() === "http,https" && !general.isDefault, `declined ${JSON.stringify(general)}`);
+      await run(first, "onboarding back");
+      await reach(first, "default browser again", (o) => o.step === "defaultBrowser" && o.primaryEnabled);
+      await run(first, "general accept yes");
+      await run(first, "onboarding next");
+      await reach(first, "theme after accepting", (o) => o.step === "theme");
+      general = (await probe(first)).general;
+      assert(general.isDefault && general.defaultRequests.length === 4, `accepted ${JSON.stringify(general)}`);
+      // 6. Colour: a swatch goes through Settings › Theme's own call, so the profile's colour follows.
       // A black profile colour: the card's marks (dots, ticks, the progress line, links) stay visible on the dark card.
       await run(first, "setting theme #000000");
       o = await reach(first, "black theme", (o) => o.markContrast.dark >= 3);
@@ -6307,12 +6326,13 @@ const checks = {
       // 6. Three keys; Start browsing ends it, for good.
       await run(first, "onboarding next");
       o = await reach(first, "keys step", (o) => o.step === "keys");
-      assert(o.keys.join(" ") === "⌘T ⌘S ⇧⌘C" && o.primary === "Start browsing" && o.dot === 5, `keys ${JSON.stringify(o)}`);
+      assert(o.keys.join(" ") === "⌘T ⌘S ⇧⌘C" && o.primary === "Start browsing" && o.dot === 6, `keys ${JSON.stringify(o)}`);
       await snap(first, "7-keys");
       await run(first, "onboarding finish");
       await gone(first);
       const saved = JSON.parse(readFileSync(join(dir, "Settings.json"), "utf8"));
-      assert(saved.onboarded === true && saved.theme === "#2F6BEA", `Settings.json ${JSON.stringify(saved)}`);
+      assert(saved.onboarded === true && saved.theme === "#2F6BEA" && typeof saved.defaultBrowserAskedAt === "number" && saved.defaultBrowserAsks === 0,
+        `Settings.json ${JSON.stringify(saved)}`);
       await stop(first);
       // The same data dir again: no welcome. File › Import from Browser… is the import steps alone, and Escape leaves it.
       const second = start();
@@ -6342,7 +6362,7 @@ const checks = {
         && replay.welcomeAgainItem.after === "Settings…", `Show Welcome Again item ${JSON.stringify(replay.welcomeAgainItem)}`);
       await run(second, "menu showWelcomeAgain");
       o = await reach(second, "welcome again", (o) => o.step === "welcome");
-      assert(o.mode === "firstRun" && o.dots === 6 && o.cardMargin >= 40, `welcome again ${JSON.stringify(o)}`);
+      assert(o.mode === "firstRun" && o.dots === 7 && o.cardMargin >= 40, `welcome again ${JSON.stringify(o)}`);
       // Importing what's already in the sidebar says so, rather than 0.
       await run(second, "onboarding next");
       await reach(second, "source again", (o) => o.step === "source" && o.sourcesLoaded && o.source === "arc");
@@ -6355,16 +6375,23 @@ const checks = {
       assert(againRow("pinnedTabs").count === 0 && againRow("pinnedTabs").existing === 6 && againRow("pinnedTabs").text === "6 already here"
         && againRow("favorites").text === "3 already here", `already here rows ${JSON.stringify(o.rows)}`);
       await snap(second, "8c-already-here");
+      // Not Now: on to the colour without asking macOS.
       await run(second, "onboarding next");
+      await reach(second, "default browser step again", (o) => o.step === "defaultBrowser");
+      await run(second, "onboarding back");
       await reach(second, "theme again", (o) => o.step === "theme");
+      assert((await probe(second)).general.defaultRequests.length === 0, "Not Now asked macOS");
       await run(second, "onboarding next");
       await reach(second, "keys again", (o) => o.step === "keys");
       await run(second, "onboarding finish");
       await gone(second);
-      // Start fresh goes straight to the colour; a key Settings turned off isn't offered.
+      // Start fresh goes straight to the colour; a key Settings turned off isn't offered. Ray already the default: no
+      // default browser step.
       await run(second, "setting copyLinkShortcut off");
+      await run(second, "general default yes");
       await run(second, "onboarding show");
-      await reach(second, "welcome on demand", (o) => o.step === "welcome");
+      o = await reach(second, "welcome on demand", (o) => o.step === "welcome");
+      assert(o.dots === 6 && !o.steps.includes("defaultBrowser"), `steps while the default ${o.steps}`);
       await run(second, "onboarding next");
       await reach(second, "source", (o) => o.step === "source");
       await run(second, "onboarding fresh");
@@ -7017,6 +7044,73 @@ const checks = {
       }
     }
   },
+  async "default-browser-ask"() {
+    // The note that asks to be the default browser (DefaultBrowserAsk), bottom right, through its rules: never by
+    // itself in a test build; 14 days apart; 3 times at most; "Never" for good; never again once Ray was the default.
+    // Make Default is Settings › General's call, a fake here (GeneralSystem): the Mac's default browser never changes.
+    const ask = () => state().defaultBrowserAsk;
+    const note = () => state().notes.spots.bottomTrailing;
+    const run = async (expect) => {
+      const result = await commandResult("defaultask run");
+      assert(result === expect, `defaultask run: ${result}, expected ${expect} (${JSON.stringify(ask())})`);
+      await command("state");
+    };
+    await command("state");
+    assert(ask().lastDecision === "none" && ask().asks === 0, `a test build asked by itself ${JSON.stringify(ask())}`);
+    await command("general default no");
+    await command("general accept yes");
+    await command("defaultask reset");
+    try {
+      await run("asked");
+      assert(note()?.text === "Ray isn't your default browser" && note().detail === "Links from other apps open elsewhere"
+        && note().actions.join() === "Never,Make Default" && note().asks && !note().held && note().key === "defaultBrowser",
+        `the note ${JSON.stringify(note())}`);
+      assert(ask().asks === 1 && ask().daysSinceAsked === 0, `after asking ${JSON.stringify(ask())}`);
+      await run("recent");
+      await command("defaultask days 13");
+      await run("recent");
+      await command("defaultask days 2");
+      // Make Default (after the question's 0.5 s): macOS's question, accepted; then it never asks again.
+      await run("asked");
+      await sleep(600);
+      await command("note press bottomTrailing 2");
+      await until("made default", async () => { await command("state"); return state().general.isDefault && !note(); });
+      await command("defaultask days 15");
+      await run("default");
+      assert(ask().never === true, `never after being the default ${JSON.stringify(ask())}`);
+      await command("general default no");
+      await run("never");
+
+      // Never: for good.
+      await command("defaultask reset");
+      await run("asked");
+      await sleep(600);
+      await command("note press bottomTrailing 1");
+      await until("never", async () => { await command("state"); return ask().never && !note(); });
+      assert(state().general.isDefault === false, "Never made Ray the default");
+      await command("defaultask days 60");
+      await run("never");
+
+      // Ignored three times: no fourth.
+      await command("defaultask reset");
+      for (let i = 0; i < 3; i++) {
+        await run("asked");
+        await command("note dismiss bottomTrailing");
+        await command("defaultask days 15");
+      }
+      await run("enough");
+      assert(ask().asks === 3, `asks ${JSON.stringify(ask())}`);
+      await sleep(400);
+      const saved = JSON.parse(readFileSync(join(dataDir, "Settings.json"), "utf8"));
+      assert(saved.defaultBrowserAsks === 3 && typeof saved.defaultBrowserAskedAt === "number" && saved.defaultBrowserNever === false,
+        `Settings.json ${JSON.stringify(saved)}`);
+    } finally {
+      await command("note dismiss bottomTrailing");
+      await command("defaultask reset");
+      await command("general default no");
+    }
+  },
+
   async "settings-general"() {
     // Settings › General: the default-browser strip, open at login, quitting and closing, downloads, updates, import.
     // Test builds answer from fakes (GeneralSystem): nothing here changes the Mac's default browser or login items.
@@ -7041,10 +7135,13 @@ const checks = {
     // comes back when the default changes elsewhere (System Settings), seen as Ray comes forward.
     assert(pane().stripShown === true && gen().isDefault === false, `strip ${JSON.stringify(gen())}`);
     assert(pane().defaultDetail.includes("isn't your default"), `default row while not default ${pane().defaultDetail}`);
+    // Earlier checks may have asked too (default-browser-ask's note): only this check's requests count.
+    const askedBefore = gen().defaultRequests.length;
     await command("general accept no");
     await command("general cta");
-    await seen("asked macOS", () => gen().defaultRequests.length === 2 && !gen().asking);
-    assert(gen().defaultRequests.join() === "http,https" && gen().isDefault === false && pane().stripShown === true, `declined ${JSON.stringify(gen())}`);
+    await seen("asked macOS", () => gen().defaultRequests.length === askedBefore + 2 && !gen().asking);
+    assert(gen().defaultRequests.slice(askedBefore).join() === "http,https" && gen().isDefault === false && pane().stripShown === true,
+      `declined ${JSON.stringify(gen())}`);
     await command("general accept yes");
     await command("general cta");
     await seen("strip gone", () => gen().isDefault && pane().stripShown === false);

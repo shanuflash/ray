@@ -3234,6 +3234,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["autofillPane"] = AutofillPaneContent.shared.debug
     state["updater"] = Updater.shared.debug
     state["general"] = GeneralSystem.shared.debug
+    state["defaultBrowserAsk"] = DefaultBrowserAsk.shared.debug
     state["onboarding"] = onboarding?.debug ?? NSNull()
     state["jumpCloudRelay"] = JumpCloudRelay.shared.debug
     state["chromeCommand"] = lastChromeCommand.map { ["name": $0.name, "ran": $0.ran] as [String: Any] } ?? NSNull()

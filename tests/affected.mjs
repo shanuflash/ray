@@ -207,7 +207,8 @@ export const areas = {
   "Host/SettingsAppearance.swift": ["settings-panes", "settings-window", "settings-page-address-bar"],
   "Host/SettingsTabs.swift": ["settings-panes", "settings-window"],
   "Host/SettingsAbout.swift": ["settings-panes", "settings-search"],
-  "Host/SettingsGeneral.swift": ["settings-general", "settings-panes", "settings-search", "warn-before-quitting", "updater-config"],
+  "Host/SettingsGeneral.swift": ["settings-general", "settings-panes", "settings-search", "warn-before-quitting", "updater-config",
+    "default-browser-ask", "onboarding"],
   "Host/CloseWarnings.swift": ["panels", "warn-before-quitting", "warn-before-closing-window", "close-last-window", "private-window",
     "quit-with-downloads"],
   // Settings › Privacy and Settings › Extensions, over the engine's data calls, and the pieces they share.
@@ -235,6 +236,9 @@ export const areas = {
   // The first run's welcome and File › Import from Browser… (on the fake importer).
   "Host/Onboarding.swift": ["onboarding"],
   "Host/RaySettings.swift#Onboarding": ["onboarding"],
+  // Asking to be the default browser: the launch note's rules, and the onboarding's step that counts as an ask.
+  "Host/DefaultBrowserAsk.swift": ["default-browser-ask", "onboarding"],
+  "Host/RaySettings.swift#Default browser ask": ["default-browser-ask", "onboarding"],
   // The settings in the state log: the checks that compare them (the restore check reads them after settings-persist).
   "Host/RaySettings.swift#State log": [...settings, "onboarding"],
   "Host/CommandBarView.swift": commandBar,
@@ -267,7 +271,7 @@ export const areas = {
   "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
   "Host/TabSwitcher.swift": ["settings-recent-tab-cycling", "tab-switcher"],
-  "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay", "link-preview"],
+  "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay", "link-preview", "default-browser-ask"],
   "Host/Panels.swift": ["panels", "site-controls", "link-preview", "back-forward-list", "extensions", "extension-prompt", "settings-privacy", "warn-before-quitting", "warn-before-closing-window", ...folders],
   "Host/Surface.swift": ["surfaces-snap", "panels", "notes", "site-controls", "permission", "permission-allow", "downloads"],
   "Host/Updater.swift": ["updater-config", "settings-general"],
