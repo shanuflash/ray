@@ -221,6 +221,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     pages.frame = NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
     pages.cornerRadius = isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
+    if let crashed = crashedPages.view, crashed.superview != nil {
+      crashed.frame = pages.frame
+      crashed.layer?.cornerRadius = pages.cornerRadius
+    }
     permissions.update()
     layoutSiteControls()
     if let findBar {
@@ -753,6 +757,57 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     logState("autofillSuggestions")
   }
 
+  // MARK: Page prompts
+
+  /// "Open “App”?" and "Page not responding" (`PagePrompts.swift`), one at a time over their own tab.
+  private(set) lazy var pageQuestions: PageQuestions = {
+    let questions = PageQuestions(controller: self)
+    questions.onChange = { [weak self] in self?.logState("pageQuestion") }
+    return questions
+  }()
+
+  /// "Pop-up blocked" notes (`PagePrompts.swift`).
+  private(set) lazy var popups: BlockedPopups = {
+    let popups = BlockedPopups(controller: self)
+    popups.onChange = { [weak self] in self?.logState("blockedPopups") }
+    return popups
+  }()
+
+  /// The crashed page's view (`CrashedPage.swift`).
+  private(set) lazy var crashedPages: CrashedPages = {
+    let pages = CrashedPages(controller: self)
+    pages.onChange = { [weak self] in self?.logState("crashedPage") }
+    return pages
+  }()
+
+  /// The crashed page's view goes right over the page card, under the toolbar, panels and notes.
+  func placeCrashedPage(_ view: CrashedPageView) {
+    if view.superview !== root { root.addSubview(view, positioned: .above, relativeTo: pages) }
+    view.frame = pages.frame
+    view.layer?.cornerRadius = pages.cornerRadius
+  }
+
+  func tab(_ tab: RayCoreTab, externalAppRequest request: [String: Any]) {
+    pageQuestions.appLink(request, tab: tab)
+  }
+
+  func tabBecameUnresponsive(_ tab: RayCoreTab) { pageQuestions.unresponsive(tab) }
+  func tabBecameResponsive(_ tab: RayCoreTab) { pageQuestions.responsive(tab) }
+
+  func tab(_ tab: RayCoreTab, didBlockPopup popup: [String: String]) {
+    popups.blocked(popup, tab: tab)
+  }
+
+  func tab(_ tab: RayCoreTab, rendererGone status: String, code: Int32) {
+    TestEnvironment.log("tab \(tab.tabId) renderer gone (\(status) \(code))")
+    crashedPages.rendererGone(tab, status: status, code: Int(code))
+  }
+
+  /// Quitting (or closing the last private window) would cancel downloads: Ray asks first (`CloseWarnings`).
+  func window(_ window: RayCoreWindow, confirmCloseWithDownloads count: Int32, completion: @escaping (Bool) -> Void) {
+    CloseWarnings.confirmDownloads(Int(count), quitting: AppController.shared.quitting, on: self, then: completion)
+  }
+
   // MARK: Panels
 
   /// This window's panel over the page (`Panels.swift`): one at a time, from a button.
@@ -1124,7 +1179,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     pages.attach(tab)
   }
 
-  func select(_ entry: SidebarEntry) {
+  /// `fromEngine`: the engine already made it its active tab (its `didActivate`): it isn't told again. Two tabs opened
+  /// in front at once leave a stale activation of each in flight, and echoing them made the two flip forever.
+  func select(_ entry: SidebarEntry, fromEngine: Bool = false) {
     if entry.isFolder {
       perform(.toggleFolder, on: entry)
       return
@@ -1134,7 +1191,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     // The page left, pictured while it's still shown, for the ⌃Tab switcher's card.
     if let left = activeEntry, left !== entry { tabPictures.capture(left) }
     pages.show(tab)
-    coreWindow.activate(tab)
+    if !fromEngine { coreWindow.activate(tab) }
     let switched = state.activeEntryID != entry.id
     // Going to a tab by any other way ends a Ctrl+Tab in progress.
     if switched, !switcherChoosing { tabSwitcher.cancel("other switch") }
@@ -1146,6 +1203,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state.activeEntryID = entry.id
     if switched { permissions.update() }
     if switched { passwords.update() }
+    if switched { pageQuestions.update() }
+    if switched { popups.tabSwitched() }
+    if switched { crashedPages.tabSwitched() }
     entry.lastActive = Date()
     if commandBar == nil { focusPage(tab) }
     if switched { changed("activate") }
@@ -2323,10 +2383,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       activateNeighbor(of: index, in: state.allEntries)
     }
     changed("remove")
+    crashedPages.update()
   }
 
   func window(_ window: RayCoreWindow, didActivate tab: RayCoreTab) {
-    if let entry = state.entry(for: tab), entry.id != state.activeEntryID { select(entry) }
+    if let entry = state.entry(for: tab), entry.id != state.activeEntryID { select(entry, fromEngine: true) }
   }
 
   func window(_ window: RayCoreWindow, devToolsDidChangeFor tab: RayCoreTab, view devToolsView: NSView?) {
@@ -2348,6 +2409,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     prepareForQuit()
     DispatchQueue.main.async { [weak self] in self?.onClose?() }
     return true
+  }
+
+  func windowDidCancelClose(_ window: RayCoreWindow) {
+    guard !AppController.shared.quitting, self.window.isVisible else { return }
+    resumeAfterCancelledQuit()
+    AppController.shared.windowCloseCancelled(self)
   }
 
   // MARK: RayCoreTabDelegate
@@ -2390,6 +2457,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func tabDidCommitDocument(_ tab: RayCoreTab) {
     // A document the page navigated to by itself gets its sweep from here.
     LoadSweeps.shared.documentCommitted(tab)
+    popups.committed(tab)
     if tab === activeTab { updateToolbarLoading() }
     // JumpCloud's login page, with Settings › Passwords' JumpCloud Go relay on: never from a private window.
     if !isPrivate { JumpCloudRelay.shared.documentCommitted(tab, in: self) }
@@ -2409,6 +2477,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   func tabDidChangeLoading(_ tab: RayCoreTab) {
     LoadSweeps.shared.loadingChanged(tab)
+    crashedPages.loading(tab)
     pages.updateProgress(for: tab)
     // After the sweep knows of the load: the address shown with it is drawn mid-sweep, never as a load without one.
     showPendingAddress(of: tab)
@@ -2704,6 +2773,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "permission": permissions.shown ?? NSNull(),
       "passwordPrompt": passwords.state,
       "autofillPrompt": autofill.state,
+      "pageQuestion": pageQuestions.state,
+      "blockedPopups": popups.state,
+      "crashedPage": crashedPages.state,
       "autofillSuggestions": autofillSuggestions ?? NSNull(),
       "find": findBar.map { bar -> [String: Any] in
         let frame = bar.convert(bar.bounds, to: nil)

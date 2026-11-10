@@ -66,14 +66,14 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 2. ~~Passwords: the "save password?" prompt~~ (Done). The fill dropdown and "Suggest strong password" are Chrome's own
    popups (the engine draws them); see Known limitations 40.
 3. ~~Autofill for addresses and cards: the save prompts~~ (Done). The fill dropdown is Chrome's own popup (the engine
-   draws it); see Known limitations 41.
-4. Links that open other apps: `mailto:`, Zoom, Slack… (`externalAppRequest`) (?).
+   draws it); see Known limitations 45.
+4. ~~Links that open other apps: `mailto:`, Zoom, Slack… (`externalAppRequest`)~~ (Done).
 5. Device pickers: WebUSB, Bluetooth, HID, Serial (`deviceChooser`); requests get nothing.
 6. Screen-share picker (`allowDesktopCapture`, "share this tab instead").
 7. Cast (`castDialog`, `castRoutes`).
-8. A note when a popup is blocked, with "always allow" (`didBlockPopup`, `openBlockedPopup`).
-9. Crashed tab page and the "page unresponsive" dialog (`rendererGone`, `tabBecameUnresponsive`).
-10. Warning on quit while downloads run (`confirmCloseWithDownloads`).
+8. ~~A note when a popup is blocked, with "always allow" (`didBlockPopup`, `openBlockedPopup`)~~ (Done).
+9. ~~Crashed tab page and the "page unresponsive" dialog (`rendererGone`, `tabBecameUnresponsive`)~~ (Done).
+10. ~~Warning on quit while downloads run (`confirmCloseWithDownloads`)~~ (Done). See Known limitations 46.
 
 **Page and tab details**
 11. Link preview at the bottom corner on hover (`didChangeStatusText`).
@@ -344,11 +344,17 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     untried by hand (as 40). Only cards saved on this Mac are asked about: the engine drops Google Payments' upload,
     IBAN and offer bubbles, so IBANs are never saved. No icon brings a dismissed prompt back, the address prompt can't
     be edited before saving (Chrome's has Edit), and a card's explanation ("To pay faster…") is left out.
+46. **Page prompt gaps** (2026-11-05). Quitting from the Dock, at logout or for an update goes through
+    `applicationShouldTerminate`, which answers "now": whether the engine still asks about running downloads there is
+    untried. A dismissed "Pop-up blocked" note can't be brought back for that page (Chrome keeps an omnibox icon; Ray
+    has none). "Exit Page" and "Quit" are filled red (`PanelButton`'s destructive look), not the mock's red text. The
+    hang check waits for the engine's real 15 s monitor (no shorter test switch).
 
 ## Done
 
 | What | When |
 |---|---|
+| Page prompts: Ray's own "Open “App”?" for links to other apps (replacing Chrome's dialog; Always allow syncs with Settings › Privacy), "Pop-up blocked" note with Open and Always Allow, a crashed page view with Reload (out of memory, keeps crashing; a tab killed while hidden reloads when shown), "Page not responding" (Wait / Exit Page), "Quit and cancel N downloads?"; fixed two tabs opened in front at once flipping forever (out of memory) | 2026-11-05, `feat: page prompts` |
 | "Save address?", "Update address?" and "Save card?" after a form is sent (Not Now, Save); Settings › Autofill › Save and fill addresses / cards | 2026-11-05, `feat: autofill save prompts` |
 | "Save password?" and "Update password?" after a sign-in (Never, Not Now, Save; username editable), "Password Saved" for a suggested one; Settings › Passwords › Offer to save passwords | 2026-11-05, `feat: save password prompt` |
 | Arc's ⌃Tab switcher: recent tabs as cards with page pictures, switching on Control's release, Tab/⇧Tab/arrows/pointer, Escape cancels, a quick tap just switches | 2026-11-04, `feat: arc ctrl-tab switcher` |

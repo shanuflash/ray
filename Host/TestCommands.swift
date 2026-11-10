@@ -687,6 +687,10 @@ enum TestCommands {
       result = pane == "no such control" || pane == "no pane" ? GeneralSystem.shared.command(words) : pane
     case "warning":
       result = CloseWarnings.command(argument)
+    case "pagequestion":
+      result = AppController.shared.current?.pageQuestions.test(argument) ?? "no window"
+    case "crashed":
+      result = AppController.shared.current?.crashedPages.test(argument) ?? "no window"
     case "privacy": result = PrivacyPaneContent.test(argument)
     case "extpane": result = ExtensionsPaneContent.test(argument)
     case "passwords":

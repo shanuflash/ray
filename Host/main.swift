@@ -67,6 +67,9 @@ if safeStorage.mode == .mock || TestEnvironment.isTestBuild {
 // The engine's own test switches (`--ray-test`, honoured only on a scratch data dir and the mock keychain).
 var engineTests: [String] = []
 if TestEnvironment.isTestBuild, safeStorage.mode == .keychain { engineTests.append("keychain=file") }
+// Test builds never open another app for a link: the engine records what it would have opened
+// (`RayCoreEngine.testExternalLaunches`, the state log's `pageQuestion.launches`).
+if TestEnvironment.isTestBuild { engineTests.append("externalProtocolNoLaunch") }
 #if RAY_TEST_HOOKS
 // RAY_REAUTH=granted|denied: the engine's OS re-auth (Touch ID or the login password, for saved passwords and card
 // numbers) answers at once in a hidden instance, with no prompt (engine/chromium/src/chrome/browser/ray/ac_reauth.cc).

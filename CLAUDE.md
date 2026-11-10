@@ -146,7 +146,10 @@ publicly or create accounts.
   and Import… (File › Import from Browser…). `GeneralSystem` re-reads on activation; in test builds the default
   browser, login item and updater are fakes (`general …` test commands; checks never touch the real ones).
   `CloseWarnings`: ⌘Q's "Quit Ray?" (⌘Q again quits; menu Quit only, never Dock/logout/update quits) and the
-  close warning for a window that would lose 2+ tabs (only private windows: the normal one keeps its tabs for ⌘N), each
+  close warning for a window that would lose 2+ tabs (only private windows: the normal one keeps its tabs for ⌘N), and
+  the engine's `confirmCloseWithDownloads` ("Quit and cancel N downloads?", "Close and cancel…" for the last private
+  window; Keep Downloading, then Quit in red dead for 0.5 s, Return and Escape keep them; it stands in for ⌘Q's
+  warning while downloads run), each
   a `Panels` question from the page's top centre (`questionAnchor`) with "Don't ask again" (Return confirms, Escape or
   closing it cancels; an app-wide alert only when no window is visible); test command `warning confirm|suppress|cancel`. Start fresh: the launch's first normal
   window drops last time's Today tabs into Recently Closed (`startFresh`, `restore(fresh:)`). Checks
@@ -307,6 +310,22 @@ publicly or create accounts.
   command `afprompt press accept|decline|close`, `afprompt has <text>`, state log `autofillPrompt` (shape only); check
   `autofill-prompt`, whose card form is on the HTTPS fixture), `ArcImport` (the old Import from Arc…, sidebar
   only; its action still exists without a menu item).
+- Page prompts (`Host/PagePrompts.swift`, `Host/CrashedPage.swift`, `BrowserWindowController` `// MARK: Page prompts`;
+  look A of `docs/mocks/page-prompts.html`). `PageQuestions`: the engine's `externalAppRequest` as Ray's "Open “App”?"
+  (the app's icon and name from macOS, the engine's full origin, "Always allow <origin>" only when the engine allows
+  remembering, Cancel/Open) and `tabBecameUnresponsive` as "Page not responding" (Wait / Exit Page in red, Escape is
+  Wait, gone on `tabBecameResponsive`); Return answers neither: `PanelQuestion`s from `questionAnchor`, buttons dead
+  0.5 s, one per tab, put away by a tab switch or another panel and shown again on return; another site cancels a
+  link's. An "always" goes into Chrome's per-origin list, which Settings › Privacy's apps list reads (reloads when its
+  window is key). A link no app opens gets a note. Test builds pass the engine `externalProtocolNoLaunch` (never opens
+  another app; `pageQuestion.launches` in the state log). `BlockedPopups`: `didBlockPopup` as a "Pop-up blocked" note
+  (asks; count in place; Open opens them all, Always Allow through `openBlockedPopup(_:always:)` on the first); one note
+  per page, cleared on commit, put away on a tab switch. `CrashedPages`: `rendererGone` on the active tab shows
+  `CrashedPageView` over the page card (root, above `pages`; "This page crashed" / out of memory / "keeps crashing"
+  within 10 s; 22 pt medium title, 13 pt grey line, Reload; Return does nothing); a hidden tab's reloads when next shown. Quitting with downloads: `CloseWarnings`
+  (`confirmDownloads`, in General below). Test commands `pagequestion press <n>|check|escape`, `crashed reload`,
+  `warning ready`; state log `pageQuestion`, `blockedPopups`, `crashedPage`; checks `app-link-prompt`, `popup-blocked`,
+  `crashed-page`, `page-unresponsive` (waits for the engine's 15 s), `quit-with-downloads`.
 - `TabSwitcher` (`Host/TabSwitcher.swift`, `BrowserWindowController` `// MARK: Tab switcher`): Arc's ⌃Tab switcher
   (sizes from Cra's measurements of Arc 1.170 and the owner's recording; look B of the mocks, owner 2026-11-04). With
   `recentTabCycling` on, ⌃Tab opens a walk over the up to 5 most recent tabs (current first, as many as fit the
@@ -641,6 +660,9 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   if it stops, re-read `shared.rollup.js` (the resource that holds `function createPageVisibility()`; decompress it
   from resources.pak) and fix the patterns, then run `settings-trimmed`. The bare `/` route's top-level page must be one
   that draws on `/` (Performance); Privacy draws nothing there.
+- A tab switch the engine reports (`window(_:didActivate:)`) is never sent back to it (`select(_:fromEngine:)`): two
+  tabs opened in front at once (Open on two blocked pop-ups) leave a stale activation of each in flight, and echoing
+  them flipped the two forever, each flip copying a page picture for ⌃Tab until the app ran out of memory.
 - Shifted menu key equivalents must be uppercase ("C" for ⇧⌘C); real and synthetic ⇧-keys arrive uppercase.
 - Chrome's window swallows reserved shortcuts (⌘W with no tab) before the menu sees them: `AppController` routes
   `Shortcuts.isReserved` keys to the main menu from an app-local keyDown monitor. A menu item that

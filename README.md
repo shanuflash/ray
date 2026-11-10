@@ -51,6 +51,9 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Your own colour and shortcuts
   - Offers to save passwords when you sign in
   - Offers to save addresses and cards from forms
+  - Asks before a link opens another app; shows blocked pop-ups
+  - Its own crashed-page and "not responding" prompts
+  - Asks before quitting cancels downloads
   - JumpCloud Go sign-in
 
 ## Coming

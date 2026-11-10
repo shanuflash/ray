@@ -102,6 +102,12 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     windows.forEach { $0.resumeAfterCancelledQuit() }
   }
 
+  /// A window's close was called off after it said yes (a download question's Keep Downloading, a page's "leave
+  /// site?"): it's one of Ray's windows again.
+  func windowCloseCancelled(_ controller: BrowserWindowController) {
+    if !windows.contains(where: { $0 === controller }) { windows.append(controller) }
+  }
+
   func engineWillShutDown() {
     if !quitting { windows.forEach { $0.prepareForQuit() } }
     quitting = true
