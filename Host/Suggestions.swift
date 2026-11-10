@@ -11,8 +11,6 @@ struct Suggestion {
     case action(BarAction)
     /// A pane, setting or section of Ray's Settings window ("Settings: …").
     case setting(SettingsTarget)
-    /// "Search Wikipedia": what you typed is a site search's keyword, and choosing this (or Tab) scopes the bar to it.
-    case scope(SearchScope)
   }
 
   let kind: Kind
@@ -31,20 +29,19 @@ struct Suggestion {
     case .url(let url), .search(let url), .history(let url), .bookmark(let url): return "\(kindName):\(url)"
     case .action(let action): return "action:\(action.id)"
     case .setting(let target): return "setting:\(target.id)"
-    case .scope(let scope): return "scope:\(scope.keyword)"
     }
   }
 
   /// What ↑ ↓ or Tab to this row puts in the bar's field (Chrome's temporary text): a search its query, a page its
   /// address (the engine's, through `AddressInput.display`: no `user:pass@`, percent-encoded). Nil keeps what was typed:
-  /// menu commands, settings and "Search …" (Chrome's actions keep it too), and an address the bar doesn't show
+  /// menu commands and settings (Chrome's actions keep it too), and an address the bar doesn't show
   /// (`javascript:`, `data:`, `file:`).
   var fieldText: String? {
     switch kind {
     case .search: return title
     case .tab(let tab): return Self.fieldAddress(tab.url)
     case .url(let url), .history(let url), .bookmark(let url): return Self.fieldAddress(url)
-    case .action, .setting, .scope: return nil
+    case .action, .setting: return nil
     }
   }
 
@@ -62,7 +59,6 @@ struct Suggestion {
     case .bookmark: return "bookmark"
     case .action: return "action"
     case .setting: return "setting"
-    case .scope: return "scope"
     }
   }
 }
@@ -121,8 +117,13 @@ final class HistoryCache {
   private var byURL: [String: Int] = [:]
   private var loading = false
 
+  private var byHost: [String: Double] = [:]
+
   /// Frecency of a page by its exact address (0 when it isn't in history).
   func frecency(of url: String) -> Double { byURL[url].map { entries[$0].frecency } ?? 0 }
+
+  /// How much you use a site: its pages' frecency added up, by host without "www." (the bar's site search offer).
+  func use(ofHost host: String) -> Double { byHost[host] ?? 0 }
 
   func refresh(profile: RayCoreProfile, then done: @escaping () -> Void) {
     if loading { return }
@@ -139,8 +140,63 @@ final class HistoryCache {
           visitTimes: (row["v"] as? [Double]) ?? [], now: now)
       }
       self.byURL = Dictionary(self.entries.enumerated().map { ($1.url, $0) }, uniquingKeysWith: { first, _ in first })
+      self.byHost = self.entries.reduce(into: [:]) { use, entry in
+        let host = entry.urlLower.prefix { !"/:?#".contains($0) }
+        use[String(host), default: 0] += entry.frecency
+      }
       done()
     }
+  }
+}
+
+/// An icon's main colour, as Arc's FaviconDominantColorFetcher and Ardia's `iconAccent`: the heaviest band of hues
+/// (24 bins, a bin and its neighbours) among the saturated, bright pixels, averaged; nil when under 8% of the icon has
+/// colour (a black or grey logo).
+enum IconAccent {
+  static func color(of image: NSImage) -> NSColor? {
+    let side = 24
+    guard let bitmap = NSBitmapImageRep(
+      bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+      isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: side * 4, bitsPerPixel: 32),
+      let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return nil }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = context
+    image.draw(in: NSRect(x: 0, y: 0, width: side, height: side))
+    NSGraphicsContext.restoreGraphicsState()
+    guard let data = bitmap.bitmapData else { return nil }
+    var bins = [(weight: Double, r: Double, g: Double, b: Double)](repeating: (0, 0, 0, 0), count: 24)
+    var opaque = 0.0, colourful = 0.0
+    for i in 0..<(side * side) {
+      let a = Double(data[i * 4 + 3]) / 255
+      guard a > 0.5 else { continue }
+      // Premultiplied: back to the colour itself.
+      let r = Double(data[i * 4]) / 255 / a, g = Double(data[i * 4 + 1]) / 255 / a, b = Double(data[i * 4 + 2]) / 255 / a
+      opaque += 1
+      let high = max(r, g, b), low = min(r, g, b)
+      guard high > 0.35, high - low > 0.35 * high else { continue }
+      colourful += 1
+      var hue: Double
+      if high == r { hue = (g - b) / (high - low) } else if high == g { hue = 2 + (b - r) / (high - low) } else { hue = 4 + (r - g) / (high - low) }
+      hue = (hue / 6).truncatingRemainder(dividingBy: 1)
+      if hue < 0 { hue += 1 }
+      let bin = min(23, Int(hue * 24))
+      bins[bin].weight += 1
+      bins[bin].r += r
+      bins[bin].g += g
+      bins[bin].b += b
+    }
+    guard opaque > 0, colourful / opaque >= 0.08 else { return nil }
+    let window = { (i: Int) in bins[(i + 23) % 24].weight + bins[i].weight + bins[(i + 1) % 24].weight }
+    guard let best = (0..<24).max(by: { window($0) < window($1) }) else { return nil }
+    var total = (w: 0.0, r: 0.0, g: 0.0, b: 0.0)
+    for i in [(best + 23) % 24, best, (best + 1) % 24] {
+      total.w += bins[i].weight
+      total.r += bins[i].r
+      total.g += bins[i].g
+      total.b += bins[i].b
+    }
+    guard total.w > 0 else { return nil }
+    return NSColor(srgbRed: min(1, total.r / total.w), green: min(1, total.g / total.w), blue: min(1, total.b / total.w), alpha: 1)
   }
 }
 
@@ -150,6 +206,17 @@ final class FaviconCache {
   private var requested: Set<String> = []
 
   func image(for page: String) -> NSImage? { images[page] }
+
+  private var accents: [String: NSColor?] = [:]
+
+  /// A page's icon's main colour, nil for a grey icon or none loaded (`IconAccent`), kept per page.
+  func accent(for page: String) -> NSColor? {
+    if let known = accents[page] { return known }
+    guard let image = images[page] else { return nil }
+    let accent = IconAccent.color(of: image)
+    accents[page] = accent
+    return accent
+  }
 
   func load(_ pages: [String], profile: RayCoreProfile, then done: @escaping () -> Void) {
     let wanted = pages.filter { images[$0] == nil && !missing.contains($0) && !requested.contains($0) }
@@ -430,11 +497,6 @@ enum Suggestions {
       rows.append(page.row)
     }
     if let typed { rows.append(typed) }
-    // What you typed is a site search's keyword: offer to search that site (Tab does the same), after the first row so
-    // Enter keeps doing what it did (Chrome's keyword hint, Arc's "Search YouTube").
-    if !query.contains(" "), let scope = SearchEngines.scope(forKeyword: query) {
-      rows.insert(scopeSuggestion(scope), at: min(1, rows.count))
-    }
     rows += actionRows
     rows += settingRows
     rows += pages.map(\.row).filter { row in !rows.contains { same($0, row) } }
@@ -542,16 +604,12 @@ enum Suggestions {
     return Suggestion(kind: .search(url), title: text, detail: "", icon: magnifier, suggested: true)
   }
 
-  private static func scopeSuggestion(_ scope: SearchScope) -> Suggestion {
-    Suggestion(kind: .scope(scope), title: "Search \(scope.name)", detail: "Tab", icon: magnifier)
-  }
-
   /// The bar's one row while it is scoped to a site search: what you typed, searched there. No pages, no suggestions:
   /// nothing you type is sent anywhere before Enter.
   static func scoped(_ scope: SearchScope, query raw: String) -> [Suggestion] {
     let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !query.isEmpty, let url = scope.url(for: query) else { return [] }
-    return [Suggestion(kind: .search(url), title: query, detail: "Search \(scope.name)", icon: magnifier)]
+    return [Suggestion(kind: .search(url), title: query, detail: "", icon: magnifier)]
   }
 
   /// Whether to ask the search engine for suggestions as you type this: a search (not an address), with suggestions on.

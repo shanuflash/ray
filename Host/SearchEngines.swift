@@ -25,6 +25,9 @@ struct SearchScope: Equatable {
   let name: String
   let keyword: String
   let template: String
+  /// The site's colour ("#RRGGBB") for the chip, the glow and the chosen row: Arc's table for the built-in ones
+  /// (`autoActivatedEngineURLToPrimaryColor`); nil takes the site's icon colour, else the profile's.
+  var brand: String? = nil
 
   /// `query` searched there; nil for a template Ray doesn't search with (never one it stored).
   func url(for query: String) -> String? { AddressInput.siteSearchURL(template, query: query) }
@@ -53,6 +56,48 @@ enum SearchEngines {
 
   static func engine(id: String) -> SearchEngine? { builtIn.first { $0.id == id } }
 
+  /// The engines' colours, as the site searches' below.
+  private static let engineBrands = [
+    "google.com": "#4285F4", "duckduckgo.com": "#DE5833", "bing.com": "#008373", "search.brave.com": "#FB542B",
+    "ecosia.org": "#36ACB8", "kagi.com": "#FFB319", "startpage.com": "#6573FF", "perplexity.ai": "#20808D",
+  ]
+
+  /// Arc's built-in site searches (its app's own list, less Google's image, news and flight searches, which share
+  /// google.com's host), each with its brand colour. A user's site search with the same keyword comes first.
+  static let siteSearches: [SearchScope] = [
+    SearchScope(name: "YouTube", keyword: "youtube.com", template: "https://www.youtube.com/results?search_query=%s", brand: "#FF0000"),
+    SearchScope(name: "Wikipedia", keyword: "wikipedia.org", template: "https://en.wikipedia.org/w/index.php?search=%s", brand: "#000000"),
+    SearchScope(name: "GitHub", keyword: "github.com", template: "https://github.com/search?q=%s", brand: "#181717"),
+    SearchScope(name: "Google Maps", keyword: "maps.google.com", template: "https://www.google.com/maps/search/%s", brand: "#34A853"),
+    SearchScope(name: "Google Drive", keyword: "drive.google.com", template: "https://drive.google.com/drive/search?q=%s", brand: "#1FA463"),
+    SearchScope(name: "Google Docs", keyword: "docs.google.com", template: "https://docs.google.com/document/u/0/?q=%s", brand: "#4285F4"),
+    SearchScope(name: "Google Calendar", keyword: "calendar.google.com",
+                template: "https://calendar.google.com/calendar/u/0/r/search?q=%s", brand: "#4285F4"),
+    SearchScope(name: "Amazon", keyword: "amazon.com", template: "https://www.amazon.com/s?k=%s", brand: "#FF9900"),
+    SearchScope(name: "Reddit", keyword: "reddit.com", template: "https://www.reddit.com/search/?q=%s", brand: "#FF4500"),
+    SearchScope(name: "X", keyword: "x.com", template: "https://x.com/search?q=%s", brand: "#000000"),
+    SearchScope(name: "LinkedIn", keyword: "linkedin.com",
+                template: "https://www.linkedin.com/search/results/all/?keywords=%s", brand: "#0A66C2"),
+    SearchScope(name: "Pinterest", keyword: "pinterest.com", template: "https://www.pinterest.com/search/pins/?q=%s", brand: "#E60023"),
+    SearchScope(name: "Spotify", keyword: "open.spotify.com", template: "https://open.spotify.com/search/%s", brand: "#1DB954"),
+    SearchScope(name: "SoundCloud", keyword: "soundcloud.com", template: "https://soundcloud.com/search?q=%s", brand: "#FF5500"),
+    SearchScope(name: "Apple Music", keyword: "music.apple.com", template: "https://music.apple.com/us/search?term=%s", brand: "#FA243C"),
+    SearchScope(name: "Stack Overflow", keyword: "stackoverflow.com", template: "https://stackoverflow.com/search?q=%s", brand: "#F48024"),
+    SearchScope(name: "Figma", keyword: "figma.com", template: "https://www.figma.com/files/search?q=%s", brand: "#A259FF"),
+    SearchScope(name: "Dropbox", keyword: "dropbox.com", template: "https://www.dropbox.com/search/personal?query=%s", brand: "#0061FF"),
+    SearchScope(name: "Asana", keyword: "app.asana.com", template: "https://app.asana.com/0/search?q=%s", brand: "#F06A6A"),
+    SearchScope(name: "Goodreads", keyword: "goodreads.com", template: "https://www.goodreads.com/search?query=%s", brand: "#553B08"),
+    SearchScope(name: "Netflix", keyword: "netflix.com", template: "https://www.netflix.com/search?q=%s", brand: "#E50914"),
+    SearchScope(name: "Threads", keyword: "threads.net", template: "https://www.threads.net/search/?q=%s", brand: "#000000"),
+    SearchScope(name: "TikTok", keyword: "tiktok.com", template: "https://www.tiktok.com/search?q=%s", brand: "#FE2C55"),
+  ]
+
+  /// The user's site searches, then the built-in ones whose keyword they haven't taken.
+  private static var allSiteSearches: [SearchScope] {
+    let own = RaySettings.shared[.siteSearches].items.map { SearchScope(name: $0.name, keyword: $0.keyword, template: $0.url) }
+    return own + siteSearches.filter { site in !own.contains { $0.keyword == site.keyword } }
+  }
+
   /// The default engine (Settings › Search engine).
   static var chosen: SearchEngine { engine(id: RaySettings.shared[.searchEngine]) ?? builtIn[0] }
 
@@ -73,14 +118,34 @@ enum SearchEngines {
   static func scope(forKeyword word: String) -> SearchScope? {
     let keyword = word.trimmingCharacters(in: .whitespaces).lowercased()
     guard !keyword.isEmpty else { return nil }
-    if let site = RaySettings.shared[.siteSearches].items.first(where: { $0.keyword == keyword }) {
-      return SearchScope(name: site.name, keyword: site.keyword, template: site.url)
-    }
     let bare = keyword.hasPrefix("www.") ? String(keyword.dropFirst(4)) : keyword
+    if let site = allSiteSearches.first(where: { $0.keyword == keyword || $0.keyword == bare }) { return site }
     if let engine = builtIn.first(where: { $0.keyword == bare }) {
-      return SearchScope(name: engine.name, keyword: engine.keyword, template: engine.url)
+      return SearchScope(name: engine.name, keyword: engine.keyword, template: engine.url, brand: engineBrands[engine.keyword])
     }
     return nil
+  }
+
+  /// The site search the command bar offers for what you typed (Arc's "Search YouTube  Tab"): an exact keyword, else
+  /// the site search whose keyword, name or a word of its name starts with it ("y", "you", "maps"). Several match: the
+  /// one whose site you use most (`use`, by keyword), then the list's order. Engines only by their exact host.
+  static func offer(for typed: String, use: (String) -> Double) -> SearchScope? {
+    let text = typed.trimmingCharacters(in: .whitespaces).lowercased()
+    guard !text.isEmpty, text.count <= 64, !text.contains(" ") else { return nil }
+    if let exact = scope(forKeyword: text) { return exact }
+    let bare = text.hasPrefix("www.") ? String(text.dropFirst(4)) : text
+    var best: (scope: SearchScope, use: Double)?
+    for site in allSiteSearches where starts(site, with: bare) {
+      let used = use(site.keyword)
+      if best == nil || used > best!.use { best = (site, used) }
+    }
+    return best?.scope
+  }
+
+  private static func starts(_ site: SearchScope, with text: String) -> Bool {
+    let name = site.name.lowercased()
+    return site.keyword.hasPrefix(text) || name.replacingOccurrences(of: " ", with: "").hasPrefix(text)
+      || name.split(separator: " ").contains { $0.hasPrefix(text) }
   }
 }
 

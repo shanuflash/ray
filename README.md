@@ -53,6 +53,7 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Edge-to-edge full screen
   - Settings in the command bar
   - Arrow keys in the command bar show the row in the field, like Chrome
+  - Tab to search YouTube, Wikipedia, GitHub and more, in the site's colour, like Arc
   - Your own colour and shortcuts
   - Offers to save passwords when you sign in
   - Offers to save addresses and cards from forms

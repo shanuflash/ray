@@ -907,6 +907,59 @@ const checks = {
     await send("Target.closeTarget", { targetId: (await session(`${site}/b`)).target.targetId });
     await until("site tab closed", async () => { await command("state"); return !tabFor(`${site}/b`); });
   },
+  async "tab-to-search"() {
+    // Arc's Tab to Search: the start of a built-in site search's name ("y") offers it at the field's end ("Search
+    // YouTube" and a Tab key); Tab scopes the bar with a pill in the site's colour and a pulse of it; what you type is
+    // one row, filled with that colour, searching the site. Delete with nothing typed puts back what you typed. A word
+    // of a name works too ("maps"), and a colourless brand (GitHub) still shows on the bar.
+    const bar = async (what, ready) => {
+      let last;
+      return until(what, async () => { await command("state"); last = state().commandBar; return last && ready(last) && last; }, 8000)
+        .catch((error) => { throw new Error(`${error.message}: ${JSON.stringify(last)}`); });
+    };
+    await command("menu newTab");
+    await command("type y");
+    let shown = await bar("offered", (b) => b.query === "y" && b.offered);
+    assert(shown.offered.name === "YouTube" && shown.hint === "Search YouTube" && shown.scope === null, `"y" offers ${JSON.stringify(shown)}`);
+    const pulses = shown.pulses;
+    await command("tab");
+    shown = await bar("scoped", (b) => b.scope?.name === "YouTube");
+    assert(shown.query === "" && shown.rows.length === 0 && shown.hint === null && shown.scope.brand === "#FF0000" &&
+      shown.scope.fill === "#FF0000" && shown.scope.ink === "#FFFFFF" && shown.pulses === pulses + 1, `scoped ${JSON.stringify(shown)}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-tab-to-search.png")}`);
+    await command("type test");
+    shown = await bar("scoped row", (b) => b.query === "test" && b.rows.length === 1);
+    assert(shown.rows[0].kind === "search" && shown.rows[0].title === "test" && shown.selected === 0 &&
+      shown.rows[0].url === "https://www.youtube.com/results?search_query=test", `scoped row ${JSON.stringify(shown.rows)}`);
+    if (process.env.SNAP_DIR) await command(`barsnap ${join(process.env.SNAP_DIR, "command-bar-tab-to-search-row.png")}`);
+    for (let i = 0; i < 4; i++) await command("backspace");
+    await bar("emptied", (b) => b.field === "" && b.scope);
+    await command("backspace");
+    shown = await bar("left", (b) => b.scope === null);
+    assert(shown.query === "y" && shown.hint === "Search YouTube", `after leaving ${JSON.stringify(shown)}`);
+    await command("escape");
+    await until("closed", async () => { await command("state"); return state().commandBar === null; });
+    // A word of a name, and an exact host with a space.
+    await command("menu newTab");
+    await command("type maps");
+    shown = await bar("maps", (b) => b.query === "maps" && b.offered);
+    assert(shown.offered.name === "Google Maps", `"maps" offers ${JSON.stringify(shown.offered)}`);
+    await command("escape");
+    await command("menu newTab");
+    await command("type github.com ");
+    shown = await bar("github scoped", (b) => b.scope?.name === "GitHub");
+    assert(shown.scope.brand === "#181717" && /^#[0-9A-F]{6}$/i.test(shown.scope.fill), `GitHub's fill ${JSON.stringify(shown.scope)}`);
+    await command("backspace");
+    shown = await bar("github left", (b) => b.scope === null);
+    assert(shown.query === "github.com", `space scope left ${JSON.stringify(shown)}`);
+    await command("escape");
+    // Nothing starts with it: no hint, and Tab moves down.
+    await command("menu newTab");
+    await command("type zzqx");
+    shown = await bar("no offer", (b) => b.query === "zzqx");
+    assert(shown.offered === null && shown.hint === null, `"zzqx" offers ${JSON.stringify(shown)}`);
+    await command("escape");
+  },
   async "bar-ranking"() {
     // Arc's order: a page you go to that matches leads (Enter opens it), then what you typed, then the other pages;
     // the search engine's suggestions (the fixture's, for "zz…") only fill what's left of the five rows shown at once.
@@ -7593,19 +7646,19 @@ const checks = {
     await command("searchpane cancel");
     if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-search-sites.png")}`);
     await closeSettingsWindow();
-    // The keyword is offered ("Search Fixture", Tab), and Tab scopes the bar.
+    // The keyword is offered ("Search Fixture" and a Tab key at the field's end), and Tab scopes the bar.
     const asked = suggestRequests.length;
     const bar = async (ready) => until("bar", async () => { await command("state"); const b = state().commandBar; return b && ready(b) && b; });
     await command("menu newTab");
     await command("type fx");
-    let shown = await bar((b) => b.query === "fx" && b.rows.some((r) => r.kind === "scope"));
-    assert(shown.rows[1].kind === "scope" && shown.rows[1].title === "Search Fixture" && shown.rows[1].detail === "Tab" && shown.scope === null, `keyword rows ${JSON.stringify(shown.rows)}`);
+    let shown = await bar((b) => b.query === "fx" && b.offered?.keyword === "fx");
+    assert(shown.hint === "Search Fixture" && shown.scope === null, `keyword offered ${JSON.stringify(shown)}`);
     await command("tab");
     shown = await bar((b) => b.scope?.name === "Fixture");
     assert(shown.query === "" && shown.rows.length === 0, `scoped ${JSON.stringify(shown)}`);
     await command("type zzsite query");
     shown = await bar((b) => b.query === "zzsite query" && b.rows.length === 1);
-    assert(shown.scope?.keyword === "fx" && shown.rows[0].kind === "search" && shown.rows[0].detail === "Search Fixture" &&
+    assert(shown.scope?.keyword === "fx" && shown.rows[0].kind === "search" && shown.rows[0].detail === "" &&
       shown.rows[0].url === `${origin}/find?q=zzsite%20query`, `scoped row ${JSON.stringify(shown)}`);
     await sleep(400);
     assert(!suggestRequests.slice(asked).some((r) => r.q.startsWith("zzsite")), `a scoped search was sent for suggestions: ${JSON.stringify(suggestRequests.slice(asked))}`);

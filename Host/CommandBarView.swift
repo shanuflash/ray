@@ -24,8 +24,21 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   private let backdrop = SurfaceBackdrop(radius: 12)
   private let searchIcon = NSImageView()
   private let chip = ScopeChip()
+  private let hint = ScopeHint()
   /// The site search the bar is scoped to (a keyword, then Tab or a space): what you type searches there.
   private(set) var scope: SearchScope?
+  /// The site search Tab would scope to, shown at the field's end (Arc's "Search YouTube  Tab"); `offer(_:)`.
+  private(set) var offered: SearchScope?
+  /// What the field held before Tab or a space scoped it: Delete with nothing typed puts it back.
+  private var scopeFrom: String?
+  /// A site search's colour when it has no brand of its own (`SearchScope.brand`): its site's icon colour.
+  var iconColor: ((SearchScope) -> NSColor?)?
+  /// The scoped site's colour, as a fill readable on the bar: the chip, the glow and the chosen row.
+  private(set) var scopeFill: NSColor?
+  /// For tests: how many times entering a scope pulsed the bar.
+  private(set) var pulses = 0
+  private let glow = CALayer()
+  private let tint = CALayer()
   private let separator = NSView()
   private let scrollView = QuietScrollView()
   private let tableView = NSTableView()
@@ -61,6 +74,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     guard let completedFrom else { return text }
     return (text as NSString).substring(to: min(completedFrom, (text as NSString).length))
   }
+  /// For tests: the hint at the field's end, when shown.
+  var hintText: String? { hint.isHidden ? nil : hint.text }
   /// For tests: the host completed inline, if any.
   var inlineCompletion: String? { completedFrom == nil ? nil : field.stringValue }
 
@@ -109,6 +124,9 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     panel.addSubview(searchIcon)
     chip.isHidden = true
     panel.addSubview(chip)
+    hint.isHidden = true
+    hint.onClick = { [weak self] in self?.enterOffered() }
+    panel.addSubview(hint)
 
     field.isBordered = false
     field.drawsBackground = false
@@ -146,6 +164,16 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     scrollView.automaticallyAdjustsContentInsets = false
     scrollView.contentInsets = NSEdgeInsets()
     panel.addSubview(scrollView)
+    // Entering a site search pulses the bar in the site's colour (Arc's red glow for YouTube): a glow under the panel
+    // and a tint over its card.
+    layer?.insertSublayer(glow, below: panel.layer)
+    panel.layer?.insertSublayer(tint, above: backdrop.layer)
+    glow.shadowOpacity = 0
+    glow.shadowOffset = .zero
+    glow.shadowRadius = 24
+    tint.opacity = 0
+    tint.cornerRadius = 12
+    tint.cornerCurve = .continuous
     scrollView.addTrackingArea(NSTrackingArea(
       rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     updateColors()
@@ -190,6 +218,8 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   func present(query: String) {
     lastPointer = NSEvent.mouseLocation
     setScope(nil)
+    offered = nil
+    updateHint()
     field.stringValue = query
     beforeArrowing = nil
     filledRow = nil
@@ -281,11 +311,20 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     SurfaceBackdrop.shadow(on: panel, radius: 12)
     CATransaction.commit()
     searchIcon.frame = NSRect(x: Self.iconCenter - 9, y: (Self.fieldHeight - 18) / 2, width: 18, height: 18)
-    // Scoped, the chip takes the icon's place and the text follows it.
+    // Scoped, the chip sits where the text starts (after the icon, as Arc's) and the text follows it.
     let chipWidth = chip.isHidden ? 0 : chip.intrinsicContentSize.width
-    chip.frame = NSRect(x: Self.rowInset + 7, y: ((Self.fieldHeight - 28) / 2).rounded(), width: chipWidth, height: 28)
-    let fieldX = chip.isHidden ? Self.contentInset - 2 : chip.frame.maxX + 10
-    field.frame = NSRect(x: fieldX, y: (Self.fieldHeight - 26) / 2, width: width - fieldX - 24, height: 26)
+    chip.frame = NSRect(x: Self.contentInset - 4, y: ((Self.fieldHeight - 26) / 2).rounded(), width: chipWidth, height: 26)
+    let fieldX = chip.isHidden ? Self.contentInset - 2 : chip.frame.maxX + 8
+    let hintWidth = hint.isHidden ? 0 : hint.intrinsicContentSize.width
+    hint.frame = NSRect(x: width - 18 - hintWidth, y: ((Self.fieldHeight - 22) / 2).rounded(), width: hintWidth, height: 22)
+    let fieldEnd = hint.isHidden ? width - 24 : hint.frame.minX - 12
+    field.frame = NSRect(x: fieldX, y: (Self.fieldHeight - 26) / 2, width: max(40, fieldEnd - fieldX), height: 26)
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    glow.frame = panel.frame
+    glow.shadowPath = CGPath(roundedRect: glow.bounds, cornerWidth: 12, cornerHeight: 12, transform: nil)
+    tint.frame = panel.bounds
+    CATransaction.commit()
     separator.frame = NSRect(x: 11, y: Self.fieldHeight - 1, width: width - 22, height: 1)
     separator.isHidden = suggestions.isEmpty
     scrollView.frame = NSRect(
@@ -309,6 +348,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     tableView.selectRowIndexes([next], byExtendingSelection: false)
     movingByKey = false
     tableView.scrollRowToVisible(next)
+    defer { updateHint() }
     guard let before = beforeArrowing else { return }
     let row = suggestions[next]
     // Back on the row you were on, the field is what you typed again (its inline completion too), and Escape closes.
@@ -346,6 +386,7 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     guard let before = beforeArrowing else { return }
     showTyped(before)
     beforeArrowing = nil
+    updateHint()
   }
 
   private func showTyped(_ before: BeforeArrowing) {
@@ -391,18 +432,21 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
     let text = field.stringValue
     if scope == nil, let space = text.firstIndex(of: " "), space != text.startIndex,
        let found = SearchEngines.scope(forKeyword: String(text[..<space])) {
-      enter(found, query: String(text[text.index(after: space)...]))
+      enter(found, query: String(text[text.index(after: space)...]), from: String(text[..<space]))
       return
     }
     delegate?.commandBar(self, queryChanged: text)
   }
 
-  /// Scopes the bar to `scope`, the field holding `query` (what follows the keyword).
-  func enter(_ scope: SearchScope, query: String = "") {
+  /// Scopes the bar to `scope`, the field holding `query` (what follows the keyword); Delete with nothing typed puts
+  /// `from` back (the keyword by default).
+  func enter(_ scope: SearchScope, query: String = "", from: String? = nil) {
     beforeArrowing = nil
     filledRow = nil
     completedFrom = nil
+    scopeFrom = from ?? scope.keyword
     setScope(scope)
+    if let scopeFill { pulse(scopeFill) }
     if let editor = field.currentEditor() as? NSTextView {
       editor.string = query
       editor.setSelectedRange(NSRange(location: (query as NSString).length, length: 0))
@@ -414,30 +458,90 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
 
   private func setScope(_ scope: SearchScope?) {
     self.scope = scope
+    scopeFill = scope.map(fill(for:))
     chip.isHidden = scope == nil
-    searchIcon.isHidden = scope != nil
     chip.name = scope?.name ?? ""
+    chip.fill = scopeFill
     field.placeholderString = scope.map { "Search \($0.name)…" } ?? "Search or Enter URL…"
+    if scope == nil {
+      glow.removeAllAnimations()
+      tint.removeAllAnimations()
+    }
+    updateHint()
     needsLayout = true
   }
 
-  /// Tab on a keyword (the typed text, or the selected "Search …" row) scopes the bar; elsewhere it moves down.
-  private func tabPressed() {
-    if scope == nil {
-      let row = selectedIndex >= 0 && selectedIndex < suggestions.count ? suggestions[selectedIndex] : nil
-      if case .scope(let offered)? = row?.kind { return enter(offered) }
-      // A row's text that arrowing put in the field isn't a keyword you typed.
-      let text = field.stringValue.trimmingCharacters(in: .whitespaces)
-      if filledRow == nil, !text.isEmpty, !text.contains(" "), let found = SearchEngines.scope(forKeyword: text) { return enter(found) }
+  /// The site's colour (its brand, else its icon's, else the profile's), moved just far enough from the bar's card
+  /// to show on it: a black brand (GitHub, X) fills grey on a dark bar.
+  private func fill(for scope: SearchScope) -> NSColor {
+    let brand = scope.brand.flatMap(ProfileColor.parse).map { NSColor(srgbRed: $0.r, green: $0.g, blue: $0.b, alpha: 1) }
+    let color = brand ?? iconColor?(scope) ?? NSColor(name: nil) { _ in ProfileColor.accent }
+    return ProfileColor.legible(color, on: SurfaceBackdrop.solidFill, minimum: 1.5)
+  }
+
+  /// White on a site's colour, as Arc's pill and row (YouTube's red), unless white has under 3:1 there (Amazon's
+  /// orange): then black.
+  static func brandInk(on fill: NSColor) -> NSColor {
+    NSColor(name: nil) { appearance in
+      let name = appearance.bestMatch(from: [.darkAqua, .aqua]) ?? .aqua
+      return ProfileColor.contrast(.white, fill, appearance: name) >= 3 ? .white : .black
     }
+  }
+
+  /// The site search to offer for what was typed (the bar's owner works it out with the rows), or nil.
+  func offer(_ scope: SearchScope?) {
+    guard scope != offered else { return }
+    offered = scope
+    updateHint()
+  }
+
+  /// The hint shows while there's an offer, nothing is scoped and the field holds what was typed.
+  private func updateHint() {
+    let shown = scope == nil && beforeArrowing == nil && offered != nil
+    hint.name = offered?.name ?? ""
+    hint.isHidden = !shown
+    needsLayout = true
+  }
+
+  /// Tab, or a click on the hint: scope to what's offered, what was typed coming back on Delete.
+  private func enterOffered() {
+    guard scope == nil, let offered else { return }
+    enter(offered, from: typed)
+  }
+
+  /// Arc's pulse: a glow under the bar and a tint over it in the site's colour rise in 100 ms and fade out over a
+  /// second. Reduce Motion: none (the chip carries the colour).
+  private func pulse(_ color: NSColor) {
+    pulses += 1
+    guard !Panels.reduceMotion else { return }
+    var cg = color.cgColor
+    effectiveAppearance.performAsCurrentDrawingAppearance { cg = color.cgColor }
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    glow.shadowColor = cg
+    tint.backgroundColor = cg
+    CATransaction.commit()
+    for (layer, keyPath, peak) in [(glow, "shadowOpacity", 0.9), (tint, "opacity", 0.14)] as [(CALayer, String, Double)] {
+      let rise = CAKeyframeAnimation(keyPath: keyPath)
+      rise.values = [0, peak, 0]
+      rise.keyTimes = [0, 0.09, 1]
+      rise.timingFunctions = [CAMediaTimingFunction(name: .easeOut), CAMediaTimingFunction(name: .easeInEaseOut)]
+      rise.duration = 1.1
+      layer.add(rise, forKey: "pulse")
+    }
+  }
+
+  /// Tab on an offered site search scopes the bar (Arc's, Chrome's keyword mode); elsewhere it moves down.
+  private func tabPressed() {
+    if scope == nil, beforeArrowing == nil, offered != nil { return enterOffered() }
     moveSelection(by: 1)
   }
 
-  /// Delete with nothing typed leaves the scope, the keyword back in the field (Chrome, Ardia).
+  /// Delete with nothing typed leaves the scope, what was typed before it back in the field (Chrome, Ardia).
   private func leaveScope() -> Bool {
     guard let scope, field.stringValue.isEmpty else { return false }
     setScope(nil)
-    let keyword = scope.keyword
+    let keyword = scopeFrom ?? scope.keyword
     if let editor = field.currentEditor() as? NSTextView {
       editor.string = keyword
       editor.setSelectedRange(NSRange(location: (keyword as NSString).length, length: 0))
@@ -471,12 +575,16 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   func numberOfRows(in tableView: NSTableView) -> Int { suggestions.count }
 
   func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-    SuggestionRowBackground()
+    let view = SuggestionRowBackground()
+    view.fill = scopeFill
+    return view
   }
 
   func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
     let cell = (tableView.makeView(withIdentifier: .init("suggestion"), owner: nil) as? SuggestionCell) ?? SuggestionCell()
     cell.identifier = .init("suggestion")
+    // Scoped, the chosen row is filled with the site's colour and its text is white or black on it, as Arc's.
+    cell.ink = scopeFill.map(Self.brandInk(on:))
     cell.show(suggestions[row])
     cell.selected = row == tableView.selectedRow
     return cell
@@ -497,9 +605,9 @@ final class FlippedView: NSView {
   override var isFlipped: Bool { true }
 }
 
-/// The site a scoped bar searches, before the text: "Wikipedia" on a wash of the profile's colour.
+/// The site a scoped bar searches, before the text: Arc's pill, "YouTube" in white on YouTube's red, with a soft glow
+/// of that colour.
 private final class ScopeChip: NSView {
-  private let icon = NSImageView()
   private let label = NSTextField(labelWithString: "")
   var name = "" {
     didSet {
@@ -509,17 +617,20 @@ private final class ScopeChip: NSView {
       needsLayout = true
     }
   }
+  /// The site's colour (`CommandBarView.scopeFill`).
+  var fill: NSColor? {
+    didSet { needsDisplay = true }
+  }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    layer?.cornerRadius = 7
-    layer?.cornerCurve = .continuous
-    icon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
-    icon.symbolConfiguration = .init(pointSize: 11, weight: .semibold)
-    label.font = .systemFont(ofSize: 14, weight: .medium)
+    layer?.masksToBounds = false
+    layer?.shadowOffset = .zero
+    layer?.shadowRadius = 5
+    layer?.shadowOpacity = 0.45
+    label.font = .systemFont(ofSize: 14, weight: .semibold)
     label.lineBreakMode = .byTruncatingTail
-    addSubview(icon)
     addSubview(label)
     setAccessibilityElement(true)
     setAccessibilityRole(.staticText)
@@ -530,27 +641,87 @@ private final class ScopeChip: NSView {
   override var isFlipped: Bool { true }
   override var wantsUpdateLayer: Bool { true }
   override var intrinsicContentSize: NSSize {
-    NSSize(width: min(220, ceil(label.attributedStringValue.size().width) + 4) + 10 + 14 + 6 + 10, height: 28)
-  }
-
-  /// A wash of the profile's colour over the panels' card (what the bar sits on).
-  private var fill: NSColor {
-    ProfileColor.mix(NSColor(name: nil) { _ in ProfileColor.accent }, over: SurfaceBackdrop.solidFill, 0.16, dark: 0.28)
+    NSSize(width: min(220, ceil(label.attributedStringValue.size().width) + 4) + 22, height: 26)
   }
 
   override func updateLayer() {
-    let fill = fill
+    let fill = fill ?? NSColor(name: nil) { _ in ProfileColor.accent }
     layer?.backgroundColor = fill.cgColor
-    let ink = ProfileColor.legible(NSColor(name: nil) { _ in ProfileColor.accent }, on: fill, minimum: 4.5)
-    label.textColor = ink
-    icon.contentTintColor = ink
+    layer?.shadowColor = fill.cgColor
+    layer?.cornerRadius = bounds.height / 2
+    label.textColor = CommandBarView.brandInk(on: fill)
   }
 
   override func layout() {
     super.layout()
-    icon.frame = NSRect(x: 10, y: ((bounds.height - 14) / 2).rounded(), width: 14, height: 14)
+    layer?.cornerRadius = bounds.height / 2
     let height = ceil(label.intrinsicContentSize.height)
-    label.frame = NSRect(x: 30, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 40, height: height)
+    label.frame = NSRect(x: 11, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 20, height: height)
+  }
+}
+
+/// What Tab would do, at the field's end: "Search YouTube" in grey and a "Tab" key cap (Arc's). A click does it too.
+private final class ScopeHint: NSView {
+  private let label = NSTextField(labelWithString: "")
+  private let key = NSTextField(labelWithString: "Tab")
+  private let keyBox = NSView()
+  var onClick: (() -> Void)?
+  var name = "" {
+    didSet {
+      guard name != oldValue else { return }
+      label.stringValue = "Search \(name)"
+      setAccessibilityLabel("Search \(name), Tab")
+      invalidateIntrinsicContentSize()
+      needsLayout = true
+    }
+  }
+  var text: String { label.stringValue }
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    label.font = .systemFont(ofSize: 14)
+    label.textColor = .tertiaryLabelColor
+    key.font = .systemFont(ofSize: 11, weight: .semibold)
+    key.textColor = .secondaryLabelColor
+    keyBox.wantsLayer = true
+    keyBox.layer?.cornerRadius = 5
+    keyBox.layer?.cornerCurve = .continuous
+    keyBox.addSubview(key)
+    addSubview(label)
+    addSubview(keyBox)
+    setAccessibilityElement(true)
+    setAccessibilityRole(.button)
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override var intrinsicContentSize: NSSize {
+    NSSize(width: ceil(label.intrinsicContentSize.width) + 7 + ceil(key.intrinsicContentSize.width) + 12, height: 22)
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    needsLayout = true
+  }
+
+  override func layout() {
+    super.layout()
+    let keyWidth = ceil(key.intrinsicContentSize.width) + 12
+    keyBox.frame = NSRect(x: bounds.width - keyWidth, y: 1, width: keyWidth, height: 20)
+    let keyHeight = ceil(key.intrinsicContentSize.height)
+    key.frame = NSRect(x: 6, y: ((20 - keyHeight) / 2).rounded(), width: keyWidth - 12, height: keyHeight)
+    let height = ceil(label.intrinsicContentSize.height)
+    label.frame = NSRect(x: 0, y: ((bounds.height - height) / 2).rounded(), width: keyBox.frame.minX - 7, height: height)
+    effectiveAppearance.performAsCurrentDrawingAppearance {
+      keyBox.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.08).cgColor
+    }
+  }
+
+  override func mouseDown(with event: NSEvent) { onClick?() }
+  override func accessibilityPerformPress() -> Bool {
+    onClick?()
+    return true
   }
 }
 
@@ -571,8 +742,11 @@ private final class QuietScrollView: NSScrollView {
 }
 
 private final class SuggestionRowBackground: NSTableRowView {
+  /// A scoped bar's site colour for the chosen row, in place of the usual wash.
+  var fill: NSColor?
+
   override func drawSelection(in dirtyRect: NSRect) {
-    SelectedRow.fill(over: SurfaceBackdrop.solidFill).setFill()
+    (fill ?? SelectedRow.fill(over: SurfaceBackdrop.solidFill)).setFill()
     let rect = bounds.insetBy(dx: CommandBarView.rowInset, dy: 2)
     NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
   }
@@ -594,6 +768,8 @@ private final class SuggestionCell: NSTableCellView {
   private var isTab = false
   private var shortcut = ""
   private var suggestion: Suggestion?
+  /// Text and icon colour on a scoped bar's filled row (white or black on the site's colour); nil elsewhere.
+  var ink: NSColor?
 
   var selected = false {
     didSet { updateAccessory() }
@@ -654,7 +830,7 @@ private final class SuggestionCell: NSTableCellView {
     icon.image = suggestion.icon
     if case .tab = suggestion.kind { isTab = true } else { isTab = false }
     switch suggestion.kind {
-    case .action, .scope: shortcut = suggestion.detail
+    case .action: shortcut = suggestion.detail
     // A bookmark says so where a tab says "Switch to Tab", in the quieter look of a shortcut.
     case .bookmark: shortcut = "Bookmark"
     default: shortcut = ""
@@ -669,7 +845,7 @@ private final class SuggestionCell: NSTableCellView {
     case .tab: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
     case .search: detail = suggestion.detail
     case .url, .history, .bookmark: detail = suggestion.detail == suggestion.title ? "" : suggestion.detail
-    case .action, .scope: detail = ""
+    case .action: detail = ""
     case .setting: detail = suggestion.detail
     }
     if !detail.isEmpty {
@@ -684,7 +860,13 @@ private final class SuggestionCell: NSTableCellView {
 
   private func updateAccessory() {
     action.isHidden = !isTab && shortcut.isEmpty
-    arrowBox.isHidden = !(isTab || selected)
+    arrowBox.isHidden = !(isTab || selected) || ink != nil
+    if let ink, let text = label.attributedStringValue.mutableCopy() as? NSMutableAttributedString {
+      text.addAttribute(.foregroundColor, value: selected ? ink : NSColor.labelColor, range: NSRange(location: 0, length: text.length))
+      label.attributedStringValue = text
+      icon.contentTintColor = selected ? ink : .secondaryLabelColor
+      return
+    }
     effectiveAppearance.performAsCurrentDrawingAppearance {
       action.textColor = selected ? (isTab ? .labelColor : .secondaryLabelColor) : .tertiaryLabelColor
       arrowBox.layer?.backgroundColor = (selected ? NSColor.labelColor : NSColor.labelColor.withAlphaComponent(0.08)).cgColor
