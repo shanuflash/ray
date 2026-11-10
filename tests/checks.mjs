@@ -4531,7 +4531,7 @@ const checks = {
     // Every pane has content of its own now, so none is hidden; Search opens as itself.
     assert(win().pane === "search", `Search opened as ${win().pane}`);
     assert(!win().rows.appearance.includes("appIcon") && win().rows.appearance.includes("appearanceMode") && win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
-    assert(win().rows.tabs.join() === "newTabNextToActive,recentTabCycling,showSidebarButton,fadeUnloadedTabs,tabReorderHaptics", `Ray.app tabs rows ${win().rows.tabs}`);
+    assert(win().rows.tabs.join() === "newTabNextToActive,recentTabCycling,showSidebarButton,fadeUnloadedTabs,tabReorderHaptics,autoPictureInPicture", `Ray.app tabs rows ${win().rows.tabs}`);
     if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-as-app.png")}`);
     await command("settings asapp off");
     await command("state");
@@ -6826,6 +6826,115 @@ const checks = {
     await until("unmuted, no mark", async () => !(await sounds()).includes(id) && entryOfTab(state().active).muted === false, 3000);
     const result = await commandResult(`soundclick ${id}`);
     assert(result === "no sound mark", `a silent tab's row took a sound click: ${result}`);
+  },
+  async "auto-picture-in-picture"() {
+    // Settings › Tabs › Automatic Picture in Picture: Chrome's own automatic PiP, fed with the pages the user sees.
+    // A video pops out only while it plays with sound, and test instances run with --mute-audio, so a call stands in:
+    // a page on Chrome's fake camera (RAY_FAKE_MEDIA, which also keeps the PiP window invisible) that asks for it with
+    // a media session `enterpictureinpicture` handler, as Meet does (Chrome's other route, no sound needed). Leaving
+    // the tab pops it out and coming back closes it; the same for leaving the window (`sight`); off, nothing pops out.
+    pages["/autopip"] = `<title>Call</title><video id=v muted playsinline width=320 height=240></video><script>
+      window.log = [];
+      navigator.mediaSession.setActionHandler("enterpictureinpicture", async () => {
+        log.push("asked");
+        try { await v.requestPictureInPicture(); log.push("opened"); } catch (e) { log.push("failed " + e.name); }
+      });
+      window.call = async () => { v.srcObject = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); await v.play(); return true; };
+    </script>`;
+    pages["/autopip-other"] = `<title>Other</title><p>other</p>`;
+    const it = ownInstance("auto-pip", { RAY_FAKE_MEDIA: "1", RAY_START_URL: `${secureOrigin}/autopip`,
+      RAY_HOST_RULES: "MAP ray.test 127.0.0.1", RAY_IGNORE_CERT_ERRORS: "1" });
+    let socket;
+    try {
+      await until("window", async () => (await it.cmd("state", 20000)) === "ok" && it.states.length > 0, 25000);
+      const version = await until("DevTools", async () => {
+        try { return await (await fetch(`http://127.0.0.1:${it.port}/json/version`)).json(); } catch { return null; }
+      }, 20000);
+      socket = new WebSocket(version.webSocketDebuggerUrl);
+      await new Promise((r, j) => ((socket.onopen = r), (socket.onerror = j)));
+      let id = 0;
+      const waiting = new Map();
+      socket.onmessage = (m) => {
+        const msg = JSON.parse(m.data);
+        if (msg.id && waiting.has(msg.id)) { waiting.get(msg.id)(msg); waiting.delete(msg.id); }
+      };
+      const cdp = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
+        const n = ++id;
+        waiting.set(n, (msg) => (msg.error ? reject(new Error(`${method}: ${msg.error.message}`)) : resolve(msg.result)));
+        socket.send(JSON.stringify({ id: n, method, params, sessionId }));
+      });
+      const target = await until("the call page", async () =>
+        (await cdp("Target.getTargets")).targetInfos.find((t) => t.type === "page" && t.url === `${secureOrigin}/autopip`), 15000);
+      const { sessionId } = await cdp("Target.attachToTarget", { targetId: target.targetId, flatten: true });
+      const run = async (expression) => (await cdp("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, sessionId)).result?.value;
+      await until("the page's script", async () => { try { return await run("typeof call === 'function'"); } catch { return false; } });
+      // The camera: Ray's own prompt, answered as a click would (its buttons wait half a second).
+      run("call()").catch(() => {});
+      await until("Allow pressed", async () => (await it.cmd("perm allow")) === "ok", 10000, 200);
+      await until("the call is on", async () => run("!!v.srcObject && !v.paused && v.readyState >= 2"), 10000);
+      const call = (await it.now()).activeEntry;
+      const pip = (s) => s.pictureInPicture;
+      const stepsSince = (s, from) => pip(s).steps.slice(from);
+      const inPage = () => run("({ pip: !!document.pictureInPictureElement, log: log.join() })");
+
+      // Another tab: the call pops out (Chrome holds it as its automatic PiP), and the call's tab back closes it.
+      let from = pip(await it.now()).steps.length;
+      await it.ok("menu newTab");
+      await it.ok(`type ${secureOrigin}/autopip-other`);
+      await it.ok("enter");
+      let s = await it.until("popped out on leaving the tab", (s) => stepsSince(s, from).some((x) => x.active), 10000);
+      let popped = stepsSince(s, from).find((x) => x.active);
+      assert(popped.entry === call && popped.kind === "video" && popped.tabShown === false && popped.auto === true,
+        `leaving the tab: ${JSON.stringify(stepsSince(s, from))}`);
+      let page = await inPage();
+      assert(page.pip && page.log === "asked,opened", `the page left: ${JSON.stringify(page)}`);
+      const other = s.activeEntry;
+      from = pip(s).steps.length;
+      await it.ok(`row ${call}`);
+      s = await it.until("closed coming back", (s) => stepsSince(s, from).some((x) => !x.active), 10000);
+      page = await inPage();
+      assert(!page.pip && stepsSince(s, from).every((x) => !x.active && x.entry === call), `back on the tab: ${JSON.stringify({ page, steps: stepsSince(s, from) })}`);
+
+      // Leaving the window (covered, another Space): the same, and back when it shows again.
+      from = pip(s).steps.length;
+      await it.ok("sight hidden");
+      s = await it.until("popped out on leaving the window", (s) => stepsSince(s, from).some((x) => x.active), 10000);
+      popped = stepsSince(s, from).find((x) => x.active);
+      assert(popped.entry === call && popped.tabShown === false && popped.auto === true && pip(s).windowSeen === false,
+        `leaving the window: ${JSON.stringify(pip(s))}`);
+      from = pip(s).steps.length;
+      await it.ok("sight visible");
+      s = await it.until("closed with the window back", (s) => stepsSince(s, from).some((x) => !x.active), 10000);
+      assert(!(await inPage()).pip && pip(s).windowSeen === true, `window back: ${JSON.stringify(pip(s))}`);
+      // A window seen again within the 0.3 s it takes to count as left never pops out.
+      from = pip(s).steps.length;
+      await it.ok("sight hidden");
+      await it.ok("sight visible");
+      await sleep(1200);
+      assert(stepsSince(await it.now(), from).length === 0, `a glance away popped out: ${JSON.stringify(pip(it.states.at(-1)))}`);
+      await it.ok("sight off");
+
+      // Off: leaving the tab leaves the call in its page.
+      await it.ok("setting autoPictureInPicture off");
+      from = pip(await it.now()).steps.length;
+      await it.ok(`row ${other}`);
+      await it.until("the other tab", (s) => s.activeEntry === other);
+      await sleep(1500);
+      s = await it.now();
+      page = await inPage();
+      assert(stepsSince(s, from).length === 0 && !page.pip, `off, leaving the tab: ${JSON.stringify({ page, steps: stepsSince(s, from) })}`);
+      await it.ok(`row ${call}`);
+      // On again (the default): it pops out once more.
+      await it.ok("setting autoPictureInPicture default");
+      await it.until("on again", (s) => s.settings.autoPictureInPicture === true && s.activeEntry === call);
+      from = pip(it.states.at(-1)).steps.length;
+      await it.ok(`row ${other}`);
+      await it.until("popped out again", (s) => stepsSince(s, from).some((x) => x.active && x.entry === call), 10000);
+      await cdp("Target.detachFromTarget", { sessionId }).catch(() => {});
+    } finally {
+      socket?.close();
+      await it.stop();
+    }
   },
   async "back-forward-list"() {
     // Back's and forward's history lists, from the page bar's and the sidebar's buttons.

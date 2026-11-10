@@ -2130,6 +2130,31 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// For tests: a click on the sound mark of an entry's row.
   func pressSound(of id: UUID) -> Bool { sidebar.pressSound(of: id) }
 
+  // MARK: Picture in picture
+
+  /// What Chrome's picture-in-picture window did for this window's tabs, newest last (the state log's
+  /// `pictureInPicture`): opened or closed, a video's or a document's, whether its tab was the one shown and whether
+  /// Chrome's automatic picture in picture (`AutoPictureInPicture`) holds it.
+  private var pictureInPictureSteps: [[String: Any]] = []
+
+  /// Chrome opened or closed a picture-in-picture window for a tab: by the page, by hand, or automatically when the
+  /// tab or the window was left (Settings › Tabs › Automatic Picture in Picture). Chrome's window is all the UI.
+  func tab(_ tab: RayCoreTab, didChangePictureInPicture change: [String: Any]) {
+    guard !closing, let entry = state.entry(for: tab) else { return }
+    let step: [String: Any] = [
+      "entry": entry.id.uuidString, "kind": change["kind"] as? String ?? "", "active": change["active"] as? Bool ?? false,
+      "tabShown": tab === pages.shown && pages.windowSeen, "auto": tab.autoPictureInPictureIsChromes,
+    ]
+    pictureInPictureSteps = Array((pictureInPictureSteps + [step]).suffix(20))
+    logState("pictureInPicture")
+  }
+
+  /// For tests: the window as the user would see it (`true`), not see it (covered, on another Space), or `nil` as it is.
+  func fakeWindowSight(_ seen: Bool?) {
+    pages.fakeSight = seen
+    logState("windowSight")
+  }
+
   // MARK: History list
 
   private var historyList: HistoryListView?
@@ -2906,6 +2931,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private func observeSettings() {
     let settings = RaySettings.shared
     PasswordPrompts.followSetting()
+    AutoPictureInPicture.start()
     settingObservations = [
       settings.observe([.minimalURL, .loadingProgress]) { [weak self] in
         guard let self else { return }
@@ -3148,6 +3174,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "pageQuestion": pageQuestions.state,
       "blockedPopups": popups.state,
       "crashedPage": crashedPages.state,
+      "pictureInPicture": ["steps": pictureInPictureSteps, "windowSeen": pages.windowSeen],
       "autofillSuggestions": autofillSuggestions ?? NSNull(),
       "find": findBar.map { bar -> [String: Any] in
         let frame = bar.convert(bar.bounds, to: nil)

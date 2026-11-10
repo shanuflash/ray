@@ -94,7 +94,7 @@ publicly or create accounts.
   in Ray.app only. **Adding a setting:** one entry plus its name in `all`, then the feature reads
   `RaySettings.shared[.id]` (and `observe(.id)` if it follows changes); `settings-catalog` covers it with no check
   code. Unbuilt rows today (test builds only): `appIcon`, `showClearButton`, `hideAddressBarWhileScrolling`,
-  `sidebarMediaControls`, `autoPictureInPicture`.
+  `sidebarMediaControls`.
 - `RaySettings`: the settings' values. `shared[.key]` reads, `set(.key, value)` writes, `apply(key, text)` (`default`
   resets any setting) is the one call the window's controls and the test command `setting` both make, and
   `observe(.key) { value in … }` / `observe([keys]) { … }` follow changes (main thread, once per run-loop turn, for as
@@ -409,6 +409,20 @@ publicly or create accounts.
   its click is the row menu's Mute; a favorite shows an 8 pt filled speaker in its bottom right, no click. Test
   command `soundclick <id>`; state log `sidebarFrames.sounds`, `audible` per entry; check `tab-sound` (muting only:
   test instances run with `--mute-audio`, so no page is ever audible there).
+- `AutoPictureInPicture` (`Host/AutoPictureInPicture.swift`): Settings › Tabs › Automatic Picture in Picture (Arc's,
+  on by default) is Chrome's own automatic PiP (`AutoPictureInPictureTabHelper`, with the engine's host-visibility
+  hook): `RayCoreEngine.setAutoPictureInPicture` (Chrome's content setting plus the engine's switch), started from
+  the first window's `observeSettings`. Chrome reads which page the user sees from `noteShown(byHost:)`:
+  `PageContainerView` notes a page left 0.3 s after a tab switch, and (`// MARK: Window sight`, Ardia's
+  `seenByUser`) the shown page of a window that's covered, minimised or on another Space, never during a full-screen
+  transition or on a locked screen; a test window counts as seen. main.swift's `// MARK: Picture in picture` passes
+  `BrowserInitiatedAutomaticPictureInPicture` (Ardia's flag: any page's one playing video, not only pages with an
+  `enterpictureinpicture` handler). Chrome's rules stand (https, playing with sound, or a call on camera/microphone);
+  Chrome closes its own auto PiP when the tab shows again. `tab(_:didChangePictureInPicture:)`
+  (`// MARK: Picture in picture`) logs `pictureInPicture` (`steps` with entry, kind, active, `tabShown`, `auto`;
+  `windowSeen`). Test command `sight hidden|visible|off`; `RAY_FAKE_MEDIA=1` (test builds) gives a hidden instance
+  Chrome's fake camera and `--ray-background`, under which the engine keeps PiP windows invisible. Check
+  `auto-picture-in-picture` (a call on the HTTPS fixture: `--mute-audio` keeps the video route from firing).
 - `HistoryList` (`Host/HistoryList.swift`, `BrowserWindowController` `// MARK: History list`): back's and forward's
   lists (owner's pick: a `Panels` panel). `HistoryButton.onHistory` (page bar and sidebar back/forward; its own class, since overriding `mouseDown` on every
   `HoverIconButton` changed AppKit's tracking and hung synthetic presses): right-click,

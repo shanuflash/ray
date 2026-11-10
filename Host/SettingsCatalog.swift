@@ -202,12 +202,12 @@ extension AnySettingKey {
       detail: "", about: "When a tab you're not looking at plays sound, a player appears at the bottom of the sidebar.",
       keywords: ["music", "player", "audio", "now playing", "media"], control: .toggle))
 
-  /// A video pops out when you leave its tab. Not built yet: its row shows only in test builds.
+  /// A video or call pops out when you leave its tab or window (`AutoPictureInPicture`). On by default, as in Arc.
   static let autoPictureInPicture = SettingKey<Bool>(
-    "autoPictureInPicture", default: true, built: false,
+    "autoPictureInPicture", default: true,
     ui: SettingUI(
       pane: .tabs, group: .media, title: "Automatic Picture in Picture",
-      detail: "", about: "A video or call you're watching pops out when you switch tabs, and returns when you come back.",
+      detail: "", about: "A video or call you're watching pops out when you switch tabs or leave the window, and returns when you come back.",
       keywords: ["pip", "video", "floating", "mini player", "picture in picture"], control: .toggle))
 
   // Shortcuts
