@@ -7,7 +7,44 @@ touches engine files or builds. Moving the engine is the owner's call. Ardia's s
 Ray's engine: Chromium 156.0.8078.47 (`engine.lock`), Helium helium-chromium 0.20.1 / helium-macos 0.20.1.1
 (`engine/patches/build/helium-pins.ini`).
 
-Last checked: Chrome 158.0.8127.18 (Mac early stable), 157.0.8103.39 (Mac stable), 156.0.8078.88 (Mac extended), 2026-11-05
+Last checked: Chrome 157.0.8103.51 (Mac stable), 158.0.8127.18 (Mac early stable), 156.0.8078.96 (Mac extended), 2026-11-10
+
+## 2026-11-10
+
+**Exploited in the wild: CVE-2026-125350 (High, use after free in XML), fixed in Chrome 157.0.8103.50/.51 and
+extended 156.0.8078.96 (2026-11-09). Ray's 156.0.8078.47 has it, and no Helium release has the fix yet.
+helium-macos 0.21.1.1 is out, so M157 (157.0.8103.38) is now buildable from Helium.**
+
+Chrome for Mac (chromiumdash):
+- **157.0.8103.50 / .51**, stable, 2026-11-09 (blog: "Stable Channel Update for Desktop"). 9 security fixes
+  (7 High, 2 Medium):
+  - High: **CVE-2026-125350 use after free in XML, exploit exists in the wild** (reported 2026-11-06);
+    -125346 use after free in XML; -125344 type confusion in V8; -125348 out of bounds write in GPU; -125343
+    buffer overflow in Compositing; -125345 uninitialized resource in WebGL; -125347 incorrect authorization in
+    FileSystem.
+  - Medium: -125349 and -125342, uninitialized resource in GPU.
+  - 157.0.8103.40 (2026-11-09) also listed, no post of its own.
+- **156.0.8078.96**, extended stable, 2026-11-09 (blog: "Extended Stable Update for Desktop"). 11 security
+  fixes (10 High, 1 Medium): CVE-2026-125350 (in the wild), -125345, -125346, -125347, plus M157 backports
+  -121068, -121076 (WebXR UAF), -121095, -121208 (Media OOB read), -121213 (Images), -121233 (CacheStorage
+  type confusion), -121184 (Medium, Media).
+- 158 early stable unchanged at 158.0.8127.18 (Android 158.0.8127.22 on 2026-11-05); no M158 security post yet.
+- Dev moved to 159.0.8144.0 (2026-11-06).
+
+How far behind: Ray's 156.0.8078.47 misses the in-the-wild XML fix, M156's fixes through .96 and all of M157's
+(213 at .38/.39, 9 more at .50/.51). Within M156 the patch fix is extended .96; within M157 it's .50/.51.
+
+Helium:
+- helium-macos **0.21.1.1** (2026-11-05): the macOS release for helium-chromium 0.21.1 (Chromium
+  157.0.8103.38). M157 is now buildable for Ray.
+- helium-chromium still **0.21.1** (157.0.8103.38). Nothing on 157.0.8103.50 or 156.0.8078.96 yet, so neither
+  Helium line has CVE-2026-125350's fix.
+
+What moving would take: the M157 bump (Helium 0.21.1 / 0.21.1.1, 157.0.8103.38) is ready, and Ardia already
+did it (engine-bc84a70be65a, v0.2.45; `docs/ARDIA-WATCH.md` item 1): new milestone, full rebuild. That still
+leaves CVE-2026-125350 open until Helium tags 157.0.8103.50+ (a patch release in the same milestone, a
+smaller rebuild after the M157 move), or the owner cherry-picks the fix onto Ray's tree once its commit is
+public (bug details are restricted for now). Not started: owner decides.
 
 ## 2026-11-05
 
