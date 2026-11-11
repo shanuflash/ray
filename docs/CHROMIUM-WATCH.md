@@ -7,7 +7,30 @@ touches engine files or builds. Moving the engine is the owner's call. Ardia's s
 Ray's engine: Chromium 156.0.8078.47 (`engine.lock`), Helium helium-chromium 0.20.1 / helium-macos 0.20.1.1
 (`engine/patches/build/helium-pins.ini`).
 
-Last checked: Chrome 157.0.8103.51 (Mac stable), 158.0.8127.18 (Mac early stable), 156.0.8078.96 (Mac extended), 2026-11-10
+Last checked: Chrome 157.0.8103.51 (Mac stable), 158.0.8127.18 (Mac early stable), 156.0.8078.96 (Mac extended), 2026-11-11
+
+## 2026-11-11
+
+**Helium now has the in-the-wild fix: helium-chromium 0.21.2 / helium-macos 0.21.2.1 (2026-11-10) are Chromium
+157.0.8103.50, which fixes CVE-2026-125350 (High, use after free in XML, exploited in the wild). Ray's
+156.0.8078.47 still has it.**
+
+Chrome for Mac (chromiumdash): nothing new since 2026-11-10. Stable 157.0.8103.51, early stable 158.0.8127.18,
+extended 156.0.8078.96.
+
+Helium:
+- helium-chromium **0.21.2** (2026-11-10): "Update to Chromium 157.0.8103.50" (ungoogled-chromium bumped too),
+  plus Helium's own autocomplete options for search suggestions in its settings (not Ray's concern: Ray's bar
+  has its own).
+- helium-macos **0.21.2.1** (2026-11-10): the macOS release for it.
+
+How far behind: unchanged; one milestone behind (M156 .47 vs M157 .50/.51), missing the in-the-wild XML fix,
+M156's fixes through .96 and M157's.
+
+What moving would take: one move now covers it: Helium 0.21.2 / 0.21.2.1 (157.0.8103.50) is a new milestone for
+Ray, full rebuild, and lands on the patched build directly (no need to stop at 0.21.1). Ardia's latest engine
+(v0.2.46-nightly.2, engine-a840abead94e) is still on 157.0.8103.38, so it lacks the fix; Ray's Ardia hosting
+layer would come from v0.2.45+ for M157 either way (`docs/ARDIA-WATCH.md`). Not started: owner decides.
 
 ## 2026-11-10
 
