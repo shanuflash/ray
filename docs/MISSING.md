@@ -378,6 +378,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     tests (no permission there), check on a real Mac. Extensions' `chrome.desktopCapture` still gets Chrome's
     picker. Shares started without Ray's picker show as "Sharing your screen" (Ray can't tell the kind). The note
     shows only in windows of the sharing tab's profile; Chrome's tab-sharing infobar stays undrawn.
+52. **Closing a window frees its tabs 4 s late** (engine, not tried; from Ardia `cba28a9c`, 2026-11-11). Ray's
+    `ac_web_contents_delegate.mm` `CloseContents` drops a page's unload-done reply while Chrome closes the window,
+    so the close waits on two 2 s fallback timers: the tabs are saved as lone closed tabs (reopening right after
+    loses Back/Forward) and a private window's session outlives it by 4 s. Fix: an `engine-ray` fixup calling
+    `BrowserWebContentsDelegate::CloseContents(source)` when `CanCloseContents` is false (next engine rebuild).
 
 ## Done
 

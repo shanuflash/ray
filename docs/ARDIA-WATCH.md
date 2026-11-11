@@ -4,7 +4,7 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.46-nightly.1 (engine-bc84a70be65a), 2026-11-10
+Last reviewed: v0.2.46-nightly.2 (engine-a840abead94e), 2026-11-11
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac
 (`docs/CHROMIUM-WATCH.md`, 2026-11-05): 157.0.8103.39, 158 in early stable. Ardia moved to 156.0.8078.79 on Helium
@@ -43,6 +43,13 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    TabFeatures; Ardia's #954 crashed in `SelectionOverlayController`'s destructor. Ardia `0365b06a` merges Glic,
    GlicActor, GlicActorUi, ApiGlicPrivate, ContextualCueing and GlicZeroStateSuggestions into `--disable-features`.
    Ray's `ac_main_delegate.cc` has no such line: comes with item 1, or an `engine-ray` fixup on its own.
+1c. **Closing a window waits 4 s before its tabs go** (new, engine, one-line fixup, MISSING 52; not tried in Ray).
+   Ardia `cba28a9c`: `CloseContents` in `ac_web_contents_delegate.mm` dropped a page's unload-done reply while
+   Chrome was closing the window, so the close sat on two 2 s fallback timers: tabs freed 4 s late and saved as lone
+   closed tabs, so a reopen right after came back without Back/Forward, and a private session outlived its window
+   by 4 s. Ray's `engine/raycore/src/ray/core/ac_web_contents_delegate.mm:192` has the identical code. Fix: when
+   `CanCloseContents` is false, call `BrowserWebContentsDelegate::CloseContents(source)` before returning. Take it
+   as an `engine-ray` fixup with item 1 (or alone at the next rebuild); matters most for private windows.
 2. ~~**Command bar: arrowing shows the row in the field**~~ (Done 2026-11-10, MISSING known limitation 42). Ardia 0.2.45 (PR #782):
    a search row puts its query in the field, a page row its address, Escape brings back what you typed, as Chrome and
    Dia do. Ray's `CommandBarView.moveSelection` only moves the highlight. App-side, small; mind the inline host
@@ -104,6 +111,46 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
     the title count (app-side, pinned tabs and favorites first); the Badging API needs an engine hook.
 18. **Keep the window when the last one closes** is already Ray's way (the normal window keeps its tabs for ⌘N);
     Ardia 0.2.45 only now matches Arc there. Nothing to take; the pinned-only ⌘W case (item 12) is still untried.
+19. **Decide Ardia's frame-rate patches** (new, engine, the owner's call at the next rebuild). Ardia `0f289583`
+    dropped four of its own engine patches "per the Helium-base decision": begin-frame warm-up (never switched on),
+    main-frame throttle after show and full rate on input (`ThrottleMainFrameTo60Hz`, `UrgentMainFrameForInput`)
+    and battery-saver full rate on input, plus the 600 s unfreeze interval; it keeps only "a tab with a live
+    connection is never frozen" (`chromium-freeze-spares-live-connections.patch`, was `thaw-live-connections`).
+    Ray's `engine/patches/` still carries all five from v0.2.42. Taking item 1 drops them with Ardia; Ardia ran no
+    timing runs, so measure scrolling and typing latency before and after on Ray.
+20. **Sidebar divider spacing** (small, look). Ardia `5fe71832` makes the divider under the pinned section Dia's
+    14 pt band (1 pt line 6.5 pt from each neighbour; was 30 pt edge to edge). Compare Ray's divider against the
+    owner's Arc captures before changing anything (Ray matches Arc, not Dia).
+
+## v0.2.46-nightly.2 (2026-11-10), engine bc84a70b → a840abea
+
+Range `v0.2.46-nightly.1..v0.2.46-nightly.2`: 32 commits, 32 engine files (+82/−1,244). Chromium unchanged
+(157.0.8103.38); no new security fixes.
+
+**Engine** (engine-a840abead94e):
+- **Window close no longer waits 4 s** (`cba28a9c`, `ac_web_contents_delegate.mm`): the unload-done reply goes to
+  Chrome while it's closing the window, so ⇧⌘T right after keeps Back/Forward and a private session ends with
+  its window. Ray has the same code: item 1c.
+- **Frame-rate patches out** (`0f289583`): `chromium-begin-frame-warm-up`, `-main-frame-throttle-after-show`,
+  `-main-frame-full-rate-on-input`, `-battery-saver-full-rate-on-input` and `ac_input_frame_rate.mm` removed;
+  `thaw-live-connections` becomes `freeze-spares-live-connections` without the 600 s unfreeze. Also gone:
+  `ac_engine_abi_version`, an unreachable password-save fallback, `ArdiaCore.h` loses 5 lines. The prebuilt
+  engine's key now hashes the offline game too (`engine/engine-key.sh`). Ray: item 19.
+
+**App features Ray lacks:** nothing new for Ray. `ardia browse` (Ardia's agent CLI: actions answer with the
+opened text, `read --scroll`, spreadsheet `fill`, stale refs follow a redrawn element) has no Ray counterpart and
+isn't on Ray's roadmap.
+
+**Fixes to behaviour Ray shares:**
+- Window-close timing (above).
+- Sync's Keychain key save updates before deleting (`1cf6efe8`); import temp copies (which can hold a logins
+  database) named per process and stale ones removed at start. Ray's `ImportWriter` reads the source in place
+  through Ardia's import core: check it leaves no copies behind (not tried).
+- Live folders saved at quit, split/peek ordering (`fd0f6294`): Ardia-only features.
+
+**Competitive notes:** Ardia ahead: window close/reopen (until 1c), a measured Dia divider. Ray ahead: Settings
+› Search and Tab to Search, the ⌃Tab switcher, its own screen-share picker (MISSING 51) where Ardia only refuses
+unclicked capture.
 
 ## v0.2.45 (2026-11-10, stable) and v0.2.46-nightly.1 (2026-11-10), engines f16f5620 → bc84a70b
 
