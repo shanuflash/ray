@@ -4971,6 +4971,25 @@ const checks = {
           "rayonly=1; Domain=jumpcloud.com; Path=/; Secure; Max-Age=3600"] });
         return res.end("<title>Seed</title><p>seed</p>");
       }
+      // An app (Argo CD) whose sign-in lands on JumpCloud's step-up page for JumpCloud Go, once per tab.
+      if (req.headers.host?.startsWith("argocd.ray.test")) {
+        res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+        // After the page has loaded, as a click on its "Log in via SSO" would (during the load Chrome would replace the
+        // app's own entry, leaving nothing to go back to).
+        return res.end(`<title>Argo</title><p>app</p><script>addEventListener("load", () => setTimeout(() => { ` +
+          `if (sessionStorage.went) return; sessionStorage.went = 1; ` +
+          `location.href = "https://console.jumpcloud.com/login/stepup?factors=durt&step=mfa&mfaType=durt&extra=x" }, 300))</script>`);
+      }
+      if (url.pathname === "/login/stepup") {
+        res.writeHead(200, { "content-type": "text/html" });
+        return res.end("<title>JumpCloud</title><p>verify</p>");
+      }
+      if (url.pathname === "/login" && url.searchParams.has("stepup")) {
+        // Signed in, an app's policy wants a fresh check: the page moves on to the step-up without a new document.
+        res.writeHead(200, { "content-type": "text/html" });
+        return res.end(`<title>JumpCloud</title><p>login</p>` +
+          `<script>history.replaceState(null, "", "/login/stepup?factors=durt&step=mfa&mfaType=durt")</script>`);
+      }
       if (url.pathname === "/login") {
         // As JumpCloud's console does: signed in (the relay's session), the page's script moves on to the console
         // without a new document; `stay` keeps it on the login page (a session JumpCloud doesn't take).
@@ -4995,7 +5014,8 @@ const checks = {
       env: { ...process.env, RAY_BACKGROUND: "1", RAY_TEST_COMMANDS: "1", RAY_LOG_STATE: "1", RAY_DATA_DIR: data,
         RAY_DOWNLOADS_DIR: join(dir, "Downloads"), RAY_START_URL: `${origin}/a`, RAY_IGNORE_CERT_ERRORS: "1",
         RAY_PASTEBOARD: `dev.shanus.ray.checks.${process.pid}.jumpcloud`, RAY_REMOTE_DEBUGGING_PORT: String(devPort),
-        RAY_HOST_RULES: `MAP console.jumpcloud.com 127.0.0.1:${jc.address().port},MAP sso.jumpcloud.com 127.0.0.1:${jc.address().port}`,
+        RAY_HOST_RULES: `MAP console.jumpcloud.com 127.0.0.1:${jc.address().port},MAP sso.jumpcloud.com 127.0.0.1:${jc.address().port},` +
+          `MAP argocd.ray.test 127.0.0.1:${jc.address().port}`,
         RAY_JUMPCLOUD_RELAY_CHROME: wrapper, RAY_JUMPCLOUD_RELAY_DEADLINE: "6",
         RAY_JUMPCLOUD_RELAY_HEADLESS_DEADLINE: "1.5", RAY_JUMPCLOUD_RELAY_SETTLE: "0.5", RAY_JUMPCLOUD_RELAY_CHROME_VERSION: "141.0.7390.123" },
       stdio: ["pipe", "ignore", "pipe"],
@@ -5170,6 +5190,38 @@ const checks = {
         assert(state.lastResult === "signedIn" && state.continuations === continued + 1, `continuation ${JSON.stringify(state)}`);
       }
       assert(!requests.some((r) => r.host === "evil.test"), "a redirectTo left JumpCloud");
+
+      // Step-up (an app's policy wants JumpCloud Go again on a session Ray has): Chrome answers JumpCloud's own step-up
+      // page (only its keys), then the tab goes on to the app's pending sign-in, which the login page carried...
+      const navigations = () => lines("cdp.jsonl").filter((c) => c.method === "Page.navigate" || c.method === "Target.createTarget")
+        .map((c) => c.params.url);
+      const stepUpURL = "https://console.jumpcloud.com/login/stepup?factors=durt&step=mfa&mfaType=durt";
+      let ups = (await relay()).stepUps;
+      await goTo("/login?context=sso&redirectTo=saml2%2Fargo%3FsamlToken%3Dt3&stepup=1", true);
+      await until("went on to the app after the step-up", () => requests.some((r) => r.host === "sso.jumpcloud.com" && r.path === "/saml2/argo?samlToken=t3"), 12000);
+      state = await relay();
+      assert(state.stepUps === ups + 1 && state.lastResult === "signedIn", `step-up ${JSON.stringify(state)}`);
+      assert(navigations().includes(stepUpURL), `Chrome went to ${JSON.stringify(navigations())}`);
+      // ...or, with no such page (the app's sign-in went straight to the step-up), back to the app's own page.
+      const appVisits = () => requests.filter((r) => r.host === "argocd.ray.test").length;
+      ups = state.stepUps;
+      const back = state.backToApp;
+      await ok("menu newTab");
+      await ok("type https://argocd.ray.test/login");
+      await ok("enter");
+      const activeURL = (s) => [...(s.sidebar?.today ?? []), ...(s.sidebar?.pinned ?? [])].find((e) => e.id === s.activeEntry)?.url ?? "";
+      try {
+        await until("back on the app's page", async () => {
+          const s = await now();
+          return s.jumpCloudRelay.backToApp === back + 1 && activeURL(s).startsWith("https://argocd.ray.test/");
+        }, 12000);
+      } catch (error) {
+        const s = await now();
+        throw new Error(`${error.message}: relay ${JSON.stringify(s.jumpCloudRelay)}, tab ${activeURL(s)}, app visits ${appVisits()}, ` +
+          `requests ${JSON.stringify(requests.slice(-6).map((r) => r.host + r.path))}`);
+      }
+      state = await relay();
+      assert(state.stepUps === ups + 1, `step-up back ${JSON.stringify(state)}`);
 
       // Headless never gets there, Ray in full screen: headless Chrome closes, a visible one opens the 440×620 window,
       // and Ray says so with a button instead of leaving its Space; the button brings Chrome forward.

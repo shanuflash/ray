@@ -193,7 +193,9 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     headless (`--headless=new`, ordinary Chrome's user agent and client hints, no window, no Dock icon, never
     activated, so a full-screen Ray stays on its Space), and on reaching /userconsole copies only jumpcloud.com
     cookies into Ray and reloads the tab (an app's sign-in, `context=sso` such as a SAML app, goes on to the app's
-    `https://sso.jumpcloud.com/` + `redirectTo` instead, since the login page doesn't forward an existing session). If headless doesn't sign in within 10 s it starts again in a small visible
+    `https://sso.jumpcloud.com/` + `redirectTo` instead, since the login page doesn't forward an existing session; an
+    app whose policy asks for JumpCloud Go again sends a signed-in user to `/login/stepup?…mfaType=durt`, which relays
+    too since 2026-11-11 (Argo CD; whether Chrome's fresh check satisfies the app still needs the owner's real try)). If headless doesn't sign in within 10 s it starts again in a small visible
     Chrome window (in full screen, Ray shows "Finish signing in to JumpCloud in Chrome" with a button instead of
     switching Spaces). Set Up… installs the extension into that profile once. The owner's company sign-in worked
     end to end on 2026-10-29 with the visible window (JumpCloud Go finishes by itself, no Touch ID); the headless

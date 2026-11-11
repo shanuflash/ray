@@ -26,9 +26,13 @@ enum JumpCloudLogin {
     "sso.eu.jumpcloud.com": "console.eu.jumpcloud.com",
   ]
 
-  /// The user login route of JumpCloud's login UI (`loginRoutes.user`); /login/admin, /login/stepup and the rest are
-  /// left alone.
+  /// The user login route of JumpCloud's login UI (`loginRoutes.user`); /login/admin and the rest are left alone.
   static let paths: Set<String> = ["/login", "/login/"]
+
+  /// The step-up page, when it asks for JumpCloud Go (its `durt` factor): an app's policy wants a fresh check on a
+  /// session Ray already has. Chrome answers it on the same page, with only these keys of its query.
+  static let stepUpPaths: Set<String> = ["/login/stepup", "/login/stepup/"]
+  static let stepUpKeys: Set<String> = ["factors", "step", "mfaType"]
 
   struct Match: Equatable {
     /// The Ray tab's committed origin (`https://console.jumpcloud.com`).
@@ -37,6 +41,8 @@ enum JumpCloudLogin {
     /// one-time SAML request).
     let relayURL: String
     let consoleHost: String
+    /// A step-up for JumpCloud Go, not a sign-in.
+    var stepUp = false
   }
 
   /// The login page a committed navigation landed on: the host from the engine's committed origin (https, no port),
@@ -44,9 +50,46 @@ enum JumpCloudLogin {
   static func match(committedOrigin: String?, url: String) -> Match? {
     guard let origin = committedOrigin, let parts = URLComponents(string: origin), parts.scheme == "https",
           parts.port == nil, let host = parts.host?.lowercased(), let console = hosts[host],
-          RayCoreTab.origin(forURL: url) == origin, let address = URLComponents(string: url),
-          paths.contains(address.path) else { return nil }
-    return Match(origin: origin, relayURL: "https://\(console)/login", consoleHost: console)
+          RayCoreTab.origin(forURL: url) == origin, let address = URLComponents(string: url) else { return nil }
+    if paths.contains(address.path) {
+      return Match(origin: origin, relayURL: "https://\(console)/login", consoleHost: console)
+    }
+    let items = address.queryItems ?? []
+    guard stepUpPaths.contains(address.path), items.contains(where: { item in
+      ["factors", "mfaType"].contains(item.name) && (item.value ?? "").split(separator: ",").contains("durt")
+    }) else { return nil }
+    var relay = URLComponents()
+    relay.scheme = "https"
+    relay.host = console
+    relay.path = "/login/stepup"
+    relay.queryItems = items.filter { stepUpKeys.contains($0.name) }
+    guard let relayURL = relay.string else { return nil }
+    return Match(origin: origin, relayURL: relayURL, consoleHost: console, stepUp: true)
+  }
+
+  /// Where a tab goes after a step-up: walking back from its current entry through JumpCloud's own pages, the login
+  /// page that carried the app's sign-in (`continuation`, JumpCloud's pending request, which the step-up was for); else
+  /// the page before them, the app's own, whose sign-in now passes on the fresh session; else nowhere.
+  enum AfterStepUp: Equatable {
+    case go(String)
+    case back(Int)
+    case stay
+  }
+
+  static func afterStepUp(_ entries: [[String: Any]], consoleHost: String) -> AfterStepUp {
+    guard let current = entries.firstIndex(where: { $0["current"] as? Bool == true }) else { return .stay }
+    for index in stride(from: current - 1, through: 0, by: -1) {
+      let url = entries[index]["url"] as? String ?? ""
+      guard let parts = URLComponents(string: url), let host = parts.host?.lowercased() else { return .stay }
+      if isJumpCloudDomain(host) {
+        if host == consoleHost, paths.contains(parts.path), let next = continuation(of: url, consoleHost: consoleHost) {
+          return .go(next)
+        }
+        continue
+      }
+      return ["http", "https"].contains(parts.scheme?.lowercased() ?? "") ? .back(index - current) : .stay
+    }
+    return .stay
   }
 
   /// The relay page reached the signed-in user console.
@@ -450,6 +493,9 @@ final class JumpCloudRelay {
   private var notices = 0
   /// Relays that went on to the app's sign-in (`continuation`) rather than reloading the login page.
   private var continuations = 0
+  /// Step-ups relayed, and those that went back to the app's own page after.
+  private var stepUps = 0
+  private var backToApp = 0
   private var setupOpen = false
   private var terminating: NSObjectProtocol?
 
@@ -530,7 +576,9 @@ final class JumpCloudRelay {
       guard let self, let tab, let controller, !tab.closed, tab.committedOrigin == match.origin,
             !JumpCloudLogin.reachedConsole(tab.url) else { return }
       guard RaySettings.shared[.jumpCloudRelay] else { return self.showNotice(in: controller) }
-      self.trigger(match, pageURL: pageURL, tab: tab, controller: controller)
+      // Signed in, the page may have moved on to a step-up by itself: relay that, not a sign-in.
+      let now = JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url)
+      self.trigger(now?.stepUp == true ? now! : match, pageURL: pageURL, tab: tab, controller: controller)
     }
   }
 
@@ -576,6 +624,7 @@ final class JumpCloudRelay {
     }
     relays[tab.tabId, default: []].append(ProcessInfo.processInfo.systemUptime)
     let relay = Relay(match: match, pageURL: pageURL, tab: tab, controller: controller)
+    if match.stepUp { stepUps += 1 }
     self.relay = relay
     // Headless Chrome shows nothing: say it's happening until the relay ends (its result replaces this note).
     controller.notes.show(Note("Signing in with JumpCloud Go…", icon: .spinner, spot: .top, lasts: .held, key: Self.noteKey))
@@ -876,11 +925,18 @@ final class JumpCloudRelay {
     self.relay = nil
     if let tab = relay.tab, !tab.closed, tab.committedOrigin == relay.match.origin,
        JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) != nil {
-      if let next = JumpCloudLogin.continuation(of: relay.pageURL, consoleHost: relay.match.consoleHost)
-          ?? JumpCloudLogin.continuation(of: tab.url, consoleHost: relay.match.consoleHost) {
+      let console = relay.match.consoleHost
+      var after = (JumpCloudLogin.continuation(of: relay.pageURL, consoleHost: console)
+        ?? JumpCloudLogin.continuation(of: tab.url, consoleHost: console)).map(JumpCloudLogin.AfterStepUp.go) ?? .stay
+      if after == .stay, relay.match.stepUp { after = JumpCloudLogin.afterStepUp(tab.navigationEntries, consoleHost: console) }
+      switch after {
+      case .go(let next):
         continuations += 1
         tab.loadURL(next, userInitiated: true)
-      } else {
+      case .back(let offset):
+        backToApp += 1
+        tab.userGoToOffset(offset)
+      case .stay:
         tab.userReload()
       }
     }
@@ -983,6 +1039,8 @@ final class JumpCloudRelay {
       "state": state, "launches": launches, "lastResult": lastResult, "cookiesImported": cookiesImported,
       "notices": notices,
       "continuations": continuations,
+      "stepUps": stepUps,
+      "backToApp": backToApp,
       "chromeRunning": chrome.map { !$0.gone } ?? false, "pid": chrome.map { Int($0.pid) } ?? NSNull(),
       "arguments": lastArguments, "directory": directory,
       "directoryMode": permissions.map { String($0.intValue, radix: 8) } ?? NSNull(),

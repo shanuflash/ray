@@ -51,12 +51,13 @@ else {
   // later, or 2 s later for a windowed Chrome after headless never got there.
   const headless = process.argv.includes("--headless=new");
   const navigated = (id, url) => {
-    if (!url.endsWith("/login")) return;
+    // The login page, or the step-up page asking for JumpCloud Go, which answers it the same way.
+    if (!url.endsWith("/login") && !/\/login\/stepup\?.*durt/.test(url)) return;
     const delay = mode === "success" ? 400 : mode === "headlessNever" && !headless ? 2000 : null;
     if (delay === null) return;
     setTimeout(() => {
       if (!targets.has(id)) return;
-      targets.set(id, url.replace(/\/login$/, "/userconsole/#/"));
+      targets.set(id, new URL(url).origin + "/userconsole/#/");
       emit("Target.targetInfoChanged", { targetInfo: info(id) });
     }, delay);
   };

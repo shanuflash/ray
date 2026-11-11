@@ -521,7 +521,13 @@ publicly or create accounts.
   goes on as the login page would after its own sign-in (`JumpCloudLogin.continuation`: `ssoRedirectUrl`
   https://sso(.eu).jumpcloud.com/ or `oauthRedirectUrl` …/userconsole/oauth2/, then `redirectTo`; that host only;
   read from the address the page committed with, since signed out it can rewrite itself to bare `/login`),
-  since the page never forwards a session it didn't make. Ray comes
+  since the page never forwards a session it didn't make. Step-up: `/login/stepup` asking for JumpCloud Go
+  (`factors`/`mfaType` with `durt`; an app's policy wants a fresh check on a session Ray has, which Ray can't answer)
+  relays too (`Match.stepUp`, also when a signed-in login page moved on to it by itself before the relay started):
+  Chrome opens the step-up page (only `factors`, `step`, `mfaType`), and after the import the tab goes on to the
+  app's pending sign-in (the committed login page's, else the nearest console `/login` with one in the tab's
+  history, `JumpCloudLogin.afterStepUp`), else back to the app's own page before JumpCloud's, else reloads; state log
+  `stepUps`, `backToApp`. Ray comes
   back to the front only after a relay that brought Chrome forward. Deadlines: 15 s for each Chrome's first answer (a
   policy may forbid the pipe), 120 s to sign in overall; one relay at a time. With the setting off, a JumpCloud login page gets a note once per launch ("JumpCloud Go works in Ray: turn it on in
   Settings", its button opens Passwords at the switch; test command `jumpcloud opensetting`). While it runs, a held note says "Signing in with JumpCloud Go…" (its result replaces it). A login page relays unless the tab has
