@@ -4980,7 +4980,10 @@ const checks = {
         // mustn't stop the relay.
         return res.end("<title>JumpCloud</title><p>login</p>" + (signedIn
           ? `<script>history.replaceState(null, "", "/userconsole/")</script>`
-          : `<script>history.replaceState(null, "", location.pathname + location.search + "&step=email")</script>`));
+          : url.searchParams.has("drop")
+            // Some sign-ins rewrite it to bare /login, the app's context and redirectTo gone.
+            ? `<script>history.replaceState(null, "", "/login")</script>`
+            : `<script>history.replaceState(null, "", location.pathname + location.search + "&step=email")</script>`));
       }
       res.writeHead(404);
       res.end("not found");
@@ -5154,6 +5157,8 @@ const checks = {
       // JumpCloud's own host.
       for (const [path, host, landed] of [
         ["/login?context=sso&redirectTo=saml2%2Fjenkins%3FsamlToken%3Dt1", "sso.jumpcloud.com", "/saml2/jenkins?samlToken=t1"],
+        // The page dropped its query while signed out: the relay still goes on to the app it started for.
+        ["/login?context=sso&redirectTo=saml2%2Fgoogle%3FsamlToken%3Dt2&drop=1", "sso.jumpcloud.com", "/saml2/google?samlToken=t2"],
         ["/login?context=oauth&redirectTo=https%3A%2F%2Fconsole.jumpcloud.com%2Fuserconsole%2Foauth2%2Fauth%3Fx%3D1", "console.jumpcloud.com", "/userconsole/oauth2/auth?x=1"],
         ["/login?context=sso&redirectTo=https%3A%2F%2Fevil.test%2Fx", "sso.jumpcloud.com", "/https://evil.test/x"],
       ]) {

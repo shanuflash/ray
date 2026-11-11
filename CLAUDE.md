@@ -519,7 +519,8 @@ publicly or create accounts.
   subdomains (`isJumpCloudDomain`, dot boundary), `ac_site_data_clear` on jumpcloud.com (the import keeps cookies Ray
   has) then `ac_cookies_import` through `callWithSecret`, and the tab reloads if still on that login page, or, signing in for an app (`context=sso|oauth` with `redirectTo`),
   goes on as the login page would after its own sign-in (`JumpCloudLogin.continuation`: `ssoRedirectUrl`
-  https://sso(.eu).jumpcloud.com/ or `oauthRedirectUrl` …/userconsole/oauth2/, then `redirectTo`; that host only),
+  https://sso(.eu).jumpcloud.com/ or `oauthRedirectUrl` …/userconsole/oauth2/, then `redirectTo`; that host only;
+  read from the address the page committed with, since signed out it can rewrite itself to bare `/login`),
   since the page never forwards a session it didn't make. Ray comes
   back to the front only after a relay that brought Chrome forward. Deadlines: 15 s for each Chrome's first answer (a
   policy may forbid the pipe), 120 s to sign in overall; one relay at a time. With the setting off, a JumpCloud login page gets a note once per launch ("JumpCloud Go works in Ray: turn it on in

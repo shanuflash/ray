@@ -469,6 +469,9 @@ final class JumpCloudRelay {
 
   private final class Relay {
     let match: JumpCloudLogin.Match
+    /// The login page's address as it committed: signed out, its script may rewrite it and drop the app's
+    /// `context` and `redirectTo` before the relay ends.
+    let pageURL: String
     weak var tab: RayCoreTab?
     weak var controller: BrowserWindowController?
     var targetID: String?
@@ -482,8 +485,9 @@ final class JumpCloudRelay {
     /// Chrome was brought forward for it, so Ray comes back to the front when it ends.
     var activated = false
 
-    init(match: JumpCloudLogin.Match, tab: RayCoreTab, controller: BrowserWindowController) {
+    init(match: JumpCloudLogin.Match, pageURL: String, tab: RayCoreTab, controller: BrowserWindowController) {
       self.match = match
+      self.pageURL = pageURL
       self.tab = tab
       self.controller = controller
     }
@@ -519,13 +523,14 @@ final class JumpCloudRelay {
     guard !controller.isPrivate, tab.profile?.offTheRecord != true,
           RaySettings.shared[.jumpCloudRelay] || !noticeShown,
           let match = JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) else { return }
+    let pageURL = tab.url
     // Give the page a moment: signed in already, JumpCloud's script moves the tab on to the console by itself. Signed
     // out, the page may still rewrite its own address (a step, a query), so only reaching the console counts.
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleDelay) { [weak self, weak tab, weak controller] in
       guard let self, let tab, let controller, !tab.closed, tab.committedOrigin == match.origin,
             !JumpCloudLogin.reachedConsole(tab.url) else { return }
       guard RaySettings.shared[.jumpCloudRelay] else { return self.showNotice(in: controller) }
-      self.trigger(match, tab: tab, controller: controller)
+      self.trigger(match, pageURL: pageURL, tab: tab, controller: controller)
     }
   }
 
@@ -550,7 +555,7 @@ final class JumpCloudRelay {
   }
 
   /// The tab stayed on the login page: relay, unless one is running or this tab keeps coming back.
-  private func trigger(_ match: JumpCloudLogin.Match, tab: RayCoreTab, controller: BrowserWindowController) {
+  private func trigger(_ match: JumpCloudLogin.Match, pageURL: String, tab: RayCoreTab, controller: BrowserWindowController) {
     if let relay {
       if relay.tab === tab { return }
       return finish("busy", note: "JumpCloud sign-in is already open in Chrome", in: controller)
@@ -561,16 +566,16 @@ final class JumpCloudRelay {
     if times.count >= Self.maxRelays {
       return finish("loopGuard", note: "Still not signed in to JumpCloud. Try again in a moment", in: controller)
     }
-    start(match, tab: tab, controller: controller)
+    start(match, pageURL: pageURL, tab: tab, controller: controller)
   }
 
-  private func start(_ match: JumpCloudLogin.Match, tab: RayCoreTab, controller: BrowserWindowController) {
+  private func start(_ match: JumpCloudLogin.Match, pageURL: String, tab: RayCoreTab, controller: BrowserWindowController) {
     guard isSetUp else {
       return finish("notSetUp", note: "Set up JumpCloud Go in Chrome first", in: controller,
                     action: NoteAction("Set Up") { [weak self] in self?.setUp() })
     }
     relays[tab.tabId, default: []].append(ProcessInfo.processInfo.systemUptime)
-    let relay = Relay(match: match, tab: tab, controller: controller)
+    let relay = Relay(match: match, pageURL: pageURL, tab: tab, controller: controller)
     self.relay = relay
     // Headless Chrome shows nothing: say it's happening until the relay ends (its result replaces this note).
     controller.notes.show(Note("Signing in with JumpCloud Go…", icon: .spinner, spot: .top, lasts: .held, key: Self.noteKey))
@@ -871,7 +876,8 @@ final class JumpCloudRelay {
     self.relay = nil
     if let tab = relay.tab, !tab.closed, tab.committedOrigin == relay.match.origin,
        JumpCloudLogin.match(committedOrigin: tab.committedOrigin, url: tab.url) != nil {
-      if let next = JumpCloudLogin.continuation(of: tab.url, consoleHost: relay.match.consoleHost) {
+      if let next = JumpCloudLogin.continuation(of: relay.pageURL, consoleHost: relay.match.consoleHost)
+          ?? JumpCloudLogin.continuation(of: tab.url, consoleHost: relay.match.consoleHost) {
         continuations += 1
         tab.loadURL(next, userInitiated: true)
       } else {
