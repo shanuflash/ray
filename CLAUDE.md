@@ -399,7 +399,8 @@ publicly or create accounts.
   of an unused key: `tabPressed` moves once per event timestamp. Off, ⌃Tab walks the sidebar at once (`cycleTab`).
   `TabPictures`: the tab left is pictured in `select` and the current one when a walk starts (engine
   `copyPicture`, only a shown page has a surface; scaled to 316×210 px, top of the page); tabs never shown this run
-  get Arc's empty card. Test commands `key ctrltap`, `key left|right|return`, `tabswitcher hover|click <n>`; state log
+  get Arc's empty card. A picture lives only while its tab is open (`drop` in `didRemove`; a copy that comes back
+  after the tab closed is refused; state log `tabPictures`, check `tab-pictures-dropped`). Test commands `key ctrltap`, `key left|right|return`, `tabswitcher hover|click <n>`; state log
   `tabSwitcher` (`open`, `shown`, `items`, `titles`, `pictures`, `index`, `style`, `last` with `how`/`chosen`);
   checks `tab-switcher` (photos with `SNAP_DIR`), `settings-recent-tab-cycling`.
 - `Notes` (`Host/Notes.swift`): short messages on the page at one of six `NoteSpot`s (corners, top and bottom
@@ -810,6 +811,11 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   previous commit (`git stash -u`, build, run, `git stash pop`) and compare.
 
 ## Gotchas (learnt the hard way)
+- Memory (docs/PERFORMANCE.md "Idle and memory"): the host's footprint steps up about 21 MB once, after roughly 40-60
+  tabs have been opened and closed (v0.7.0 too: the engine's allocator, not Ray's objects), then grows about 0.4 MB
+  per 12-tab cycle. `perf.mjs`' memory "growth per cycle" (cycle 4 minus 1) lands on that step: read 10 cycles. Ray's
+  Swift objects are in the engine's allocator, so `heap`/`leaks` see none of them (8,988 nodes, 0.7 MB): to count
+  what Ray holds, put a count in the state log. Chrome keeps a 10,000-object zombie treadmill in the browser process.
 - A page view hidden in Ray is hidden to Chrome: `BrowserCompositorMac` drops its compositor at once (the GPU
   clears its content, possibly before Ray's own commit lands) and makes a new one on show, so the page shows only
   its background colour until a new CALayerHost arrives. Never hide the page on screen before its replacement has

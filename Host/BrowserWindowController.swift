@@ -3059,6 +3059,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   func window(_ window: RayCoreWindow, didRemove tab: RayCoreTab) {
     ScreenShares.shared.forget(tab)
+    LoadSweeps.shared.forget(tab)
     guard let entry = state.entry(for: tab) else { return }
     if closing {
       pages.detach(tab)
@@ -3071,6 +3072,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if tab.delegate === self { tab.delegate = nil }
     entry.remember()
     entry.tab = nil
+    tabPictures.drop(entry.id)
+    zoomHosts[tab.tabId] = nil
     if let closing = userClosing.removeValue(forKey: entry.id) {
       rememberClosed(entry, key: closing.key, favicon: closing.favicon)
     }
@@ -3599,6 +3602,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["undo"] = UndoCloseTab.shared.debug
     state["hapticTicks"] = SidebarView.hapticTicks
     state["tabSwitcher"] = tabSwitcher.debug
+    state["tabPictures"] = tabPictures.ids.map(\.uuidString)
     guard let data = try? JSONSerialization.data(withJSONObject: state),
           let json = String(data: data, encoding: .utf8) else { return }
     FileHandle.standardError.write("[ray-state] \(json)\n".data(using: .utf8)!)

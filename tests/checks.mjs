@@ -4681,6 +4681,26 @@ const checks = {
     await command("onscreen off");
     await resetSettings();
   },
+  async "tab-pictures-dropped"() {
+    // A closed tab's ⌃Tab picture goes with it (not at the next walk), and one still being copied when the tab closes
+    // is never kept: state log `tabPictures` (the ids pictured) holds only open tabs.
+    await resetSettings();
+    await command("onscreen on");
+    const tabs = await usedTabs();
+    const pictured = () => new Set(state().tabPictures);
+    await until("tabs pictured", async () => { await command("state"); return tabs.slice(0, 3).every((t) => pictured().has(t.id)); }, 5000);
+    for (const t of tabs.slice(0, 3)) {
+      await command(`row ${t.id}`);
+      await until("tab active", () => state().activeEntry === t.id);
+      await command("menu closeTab");
+      await until("tab closed", async () => { await command("state"); return !state().sidebar.today.some((e) => e.id === t.id); });
+    }
+    await sleep(500);
+    await command("state");
+    const left = state().tabPictures.filter((id) => tabs.slice(0, 3).some((t) => t.id === id));
+    assert(left.length === 0, `closed tabs still pictured: ${left}`);
+    await command("onscreen off");
+  },
   async "settings-panes"() {
     // Direction G: every pane in the sidebar in its order (test builds list them all), rows from the catalog by pane,
     // ray://settings/<pane> opens the window at that pane, and Ray.app hides unbuilt rows and empty panes.

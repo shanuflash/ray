@@ -22,8 +22,9 @@ final class TabPictures {
   func capture(_ entry: SidebarEntry) {
     guard let tab = entry.tab, !tab.closed else { return }
     let id = entry.id
-    tab.copyPicture(1) { [weak self] picture in
-      guard let self, let picture, let small = Self.scaled(picture) else { return }
+    tab.copyPicture(1) { [weak self, weak entry, weak tab] picture in
+      // The tab may have closed while the engine copied: its picture would never be dropped.
+      guard let self, let tab, !tab.closed, entry?.tab === tab, let picture, let small = Self.scaled(picture) else { return }
       self.pictures[id] = small
       self.onChange?(id)
     }
@@ -32,7 +33,11 @@ final class TabPictures {
   /// Drops the pictures of tabs no longer open.
   func keep(_ ids: Set<UUID>) { pictures = pictures.filter { ids.contains($0.key) } }
 
+  /// A tab closed (or went to sleep): its picture goes with it, not at the next ⌃Tab walk.
+  func drop(_ id: UUID) { pictures[id] = nil }
+
   var count: Int { pictures.count }
+  var ids: [UUID] { Array(pictures.keys) }
 
   /// Fills the card: the page's top, centred across.
   private static func scaled(_ image: CGImage) -> CGImage? {

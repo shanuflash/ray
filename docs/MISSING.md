@@ -403,6 +403,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     the strip covers the outer 6 pt of the sidebar's scroller. The real cursor over the strip's 2 pt on the page
     hasn't been seen by eye (Chrome sets its own there). Hidden pages are resized with every drag step, as on ⌘S
     (the performance review's fix for that covers both).
+57. **Host memory steps up ~21 MB once, then grows ~0.4 MB per 12-tab cycle** (2026-11-12, performance review). After
+    roughly 40-60 tabs opened and closed the footprint jumps and stays (v0.7.0 too, so the engine's allocator or its
+    per-tab data, not Ray's UI; Chrome also keeps a 10,000-object zombie treadmill in the browser process). Not
+    chased further: it needs Chromium-side tools (memory-infra traces) and an engine rebuild to change. Ray's own
+    leaks (closed tabs' ⌃Tab pictures, per-tab bookkeeping) are fixed; `heap`/`leaks` can't see Ray's objects.
 
 ## Done
 
