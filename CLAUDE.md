@@ -43,6 +43,12 @@ publicly or create accounts.
   the pointer picking a row puts the typed text back; `typed` stays what you typed meanwhile (check `bar-arrow-fill`). This window's active tab is never offered
   (nor its page as history); another tab on the same address is. Page rows: title, then `Suggestions.shortAddress`
   (host, "…", the path's last ~16 characters; a long host loses its start instead). Check `bar-ranking`.
+  Per-key cost (a letter matches most of 20,000 history entries): `Suggestions.build` makes a page's row (address
+  shortened, icon) only for the few that are shown (`Page.source`, `Page.row`), reads each entry's host, domain and
+  front-page flag once (`HistoryItem.site`, `Suggestions.facts`, cached by address), searches plain-ASCII titles and
+  addresses as bytes (`gradeASCII`), looks up each site's front page only when a host starts with the typed word, and
+  `BarActions.BarName` keeps every command's, setting's and keyword's words once. State log `commandBar.work`
+  (`builds`, `scanned`, `matched`, `rowsMade`, `parses`, `ms`); check `bar-key-work`; numbers in docs/PERFORMANCE.md.
   Site searches (Chrome's keyword mode, Arc's Tab to Search): what you typed starting a site search's keyword, name or
   a word of its name ("y", "maps"; `SearchEngines.offer`, the site you use most first, by `HistoryCache.use(ofHost:)`)
   or a built-in engine's exact host shows "Search <site>" and a Tab key at the field's end (`ScopeHint`, a click

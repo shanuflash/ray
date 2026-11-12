@@ -999,6 +999,21 @@ const checks = {
       `with pages: ${JSON.stringify(bar.rows.map((r) => [r.kind, r.title]))}`);
     await command("escape");
   },
+  async "bar-key-work"() {
+    // A key's work in the bar stays small however much matches: page rows are made only for the few shown, and an
+    // address already seen is never parsed again (the state log's `work`, from Suggestions.build).
+    await command("menu newTab");
+    await command("type z");
+    let work;
+    await until("work", async () => { await command("state"); const b = state().commandBar; work = b?.work; return b?.query === "z" && work?.builds > 0; }, 8000);
+    assert(work.rowsMade <= 10, `rows made for "z": ${JSON.stringify(work)}`);
+    assert(work.maxMs < 100, `a build took ${work.maxMs} ms: ${JSON.stringify(work)}`);
+    await command("type z");
+    await until("again", async () => { await command("state"); const b = state().commandBar; work = b?.work; return b?.query === "zz" && work?.builds > 0; }, 8000);
+    assert(work.parses === 0 || work.parses <= work.scanned, `parses ${JSON.stringify(work)}`);
+    assert(work.rowsMade <= 10, `rows made for "zz": ${JSON.stringify(work)}`);
+    await command("escape");
+  },
   async "bar-ranking"() {
     // Arc's order: a page you go to that matches leads (Enter opens it), then what you typed, then the other pages;
     // the search engine's suggestions (the fixture's, for "zz…") only fill what's left of the five rows shown at once.

@@ -75,6 +75,9 @@ struct HistoryItem {
   let titleLower: String
   /// The address as matched: lowercased, without the scheme and "www.".
   let urlLower: String
+  /// The address's host, registrable domain and whether it is its site's front page (`Suggestions.facts`), read once
+  /// here: the bar asks for them on every key.
+  let site: Suggestions.Site
 
   init(url: String, title: String, visits: Int, visitTimes: [Double], now: Double) {
     self.url = url
@@ -84,6 +87,7 @@ struct HistoryItem {
     frecency = visitTimes.sorted(by: >).prefix(10).reduce(0) { $0 + Self.recency(days: (now - $1) / 86_400_000) }
     titleLower = title.lowercased()
     urlLower = Suggestions.matchable(url)
+    site = Suggestions.facts(url)
   }
 
   /// Chromium's `days_ago_to_recency_score` (scored_history_match.cc), as a fraction.
@@ -351,16 +355,90 @@ enum Suggestions {
   /// ... and being bookmarked (Chrome and Ardia rank bookmarks up): one recent visit then lets it lead.
   private static let bookmarkFrecency = 1.0
 
-  /// A page that matched what you typed: an open tab or a history entry.
+  /// A page that matched what you typed: an open tab, a history entry or a bookmark. Its row is made only once it is
+  /// one of the few shown: a letter matches most of history, and a row costs an address to shorten and an icon.
   private struct Page {
-    let row: Suggestion
+    enum Source {
+      case tab(RayCoreTab, name: String?)
+      case history(HistoryItem)
+      case bookmark(BookmarkItem)
+    }
+
+    let source: Source
     let url: String
+    let site: Site
     let match: Double
     /// Every word matched at a word start in the title or the address (Chromium's HistoryQuick only matches there).
     let strong: Bool
     let frecency: Double
-    var rank: Double { match + 12 * min(frecency, 10) }
+    let rank: Double
+
+    init(_ source: Source, url: String, site: Site, match: Double, strong: Bool, frecency: Double) {
+      self.source = source
+      self.url = url
+      self.site = site
+      self.match = match
+      self.strong = strong
+      self.frecency = frecency
+      rank = match + 12 * min(frecency, 10)
+    }
+
+    var isTab: Bool {
+      if case .tab = source { return true }
+      return false
+    }
+
+    var isHistory: Bool {
+      if case .history = source { return true }
+      return false
+    }
+
+    func row(favicon: (String) -> NSImage?) -> Suggestion {
+      Suggestions.work.rowsMade += 1
+      switch source {
+      case .tab(let tab, let name): return tabSuggestion(tab, name: name)
+      case .history(let entry): return historySuggestion(entry, favicon: favicon)
+      case .bookmark(let bookmark): return bookmarkSuggestion(bookmark, favicon: favicon)
+      }
+    }
   }
+
+  /// What an address says about its site: the host (no "www."), its registrable domain, and whether the address is the
+  /// site's front page (no path but "/", no query).
+  struct Site {
+    let host: String
+    let domain: String
+    let isRoot: Bool
+  }
+
+  /// `Site` of an address, parsed once and kept (main thread only): history's addresses come back on every key.
+  static func facts(_ url: String) -> Site {
+    if let known = sites[url] { return known }
+    work.parses += 1
+    let components = URLComponents(string: url)
+    var host = components?.host?.lowercased() ?? ""
+    if host.hasPrefix("www.") { host.removeFirst(4) }
+    let isRoot = components.map { ($0.path.isEmpty || $0.path == "/") && $0.query == nil } ?? false
+    let site = Site(host: host, domain: AddressInput.registrableDomain(host), isRoot: isRoot)
+    if sites.count >= 20_000 { sites.removeAll(keepingCapacity: true) }
+    sites[url] = site
+    return site
+  }
+  private static var sites: [String: Site] = [:]
+
+  /// For the state log and the check `bar-key-work`: what the last `build` cost. `matched` pages of `scanned` history
+  /// entries, `rowsMade` page rows made (a few, however many matched), `parses` addresses parsed (none once seen),
+  /// `ms` on the main thread.
+  struct Work {
+    var builds = 0
+    var scanned = 0
+    var matched = 0
+    var rowsMade = 0
+    var parses = 0
+    var ms = 0.0
+    var maxMs = 0.0
+  }
+  static var work = Work()
 
   /// The rows for `raw`. `active` is this window's own tab: it's never offered (switching to it does nothing, and its
   /// page is the one you're on), though another tab on the same address is.
@@ -370,6 +448,16 @@ enum Suggestions {
     settings: (String) -> [(target: SettingsTarget, exact: Bool)] = { _ in [] }, frecency: (String) -> Double = { _ in 0 },
     favicon: (String) -> NSImage? = { _ in nil }, name: (RayCoreTab) -> String? = { _ in nil }
   ) -> [Suggestion] {
+    let started = DispatchTime.now().uptimeNanoseconds
+    work.builds += 1
+    work.scanned = 0
+    work.matched = 0
+    work.rowsMade = 0
+    work.parses = 0
+    defer {
+      work.ms = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e6
+      work.maxMs = max(work.maxMs, work.ms)
+    }
     let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     let others = tabs.filter { $0 !== active }
     let openURLs = Set(tabs.map(\.url))
@@ -385,87 +473,105 @@ enum Suggestions {
     let lower = query.lowercased()
     // A typed scheme or "www." is matched as pages are: without it.
     let needle = matchable(lower).isEmpty ? lower : matchable(lower)
-    let tokens = needle.split(separator: " ").map(String.init)
+    let tokens = needle.split(separator: " ").map(Token.init)
     var pages: [Page] = []
     for tab in others {
       // A renamed tab shows its own name, and is found by it or by its page's title.
       let own = name(tab)
-      let found = [own, tab.title].compactMap { $0 }
-        .compactMap { match(tokens, query: needle, title: $0.lowercased(), url: matchable(tab.url)) }
-      guard let match = found.max(by: { $0.score < $1.score }) else { continue }
+      let url = tab.url
+      let address = matchable(url)
+      var best = match(tokens, query: needle, title: tab.title.lowercased(), url: address)
+      if let own, let named = match(tokens, query: needle, title: own.lowercased(), url: address),
+         best.map({ $0.score <= named.score }) ?? true {
+        best = named
+      }
+      guard let match = best else { continue }
       pages.append(Page(
-        row: tabSuggestion(tab, name: own), url: tab.url, match: match.score, strong: match.strong,
-        frecency: frecency(tab.url) + openTabFrecency))
+        .tab(tab, name: own), url: url, site: facts(url), match: match.score, strong: match.strong,
+        frecency: frecency(url) + openTabFrecency))
     }
     // The current page's history entry goes with its tab (it's open), so it never comes back as a history row. A
     // bookmarked page is one row, its bookmark's (found by either title), ranked with its visits and a bookmark's
     // lift; one never visited still shows.
     let marked = Dictionary(bookmarks.map { ($0.url, $0) }) { first, _ in first }
     var seenBookmarks = Set<String>()
+    work.scanned = history.count
     for entry in history where !openURLs.contains(entry.url) {
-      let bookmark = marked[entry.url]
-      let titles = [bookmark?.titleLower, entry.titleLower].compactMap { $0 }
-      guard let match = titles.compactMap({ match(tokens, query: needle, title: $0, url: entry.urlLower) })
-        .max(by: { $0.score < $1.score }) else { continue }
+      let bookmark = marked.isEmpty ? nil : marked[entry.url]
+      var best = match(tokens, query: needle, title: entry.titleLower, url: entry.urlLower)
+      if let bookmark, let named = match(tokens, query: needle, title: bookmark.titleLower, url: entry.urlLower),
+         best.map({ $0.score <= named.score }) ?? true {
+        best = named
+      }
+      guard let match = best else { continue }
       if let bookmark {
         seenBookmarks.insert(bookmark.url)
         pages.append(Page(
-          row: bookmarkSuggestion(bookmark, favicon: favicon), url: entry.url, match: match.score, strong: match.strong,
+          .bookmark(bookmark), url: entry.url, site: entry.site, match: match.score, strong: match.strong,
           frecency: entry.frecency + bookmarkFrecency))
       } else {
         pages.append(Page(
-          row: historySuggestion(entry, favicon: favicon), url: entry.url, match: match.score, strong: match.strong,
+          .history(entry), url: entry.url, site: entry.site, match: match.score, strong: match.strong,
           frecency: entry.frecency))
       }
     }
     for bookmark in bookmarks where !openURLs.contains(bookmark.url) && seenBookmarks.insert(bookmark.url).inserted {
       guard let match = match(tokens, query: needle, title: bookmark.titleLower, url: bookmark.urlLower) else { continue }
       pages.append(Page(
-        row: bookmarkSuggestion(bookmark, favicon: favicon), url: bookmark.url, match: match.score, strong: match.strong,
+        .bookmark(bookmark), url: bookmark.url, site: facts(bookmark.url), match: match.score, strong: match.strong,
         frecency: bookmarkFrecency))
     }
+    work.matched = pages.count
     pages.sort { $0.rank > $1.rank }
 
     let typed = typedSuggestion(query)
     let typedHost: String? = {
-      if case .url(let url)? = typed?.kind { return host(of: url) }
+      if case .url(let url)? = typed?.kind { return AddressInput.host(of: url) }
       return nil
     }()
     let completing = pages.first { page in
-      let isTab: Bool
-      if case .tab = page.row.kind { isTab = true } else { isTab = false }
-      return AddressInput.autocompletes(
-        candidateHost: host(of: page.url), typedHost: typedHost, query: lower, trusted: isTab || page.frecency >= leadFrecency)
+      AddressInput.autocompletes(
+        candidateHost: page.site.host, domain: page.site.domain, typedHost: typedHost, lowercasedQuery: lower,
+        trusted: page.isTab || page.frecency >= leadFrecency)
     }
     // A host the field completes inline leads as the site itself, as in Arc: its open tab ("Switch to Tab"), else its
     // root page. Its other pages, and other sites' pages but their best (or root) one, step aside: typing the start
     // of a host is looking for a site, so the list offers sites, one row each.
     var site: String?
-    var autocomplete = completing?.row
-    if let completing, typedHost == nil, host(of: completing.url).hasPrefix(lower), host(of: completing.url) != lower {
-      let siteHost = host(of: completing.url)
+    var autocomplete = completing.map { $0.row(favicon: favicon) }
+    if let completing, typedHost == nil, completing.site.host.hasPrefix(lower), completing.site.host != lower {
+      let siteHost = completing.site.host
       site = siteHost
-      var lead = others.first { host(of: $0.url) == siteHost }.map { tabSuggestion($0, name: name($0)) }
-        ?? history.first { host(of: $0.url) == siteHost && isRoot($0.url) }.map { historySuggestion($0, favicon: favicon) }
-        ?? (isRoot(completing.url) ? completing.row : nil)
-        ?? Suggestion(kind: .url(root(of: completing.url)), title: siteHost, detail: "", icon: completing.row.icon)
+      var lead = others.first { facts($0.url).host == siteHost }.map { tabSuggestion($0, name: name($0)) }
+        ?? history.first { $0.site.isRoot && $0.site.host == siteHost }.map { historySuggestion($0, favicon: favicon) }
+        ?? (completing.site.isRoot ? autocomplete : nil)
+        ?? Suggestion(kind: .url(root(of: completing.url)), title: siteHost, detail: "", icon: autocomplete?.icon)
       lead.completion = siteHost
       autocomplete = lead
     }
     if !tokens.isEmpty {
-      let roots = Dictionary(history.filter { isRoot($0.url) }.map { (host(of: $0.url), $0) }) { first, _ in first }
+      // Each site's front page in history (the first of several), looked up only once a page's host starts with what
+      // was typed.
+      var roots: [String: HistoryItem]?
+      let first = tokens[0].text
       var seen = Set(site.map { [$0] } ?? [])
       pages = pages.compactMap { page in
-        guard case .history = page.row.kind else { return page }
-        let pageHost = host(of: page.url)
-        guard pageHost.hasPrefix(tokens[0]) else { return page }
+        guard page.isHistory else { return page }
+        let pageHost = page.site.host
+        guard pageHost.hasPrefix(first) else { return page }
         guard seen.insert(pageHost).inserted else { return nil }
-        guard let root = roots[pageHost], root.url != page.url else { return page }
-        return Page(row: historySuggestion(root, favicon: favicon), url: root.url, match: page.match, strong: page.strong,
+        if roots == nil {
+          var found: [String: HistoryItem] = [:]
+          for entry in history where entry.site.isRoot && found[entry.site.host] == nil { found[entry.site.host] = entry }
+          roots = found
+        }
+        guard let root = roots?[pageHost], root.url != page.url else { return page }
+        return Page(.history(root), url: root.url, site: root.site, match: page.match, strong: page.strong,
                     frecency: page.frecency)
       }
     }
     if pages.count > limit { pages.removeSubrange(limit...) }
+    let pageRows = pages.map { $0.row(favicon: favicon) }
     // Menu commands right after what you typed (Ardia: after the first row and the search). An exact name ("zoom in")
     // leads, so Enter runs it, but never over a host the field autocompletes, and an address never matches one.
     var actionRows: [Suggestion] = []
@@ -492,13 +598,13 @@ enum Suggestions {
     if let first = autocomplete ?? leading {
       rows.append(first)
     } else if case .search? = typed?.kind, query.count >= leadMinimumLength,
-              let page = pages.first(where: { $0.strong && $0.frecency >= leadFrecency && !AddressInput.isSearch($0.url) }) {
-      rows.append(page.row)
+              let page = pages.firstIndex(where: { $0.strong && $0.frecency >= leadFrecency && !AddressInput.isSearch($0.url) }) {
+      rows.append(pageRows[page])
     }
     if let typed { rows.append(typed) }
     rows += actionRows
     rows += settingRows
-    rows += pages.map(\.row).filter { row in !rows.contains { same($0, row) } }
+    rows += pageRows.filter { row in !rows.contains { same($0, row) } }
     // Search suggestions fill what's left of the five rows the bar shows at once, after your own rows, so once those
     // and what you typed take three they get two at most. With nothing of yours (no site, tab, page, bookmark,
     // command or setting), they fill all ten rows, as Chrome's and Arc's lists do.
@@ -511,11 +617,26 @@ enum Suggestions {
     return Array(rows.prefix(limit))
   }
 
+  /// A typed word as matched: its text and, when it is plain ASCII, its bytes (`grade`'s fast path).
+  private struct Token {
+    let text: String
+    let ascii: [UInt8]?
+
+    init<S: StringProtocol>(_ text: S) {
+      self.text = String(text)
+      let bytes = Array(self.text.utf8)
+      ascii = bytes.allSatisfy { $0 < 0x80 && $0 != 13 } ? bytes : nil
+    }
+  }
+
+  private static let titleScores = [0.0, 10, 25, 40]
+  private static let urlScores = [0.0, 10, 25, 50]
+
   /// How well `tokens` match a page: nil when one of them is in neither the title nor the address. A word scores most
   /// at the start of the title or the host, then at a word start, least inside a word; the whole query starting the
   /// title adds a little (Chromium autocompletes titles that start with what you typed).
   private static func match(
-    _ tokens: [String], query: String, title: String, url: String
+    _ tokens: [Token], query: String, title: String, url: String
   ) -> (score: Double, strong: Bool)? {
     var total = 0.0
     var strong = true
@@ -524,7 +645,7 @@ enum Suggestions {
       let inURL = grade(token, in: url)
       if inTitle == 0 && inURL == 0 { return nil }
       if max(inTitle, inURL) < 2 { strong = false }
-      total += [0, 10, 25, 40][inTitle] + [0, 10, 25, 50][inURL]
+      total += titleScores[inTitle] + urlScores[inURL]
     }
     var score = total / Double(max(1, tokens.count))
     if title.hasPrefix(query) { score += 20 }
@@ -532,11 +653,17 @@ enum Suggestions {
   }
 
   /// 3: `text` starts with `token`; 2: a word in it does; 1: it's inside a word; 0: it isn't there.
-  private static func grade(_ token: String, in text: String) -> Int {
-    if text.hasPrefix(token) { return 3 }
+  private static func grade(_ token: Token, in text: String) -> Int {
+    if text.hasPrefix(token.text) { return 3 }
+    // Plain ASCII on both sides (nearly every title and address) is searched as bytes: the same answer as the string
+    // search below at a fraction of its cost, which one letter over thousands of history entries pays on every key.
+    if let needle = token.ascii, !needle.isEmpty,
+       let fast = text.utf8.withContiguousStorageIfAvailable({ gradeASCII(needle, in: $0) }), let grade = fast {
+      return grade
+    }
     var found = 0
     var from = text.startIndex
-    while let range = text.range(of: token, range: from..<text.endIndex) {
+    while let range = text.range(of: token.text, range: from..<text.endIndex) {
       if range.lowerBound == text.startIndex { return 3 }
       let before = text[text.index(before: range.lowerBound)]
       if !before.isLetter && !before.isNumber { return 2 }
@@ -544,6 +671,28 @@ enum Suggestions {
       from = text.index(after: range.lowerBound)
     }
     return found
+  }
+
+  /// `grade` over bytes; nil when `text` isn't plain ASCII (or has a carriage return: "\r\n" is one character).
+  private static func gradeASCII(_ needle: [UInt8], in text: UnsafeBufferPointer<UInt8>) -> Int? {
+    let count = text.count, length = needle.count
+    for byte in text where byte >= 0x80 || byte == 13 { return nil }
+    guard length <= count, let base = text.baseAddress else { return 0 }
+    return needle.withUnsafeBufferPointer { needle -> Int in
+      guard let start = needle.baseAddress else { return 0 }
+      var found = 0
+      var from = 0
+      while from + length <= count, let hit = memmem(base + from, count - from, start, length) {
+        let at = UnsafePointer(hit.assumingMemoryBound(to: UInt8.self)) - base
+        if at == 0 { return 3 }
+        let before = text[at - 1]
+        let alphanumeric = (before >= 0x30 && before <= 0x39) || (before >= 0x41 && before <= 0x5A) || (before >= 0x61 && before <= 0x7A)
+        if !alphanumeric { return 2 }
+        found = 1
+        from = at + 1
+      }
+      return found
+    }
   }
 
   /// An address as matched: lowercased, without the scheme and "www.".
@@ -638,14 +787,6 @@ enum Suggestions {
 
   private static func bookmarkSuggestion(_ bookmark: BookmarkItem, favicon: (String) -> NSImage?) -> Suggestion {
     pageSuggestion(kind: .bookmark(bookmark.url), url: bookmark.url, title: bookmark.title, icon: favicon(bookmark.url) ?? globe)
-  }
-
-  private static func host(of url: String) -> String { AddressInput.host(of: url) }
-
-  /// Whether an address is its site's front page: no path but "/", no query.
-  private static func isRoot(_ url: String) -> Bool {
-    guard let components = URLComponents(string: url) else { return false }
-    return (components.path.isEmpty || components.path == "/") && components.query == nil
   }
 
   /// The front page of an address's site.

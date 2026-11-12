@@ -137,14 +137,13 @@ enum SettingsSearch {
     guard joined.count >= 2 else { return [] }
     var hits: [(target: SettingsTarget, exact: Bool, score: Int)] = []
     for target in targets() {
-      let title = BarActions.words(target.title)
-      var names = [["settings"] + title, title]
-      if target.kind == .setting { names += target.keywords.map(BarActions.words) }
+      var names = [BarActions.BarName.settings(target.title), BarActions.BarName.of(target.title)]
+      if target.kind == .setting { names += target.keywords.map(BarActions.BarName.of) }
       var best: Int?
       var exact = false
       for (index, name) in names.enumerated() {
-        guard var score = BarActions.score(typed, name) else { continue }
-        if index == 0, name.joined(separator: " ") == joined { exact = true; score += 1000 }
+        guard var score = BarActions.score(typed, joined, name) else { continue }
+        if index == 0, name.joined == joined { exact = true; score += 1000 }
         if index > 1 { score -= 5 }  // a keyword after the title
         if target.kind == .pane { score += 3 }  // a pane before its own rows
         best = max(best ?? score, score)

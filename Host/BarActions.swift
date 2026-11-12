@@ -10,7 +10,7 @@ struct BarAction {
   let shortcut: String
   /// Whether an exact match may take the first row (Enter). Clear Today's Tabs never does: it has no undo.
   let leads: Bool
-  fileprivate let names: [[String]]
+  fileprivate let names: [BarActions.BarName]
 
   var id: String { item.action.map(NSStringFromSelector) ?? title }
 }
@@ -123,7 +123,7 @@ enum BarActions {
         out.append(BarAction(
           item: item, title: title, symbol: extra?.symbol ?? "command", shortcut: shortcut(of: item),
           leads: extra?.leads ?? true,
-          names: ([title] + (extra?.synonyms ?? [])).map(words)))
+          names: ([title] + (extra?.synonyms ?? [])).map(BarName.of)))
       }
     }
     return out
@@ -148,8 +148,8 @@ enum BarActions {
       var best: Int?
       var exact = false
       for (index, name) in action.names.enumerated() {
-        guard var score = score(typed, name) else { continue }
-        if name.joined(separator: " ") == joined { exact = true; score += 1000 }
+        guard var score = score(typed, joined, name) else { continue }
+        if name.joined == joined { exact = true; score += 1000 }
         if index > 0 { score -= 5 }  // the title before a synonym
         best = max(best ?? score, score)
       }
@@ -162,22 +162,52 @@ enum BarActions {
   /// Every typed word starts a word of the name, in order; earlier and longer matches score higher (after Ardia's
   /// `scoreName`, without its substring and subsequence fallbacks). The "Settings: …" rows match the same way
   /// (`SettingsSearch.barMatches`).
-  static func score(_ typed: [String], _ name: [String]) -> Int? {
+  /// `joined` is `typed` with spaces between.
+  static func score(_ typed: [String], _ joined: String, _ name: BarName) -> Int? {
     guard !typed.isEmpty else { return nil }
     var from = 0
-    var score = name.joined(separator: " ").hasPrefix(typed.joined(separator: " ")) ? 200 : 0
+    var score = name.joined.hasPrefix(joined) ? 200 : 0
     for token in typed {
-      guard let at = name[from...].firstIndex(where: { $0.hasPrefix(token) }) else { return nil }
+      guard let at = name.words[from...].firstIndex(where: { $0.hasPrefix(token) }) else { return nil }
       score += 60 + token.count * 4 - at * 2
       from = at + 1
     }
-    return score - name.count
+    return score - name.words.count
   }
 
   /// Lowercased words: apostrophes dropped ("today's" is one word), anything else not a letter or digit splits.
   static func words(_ text: String) -> [String] {
     text.lowercased().replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "’", with: "")
       .split { !$0.isLetter && !$0.isNumber }.map(String.init)
+  }
+
+  /// A name a command or setting is found by (a title, a synonym, a keyword) as the bar matches it: its words, and
+  /// them joined. Made once per text and kept: the bar matches every name on every key.
+  struct BarName {
+    let words: [String]
+    let joined: String
+
+    static func of(_ text: String) -> BarName {
+      if let known = made[text] { return known }
+      let words = BarActions.words(text)
+      let name = BarName(words: words, joined: words.joined(separator: " "))
+      if made.count >= 4000 { made.removeAll(keepingCapacity: true) }
+      made[text] = name
+      return name
+    }
+
+    /// "settings" before a name's words ("Settings: Theme colour" is found by "settings theme").
+    static func settings(_ text: String) -> BarName {
+      if let known = madeSettings[text] { return known }
+      let words = ["settings"] + of(text).words
+      let name = BarName(words: words, joined: words.joined(separator: " "))
+      if madeSettings.count >= 4000 { madeSettings.removeAll(keepingCapacity: true) }
+      madeSettings[text] = name
+      return name
+    }
+
+    private static var made: [String: BarName] = [:]
+    private static var madeSettings: [String: BarName] = [:]
   }
 
   /// Runs the action as its menu item would: the same selector to the same target, only if the menu would still
