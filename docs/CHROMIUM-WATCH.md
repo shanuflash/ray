@@ -7,7 +7,36 @@ touches engine files or builds. Moving the engine is the owner's call. Ardia's s
 Ray's engine: Chromium 156.0.8078.47 (`engine.lock`), Helium helium-chromium 0.20.1 / helium-macos 0.20.1.1
 (`engine/patches/build/helium-pins.ini`).
 
-Last checked: Chrome 157.0.8103.51 (Mac stable), 158.0.8127.18 (Mac early stable), 156.0.8078.96 (Mac extended), 2026-11-11
+Last checked: Chrome 157.0.8103.79 (Mac stable), 156.0.8078.100 (Mac extended), 2026-11-12
+
+## 2026-11-12
+
+**Big security release: Chrome 157.0.8103.78/.79 (2026-11-11) fixes 83 security bugs, 5 Critical and 78 High.
+Extended 156.0.8078.100 carries 72 of them (4 Critical). None is marked exploited in the wild. Ray's
+156.0.8078.47 has all of them, and no Helium release has them yet.**
+
+Chrome for Mac (chromiumdash):
+- **157.0.8103.78 / .79**, stable, 2026-11-11 (blog: "Stable Channel Update for Desktop"). 83 security fixes:
+  - Critical (all use after free): CVE-2026-126885 ServiceWorker, -126895 CSS, -126879 Layout, -126846 Skia,
+    -126911 Accessibility.
+  - 78 High, among them V8 (-126864 UAF, -126889 off-by-one, -126847 and -126910 type confusion, -126916 integer
+    overflow), Skia (-126912 buffer overflow, -126853), ANGLE (-126870, -126903), Frames, Animation, DOM, Passwords
+    (-126909 UAF), FileSystem link following (-126859), Core information leak (-126878).
+  - 157.0.8103.52 (2026-11-11) also listed, no post of its own.
+- **156.0.8078.100**, extended stable, 2026-11-11 (blog: "Extended Stable Update for Desktop"). 72 security fixes
+  (4 Critical: -126879, -126885, -126895, -126911; 68 High), the M157 batch backported to M156.
+- Early stable (158.0.8127.x) not re-checked: chromiumdash no longer accepts "Early Stable" as a channel name.
+
+Helium: nothing new since helium-chromium 0.21.2 / helium-macos 0.21.2.1 (2026-11-10, Chromium 157.0.8103.50),
+which lacks this batch.
+
+How far behind: one milestone (M156 .47 vs M157 .79). Missing the in-the-wild XML fix (CVE-2026-125350, in Helium
+0.21.2), these 5 Critical and 78 High, and everything between. Within M156 the patch fix is extended .100.
+
+What moving would take: unchanged. Helium 0.21.2 / 0.21.2.1 (157.0.8103.50) is the newest buildable target, a
+new milestone for Ray and a full rebuild; it closes the in-the-wild bug but not this batch, so a later Helium
+on 157.0.8103.78+ would be needed for these. Ardia's latest engine (v0.2.46-nightly.5, engine-054c7f68642e) is still
+on 157.0.8103.38 (`docs/ARDIA-WATCH.md`). Not started: owner decides (engine rebuild was put on hold 2026-11-05).
 
 ## 2026-11-11
 
