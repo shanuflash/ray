@@ -3550,6 +3550,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
           "hint": bar.hintText ?? NSNull(), "pulses": bar.pulses, "lineOffsets": bar.lineOffsets,
           "rowsFullyVisible": bar.rowsFullyVisible,
           "firstVisibleRow": bar.shownRows.first, "visibleRows": bar.shownRows.count,
+          "work": [
+            "builds": Suggestions.work.builds, "scanned": Suggestions.work.scanned, "matched": Suggestions.work.matched,
+            "rowsMade": Suggestions.work.rowsMade, "parses": Suggestions.work.parses, "ms": Suggestions.work.ms,
+            "maxMs": Suggestions.work.maxMs,
+          ] as [String: Any],
           "rows": bar.suggestions.map { row -> [String: Any] in
             var logged: [String: Any] = ["kind": row.kindName, "title": row.title, "detail": row.detail]
             if row.suggested { logged["suggested"] = true }

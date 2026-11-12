@@ -125,10 +125,19 @@ enum AddressInput {
   }
 
   static func autocompletes(candidateHost: String, typedHost: String?, query: String, trusted: Bool = false) -> Bool {
+    autocompletes(
+      candidateHost: candidateHost, domain: registrableDomain(candidateHost), typedHost: typedHost,
+      lowercasedQuery: query.lowercased(), trusted: trusted)
+  }
+
+  /// The same, for a caller that already has the host's registrable domain and the query lowercased (the command bar
+  /// asks about every matching page on every key).
+  static func autocompletes(
+    candidateHost: String, domain: String, typedHost: String?, lowercasedQuery query: String, trusted: Bool
+  ) -> Bool {
     guard !candidateHost.isEmpty else { return false }
     if let typedHost { return candidateHost == typedHost }
-    let query = query.lowercased()
-    if registrableDomain(candidateHost).hasPrefix(query) { return true }
+    if domain.hasPrefix(query) { return true }
     // A site you use (an open tab, or one you go to) completes on its whole host too, as in Chrome and Arc
     // ("shanu" → shanu.surveysparrow.com, "mail" → mail.google.com). A one-off visit doesn't, so a lookalike
     // ("google" → google.com.evil.tld) never completes from a single click.
