@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Sidebar Resize</title>
+<style>
+:root, [data-theme="light"] {
+  --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --hair: rgba(0,0,0,.08);
+  --side: #E6E6E6; --sideInk: #3A3A3F; --row: rgba(0,0,0,.06); --sel: rgba(255,255,255,.85); --page: #FFFFFF;
+  --line: #EDEDF0; --line2: #F3F3F5; --chip: #FFFFFF; --grip: rgba(0,0,0,.28);
+  --shadow: 0 1px 1.5px rgba(0,0,0,.05), 0 6px 14px -4px rgba(0,0,0,.08), 0 22px 48px -12px rgba(0,0,0,.22);
+  --accent: #8257E5; --onAccent: #fff; --zone: rgba(255,59,48,.28);
+}
+[data-theme="dark"] {
+  --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09);
+  --side: #131313; --sideInk: #D8D6DE; --row: rgba(255,255,255,.08); --sel: rgba(255,255,255,.14); --page: #242428;
+  --line: #34343A; --line2: #2C2C31; --chip: #28282D; --grip: rgba(255,255,255,.28);
+  --shadow: 0 1px 1.5px rgba(0,0,0,.3), 0 6px 14px -4px rgba(0,0,0,.3), 0 24px 52px -12px rgba(0,0,0,.6);
+  --accent: #A486F0; --onAccent: #000; --zone: rgba(255,69,58,.34);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px 64px; }
+h1 { font-size: 22px; font-weight: 600; margin: 26px 0 4px; letter-spacing: -.01em; }
+.sub { color: var(--ink2); margin: 0 0 14px; max-width: 780px; }
+h2 { font-size: 15px; font-weight: 600; margin: 30px 0 8px; }
+.bar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--desk) 86%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 10px 0; border-bottom: 1px solid var(--hair); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.row + .row { margin-top: 6px; }
+.lab { color: var(--ink2); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; min-width: 84px; }
+button.t { font: inherit; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--chip); border: 1px solid var(--hair); border-radius: 7px; padding: 4px 9px; cursor: pointer; white-space: nowrap; }
+button.t:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+button.t[aria-pressed="true"] { background: var(--accent); color: var(--onAccent); border-color: transparent; }
+button.t.big { font-size: 13px; font-weight: 600; padding: 6px 12px; }
+.pv { font-variant-numeric: tabular-nums; color: var(--ink2); font-size: 12px; margin-left: auto; }
+.sp { flex: 1; }
+
+/* window, drawn at Ray's real sizes (1 px = 1 pt) */
+.scroll { overflow-x: auto; margin-top: 14px; padding-bottom: 6px; }
+.win { position: relative; width: 1000px; height: 540px; background: var(--side); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; border: 1px solid var(--hair); user-select: none; -webkit-user-select: none; }
+.side { position: absolute; left: 0; top: 0; bottom: 0; width: 267px; padding: 46px 8px 8px; overflow: hidden; }
+.lights { position: absolute; left: 14px; top: 18px; display: flex; gap: 11px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: var(--row); }
+.lights i:nth-child(1) { background: #FF5F57; } .lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+.ib { position: absolute; top: 10px; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--ink2); font-size: 15px; }
+.addr { height: 36px; border-radius: 10px; background: var(--row); margin-bottom: 8px; display: flex; align-items: center; padding: 0 12px; color: var(--sideInk); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+.tiles b { height: 46px; border-radius: 10px; background: var(--row); display: grid; place-items: center; }
+.tiles b i, .r i { width: 16px; height: 16px; border-radius: 4px; flex: none; }
+.r { height: 36px; border-radius: 9px; display: flex; align-items: center; gap: 9px; padding: 0 10px; color: var(--sideInk); font-size: 12.5px; }
+.r span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r.on { background: var(--sel); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.sec { height: 1px; background: var(--hair); margin: 8px 6px; }
+.cap { color: var(--ink2); font-size: 11px; font-weight: 600; padding: 4px 10px 2px; }
+.pagebox { position: absolute; left: 267px; right: 8px; top: 8px; bottom: 8px; border-radius: 10px; background: var(--page); box-shadow: 0 0 0 .5px var(--hair), 0 1px 3px rgba(0,0,0,.08); overflow: hidden; }
+.content { padding: 30px 40px; max-width: 640px; margin: 0 auto; }
+.content .ttl { font-size: 24px; font-weight: 700; letter-spacing: -.01em; margin: 0 0 14px; }
+.content .img { height: 130px; border-radius: 10px; margin: 6px 0 18px; background: linear-gradient(120deg, #9B8CF2, #F2A0C4 60%, #FFD9A0); opacity: .85; }
+.content .ln { height: 9px; border-radius: 4px; background: var(--line2); margin: 10px 0; }
+.content .ln.d { background: var(--line); }
+
+/* the edge */
+.handle { position: absolute; top: 0; bottom: 0; width: 8px; left: 261px; cursor: col-resize; z-index: 5; touch-action: none; }
+.win.zone .handle { background: var(--zone); }
+.grip { position: absolute; left: 3px; width: 2px; border-radius: 1px; opacity: 0; pointer-events: none; transition: opacity .12s; }
+.grip.full { top: 10px; bottom: 10px; background: var(--accent); }
+.grip.short { top: calc(50% - 23px); height: 46px; background: var(--grip); opacity: 0; }
+.win[data-look="hover"] .handle:hover .grip.full { opacity: .55; transition-delay: .15s; }
+.win[data-look="hover"].drag .grip.full { opacity: 1; transition-delay: 0s; }
+.win[data-look="drag"].drag .grip.short { opacity: 1; }
+.win.spring .side, .win.spring .pagebox, .win.spring .handle { transition: width .3s cubic-bezier(.3,1.25,.5,1), left .3s cubic-bezier(.3,1.25,.5,1), transform .3s cubic-bezier(.3,1.25,.5,1); }
+.win.gone .handle { display: none; }
+
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+th { color: var(--ink2); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+.rec { color: var(--accent); font-weight: 600; }
+ul { margin: 6px 0 0; padding-left: 18px; } li { margin: 4px 0; }
+code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--row); padding: 1px 5px; border-radius: 4px; }
+@media (max-width: 720px) { .lab { min-width: 100%; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Sidebar resize</h1>
+  <p class="sub">Drag the sidebar's right edge in the window below. It's drawn at Ray's real sizes, and the page resizes live as it will in Ray. Pick A, B or C, or mix the rows under them (say "A, but hide past the minimum").</p>
+
+  <div class="bar">
+    <div class="row">
+      <span class="lab">Option</span>
+      <button class="t big" data-preset="A">A · Arc: nothing shows</button>
+      <button class="t big" data-preset="B">B · Line on hover</button>
+      <button class="t big" data-preset="C">C · Rubber band</button>
+      <span class="pv" id="pv">267 pt</span>
+    </div>
+    <div class="row">
+      <span class="lab">Look</span>
+      <button class="t" data-k="look" data-v="none">Cursor only</button>
+      <button class="t" data-k="look" data-v="hover">Line on hover and drag</button>
+      <button class="t" data-k="look" data-v="drag">Grip while dragging</button>
+    </div>
+    <div class="row">
+      <span class="lab">At the limits</span>
+      <button class="t" data-k="limit" data-v="stop">Stop</button>
+      <button class="t" data-k="limit" data-v="band">Rubber band</button>
+      <button class="t" data-k="limit" data-v="hide">Hide past the minimum</button>
+    </div>
+    <div class="row">
+      <span class="lab">Double-click</span>
+      <button class="t" data-k="dbl" data-v="reset">Back to 267</button>
+      <button class="t" data-k="dbl" data-v="none">Nothing</button>
+      <span class="sp"></span>
+      <button class="t" id="zone" aria-pressed="false">Show hit zone</button>
+      <button class="t" id="show" hidden>Show sidebar (⌘S)</button>
+      <button class="t" data-theme-set="light">Light</button>
+      <button class="t" data-theme-set="dark">Dark</button>
+    </div>
+  </div>
+
+  <div class="scroll">
+    <div class="win" id="win" data-look="none">
+      <div class="side" id="side">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="ib" style="left:88px">▯</div>
+        <div class="ib" id="nb" style="right:78px">←</div>
+        <div class="ib" style="right:44px">→</div>
+        <div class="ib" style="right:10px">↻</div>
+        <div class="addr">github.com/shanuflash/ray</div>
+        <div class="tiles">
+          <b><i style="background:#EA4335"></i></b><b><i style="background:#1DB954"></i></b><b><i style="background:#5865F2"></i></b><b><i style="background:#FF9900"></i></b>
+        </div>
+        <div class="r"><i style="background:#24292F"></i><span>shanuflash/ray: Arc's sidebar on real Chromium</span></div>
+        <div class="r"><i style="background:#0A66C2"></i><span>Linear – Ray launch board</span></div>
+        <div class="r"><i style="background:#F24E1E"></i><span>Figma – Sidebar resize explorations</span></div>
+        <div class="sec"></div>
+        <div class="cap">Today</div>
+        <div class="r on"><i style="background:#8257E5"></i><span>The Browser Company is shutting down Arc – what to use next</span></div>
+        <div class="r"><i style="background:#FF4500"></i><span>r/browsers – Which Arc replacement keeps pinned tabs?</span></div>
+        <div class="r"><i style="background:#1DA1F2"></i><span>Chromium Blog: Faster tab switching</span></div>
+        <div class="r"><i style="background:#34A853"></i><span>Hacker News</span></div>
+      </div>
+      <div class="pagebox" id="page">
+        <div class="content">
+          <div class="ttl">The page resizes as you drag</div>
+          <div class="img"></div>
+          <div class="ln d" style="width:92%"></div><div class="ln" style="width:98%"></div><div class="ln" style="width:85%"></div>
+          <div class="ln" style="width:96%"></div><div class="ln" style="width:60%"></div>
+          <div class="ln d" style="width:88%; margin-top:22px"></div><div class="ln" style="width:94%"></div><div class="ln" style="width:72%"></div>
+        </div>
+      </div>
+      <div class="handle" id="handle"><div class="grip full"></div><div class="grip short"></div></div>
+    </div>
+  </div>
+
+  <h2>The three options</h2>
+  <table>
+    <tr><th></th><th>Look</th><th>At the limits</th><th>Who does it</th></tr>
+    <tr><td>A <span class="rec">· my pick</span></td><td>Nothing drawn. The cursor turns to ↔ over an 8 pt zone on the edge.</td><td>Stops dead at 240 and 480.</td><td>Arc and Cra (nothing shows, hard stop).</td></tr>
+    <tr><td>B</td><td>A 2 pt line in your profile colour fades in after 0.15 s of hovering the edge, and stays while dragging.</td><td>Stops dead.</td><td>Xcode, VS Code. Crest shows a short grey grip, only while dragging ("Grip while dragging" above).</td></tr>
+    <tr><td>C</td><td>Nothing drawn.</td><td>Stretches up to 36 pt past each limit and springs back on release.</td><td>Ardia.</td></tr>
+  </table>
+
+  <h2>Same in every option, unless you say otherwise</h2>
+  <ul>
+    <li><b>Range 240–480 pt</b>, default 267 (today's width). Under 240 the top row's buttons meet. The page always keeps at least 400 pt, so a narrow window lowers the maximum. Ardia: 160–400. Crest: 200–380. Cra: 220–520.</li>
+    <li><b>No snapping.</b> The width moves in whole points (Chrome's page needs that). None of the four snaps.</li>
+    <li><b>One width for every window</b>, remembered across launches (Ardia, Cra). Other windows follow when you let go. Private windows use it and can be dragged, but never save theirs. Crest keeps one per window.</li>
+    <li><b>Double-click the edge:</b> back to 267, on the sidebar's spring (Ardia). Crest and Cra do nothing.</li>
+    <li><b>Hidden sidebar (⌘S):</b> the peeking sidebar comes out at the same width. Its edge isn't draggable while it peeks (Cra's way); dock it to resize.</li>
+    <li><b>"Hide past the minimum"</b> (row 3 above): keep dragging 60 pt past 240 and the sidebar hides, as ⌘S. I remember Arc doing this but couldn't measure it; it's off in my pick because it's easy to trigger by accident.</li>
+    <li><b>Hit zone:</b> 8 pt, 6 inside the sidebar's empty gutter and 2 over the page's edge ("Show hit zone" above). Ardia 4 pt, Cra 8 pt, Crest 16 pt.</li>
+    <li>No keyboard or VoiceOver resize in this round.</li>
+  </ul>
+</div>
+<script>
+const MIN = 240, MAX = 480, DEF = 267, BAND = 36, SCALE = 90, HIDE = 60, PAGE_MIN = 400;
+const win = document.getElementById('win'), side = document.getElementById('side'), page = document.getElementById('page');
+const handle = document.getElementById('handle'), pv = document.getElementById('pv'), show = document.getElementById('show');
+const S = { look: 'none', limit: 'stop', dbl: 'reset' };
+const presets = { A: { look: 'none', limit: 'stop', dbl: 'reset' }, B: { look: 'hover', limit: 'stop', dbl: 'reset' }, C: { look: 'none', limit: 'band', dbl: 'reset' } };
+let width = DEF, hidden = false;
+const max = () => Math.min(MAX, win.clientWidth - PAGE_MIN);
+const clamp = w => Math.min(max(), Math.max(MIN, w));
+const band = over => BAND * (1 - Math.exp(-over / SCALE));
+function shape(raw) {
+  if (S.limit === 'band') {
+    if (raw > max()) return max() + band(raw - max());
+    if (raw < MIN) return MIN - band(MIN - raw);
+    return raw;
+  }
+  return clamp(raw);
+}
+function apply(w, gone) {
+  const shown = Math.round(w);
+  side.style.width = shown + 'px';
+  side.style.transform = gone ? `translateX(${-shown}px)` : '';
+  page.style.left = (gone ? 8 : shown) + 'px';
+  handle.style.left = (shown - 6) + 'px';
+  win.classList.toggle('gone', !!gone);
+  pv.textContent = gone ? 'hidden' : shown + ' pt' + (shown === MIN ? ' · min' : shown === max() ? ' · max' : '');
+}
+function spring(fn) { win.classList.add('spring'); fn(); setTimeout(() => win.classList.remove('spring'), 320); }
+function sync() {
+  win.dataset.look = S.look;
+  document.querySelectorAll('[data-k]').forEach(b => b.setAttribute('aria-pressed', S[b.dataset.k] === b.dataset.v));
+  document.querySelectorAll('[data-preset]').forEach(b => {
+    const p = presets[b.dataset.preset];
+    b.setAttribute('aria-pressed', Object.keys(p).every(k => p[k] === S[k]));
+  });
+  show.hidden = !hidden;
+}
+document.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { S[b.dataset.k] = b.dataset.v; sync(); });
+document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => { Object.assign(S, presets[b.dataset.preset]); sync(); });
+document.getElementById('zone').onclick = e => { const on = win.classList.toggle('zone'); e.currentTarget.setAttribute('aria-pressed', on); };
+show.onclick = () => { hidden = false; spring(() => apply(width, false)); sync(); };
+document.querySelectorAll('[data-theme-set]').forEach(b => b.onclick = () => theme(b.dataset.themeSet));
+function theme(t) {
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll('[data-theme-set]').forEach(b => b.setAttribute('aria-pressed', b.dataset.themeSet === t));
+}
+theme(matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+
+let startX = 0, startW = 0, dragging = false, willHide = false;
+handle.addEventListener('pointerdown', e => {
+  handle.setPointerCapture(e.pointerId);
+  dragging = true; startX = e.clientX; startW = width; willHide = false;
+  win.classList.remove('spring'); win.classList.add('drag');
+});
+handle.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const raw = startW + (e.clientX - startX);
+  const hide = S.limit === 'hide' && raw < MIN - HIDE;
+  if (hide !== willHide) { willHide = hide; spring(() => apply(hide ? MIN : shape(raw), hide)); return; }
+  if (!hide) apply(shape(raw), false);
+});
+function end(e) {
+  if (!dragging) return;
+  dragging = false; win.classList.remove('drag');
+  const raw = startW + (e.clientX - startX);
+  if (willHide) { hidden = true; sync(); return; }
+  width = clamp(raw);
+  if (shape(raw) !== width) spring(() => apply(width, false)); else apply(width, false);
+}
+handle.addEventListener('pointerup', end);
+handle.addEventListener('pointercancel', end);
+handle.addEventListener('dblclick', () => { if (S.dbl === 'reset') { width = DEF; spring(() => apply(width, false)); } });
+apply(width, false); sync();
+</script>
+</body>
+</html>

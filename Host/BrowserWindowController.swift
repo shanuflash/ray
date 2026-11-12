@@ -180,9 +180,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private func layout() {
     let bounds = root.bounds
     let margin = Self.margin
-    let width = SidebarView.width
+    let width = sidebarWidth
     let shown = dockSpring.value
     let peek = peekSpring.value
+    layoutResizeHandle(at: width, docked: !peeking && peek <= 0.001 && shown >= 0.999)
 
     if peeking || peek > 0.001 {
       let inset = Self.peekInset
@@ -2349,9 +2350,174 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     return state
   }
 
+  // MARK: Sidebar width
+
+  /// This window's width as it is now: the remembered one, a drag's (past a limit it stretches, Ardia's rubber band)
+  /// or the spring's on its way back. Whole points, as the page's frame must be.
+  private lazy var widthSpring = Spring(value: RaySettings.shared.sidebarWidth, response: Spring.response,
+                                        dampingRatio: Spring.dampingRatio) { [weak self] _ in
+    self?.layout()
+    self?.noteResizeFrame()
+  }
+  /// The strip on the sidebar's edge that drags its width (`SidebarResize.swift`): over the sidebar and the page's
+  /// edge, under a peeking sidebar, panels and notes.
+  private let resizeHandle = SidebarResizeHandle()
+  /// The width the drag in progress started from.
+  private var resizeStart: CGFloat?
+  /// For tests: the last drag's steps (each lays the window out), the longest one, and frames laid out off whole points.
+  private var resizeSteps = 0
+  private var resizeLongestStep: Double = 0
+  private var resizeOffGrid = 0
+  private var resizeSweep: [String: Any]?
+
+  private var sidebarWidth: CGFloat {
+    let value = widthSpring.value
+    if resizeStart != nil || widthSpring.isMoving { return value.rounded() }
+    // A narrow window lowers the maximum without changing what's remembered.
+    return SidebarWidth.clamp(value, windowWidth: root.bounds.width)
+  }
+
+  /// The edge drags only a docked sidebar; a peeking one comes out at the same width.
+  private func layoutResizeHandle(at width: CGFloat, docked: Bool) {
+    if resizeHandle.superview == nil { installResizeHandle() }
+    resizeHandle.isHidden = !docked
+    resizeHandle.frame = NSRect(x: width - SidebarResizeHandle.inside, y: 0,
+                                width: SidebarResizeHandle.inside + SidebarResizeHandle.outside, height: root.bounds.height)
+  }
+
+  private func installResizeHandle() {
+    root.addSubview(resizeHandle, positioned: .above, relativeTo: sidebar.superview === root ? sidebar : toolbar)
+    resizeHandle.onBegin = { [weak self] in self?.beginResize() }
+    resizeHandle.onDrag = { [weak self] dx in self?.resize(by: dx) }
+    resizeHandle.onEnd = { [weak self] in self?.endResize() }
+    resizeHandle.onDoubleClick = { [weak self] in self?.settleWidth(SidebarWidth.standard, remember: true) }
+    resizeHandle.onScroll = { [weak self] event in
+      // Scrolling over the strip scrolls the list beside it.
+      guard let self, let parent = self.sidebar.superview else { return }
+      let y = parent.convert(event.locationInWindow, from: nil).y
+      let under = self.sidebar.hitTest(NSPoint(x: self.sidebar.frame.maxX - 16, y: y))
+      ((under as? NSScrollView) ?? under?.enclosingScrollView)?.scrollWheel(with: event)
+    }
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(sidebarWidthChanged(_:)), name: RaySettings.sidebarWidthDidChange, object: nil)
+  }
+
+  private func beginResize() {
+    guard resizeStart == nil else { return }
+    let shown = sidebarWidth
+    // A press on an edge still springing back takes it from where it is.
+    widthSpring.jump(to: shown)
+    resizeStart = SidebarWidth.unstretched(shown, windowWidth: root.bounds.width)
+    resizeSteps = 0
+    resizeLongestStep = 0
+    resizeOffGrid = 0
+    logState("sidebarResize")
+  }
+
+  private func resize(by dx: CGFloat) {
+    guard let start = resizeStart else { return }
+    let width = SidebarWidth.stretched(start + dx, windowWidth: root.bounds.width).rounded()
+    guard width != widthSpring.value else { return }
+    let began = CACurrentMediaTime()
+    widthSpring.jump(to: width)
+    resizeSteps += 1
+    resizeLongestStep = max(resizeLongestStep, (CACurrentMediaTime() - began) * 1000)
+  }
+
+  private func endResize() {
+    guard resizeStart != nil else { return }
+    resizeStart = nil
+    settleWidth(widthSpring.value, remember: true)
+  }
+
+  /// The width goes to the nearest allowed one, on the sidebar's spring when it has to move, and (unless this is a
+  /// private window, which never writes to Settings.json) becomes every window's.
+  private func settleWidth(_ width: CGFloat, remember: Bool) {
+    let target = SidebarWidth.clamp(width, windowWidth: root.bounds.width)
+    if remember, !isPrivate { RaySettings.shared.rememberSidebarWidth(target, from: self) }
+    if window.occlusionState.contains(.visible), abs(widthSpring.value - target) >= 0.5 {
+      widthSpring.animate(to: target, in: root)
+    } else {
+      widthSpring.jump(to: target)
+    }
+    logState("sidebarResize")
+  }
+
+  @objc private func sidebarWidthChanged(_ note: Notification) {
+    guard note.object as AnyObject? !== self, !closing, resizeStart == nil else { return }
+    settleWidth(RaySettings.shared.sidebarWidth, remember: false)
+  }
+
+  private func noteResizeFrame() {
+    let frames = [pages.frame, sidebar.frame, resizeHandle.frame]
+    if frames.contains(where: { $0 != $0.integral }) { resizeOffGrid += 1 }
+  }
+
+  var sidebarResizeState: [String: Any] {
+    let limits = SidebarWidth.limits(windowWidth: root.bounds.width)
+    return [
+      "width": Double(sidebarWidth), "remembered": Double(RaySettings.shared.sidebarWidth),
+      "min": Double(limits.lowerBound), "max": Double(limits.upperBound),
+      "dragging": resizeStart != nil, "settling": widthSpring.isMoving,
+      "handle": NSStringFromRect(resizeHandle.frame), "handleShown": !resizeHandle.isHidden,
+      "handleOnTop": (root.subviews.firstIndex(of: resizeHandle) ?? -1) > (root.subviews.firstIndex(of: pages) ?? 0),
+      "sidebarFrame": NSStringFromRect(sidebar.frame),
+      "steps": resizeSteps, "longestStepMs": resizeLongestStep, "offGrid": resizeOffGrid,
+      "cursorSets": resizeHandle.cursorSets, "sweep": resizeSweep ?? NSNull(),
+    ]
+  }
+
+  #if RAY_TEST_HOOKS
+  private var sweep: SidebarResizeSweep?
+
+  /// `sidebarwidth <n> | drag <dx> [hold] | release | double | sweep <dx> <frames>`: the edge's strip, as the mouse
+  /// drives it.
+  func testResize(_ argument: String) -> String {
+    let parts = argument.split(separator: " ").map(String.init)
+    guard !resizeHandle.isHidden else { return "no edge" }
+    let x = resizeHandle.frame.midX
+    switch parts.first {
+    case "drag":
+      guard parts.count >= 2, let dx = Double(parts[1]) else { return "usage: sidebarwidth drag <dx> [hold]" }
+      resizeHandle.press(at: x)
+      resizeHandle.drag(to: x + CGFloat(dx))
+      if parts.last != "hold" { resizeHandle.release() }
+    case "release": resizeHandle.release()
+    case "double": resizeHandle.doubleClick()
+    case "sweep":
+      guard parts.count == 3, let dx = Double(parts[1]), let frames = Int(parts[2]), sweep == nil else {
+        return "usage: sidebarwidth sweep <dx> <frames>"
+      }
+      resizeSweep = nil
+      resizeHandle.press(at: x)
+      let sweep = SidebarResizeSweep(frames: frames, step: { [weak self] along in
+        self?.resizeHandle.drag(to: x + CGFloat(dx) * along)
+      }, done: { [weak self] result in
+        guard let self else { return }
+        self.resizeHandle.release()
+        self.sweep = nil
+        self.resizeSweep = result
+        self.logState("sidebarResize")
+      })
+      self.sweep = sweep
+      sweep.start(in: root)
+    default:
+      guard parts.count == 1, let width = Double(parts[0]) else {
+        return "usage: sidebarwidth <n>|drag <dx> [hold]|release|double|sweep <dx> <frames>"
+      }
+      resizeHandle.press(at: x)
+      resizeHandle.drag(to: x + CGFloat(width) - sidebarWidth)
+      resizeHandle.release()
+    }
+    logState("sidebarResize")
+    return "ok"
+  }
+  #endif
+
   // MARK: Sidebar visibility
 
   func toggleSidebar() {
+    resizeHandle.release()
     endPeek(animated: false)
     peekForced = false
     state.sidebarHidden.toggle()
@@ -2435,7 +2601,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     let reach = appActive ? Self.outsideReach : 0
     if peeking {
-      let holdRight = Self.peekInset + SidebarView.width + Self.holdSlack
+      let holdRight = Self.peekInset + sidebarWidth + Self.holdSlack
       if point.x >= -reach && point.x < holdRight { cancelPeekEnd() } else { schedulePeekEnd() }
     } else if point.x >= -reach && point.x < Self.revealWidth {
       beginPeek()
@@ -3314,6 +3480,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       },
       "toggleCenter": sidebar.debugToggleCenter,
       "sidebarFrames": sidebar.debugFrames,
+      "sidebarResize": sidebarResizeState,
       "sidebar": [
         "favorites": self.state.favorites.map(describe),
         "pinned": self.state.pinned.map(describe),

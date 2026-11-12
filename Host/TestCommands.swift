@@ -616,6 +616,13 @@ enum TestCommands {
       result = linkPreview(argument)
     case "swipe":
       result = swipe(argument)
+    case "sidebarwidth":
+      // `sidebarwidth <n>|drag <dx> [hold]|release|double|sweep <dx> <frames>`: the sidebar's edge (`SidebarResize.swift`).
+      #if RAY_TEST_HOOKS
+      result = AppController.shared.current?.testResize(argument) ?? "no window"
+      #else
+      result = "test builds only"
+      #endif
     case "navhistory":
       result = navHistory(argument)
     case "extinstall":

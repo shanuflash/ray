@@ -34,6 +34,7 @@ Ray updates itself after that (Ray › Check for Updates…).
 ### More
 
 - **Sidebar**
+  - Drag its edge to resize
   - Rename tabs
   - Arc's right-click menus: duplicate, mute, move, tab icons
   - A sound icon on playing tabs: click to mute

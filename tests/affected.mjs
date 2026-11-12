@@ -21,7 +21,7 @@ const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favo
 // Folders in Pinned and Today (Today's are Chrome tab groups), their icon and Change Icon.
 const folders = ["folders", "folders-relaunch", "multi-select", "folder-create", "folder-toggle", "folder-rename", "folder-animation",
   "folder-drag-in", "folder-drag-folder", "folder-out-and-delete"];
-const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still"];
+const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still", "sidebar-resize"];
 const pageSurface = ["switch-back-latency", "switch-no-blank", "top-strip-click", "toggle-keeps-page-still", "activate-target",
   "devtools-docked", "background-tab"];
 
@@ -158,6 +158,10 @@ export const areas = {
   "Host/BrowserWindowController.swift#Page toolbar": ["pending-security", "pending-address", "page-toolbar", "address-fragment", "page-loading", "load-sweep-once", "site-controls",
     "sidebar-toggle", "settings-page-address-bar"],
   "Host/BrowserWindowController.swift#Sidebar visibility": [...sidebarMotion, "page-toolbar", "downloads"],
+  // The sidebar's width: the strip on its edge, the drag and its rubber band, the remembered width.
+  "Host/BrowserWindowController.swift#Sidebar width": sidebarMotion,
+  "Host/SidebarResize.swift": ["sidebar-resize"],
+  "Host/RaySettings.swift#Sidebar width": ["sidebar-resize"],
   "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Pages": pageSurface,
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",

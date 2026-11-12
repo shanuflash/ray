@@ -274,6 +274,22 @@ publicly or create accounts.
   icons, drop hints) go through `PixelGrid.align` (whole device pixels for the window's scale; a 41 pt row's half-point
   middle smeared favicons on a 1x monitor) and lay out again on a backing change; test command `pixelscale 1|2|off`,
   state log `sidebarFrames.iconsOffGrid`, check `icons-on-pixels`.
+- Sidebar width (`Host/SidebarResize.swift`, `BrowserWindowController` `// MARK: Sidebar width`): dragged at the
+  sidebar's edge (owner's pick of `docs/mocks/sidebar-resize.html`, 2026-11-12: Arc's look, nothing drawn, with
+  Ardia's rubber band). `SidebarResizeHandle`: an 8 pt strip (6 pt of the sidebar's gutter, 2 pt of the page's edge)
+  right above the sidebar in the root (under a peeking sidebar, panels and notes), added at the first layout, hidden
+  unless the sidebar is docked; the resize cursor by cursor rect and a tracking area (the page under its outer 2 pt
+  sets its own); scrolling over it scrolls the list. `SidebarWidth`: 240–480 (the top row's buttons need 234; the
+  page keeps 400, so a narrow window lowers the maximum without changing what's remembered), standard 267
+  (`SidebarView.width`), whole points always. Past a limit a drag stretches up to 36 pt and springs back on the
+  sidebar's spring (`widthSpring`); a double click goes back to 267. `layout()` reads `sidebarWidth` (the peeking
+  sidebar and its hold zone too; a peeking sidebar's edge doesn't drag). One width for every window:
+  `RaySettings.sidebarWidth` (Settings.json state `sidebarWidth`, left out at 267; out of range is clamped, not a
+  number is 267); `rememberSidebarWidth` posts `sidebarWidthDidChange` and the other windows follow. Private windows
+  follow and drag but never save. No keyboard or VoiceOver resize. Test command `sidebarwidth <n>|drag <dx>
+  [hold]|release|double|sweep <dx> <frames>` (sweep: a step per display frame, timing each layout); state log
+  `sidebarResize` (`width`, `remembered`, `min`, `max`, `dragging`, `settling`, `handle`, `steps`, `longestStepMs`,
+  `offGrid`, `sweep`); check `sidebar-resize` (own instances, relaunched).
 - Multi-select (`SidebarView` `// MARK: Selection`, Arc's): ⌘-click picks or drops a tab (the active one counts),
   ⇧-click picks the shown tabs from the anchor (the last ⌘-click, else the active tab), ⌘⇧ adds a range; neither
   switches tabs, a plain click ends it (on a selected tab, only at the release, so the selection can be dragged).
@@ -773,7 +789,9 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   hidden test window happens to land on the visible desktop: `switch-back-latency` then fails (on older commits
   too) and leaves state that breaks `private-window`, `arc-import` and `close-last-window` after it. A subset run
   can also fail from what earlier checks left behind: `pin-unload-restore` leaves its tab pinned, so `favorites` and
-  `reopen-closed-tab` fail right after it (on main too); run those alone. A Chrome log line can land inside a long `[ray-state]`
+  `reopen-closed-tab` fail right after it (on main too); run those alone. `background-tab` as the first check after
+  boot clicks before `/a` has loaded (run `page-channel navigate` before it), and `link-preview` fails right after
+  `reopen-closed-tab` (on main too). A Chrome log line can land inside a long `[ray-state]`
   line (pipe writes over 512 bytes aren't atomic) and the runner dies on `JSON.parse`; run the checks it didn't reach. Before blaming a change, run the same command on the
   previous commit (`git stash -u`, build, run, `git stash pop`) and compare.
 

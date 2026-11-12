@@ -397,11 +397,18 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     `WebstoreInstallHelper` ends the install with "Image decode failed" if lh3.googleusercontent.com is blocked or the
     icon won't decode. Fix: Ardia's `chromium-webstore-icon-optional.patch` (install with the default icon) at the
     next engine rebuild.
+56. **Sidebar resize leftovers** (2026-11-12). No keyboard or VoiceOver way to resize (Crest: an adjustable handle,
+    20 pt steps; Chrome's side panel: arrow keys). A peeking sidebar's edge doesn't drag (dock it first; Cra's way).
+    Dragging far past the minimum doesn't hide the sidebar (Arc may; not measured). With scroll bars set to Always,
+    the strip covers the outer 6 pt of the sidebar's scroller. The real cursor over the strip's 2 pt on the page
+    hasn't been seen by eye (Chrome sets its own there). Hidden pages are resized with every drag step, as on ⌘S
+    (the performance review's fix for that covers both).
 
 ## Done
 
 | What | When |
 |---|---|
+| Resizable sidebar: drag its edge (240–480 pt, a rubber band at the limits as Ardia's, nothing drawn as Arc's), double-click for the standard width; one width for every window, remembered | 2026-11-12, `feat: resizable sidebar` |
 | Screen sharing in Ray's own look: a picker over the asking tab (Tabs / Windows / Screen with pictures, deny by default, full origin, 0.5 s guard), a held note at the top centre (Stop Sharing, Share This Tab), share marks on the rows, a ring round the shared page; Chrome's picker and floating bar gone; Ray's own window shares through macOS | 2026-11-10, `feat: own screen share picker and indicators` |
 | Back/forward swipe shows Dia's frosted chip with a chevron (grows and ticks once letting go navigates) instead of Chrome's dark half-circle | 2026-11-10, `feat: dia swipe chip` |
 | Arc's Tab to Search: the start of a site's name offers "Search YouTube  Tab" at the field's end; Tab scopes with a pill in the site's colour, a pulse of it and the row filled with it; Arc's built-in site searches (YouTube, Wikipedia, GitHub, Google Maps…) | 2026-11-10, `feat: arc tab to search` |

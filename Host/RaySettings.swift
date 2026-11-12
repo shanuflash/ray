@@ -20,7 +20,7 @@ final class RaySettings {
 
   /// Ray's own state kept in Settings.json beside the settings: no row, no observers, never reset.
   private static let stateKeys: Set<String> = ["zoomedHosts", "zoomAdopted", "windowFrame", "onboarded", "defaultBrowserAsks",
-                                                "defaultBrowserAskedAt", "defaultBrowserNever"]
+                                                "defaultBrowserAskedAt", "defaultBrowserNever", "sidebarWidth"]
 
   /// Each setting's value by id, always valid (see `SettingKey.validate`).
   private var values: [String: Any] = [:]
@@ -41,6 +41,10 @@ final class RaySettings {
   private(set) var defaultBrowserAsks: Int
   private(set) var defaultBrowserAskedAt: Double?
   private(set) var defaultBrowserNever: Bool
+  /// The sidebar's width, dragged at its edge (`SidebarResize.swift`): one for every window.
+  private(set) var sidebarWidth: CGFloat
+  /// Posted when the width is remembered; the object is the window controller that dragged it.
+  static let sidebarWidthDidChange = Notification.Name("RaySidebarWidthDidChange")
 
   private let url: URL?
   private var pending: DispatchWorkItem?
@@ -64,6 +68,8 @@ final class RaySettings {
     defaultBrowserAsks = max(0, (file["defaultBrowserAsks"] as? NSNumber)?.intValue ?? 0)
     defaultBrowserAskedAt = (file["defaultBrowserAskedAt"] as? NSNumber).map(\.doubleValue).flatMap { $0.isFinite ? $0 : nil }
     defaultBrowserNever = file["defaultBrowserNever"].flatMap { Bool(settingJSON: $0) } ?? false
+    // A width that isn't a number is the standard one; one outside the limits is brought to the nearest.
+    sidebarWidth = SidebarWidth.saved(file["sidebarWidth"]) ?? SidebarWidth.standard
     values = Dictionary(uniqueKeysWithValues: AnySettingKey.all.map { ($0.id, $0.load(file[$0.id])) })
     let known = Set(AnySettingKey.all.map(\.id)).union(Self.stateKeys)
     unknown = file.filter { !known.contains($0.key) }
@@ -217,6 +223,17 @@ final class RaySettings {
     save()
   }
 
+  // MARK: Sidebar width
+
+  /// The sidebar was dragged to `width` in `sender`'s window (never a private one): every window takes it.
+  func rememberSidebarWidth(_ width: CGFloat, from sender: AnyObject?) {
+    let width = SidebarWidth.saved(Double(width)) ?? SidebarWidth.standard
+    guard width != sidebarWidth else { return }
+    sidebarWidth = width
+    save()
+    NotificationCenter.default.post(name: Self.sidebarWidthDidChange, object: sender)
+  }
+
   // MARK: Saving
 
   /// The Settings window's frame, remembered without telling anyone.
@@ -249,6 +266,7 @@ final class RaySettings {
     file["defaultBrowserAskedAt"] = defaultBrowserAskedAt
     file["defaultBrowserNever"] = defaultBrowserNever
     file["windowFrame"] = windowFrame
+    file["sidebarWidth"] = sidebarWidth == SidebarWidth.standard ? nil : Double(sidebarWidth)
     guard JSONSerialization.isValidJSONObject(file),
           let data = try? JSONSerialization.data(withJSONObject: file, options: [.sortedKeys]) else { return }
     try? data.write(to: url, options: .atomic)
@@ -266,6 +284,7 @@ final class RaySettings {
     out["defaultBrowserAsks"] = defaultBrowserAsks
     out["defaultBrowserAskedAt"] = defaultBrowserAskedAt ?? NSNull()
     out["defaultBrowserNever"] = defaultBrowserNever
+    out["sidebarWidth"] = Double(sidebarWidth)
     return out
   }
 }

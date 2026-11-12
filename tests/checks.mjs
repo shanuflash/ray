@@ -6268,6 +6268,121 @@ const checks = {
     await until("sidebar shown", () => !state().sidebar.hidden);
     await until("card back", async () => { await command("state"); return x() > 200; }, 3000, 50);
   },
+  async "sidebar-resize"() {
+    // The sidebar's edge drags its width (SidebarResize.swift): whole points, a rubber band past 240 and 480 that
+    // springs back, a double click back to 267, one width for every window, remembered in Settings.json (never by a
+    // private window), and a saved value that's out of range or not a number is brought back. Its own instances,
+    // relaunched on one data dir.
+    const dir = mkdtempSync(join(tmpdir(), "ray-sidebar-resize-"));
+    const settingsFile = join(dir, "Settings.json");
+    const numbers = (text) => text.match(/-?[\d.]+/g).map(Number);
+    const settled = (width) => (x) => x?.sidebarResize?.width === width && !x.sidebarResize.settling && !x.sidebarResize.dragging;
+    // The page and the sidebar on whole points at this width: Chrome's content layer creeps otherwise.
+    const onGrid = (s, width, what) => {
+      const r = s.sidebarResize, card = numbers(s.cardFrame), side = numbers(r.sidebarFrame), handle = numbers(r.handle);
+      assert([...card, ...side].every(Number.isInteger), `${what}: frames off whole points, card ${s.cardFrame} sidebar ${r.sidebarFrame}`);
+      assert(card[0] === width && side[2] === width, `${what}: card ${s.cardFrame}, sidebar ${r.sidebarFrame}, wanted ${width}`);
+      assert(handle[0] === width - 6 && handle[2] === 8 && r.handleShown && r.handleOnTop, `${what}: edge strip ${JSON.stringify(r)}`);
+      assert(r.offGrid === 0, `${what}: ${r.offGrid} layouts off whole points`);
+      assert(s.sidebarFrames.iconsOffGrid === "", `${what}: icons off the pixel grid: ${s.sidebarFrames.iconsOffGrid}`);
+    };
+    let it;
+    const relaunch = async (name, write) => {
+      await it.stop().catch(() => {});
+      if (write) {
+        const file = JSON.parse(readFileSync(settingsFile, "utf8"));
+        writeFileSync(settingsFile, JSON.stringify({ ...file, sidebarWidth: write.value }));
+      }
+      it = ownInstance(name, { RAY_DATA_DIR: dir });
+      return it.until("relaunched", (x) => x?.sidebarResize && x.sidebar?.today.some((e) => e.live));
+    };
+    try {
+      it = ownInstance("sidebar-resize", { RAY_DATA_DIR: dir });
+      let s = await it.until("started", (x) => x?.sidebarResize && x.sidebar?.today.some((e) => e.live));
+      if (s.displayAsleep) throw new Skip("the display is asleep, so no animation frames arrive");
+      assert(s.sidebarResize.width === 267 && s.sidebarResize.remembered === 267 && s.sidebarResize.min === 240
+        && s.sidebarResize.max === 480, `at start ${JSON.stringify(s.sidebarResize)}`);
+      onGrid(s, 267, "at start");
+
+      // A drag moves the edge with the pointer, in whole points, and the page with it.
+      await it.ok("sidebarwidth drag 53");
+      s = await it.until("dragged to 320", settled(320));
+      onGrid(s, 320, "dragged");
+      assert(s.sidebarResize.remembered === 320 && s.sidebarResize.steps >= 1, `after a drag ${JSON.stringify(s.sidebarResize)}`);
+      await it.ok("sidebarwidth drag 10.4");
+      onGrid(await it.until("a pointer between points", settled(330)), 330, "between points");
+
+      // Past the maximum it stretches (at most 36 pt) while held, and springs back to 480 when let go.
+      await it.ok("sidebarwidth drag 400 hold");
+      s = await it.now();
+      assert(s.sidebarResize.dragging && s.sidebarResize.width > 480 && s.sidebarResize.width <= 516, `held past the maximum ${JSON.stringify(s.sidebarResize)}`);
+      assert(numbers(s.cardFrame).every(Number.isInteger), `stretched card ${s.cardFrame}`);
+      assert(s.sidebarResize.remembered === 330, "a width was remembered mid-drag");
+      await it.ok("sidebarwidth release");
+      s = await it.until("back at the maximum", settled(480));
+      onGrid(s, 480, "at the maximum");
+      assert(s.sidebarResize.remembered === 480, `remembered ${s.sidebarResize.remembered}`);
+      // And past the minimum.
+      await it.ok("sidebarwidth drag -1000 hold");
+      s = await it.now();
+      assert(s.sidebarResize.width < 240 && s.sidebarResize.width >= 204, `held past the minimum ${JSON.stringify(s.sidebarResize)}`);
+      await it.ok("sidebarwidth release");
+      onGrid(await it.until("back at the minimum", settled(240)), 240, "at the minimum");
+
+      // A step per display frame, as a drag: no layout off whole points; the timings are printed, not judged.
+      await it.ok("sidebarwidth sweep 160 60");
+      s = await it.until("swept", (x) => x.sidebarResize.sweep && settled(240)(x), 15000);
+      onGrid(s, 240, "after a sweep");
+      const sweep = s.sidebarResize.sweep;
+      console.log(`    sweep: ${sweep.frames} frames, layout ${sweep.layoutMsMean.toFixed(2)} ms mean ${sweep.layoutMsMax.toFixed(2)} ms max, `
+        + `frame ${sweep.frameMsMedian.toFixed(1)} ms median ${sweep.frameMsMax.toFixed(1)} ms max, ${sweep.longFrames} long`);
+
+      // A hidden sidebar has no edge to drag, and peeks at the same width (staying out to 24 pt past it).
+      await it.ok("sidebarwidth 300");
+      await it.until("300", settled(300));
+      await it.ok("menu toggleSidebar");
+      await it.until("hidden", (x) => x.sidebar.hidden && !x.sidebarResize.handleShown && numbers(x.cardFrame)[0] === 8);
+      assert(await it.cmd("sidebarwidth drag 20") === "no edge", "a hidden sidebar's edge dragged");
+      await it.ok("pointer 4 300");
+      s = await it.until("peeking", (x) => x.sidebar.peeking);
+      assert(numbers(s.sidebarResize.sidebarFrame)[2] === 300 && !s.sidebarResize.handleShown, `peeking ${JSON.stringify(s.sidebarResize)}`);
+      await it.ok("pointer 322 300");
+      await sleep(300);
+      assert((await it.now()).sidebar.peeking, "inside the slack past a 300 pt sidebar it should stay out");
+      await it.ok("pointer 345 300");
+      await it.until("leaving the slack hides", (x) => !x.sidebar.peeking);
+      await sleep(300);
+      await it.ok("menu toggleSidebar");
+      onGrid(await it.until("docked again", (x) => !x.sidebar.hidden && x.sidebarResize.handleShown && settled(300)(x)), 300, "docked again");
+
+      // A double click on the edge: back to the standard width.
+      await it.ok("sidebarwidth double");
+      s = await it.until("standard again", settled(267));
+      assert(s.sidebarResize.remembered === 267, `remembered ${s.sidebarResize.remembered}`);
+      await it.ok("sidebarwidth 352");
+      await it.until("352", (x) => settled(352)(x) && x.sidebarResize.remembered === 352);
+
+      // A private window opens at that width, and dragging its edge is never remembered.
+      await it.ok("menu newPrivateWindow");
+      s = await it.until("private window", (x) => x.private === true && x.sidebarResize.width === 352);
+      await it.ok("sidebarwidth 410");
+      s = await it.until("private at 410", (x) => x.private === true && settled(410)(x));
+      assert(s.sidebarResize.remembered === 352, `a private window's width was remembered: ${s.sidebarResize.remembered}`);
+
+      s = await relaunch("sidebar-resize-2");
+      assert(JSON.parse(readFileSync(settingsFile, "utf8")).sidebarWidth === 352, "Settings.json after quitting");
+      onGrid(s, 352, "after a relaunch");
+      // A saved width out of range comes to the nearest limit; one that isn't a number is the standard width.
+      onGrid(await relaunch("sidebar-resize-3", { value: 9000.5 }), 480, "saved too wide");
+      onGrid(await relaunch("sidebar-resize-4", { value: "wide" }), 267, "saved as text");
+    } finally {
+      if (it && it.proc.exitCode === null && it.proc.signalCode === null) {
+        await it.stop().catch(() => {});
+        if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
   async "peek-zones"() {
     await needsFrames();
     await command("menu toggleSidebar");
