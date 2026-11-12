@@ -329,6 +329,9 @@ export const areas = {
   "Host/ImportWriter.swift": ["import-browser", "onboarding"],
   "tests/affected.mjs": [],
   "tests/changed.mjs": [],
+  // The perf harness measures; it changes no check.
+  "tests/perf.mjs": [],
+  "tests/perf-rusage.py": [],
   "scripts/test.sh": [],
   "scripts/relaunch.sh": [],
   "scripts/release.sh": [],
