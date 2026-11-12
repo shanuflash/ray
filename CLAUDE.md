@@ -783,6 +783,12 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   entry in the same change. Unmapped files run everything (safe, slow). A section runs from its MARK to the next
   MARK or top-level declaration. Changes inside a check in `checks.mjs` run that check; changes to shared helpers
   run everything.
+- Performance (PLAN.md: measured every release, never regressing silently): `tests/perf.mjs` (+ `tests/perf-rusage.py`:
+  proc_pid_rusage CPU, wakeups, footprint per process; `ps -M` for the main thread) on hidden instances, scenarios
+  `launch idle tabswitch commandbar sidebar drag resize iframes memory`, medians over `--runs`; timing instances run
+  without `RAY_LOG_STATE` (only frame counts come from a logged instance). Always under the lock, in the background:
+  `scripts/locked perflab --wait 3000 -- node tests/perf.mjs --app <RayTests.app> --label <name> --out <json>`. Numbers
+  and how to compare builds: `docs/PERFORMANCE.md`.
 - Animations: record what happened app-side (e.g. `navigationSteps` in the state log) instead of polling; a command
   round trip is slower than a 0.26 s spring.
 - OS re-auth (Touch ID or the login password) in tests: `RAY_REAUTH=granted|denied` on a hidden instance makes
