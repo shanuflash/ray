@@ -87,6 +87,7 @@ final class PageContainerView: NSView {
     }
     if shown === tab { release() }
     if tab.view.superview === self { tab.view.removeFromSuperview() }
+    hideGeneration[tab.tabId] = nil
     if shown === tab {
       shown = nil
       setDevTools(nil)

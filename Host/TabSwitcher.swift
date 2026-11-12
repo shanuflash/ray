@@ -36,7 +36,7 @@ final class TabPictures {
     if let asked = pending[id], now - asked < 2 { return }
     pending[id] = now
     copies += 1
-    tab.copyPicture(1) { [weak self] picture in
+    tab.copyPicture(1) { [weak self, weak entry, weak tab] picture in
       guard let self else { return }
       guard let picture else {
         if self.pending[id] == now { self.pending[id] = nil }
@@ -47,7 +47,8 @@ final class TabPictures {
         DispatchQueue.main.async {
           guard let self else { return }
           if self.pending[id] == now { self.pending[id] = nil }
-          guard let small else { return }
+          // The tab may have closed while the engine copied or the picture scaled: it would never be dropped.
+          guard let small, let tab, !tab.closed, entry?.tab === tab else { return }
           self.pictures[id] = small
           self.onChange?(id)
         }
@@ -58,7 +59,11 @@ final class TabPictures {
   /// Drops the pictures of tabs no longer open.
   func keep(_ ids: Set<UUID>) { pictures = pictures.filter { ids.contains($0.key) } }
 
+  /// A tab closed (or went to sleep): its picture goes with it, not at the next ⌃Tab walk.
+  func drop(_ id: UUID) { pictures[id] = nil }
+
   var count: Int { pictures.count }
+  var ids: [UUID] { Array(pictures.keys) }
 
   /// Fills the card: the page's top, centred across.
   private static func scaled(_ image: CGImage) -> CGImage? {

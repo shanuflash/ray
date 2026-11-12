@@ -152,7 +152,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Sidebar commands": [...folders, "clear", "peek-zones", "pin-unload-restore", "favorites",
     "settings-recent-tab-cycling", "settings-shortcut-editor", "folder-rename", "row-menus"],
   // Arc's ⌃Tab switcher: the walk, its panel and the page pictures.
-  "Host/BrowserWindowController.swift#Tab switcher": ["settings-recent-tab-cycling", ...tabSwitchCost],
+  "Host/BrowserWindowController.swift#Tab switcher": ["settings-recent-tab-cycling", ...tabSwitchCost, "tab-pictures-dropped"],
   "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename", "warn-before-quitting"],
   // A tab's own name: Rename…, the double click, the test command's `rename` (folders too).
   "Host/BrowserWindowController.swift#Tab names": ["tab-rename", "folder-rename"],
@@ -168,7 +168,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url", "onboarding", "tab-rename"],
   "Host/BrowserWindowController.swift#Pages": pageSurface,
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",
-  "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "private-window", "close-last-window", "warn-before-closing-window",
+  "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "tab-pictures-dropped", "private-window", "close-last-window", "warn-before-closing-window",
     "crashed-page", "quit-with-downloads"],
   "Host/BrowserWindowController.swift#RayCoreTabDelegate": [...pages, ...permissions, "pending-address", "pending-security", "page-toolbar", "page-loading",
     "load-sweep-once", "site-controls", "find-in-page", "settings-zoom", "settings-routes", "settings-trimmed",
@@ -177,7 +177,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Page commands": ["page-commands"],
   "Host/BrowserWindowController.swift#Page zoom": ["settings-zoom", "settings-private-zoom", "settings-window", "site-controls",
     "page-commands"],
-  "Host/BrowserWindowController.swift#State log": [],
+  "Host/BrowserWindowController.swift#State log": ["tab-pictures-dropped"],
 
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
   "Host/SidebarView.swift": [...drag, ...folders, "screen-share", "tile-hover", "row-hover-close", "favorites", "pin-unload-restore",
@@ -298,7 +298,7 @@ export const areas = {
   "Host/SharePicker.swift": ["screen-share", "panels", "surfaces-snap"],
   "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
-  "Host/TabSwitcher.swift": ["settings-recent-tab-cycling", ...tabSwitchCost],
+  "Host/TabSwitcher.swift": ["settings-recent-tab-cycling", ...tabSwitchCost, "tab-pictures-dropped"],
   "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay", "link-preview", "default-browser-ask",
     "screen-share"],
   "Host/Panels.swift": ["panels", "site-controls", "link-preview", "back-forward-list", "extensions", "extension-prompt", "settings-privacy", "warn-before-quitting", "warn-before-closing-window", ...folders],

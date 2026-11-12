@@ -408,6 +408,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     subtree dirty: about 15 % of a frame's main thread with 15 tabs); fixing it means moving the sidebar by a layer
     transform, which changes hit testing mid-spring. A switch still copies the tab left through the engine's
     `copyPicture` on the main thread (a memcpy of the page's bitmap, ~2 ms) for the ⌃Tab card.
+58. **Host memory steps up ~21 MB once, then grows ~0.4 MB per 12-tab cycle** (2026-11-12, performance review). After
+    roughly 40-60 tabs opened and closed the footprint jumps and stays (v0.7.0 too, so the engine's allocator or its
+    per-tab data, not Ray's UI; Chrome also keeps a 10,000-object zombie treadmill in the browser process). Not
+    chased further: it needs Chromium-side tools (memory-infra traces) and an engine rebuild to change. Ray's own
+    leaks (closed tabs' ⌃Tab pictures, per-tab bookkeeping) are fixed; `heap`/`leaks` can't see Ray's objects.
 
 ## Done
 
