@@ -408,6 +408,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
+| Delta updates: a release whose engine is unchanged downloads a few hundred KB instead of the 146 MB zip (Sparkle deltas from the last 3 releases, each checked before release) | 2026-11-12, `feat: sparkle delta updates` |
 | Resizable sidebar: drag its edge (240–480 pt, a rubber band at the limits as Ardia's, nothing drawn as Arc's), double-click for the standard width; one width for every window, remembered | 2026-11-12, `feat: resizable sidebar` |
 | A peeking sidebar's edge drags too, and ⌘S on a peeking sidebar docks it in place (no slide out and in again) | 2026-11-12, `fix: peeking sidebar resizes and docks in place` |
 | Screen sharing in Ray's own look: a picker over the asking tab (Tabs / Windows / Screen with pictures, deny by default, full origin, 0.5 s guard), a held note at the top centre (Stop Sharing, Share This Tab), share marks on the rows, a ring round the shared page; Chrome's picker and floating bar gone; Ray's own window shares through macOS | 2026-11-10, `feat: own screen share picker and indicators` |

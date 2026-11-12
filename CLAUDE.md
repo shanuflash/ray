@@ -681,8 +681,10 @@ publicly or create accounts.
   is the EdDSA public key `build-app.sh` writes into `SUPublicEDKey`.
 - `Host/Updater.swift`: Ray › Check for Updates… (`SPUStandardUpdaterController`). It starts only in the real app and
   only with a real `SUPublicEDKey`; the test app never creates it (state log `updater`, check `updater-config`).
-- `scripts/release.sh <version> [--notes file]`: builds, zips, signs and writes the appcast under `build/release/`,
-  then the DMG (`scripts/make-dmg.sh`) and the Homebrew cask pointing at it (`ray.rb`, from `scripts/ray-cask.rb`).
+- `scripts/release.sh <version> [--notes file] [--deltas n]`: builds, zips, signs and writes the appcast under
+  `build/release/` with Sparkle delta updates from the last `n` (3) published releases (`# MARK: Deltas`: their zips
+  from GitHub through `gh`, signed by the same team, cached in `~/Library/Caches/Ray/releases`; each delta applied and
+  checked to rebuild this app's exact code hash), then the DMG (`scripts/make-dmg.sh`) and the Homebrew cask pointing at it (`ray.rb`, from `scripts/ray-cask.rb`).
 - `scripts/make-dmg.sh <Ray.app> <out.dmg>`: the first-install DMG. Built-in tools only: `hdiutil` (HFS+, LZFSE),
   `tools/dmg-window.swift` (the background, drawn at 1x and 2x, joined by `tiffutil`; and the `.DS_Store`, written
   directly: window size, icon view, icon spots, the background's alias record, which it resolves before writing),
@@ -741,7 +743,7 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   `build/Ray.app`, zips it with `ditto` (a zip serves both first installs and Sparkle), signs it from the keychain,
   writes and checks `build/release/0.2.0/appcast.xml`, then makes and checks `Ray-0.2.0.dmg` and writes `ray.rb`
   (the cask with its version and sha256), and prints the `git commit` (VERSION), `gh release create …` (zip,
-  appcast and DMG) and, after the release is up, the tap's copy, commit and push. It publishes nothing; run those yourself after
+  appcast, DMG and the `.delta` files: an update that leaves the engine alone is a few hundred KB, not 146 MB) and, after the release is up, the tap's copy, commit and push. It publishes nothing; run those yourself after
   trying the DMG (open it once: the window's layout and background are only visible in Finder).
 - **Homebrew tap:** `shanuflash/homebrew-tap` (its own GitHub repo, the owner's; the cask at `Casks/ray.rb`, copied
   from `build/release/<version>/ray.rb` each release). Friends run `brew install shanuflash/tap/ray`: Homebrew taps

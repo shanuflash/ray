@@ -81,7 +81,7 @@ Full list: [docs/MISSING.md](docs/MISSING.md).
 
 Pages run in Chromium's sandbox with site isolation; Ray's own code never parses web content. No Safe Browsing
 (Helium compiles it out). Passwords and cookies are encrypted with Ray's own key in your login keychain. Imports read
-another browser only when you ask, and send nothing anywhere. Updates are signed and checked before they install.
+another browser only when you ask, and send nothing anywhere. Updates are signed and checked before they install, and download only what changed when they can.
 A site that asks to share your screen gets only the tab, window or screen you pick in Ray's picker.
 
 ## Build from source
