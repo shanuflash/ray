@@ -56,6 +56,10 @@ final class PageContainerView: NSView {
     }
     #if RAY_TEST_HOOKS
     state["switches"] = switches
+    state["hiddenResizes"] = hiddenResizes
+    state["hiddenPages"] = subviews.filter { $0 !== devTools && $0.isHidden }.count
+    state["pageMasks"] = subviews.map { Int($0.autoresizingMask.rawValue) }
+    state["hiddenPagesFit"] = subviews.allSatisfy { $0 === devTools || !$0.isHidden || $0.frame == bounds }
     #endif
     if let devTools, devTools.superview === self {
       state["devToolsFrame"] = NSStringFromRect(devTools.frame)
@@ -122,6 +126,8 @@ final class PageContainerView: NSView {
     updateBackground()
     // A page still visible (the one an unfinished switch was holding) has its compositor and its frame.
     let drawn = !tab.view.isHidden
+    // A page that sat out a resize takes the size before Chrome hears it's shown.
+    if !drawn, tab.view.frame != bounds { tab.view.frame = bounds }
     tab.view.alphaValue = 1
     tab.view.isHidden = false
     tab.noteShown(byHost: windowSeen)
@@ -272,11 +278,26 @@ final class PageContainerView: NSView {
       devTools.frame = devToolsFrame
     }
     for case let page in subviews where page !== devTools {
-      page.frame = page === shown?.view ? pageFrame : bounds
+      let frame = page === shown?.view ? pageFrame : bounds
+      if page.isHidden {
+        // A hidden page waits for the sidebar's spring or a drag of its edge to settle: Chrome resizes each page's
+        // views in step, 60 times a second for every tab otherwise.
+        if defersHiddenPages || page.frame == frame { continue }
+        hiddenResizes += 1
+      }
+      page.frame = frame
     }
     let progressFrame = progressLayer.frame
     progressLayer.frame = NSRect(x: 0, y: 0, width: progressFrame.width, height: 2)
   }
+
+  /// While the page card changes size frame by frame (⌘S, the sidebar's edge dragged), only pages on screen follow;
+  /// the hidden ones take the settled size in the layout after this goes off, or as they're shown.
+  var defersHiddenPages = false {
+    didSet { if oldValue, !defersHiddenPages { needsLayout = true } }
+  }
+  /// For tests: hidden pages given a new frame so far.
+  private(set) var hiddenResizes = 0
 
   /// The page's own thin load line, for when the address bar above the page (which shows the load itself) is off.
   var showsProgress = true {

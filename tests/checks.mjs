@@ -6268,6 +6268,109 @@ const checks = {
     await until("sidebar shown", () => !state().sidebar.hidden);
     await until("card back", async () => { await command("state"); return x() > 200; }, 3000, 50);
   },
+  async "tab-switch-cheap"() {
+    // A tab switch copies the tab left once for the ⌃Tab card (never twice, however many callers reach `select`) and
+    // hands no new symbol image to a row: both were measurable main-thread cost on every switch.
+    await needsFrames();
+    const activeBefore = state().activeEntry;
+    const opened = [];
+    try {
+      for (const name of ["one", "two"]) {
+        const url = `${origin}/b?tabcheap=${name}`;
+        const { targetId } = await send("Target.createTarget", { url });
+        opened.push(targetId);
+        await until(`${name} tab`, () => tabFor(url)?.title === "Page B");
+      }
+      const ids = ["one", "two"].map((n) => allEntries().find((e) => e.live && e.url.endsWith(`/b?tabcheap=${n}`)).id);
+      await command(`row ${ids[0]}`);
+      await sleep(500);
+      await command("state");
+      const before = { copies: state().tabSwitcher.pictureCopies, sets: state().sidebar.iconSets };
+      const switches = 6;
+      for (let i = 0; i < switches; i++) {
+        await command(`row ${ids[(i + 1) % 2]}`);
+        await sleep(300);
+      }
+      await command("state");
+      const copies = state().tabSwitcher.pictureCopies - before.copies;
+      const sets = state().sidebar.iconSets - before.sets;
+      assert(copies >= 1 && copies <= switches, `${copies} picture copies for ${switches} switches`);
+      assert(sets <= 4, `${sets} symbol images handed to rows over ${switches} switches`);
+    } finally {
+      if (activeBefore) await command(`row ${activeBefore}`);
+      for (const targetId of opened) await send("Target.closeTarget", { targetId });
+      await settle();
+    }
+  },
+  async "sidebar-motion-cheap"() {
+    // ⌘S and the sidebar's edge resize the page card on every display frame. Hidden pages sit those frames out and
+    // take the settled size once (Chrome resizes each page's views otherwise, for every tab), and the address
+    // field's loading picture, a bitmap its own size, isn't drawn again while nothing loads.
+    await needsFrames();
+    const activeBefore = state().activeEntry;
+    const opened = [];
+    const settled = async (what) => {
+      await sleep(700);
+      await until(`${what}: settled`, async () => {
+        await command("state");
+        return !state().sidebarResize.settling && !state().sidebarResize.dragging;
+      }, 3000, 100);
+      assert(state().pages.hiddenPagesFit === true, `${what}: a hidden page kept its old size`);
+      assert(state().pages.contentLayerMatches !== false, `${what}: chrome's content layer drifted from the page`);
+      return { resizes: state().pages.hiddenResizes, pictures: state().toolbar?.field.washPictures ?? 0 };
+    };
+    try {
+      for (const name of ["one", "two"]) {
+        const url = `${origin}/b?cheap=${name}`;
+        const { targetId } = await send("Target.createTarget", { url });
+        opened.push(targetId);
+        await until(`${name} tab`, () => tabFor(url)?.title === "Page B");
+      }
+      await until("loads over", async () => {
+        await command("state");
+        const field = state().toolbar?.field;
+        return !field || (!field.wash && !field.washFinishing && !field.loading);
+      }, 8000, 100);
+      let last = await settled("before");
+      const hidden = state().pages.hiddenPages;
+      assert(hidden >= 2, `only ${hidden} hidden pages`);
+      const step = async (what, act) => {
+        await act();
+        const now = await settled(what);
+        const resizes = now.resizes - last.resizes;
+        // Once each when the motion settles (a drag's release settles again); a resize per frame would be dozens.
+        assert(resizes >= hidden && resizes <= hidden * 2, `${what}: ${resizes} resizes of ${hidden} hidden pages`);
+        assert(now.pictures === last.pictures, `${what}: the loading picture was drawn ${now.pictures - last.pictures} times with nothing loading`);
+        last = now;
+      };
+      for (const what of ["hide", "show"]) {
+        const was = state().sidebar.hidden;
+        await step(what, async () => {
+          await command("menu toggleSidebar");
+          await until(`${what}: toggled`, async () => { await command("state"); return state().sidebar.hidden !== was; }, 3000, 50);
+        });
+      }
+      const width = state().sidebarResize.width;
+      await step("wider", () => command(`sidebarwidth ${width + 40}`));
+      await step("back", () => command(`sidebarwidth ${width}`));
+      // A page shown while the sidebar is still moving has the card's size from its first frame.
+      const other = allEntries().find((e) => e.live && e.url.endsWith("/b?cheap=one")).id;
+      await command("menu toggleSidebar");
+      await command(`row ${other}`);
+      await settled("switch on the way");
+      const numbers = (text) => text.match(/-?[\d.]+/g).map(Number);
+      const frame = numbers(state().pages.pageFrame), card = numbers(state().cardFrame);
+      assert(frame[2] === card[2] && frame[3] === card[3], `the page shown mid-toggle is ${state().pages.pageFrame} in ${state().cardFrame}`);
+      await command("menu toggleSidebar");
+      await settled("restored");
+    } finally {
+      await command("state");
+      if (state().sidebar.hidden) await command("menu toggleSidebar");
+      if (activeBefore) await command(`row ${activeBefore}`);
+      for (const targetId of opened) await send("Target.closeTarget", { targetId });
+      await settle();
+    }
+  },
   async "sidebar-resize"() {
     // The sidebar's edge drags its width (SidebarResize.swift): whole points, a rubber band past 240 and 480 that
     // springs back, a double click back to 267, one width for every window, remembered in Settings.json (never by a

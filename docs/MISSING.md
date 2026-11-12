@@ -401,8 +401,13 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     20 pt steps; Chrome's side panel: arrow keys).
     Dragging far past the minimum doesn't hide the sidebar (Arc may; not measured). With scroll bars set to Always,
     the strip covers the outer 6 pt of the sidebar's scroller. The real cursor over the strip's 2 pt on the page
-    hasn't been seen by eye (Chrome sets its own there). Hidden pages are resized with every drag step, as on ⌘S
-    (the performance review's fix for that covers both).
+    hasn't been seen by eye (Chrome sets its own there). Hidden pages sit out the drag's steps and take the
+    settled size once (`PageContainerView.defersHiddenPages`, as on ⌘S).
+57. **Tab switch and ⌘S cost that is left** (2026-11-12, docs/PERFORMANCE.md). Each ⌘S frame still pays AppKit's
+    tracking-area and tooltip refresh for every sidebar row (the sidebar's frame moves, so AppKit marks the whole
+    subtree dirty: about 15 % of a frame's main thread with 15 tabs); fixing it means moving the sidebar by a layer
+    transform, which changes hit testing mid-spring. A switch still copies the tab left through the engine's
+    `copyPicture` on the main thread (a memcpy of the page's bitmap, ~2 ms) for the ⌃Tab card.
 
 ## Done
 
