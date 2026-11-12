@@ -385,6 +385,18 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     so the close waits on two 2 s fallback timers: the tabs are saved as lone closed tabs (reopening right after
     loses Back/Forward) and a private window's session outlives it by 4 s. Fix: an `engine-ray` fixup calling
     `BrowserWebContentsDelegate::CloseContents(source)` when `CanCloseContents` is false (next engine rebuild).
+53. **Auto Picture in Picture ignores switching apps** (not tried; from Ardia `48498759`, 2026-11-12). Ray's window
+    sight (`PageContainerView` `// MARK: Window sight`) counts a page unseen only when covered, minimised, on another
+    Space or locked, so going to another app with Ray's window still visible leaves a playing video in the page;
+    Arc and Ardia pop it out and put it back on return. Fix: observe `NSApplication.didResignActive`/`didBecomeActive`
+    and note the active tab's page unseen while inactive (only a playing tab not already in PiP).
+54. **Extensions allowed in Incognito may not show in private windows** (not tried; from Ardia `df9b9c0e`,
+    2026-11-12). Ardia listed only `"incognito": "split"` extensions there. Check that Ray's private window shows a
+    spanning extension allowed in Incognito (tile and popup) and that its Options opens in the normal window.
+55. **Web Store install fails when its icon can't be fetched** (engine; from Ardia `246e5e77`, 2026-11-12). Chrome's
+    `WebstoreInstallHelper` ends the install with "Image decode failed" if lh3.googleusercontent.com is blocked or the
+    icon won't decode. Fix: Ardia's `chromium-webstore-icon-optional.patch` (install with the default icon) at the
+    next engine rebuild.
 
 ## Done
 

@@ -4,7 +4,7 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.46-nightly.2 (engine-a840abead94e), 2026-11-11
+Last reviewed: v0.2.46-nightly.5 (engine-054c7f68642e), 2026-11-12
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac
 (`docs/CHROMIUM-WATCH.md`, 2026-11-05): 157.0.8103.39, 158 in early stable. Ardia moved to 156.0.8078.79 on Helium
@@ -26,7 +26,8 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    supported (Apple Store checkout), same-site swaps that keep the old frame, PiP that ignores a page's
    `disablePictureInPicture`, a capture wake lock only while awake, no crash on `chrome.action.openPopup()` or a
    badge change in a tabless window, on Cast remoting without a BrowserView or a tab moved into a closing window,
-   and the startup TPM benchmark off. Through `sync-engine.sh`, then re-check `engine-ray/`'s fixups against the
+   the startup TPM benchmark off, and (engine-054c7f68) a Web Store install that goes on when the listing's icon
+   can't be fetched (MISSING 55). Through `sync-engine.sh`, then re-check `engine-ray/`'s fixups against the
    reorganised `ac_*.cc` files (4d8c64) and M157's rewrites, move `Downloads` to `ac_downloads_command`, and diff
    `ArdiaCore.h` against `RayCore.h`: delegate methods `engine:extensionInstallFailed:tab:`,
    `tab:shareFromContextMenu:`, `windowCanTakeTabs:`; `adoptTab:` now returns refused/adopted/busy (and
@@ -83,7 +84,8 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    `NSMenu.instancesRespond(to: "submenuAction:")` is false, `class_addMethod` an empty one. The owner is on macOS 27:
    try it in Ray first, it's cheap.
 9. **Peek decision input** (PLAN.md open decision): Ardia's stable 0.2.43 opens other sites' links from Top Apps
-   and pinned tabs in Peek, as Arc does, behind Settings › Tabs › Links (off by default).
+   and pinned tabs in Peek, as Arc does, behind Settings › Tabs › Links. Since 0.2.46-nightly.5 it's on by default
+   for new profiles (other sites' links and new-tab links open in a Peek, as in Arc).
 10. **Reserved keys:** Ardia's stable now reserves Helium's set by menu command; Ray's (`Shortcuts.isReserved`)
     lacks Developer Tools (⌥⌘I), Toggle Developer Tools (F12) and Search Tabs (⇧⌘A). Small.
 11. **Tab-switch blank frame** (another chat is on it): Ardia 0.2.43 ships its fix: the outgoing page stays up until
@@ -121,6 +123,51 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
 20. **Sidebar divider spacing** (small, look). Ardia `5fe71832` makes the divider under the pinned section Dia's
     14 pt band (1 pt line 6.5 pt from each neighbour; was 30 pt edge to edge). Compare Ray's divider against the
     owner's Arc captures before changing anything (Ray matches Arc, not Dia).
+
+21. **Auto PiP when switching apps** (new, app-side, small, MISSING 53; not tried). Ardia 0.2.46-nightly.5
+    (`48498759`, Arc does it): leaving for another app while the window stays on screen pops the playing video out;
+    coming back puts it back. Ardia latches the shown playing tab as "left" on resign-active so `seenByUser` goes
+    false (paused, hidden and already-PiP tabs never latch; the latch isn't restored on reattach). Ray's
+    `PageContainerView` `// MARK: Window sight` follows occlusion, minimise, Space and lock only. Fix: add
+    `NSApplication.didResignActive`/`didBecomeActive` to its observers and note the active tab's page unseen while
+    inactive, then extend `auto-picture-in-picture`.
+22. **Extensions in private windows** (new, MISSING 54; not tried). Ardia `df9b9c0e`: its private window listed
+    only `"incognito": "split"` extensions, so ordinary spanning ones allowed in Incognito never showed; their popups
+    run fine as Chrome's ExtensionViewHost, and Options opens in the normal window. Ray's tiles come from
+    `ac_extensions_list` on the private profile: check a spanning extension allowed in Incognito shows a tile and its
+    popup opens in a private window.
+
+## v0.2.46-nightly.3 to .5 (2026-11-11 to 11-12), engine a840abea → 054c7f68
+
+Range `v0.2.46-nightly.2..v0.2.46-nightly.5`: 92 commits, one engine patch (+56). Chromium unchanged
+(157.0.8103.38); no new security fixes.
+
+**Engine** (engine-054c7f68642e, in nightly.3):
+- `chromium-webstore-icon-optional.patch` (`246e5e77`, Ardia #1135): Chrome's `WebstoreInstallHelper` ended a
+  Web Store install with "Image decode failed" when the listing's icon (lh3.googleusercontent.com) couldn't be
+  fetched or decoded (DNS, a VPN or filter, Local Network Access, an HTTP error). Now it logs and installs with the
+  default icon. Ray has the same Chrome code: MISSING 55, comes with item 1 or as a small `engine-ray` fixup.
+
+**App features Ray lacks:**
+- Auto PiP on app switch (item 21); a Dock click restores a minimised window while a video is in PiP (check Ray's
+  `applicationShouldHandleReopen` with PiP up, not tried).
+- Collapsed tab group keeps the tabs opened from it under its header (Arc's), and keeps the current tab in view.
+  Ray's Today folders take tabs opened from them; what a collapsed folder shows then is not tried.
+- Peek on by default (item 9); ⌥⌘← / ⌥⌘→ switch profiles (Ray has one profile, MISSING Arc 2); split view ⌘W
+  closes one pane, Arc import keeps splits (Ray has no split view); pinch a Little Ardia window open; a compact ⌘T
+  plugin (`commandBarStart`); unread count at the row's end, a PiP icon on a tab in PiP.
+- Ray already has: the "New tab opened" pill (Ray's "Opened in Background Tab" note), a link preview that moves out
+  of the way (Ray's goes bottom right near the pointer; Ardia's goes to the top), the screen-share permission line and
+  sharing its own windows (Ray's `SharePicker`, MISSING 51).
+
+**Fixes to behaviour Ray shares:**
+- Extensions in private windows (item 22).
+- Web Store icon failure (above).
+- Korean IME composing in the command bar (Ardia's was a React field; Ray's is an `NSTextField`, likely fine, not
+  tried); content-blocker toggles, sync uploads, Auto-Hide Tabs, Discord toolbar bounce, translation: Ardia-only.
+
+**Competitive notes:** Ardia ahead: auto PiP on app switch, collapsed-group behaviour, Peek, split view, profiles.
+Ray ahead: Settings › Search and Tab to Search, ⌃Tab switcher, a share picker that already lists its own windows.
 
 ## v0.2.46-nightly.2 (2026-11-10), engine bc84a70b → a840abea
 
