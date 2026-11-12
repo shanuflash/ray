@@ -405,7 +405,10 @@ publicly or create accounts.
   of an unused key: `tabPressed` moves once per event timestamp. Off, ⌃Tab walks the sidebar at once (`cycleTab`).
   `TabPictures`: the tab left is pictured in `select` and the current one when a walk starts (engine
   `copyPicture`, only a shown page has a surface; scaled to 316×210 px, top of the page); tabs never shown this run
-  get Arc's empty card. Test commands `key ctrltap`, `key left|right|return`, `tabswitcher hover|click <n>`; state log
+  get Arc's empty card. A tab is copied once however many callers ask (a switch from Ray's own command reaches
+  `select` twice; 2 s before it asks again) and the page's bitmap is fitted to the card off the main thread (a
+  utility queue), in the page's own colour space (converting every pixel to sRGB was two thirds of 10 ms): the
+  full-size picture on the main thread was half of a tab switch's CPU. State log `tabSwitcher.pictureCopies`. Test commands `key ctrltap`, `key left|right|return`, `tabswitcher hover|click <n>`; state log
   `tabSwitcher` (`open`, `shown`, `items`, `titles`, `pictures`, `index`, `style`, `last` with `how`/`chosen`);
   checks `tab-switcher` (photos with `SNAP_DIR`), `settings-recent-tab-cycling`.
 - `Notes` (`Host/Notes.swift`): short messages on the page at one of six `NoteSpot`s (corners, top and bottom
@@ -789,6 +792,15 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   entry in the same change. Unmapped files run everything (safe, slow). A section runs from its MARK to the next
   MARK or top-level declaration. Changes inside a check in `checks.mjs` run that check; changes to shared helpers
   run everything.
+- Tab switch and ⌘S cost (docs/PERFORMANCE.md "Tab switch and sidebar"): a switch re-shows the sidebar's rows, so
+  symbol images come from `RowSymbols` (one `NSImage` per symbol; `NSImageView.setImage` sets only a different one;
+  state log `sidebar.iconSets`). While the dock spring, the width spring or a drag of the sidebar's edge moves the
+  page card, `PageContainerView.defersHiddenPages` leaves hidden pages at their old size (Chrome resizes each page's
+  views in step otherwise); they take the settled size in the layout after, or in `show` before Chrome is told
+  (state log `pages.hiddenResizes`, `hiddenPagesFit`). `LoadingWash` draws its bitmap only for a sweep that shows
+  (`washPictures`), and the page address field's label is as wide as its text when that fits and its host width is
+  measured once per address, not per frame (CoreText was a quarter of a ⌘S frame). Check `sidebar-motion-cheap`;
+  profile with `PERF_SAMPLE=<dir> scripts/locked perflab -- node tests/perf.mjs …` (`sample` over the measured loops).
 - Performance (PLAN.md: measured every release, never regressing silently): `tests/perf.mjs` (+ `tests/perf-rusage.py`:
   proc_pid_rusage CPU, wakeups, footprint per process; `ps -M` for the main thread) on hidden instances, scenarios
   `launch idle tabswitch commandbar sidebar drag resize iframes memory`, medians over `--runs`; timing instances run

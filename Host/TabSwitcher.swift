@@ -19,13 +19,39 @@ final class TabPictures {
 
   func picture(of entry: SidebarEntry) -> CGImage? { pictures[entry.id] }
 
+  /// Captures asked for and not yet in: a tab is copied once however many callers ask (a switch from Ray's own
+  /// command reaches `select` twice, by itself and by the engine's activation), again only after 2 s without an
+  /// answer.
+  private var pending: [UUID: CFTimeInterval] = [:]
+  /// The engine hands over the page at full size; fitting it to a card is 10 ms of colour matching and
+  /// interpolation, so it happens here, never on the main thread, one picture at a time.
+  private static let work = DispatchQueue(label: "dev.shanus.ray.tab-pictures", qos: .utility)
+  /// For the state log: copies asked of the engine (one per tab left).
+  private(set) var copies = 0
+
   func capture(_ entry: SidebarEntry) {
     guard let tab = entry.tab, !tab.closed else { return }
     let id = entry.id
+    let now = CACurrentMediaTime()
+    if let asked = pending[id], now - asked < 2 { return }
+    pending[id] = now
+    copies += 1
     tab.copyPicture(1) { [weak self] picture in
-      guard let self, let picture, let small = Self.scaled(picture) else { return }
-      self.pictures[id] = small
-      self.onChange?(id)
+      guard let self else { return }
+      guard let picture else {
+        if self.pending[id] == now { self.pending[id] = nil }
+        return
+      }
+      Self.work.async { [weak self] in
+        let small = Self.scaled(picture)
+        DispatchQueue.main.async {
+          guard let self else { return }
+          if self.pending[id] == now { self.pending[id] = nil }
+          guard let small else { return }
+          self.pictures[id] = small
+          self.onChange?(id)
+        }
+      }
     }
   }
 
@@ -37,10 +63,14 @@ final class TabPictures {
   /// Fills the card: the page's top, centred across.
   private static func scaled(_ image: CGImage) -> CGImage? {
     let (w, h) = (CGFloat(image.width), CGFloat(image.height))
-    guard w > 0, h > 0, let context = CGContext(
-      data: nil, width: Int(pixels.width), height: Int(pixels.height), bitsPerComponent: 8, bytesPerRow: 0,
-      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
-    else { return nil }
+    // In the page's own colour space when a bitmap can be in it: the card's layer matches colours as it draws, and
+    // converting every pixel of the full page to sRGB first was two thirds of the cost.
+    func bitmap(_ space: CGColorSpace) -> CGContext? {
+      CGContext(data: nil, width: Int(pixels.width), height: Int(pixels.height), bitsPerComponent: 8, bytesPerRow: 0,
+                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
+    }
+    let own = image.colorSpace.flatMap { $0.model == .rgb && $0.supportsOutput ? bitmap($0) : nil }
+    guard w > 0, h > 0, let context = own ?? bitmap(CGColorSpace(name: CGColorSpace.sRGB)!) else { return nil }
     let scale = max(pixels.width / w, pixels.height / h)
     let size = CGSize(width: w * scale, height: h * scale)
     context.interpolationQuality = .high

@@ -255,8 +255,16 @@ scenarios.idle = async () => {
   return r;
 };
 
+// PERF_SAMPLE=<dir>: `sample` the host for the length of a measured loop (a profile, not a measurement: run it alone).
+function profiling(it, name, secs) {
+  const dir = process.env.PERF_SAMPLE;
+  if (!dir) return;
+  mkdirSync(dir, { recursive: true });
+  spawn("sample", [String(it.proc.pid), String(Math.ceil(secs)), "-mayDie", "-file", join(dir, `${name}.txt`)], { stdio: "ignore" });
+}
 async function switchRun(it, count, gap) {
   const acks = [], pings = [];
+  if (count >= 32) profiling(it, "tabswitch", (count * (gap + 25)) / 1000);
   const a = it.usage();
   for (let i = 0; i < count; i++) {
     acks.push(await it.ok("menu nextTab"));
@@ -384,7 +392,9 @@ scenarios.commandbar = async () => {
   };
 };
 
+let profilingCount = 0;
 async function toggles(it, n) {
+  if (n >= 10) profiling(it, `toggle-${profilingCount++}`, (n * 725) / 1000);
   const a = it.usage();
   const acks = [];
   for (let i = 0; i < n; i++) { acks.push(await it.ok("menu toggleSidebar")); await sleep(700); }

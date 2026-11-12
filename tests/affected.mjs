@@ -21,8 +21,11 @@ const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favo
 // Folders in Pinned and Today (Today's are Chrome tab groups), their icon and Change Icon.
 const folders = ["folders", "folders-relaunch", "multi-select", "folder-create", "folder-toggle", "folder-rename", "folder-animation",
   "folder-drag-in", "folder-drag-folder", "folder-out-and-delete"];
-const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still", "sidebar-resize", "peek-dock"];
+const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still", "sidebar-resize", "peek-dock",
+  "sidebar-motion-cheap"];
+const tabSwitchCost = ["tab-switch-cheap", "tab-switcher"];
 const pageSurface = ["switch-back-latency", "switch-no-blank", "top-strip-click", "toggle-keeps-page-still", "activate-target",
+  "sidebar-motion-cheap",
   "devtools-docked", "background-tab"];
 
 const otherApps = ["open-from-other-apps", "open-from-other-apps-launch"];
@@ -149,7 +152,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Sidebar commands": [...folders, "clear", "peek-zones", "pin-unload-restore", "favorites",
     "settings-recent-tab-cycling", "settings-shortcut-editor", "folder-rename", "row-menus"],
   // Arc's ⌃Tab switcher: the walk, its panel and the page pictures.
-  "Host/BrowserWindowController.swift#Tab switcher": ["settings-recent-tab-cycling", "tab-switcher"],
+  "Host/BrowserWindowController.swift#Tab switcher": ["settings-recent-tab-cycling", ...tabSwitchCost],
   "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename", "warn-before-quitting"],
   // A tab's own name: Rename…, the double click, the test command's `rename` (folders too).
   "Host/BrowserWindowController.swift#Tab names": ["tab-rename", "folder-rename"],
@@ -179,7 +182,7 @@ export const areas = {
   // The rest of SidebarView (rows, tiles, the address field, the top row): the sidebar's own checks.
   "Host/SidebarView.swift": [...drag, ...folders, "screen-share", "tile-hover", "row-hover-close", "favorites", "pin-unload-restore",
     "sidebar-toggle", "peek-zones", "window-lights", "page-toolbar", "clear", "downloads", "address-fragment", "tab-rename",
-    "settings-sidebar-button", "settings-fade-unloaded", "row-menus", "icons-on-pixels", "tab-sound", "back-forward-list", "bookmarks"],
+    "settings-sidebar-button", "settings-fade-unloaded", "row-menus", "icons-on-pixels", "tab-sound", "back-forward-list", "bookmarks", "tab-switch-cheap"],
   "Host/SidebarView.swift#Folder fold": ["folder-animation", "folder-toggle", "folder-rename", ...drag],
   // Also where Change Icon… points, and the inline field for Rename… and Edit Pinned Page › Edit….
   "Host/SidebarView.swift#Folder motion": [...folders, ...drag, "tab-rename", "row-menus"],
@@ -274,7 +277,7 @@ export const areas = {
   "Host/main.swift#Picture in picture": ["auto-picture-in-picture"],
   // When a page that was just shown has drawn (the tab switch holds the page left until then).
   "Host/PageFrameWatch.swift": pageSurface,
-  "Host/PageToolbar.swift": ["pending-security", "pending-address", "new-tab-sweep", "page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle",
+  "Host/PageToolbar.swift": ["pending-security", "pending-address", "new-tab-sweep", "page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle", "sidebar-motion-cheap",
     "top-strip-click", "settings-sidebar-button"],
   // Which loads the address field sweeps for.
   "Host/LoadSweep.swift": ["new-tab-sweep", "page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar", "back-forward-list"],
@@ -295,7 +298,7 @@ export const areas = {
   "Host/SharePicker.swift": ["screen-share", "panels", "surfaces-snap"],
   "Host/SiteControls.swift": ["panels", "site-controls", "extensions", "settings-privacy"],
   "Host/Spring.swift": [...sidebarMotion, "drag-reorder"],
-  "Host/TabSwitcher.swift": ["settings-recent-tab-cycling", "tab-switcher"],
+  "Host/TabSwitcher.swift": ["settings-recent-tab-cycling", ...tabSwitchCost],
   "Host/Notes.swift": ["notes", "copy-url", "page-commands", "find-in-page", "jumpcloud-relay", "link-preview", "default-browser-ask",
     "screen-share"],
   "Host/Panels.swift": ["panels", "site-controls", "link-preview", "back-forward-list", "extensions", "extension-prompt", "settings-privacy", "warn-before-quitting", "warn-before-closing-window", ...folders],

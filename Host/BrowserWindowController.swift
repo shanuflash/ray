@@ -229,6 +229,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       top = (bounds.height - height).rounded()
     }
     pages.frame = NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
+    // Hidden pages sit out the frames of ⌘S and of a drag of the sidebar's edge, and take the size it settles at.
+    pages.defersHiddenPages = dockSpring.isMoving || widthSpring.isMoving || resizeStart != nil
     pages.cornerRadius = isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
     if let crashed = crashedPages.view, crashed.superview != nil {
       crashed.frame = pages.frame
@@ -3536,7 +3538,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         "folderIcons": sidebar.debugFolderIcons,
         "iconPicker": iconPicker?.debug ?? NSNull(),
         "iconPickerAnimations": FolderIconPicker.animations,
-        "changesAnimated": SidebarView.changesAnimated,
+        "changesAnimated": SidebarView.changesAnimated, "iconSets": RowSymbols.sets,
         "hidden": self.state.sidebarHidden,
         "peeking": peeking,
         "dockFromPeek": ["docking": dockingFromPeek, "frames": dockFrames, "leftmost": Double(dockLeftmost)] as [String: Any],
@@ -3603,7 +3605,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     ]) { _, new in new }
     state["undo"] = UndoCloseTab.shared.debug
     state["hapticTicks"] = SidebarView.hapticTicks
-    state["tabSwitcher"] = tabSwitcher.debug
+    state["tabSwitcher"] = tabSwitcher.debug.merging(["pictureCopies": tabPictures.copies]) { $1 }
     guard let data = try? JSONSerialization.data(withJSONObject: state),
           let json = String(data: data, encoding: .utf8) else { return }
     FileHandle.standardError.write("[ray-state] \(json)\n".data(using: .utf8)!)

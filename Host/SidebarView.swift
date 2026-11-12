@@ -2091,7 +2091,7 @@ final class FavoriteTileView: NSView, Liftable {
   func show(_ entry: SidebarEntry, icon image: NSImage?, selected: Bool) {
     self.selected = selected
     favicon = image
-    icon.image = image ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+    icon.setImage(image ?? RowSymbols.named("globe"))
     icon.contentTintColor = image == nil ? .secondaryLabelColor : nil
     icon.alphaValue = SidebarView.iconAlpha(for: entry)
     residency.show(entry, in: self)
@@ -2115,6 +2115,32 @@ final class FavoriteTileView: NSView, Liftable {
     toolTip = entry.displayTitle
     needsDisplay = true
     updateHover()
+  }
+}
+
+/// The symbols rows and tiles show again on every refresh of the sidebar (each tab switch is one): one image per
+/// symbol, and an image view takes an image only when it isn't the one it has. A new `NSImage` each time made
+/// AppKit draw every row's symbols again on every switch (3–4 ms of the main thread with 8 tabs).
+enum RowSymbols {
+  private static var images: [String: NSImage] = [:]
+  /// For the state log: images handed to rows' and tiles' image views since launch (`sidebar.iconSets`).
+  static var sets = 0
+
+  static func named(_ symbol: String, label: String? = nil) -> NSImage? {
+    let key = label.map { "\(symbol)|\($0)" } ?? symbol
+    if let image = images[key] { return image }
+    let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+    images[key] = image
+    return image
+  }
+}
+
+extension NSImageView {
+  /// Sets the image unless it's the one shown.
+  func setImage(_ new: NSImage?) {
+    guard image !== new else { return }
+    RowSymbols.sets += 1
+    image = new
   }
 }
 
@@ -2434,7 +2460,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     self.selected = selected
     away = entry.isAwayFromPinned && entry.isLive
     closable = entry.kind == .today || entry.isLive
-    icon.image = image ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+    icon.setImage(image ?? RowSymbols.named("globe"))
     icon.contentTintColor = image == nil ? .secondaryLabelColor : nil
     icon.alphaValue = SidebarView.iconAlpha(for: entry)
     residency.show(entry, in: self)
@@ -2447,8 +2473,8 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
     // Arc shows a closed tab by its title alone; the host only tells you a pinned tab has wandered off its page.
     let showsHost = entry.isLive && entry.isAwayFromPinned
     subtitle.isHidden = !showsHost || entry.host.isEmpty || entry.host == entry.displayTitle
-    closeButton.image = NSImage(
-      systemSymbolName: entry.kind == .today ? "xmark" : "minus", accessibilityDescription: "Close")
+    let close = RowSymbols.named(entry.kind == .today ? "xmark" : "minus", label: "Close")
+    if closeButton.image !== close { closeButton.image = close }
     toolTip = away ? "Click the icon to go back to the pinned page" : nil
     updateClose()
     needsLayout = true
@@ -2492,7 +2518,7 @@ final class SidebarRowView: NSView, Liftable, NSTextFieldDelegate {
   /// The chevron always points right and turns a quarter (clockwise, to point down) as the folder opens.
   private func setChevron(open: Bool, animated: Bool) {
     guard let layer = chevron.layer else { return }
-    chevron.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)
+    chevron.setImage(RowSymbols.named("chevron.right"))
     // AppKit's backing layers turn about their anchor point, which isn't always the middle: turn about the middle.
     let angle: CGFloat = open ? -.pi / 2 : 0
     let d = CGPoint(x: (layer.anchorPoint.x - 0.5) * layer.bounds.width, y: (layer.anchorPoint.y - 0.5) * layer.bounds.height)

@@ -234,7 +234,12 @@ private final class ToolbarAddressView: NSView {
     render()
   }
 
-  private var parts = AddressInput.AddressParts()
+  private var parts = AddressInput.AddressParts() {
+    didSet { hostWidth = Self.hostWidth(of: parts) }
+  }
+  /// The wrapper and host at their full width: what `layout` compares the field to on every frame of ⌘S and of a
+  /// sidebar resize, so it's measured once per address, not once per frame (CoreText shaping, a share of every frame).
+  private var hostWidth: CGFloat = 0
   /// Whether the host is too long for the field: it then loses its start, never its end (the part that names the
   /// site), and the path doesn't show.
   private var elidesHost = false
@@ -264,11 +269,10 @@ private final class ToolbarAddressView: NSView {
     label.attributedStringValue = shown
   }
 
-  /// Whether the wrapper and host alone are wider than `width`.
-  private func hostOverflows(_ width: CGFloat) -> Bool {
-    let head = NSMutableAttributedString(string: parts.lead, attributes: [.font: Self.font])
-    head.append(NSAttributedString(string: parts.host, attributes: [.font: Self.hostFont]))
-    return ceil(head.size().width) > width
+  private static func hostWidth(of parts: AddressInput.AddressParts) -> CGFloat {
+    let head = NSMutableAttributedString(string: parts.lead, attributes: [.font: font])
+    head.append(NSAttributedString(string: parts.host, attributes: [.font: hostFont]))
+    return ceil(head.size().width)
   }
 
   override func mouseDown(with event: NSEvent) { onClick?() }
@@ -280,7 +284,7 @@ private final class ToolbarAddressView: NSView {
       "shown": label.attributedStringValue.string, "lead": parts.lead, "host": parts.host, "trail": parts.trail,
       "elided": elidesHost ? "head" : "tail",
       "loading": wash.loading, "progress": wash.progress, "wash": wash.active, "washFinishing": wash.finishing,
-      "washFraction": wash.fraction, "washColor": wash.lineColor,
+      "washFraction": wash.fraction, "washColor": wash.lineColor, "washPictures": wash.picturesDrawn,
       "progressSteps": wash.steps, "sweeps": wash.sweeps,
     ]
   }
@@ -334,9 +338,14 @@ private final class ToolbarAddressView: NSView {
     securityIcon.frame = NSRect(x: 7, y: (mid - 9).rounded(), width: 18, height: 18)
     let x: CGFloat = securityIcon.isHidden ? 8 : 28
     // One line tall, so the text sits on the middle (a label draws from its frame's top).
-    let line = ceil(label.intrinsicContentSize.height)
-    label.frame = NSRect(x: x, y: (mid - line / 2).rounded(), width: max(0, bounds.width - x - 8), height: line)
-    let elides = label.frame.width > 0 && hostOverflows(label.frame.width)
+    let natural = label.intrinsicContentSize
+    let line = ceil(natural.height)
+    // As wide as the text when it fits (the field is wider than that most of the time, and a label that changes
+    // width is drawn again: on every frame of ⌘S, 70 samples in 750), else as wide as the field, which truncates it.
+    let available = max(0, bounds.width - x - 8)
+    let width = natural.width > 0 ? min(available, ceil(natural.width)) : available
+    label.frame = NSRect(x: x, y: (mid - line / 2).rounded(), width: width, height: line)
+    let elides = available > 0 && hostWidth > available
     if elides != elidesHost {
       elidesHost = elides
       render()
@@ -501,8 +510,23 @@ private final class LoadingWash {
       colours = (tint.wash.map(\.cgColor), tint.line.map(\.cgColor))
     }
     lineColours = colours.line
+    washColours = colours.wash
+    // The picture is a bitmap computed point by point, the field's size: drawn only for a sweep that shows. The field
+    // changes size on every frame of ⌘S and of a sidebar resize, mostly with no page loading.
+    if active || finishing { drawPicture() } else { pictureStale = true }
+  }
+
+  /// The colours `applyTint` last resolved, and whether the picture still has to be drawn from them at this size.
+  private var washColours: [CGColor] = []
+  private var pictureStale = true
+  /// Pictures drawn so far, for the state log.
+  private(set) var picturesDrawn = 0
+
+  private func drawPicture() {
+    pictureStale = false
     guard size.width > 0, size.height > 0 else { return }
-    let image = Self.draw(width: size.width, height: size.height, scale: scale, wash: colours.wash, line: colours.line)
+    let image = Self.draw(width: size.width, height: size.height, scale: scale, wash: washColours, line: lineColours)
+    picturesDrawn += 1
     quietly { sweep.contents = image }
   }
 
@@ -531,6 +555,7 @@ private final class LoadingWash {
     fraction = target
     active = true
     finishing = false
+    if pictureStale { drawPicture() }
     quietly {
       sweep.removeAllAnimations()
       sweep.opacity = 1
@@ -621,6 +646,7 @@ private final class LoadingWash {
     finishing = false
     fraction = now ? target : 0
     steps = now ? 1 : 0
+    if now, pictureStale { drawPicture() }
     quietly {
       sweep.removeAllAnimations()
       sweep.opacity = now ? 1 : 0
