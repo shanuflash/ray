@@ -267,6 +267,8 @@ private final class ToolbarAddressView: NSView {
     style.lineBreakMode = elidesHost ? .byTruncatingHead : .byTruncatingTail
     shown.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: shown.length))
     label.attributedStringValue = shown
+    // The label is as wide as its text (`layout`): new text (another address, the path shown on hover) sizes it again.
+    needsLayout = true
   }
 
   private static func hostWidth(of parts: AddressInput.AddressParts) -> CGFloat {

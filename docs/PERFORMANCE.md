@@ -181,11 +181,11 @@ What the numbers mean:
   per cycle. v0.7.0 does the same (`53.9 64.1 70.1 76.5 78.8 81.4 105.5 104.0 103.1`), and it happens with no Ray UI
   involved (open and close tabs only, no switches, command bar or ⌘S). The harness' (cycle 4 − cycle 1) / 3 lands on
   the step, so it reads ~9 MB/cycle. It is the engine's allocator (Ray's Swift objects live in it too, so
-  `heap`/`leaks` see 0.7 MB of 100); see MISSING.md Known limitations 57.
+  `heap`/`leaks` see 0.7 MB of 100); see MISSING.md Known limitations 58.
 - **Fixed**, Ray's own growth: a closed tab's ⌃Tab picture (316×210×4 = 265 KB each, 12 per cycle) stayed in
   `TabPictures` until the next ⌃Tab walk; a copy still in flight when its tab closed was stored after it. Both go now
   (`drop` in `didRemove`, a closed-tab guard in the copy's callback). Also freed with the tab: `LoadSweeps`' entry,
   `zoomHosts`, `PageContainerView.hideGeneration`. Ten-cycle runs with the fix: `48.7 70.2 74.6 75.0 96.3 96.7 96.7
   96.8 97.0 97.1 98.8`: the plateau is ~2 MB lower (97 vs 99 MB) and the pictures no longer accumulate for sessions
   that never press ⌃Tab. Guard: check `tab-pictures-dropped` (state log `tabPictures`).
-- Unfixed: the 21 MB step and the 0.4 MB per cycle after it (Chromium-side; Known limitations 57).
+- Unfixed: the 21 MB step and the 0.4 MB per cycle after it (Chromium-side; Known limitations 58).
