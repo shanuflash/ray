@@ -21,7 +21,7 @@ const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favo
 // Folders in Pinned and Today (Today's are Chrome tab groups), their icon and Change Icon.
 const folders = ["folders", "folders-relaunch", "multi-select", "folder-create", "folder-toggle", "folder-rename", "folder-animation",
   "folder-drag-in", "folder-drag-folder", "folder-out-and-delete"];
-const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still", "sidebar-resize"];
+const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still", "sidebar-resize", "peek-dock"];
 const pageSurface = ["switch-back-latency", "switch-no-blank", "top-strip-click", "toggle-keeps-page-still", "activate-target",
   "devtools-docked", "background-tab"];
 

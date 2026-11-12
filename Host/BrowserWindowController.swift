@@ -183,12 +183,19 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let width = sidebarWidth
     let shown = dockSpring.value
     let peek = peekSpring.value
-    layoutResizeHandle(at: width, docked: !peeking && peek <= 0.001 && shown >= 0.999)
 
     if peeking || peek > 0.001 {
-      let inset = Self.peekInset
+      // A peeking sidebar being docked (⌘S) stays where it is: its card flattens against the window's edge while the
+      // page makes room beside it.
+      let flat = dockingFromPeek ? min(max(shown, 0), 1) : 0
+      let inset = (Self.peekInset * (1 - flat)).rounded()
+      floating.flatten = flat
       floating.frame = NSRect(
         x: inset - (width + 12) * (1 - peek), y: inset, width: width, height: bounds.height - inset * 2)
+      if dockingFromPeek {
+        dockFrames += 1
+        dockLeftmost = min(dockLeftmost, floating.frame.minX)
+      }
       sidebar.frame = floating.bounds
       sidebar.trafficLightsCenterY = isFullScreen ? Self.fullScreenRowCenter : Self.windowedRowCenter
       sidebar.reservesTrafficLights = !isFullScreen
@@ -197,6 +204,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       sidebar.trafficLightsCenterY = isFullScreen ? Self.fullScreenRowCenter : Self.windowedRowCenter
       sidebar.reservesTrafficLights = !isFullScreen
     }
+    layoutResizeHandle(docked: peek <= 0.001 && shown >= 0.999)
     let edge = isFullScreen ? margin * shown : margin
     let cardX = max(edge, width * shown)
     // Whole points only: Chrome's content layer follows the page by CALayer autoresizing, which rounds each
@@ -205,7 +213,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let bottom = edge.rounded()
     var top = (bounds.height - edge).rounded()
     toolbar.isHidden = !toolbarShown
-    sidebar.showsAddress = !toolbarShown || sidebar.superview === floating
+    sidebar.showsAddress = !toolbarShown || (sidebar.superview === floating && !dockingFromPeek)
     sidebar.showsSiteButton = !toolbarShown
     toolbar.showsFullAddress = fullAddressShown
     toolbar.showsLoadingWash = RaySettings.shared[.loadingProgress]
@@ -237,6 +245,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     layoutNotes()
     layoutTabSwitcher()
     updateTrafficLights()
+    if dockingFromPeek, !dockSpring.isMoving, shown >= 0.999 { finishDockFromPeek() }
   }
 
   private func updateTrafficLights() {
@@ -2364,6 +2373,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private let resizeHandle = SidebarResizeHandle()
   /// The width the drag in progress started from.
   private var resizeStart: CGFloat?
+  /// A peeking sidebar stays out while its edge is dragged.
+  private var isResizingSidebar: Bool { resizeStart != nil }
   /// For tests: the last drag's steps (each lays the window out), the longest one, and frames laid out off whole points.
   private var resizeSteps = 0
   private var resizeLongestStep: Double = 0
@@ -2377,16 +2388,22 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     return SidebarWidth.clamp(value, windowWidth: root.bounds.width)
   }
 
-  /// The edge drags only a docked sidebar; a peeking one comes out at the same width.
-  private func layoutResizeHandle(at width: CGFloat, docked: Bool) {
-    if resizeHandle.superview == nil { installResizeHandle() }
-    resizeHandle.isHidden = !docked
-    resizeHandle.frame = NSRect(x: width - SidebarResizeHandle.inside, y: 0,
-                                width: SidebarResizeHandle.inside + SidebarResizeHandle.outside, height: root.bounds.height)
+  /// The strip sits on the edge of a docked sidebar or a peeking one (not one sliding in or out), right above it:
+  /// under the panels and notes that go over the sidebar.
+  private func layoutResizeHandle(docked: Bool) {
+    if resizeHandle.onBegin == nil { installResizeHandle() }
+    let holder: NSView = peeking ? floating : sidebar
+    resizeHandle.isHidden = !(peeking || docked)
+    guard !resizeHandle.isHidden, holder.superview === root else { return }
+    let views = root.subviews
+    if let at = views.firstIndex(of: holder), !(at + 1 < views.count && views[at + 1] === resizeHandle) {
+      root.addSubview(resizeHandle, positioned: .above, relativeTo: holder)
+    }
+    resizeHandle.frame = NSRect(x: (holder.frame.maxX - SidebarResizeHandle.inside).rounded(), y: holder.frame.minY,
+                                width: SidebarResizeHandle.inside + SidebarResizeHandle.outside, height: holder.frame.height)
   }
 
   private func installResizeHandle() {
-    root.addSubview(resizeHandle, positioned: .above, relativeTo: sidebar.superview === root ? sidebar : toolbar)
     resizeHandle.onBegin = { [weak self] in self?.beginResize() }
     resizeHandle.onDrag = { [weak self] dx in self?.resize(by: dx) }
     resizeHandle.onEnd = { [weak self] in self?.endResize() }
@@ -2516,9 +2533,37 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   // MARK: Sidebar visibility
 
+  /// ⌘S on a peeking sidebar docks it in place (owner 2026-11-12): it's on its way from the floating card to the docked sidebar,
+  /// still in `floating` until the dock spring settles.
+  private var dockingFromPeek = false
+  /// For tests: frames laid out during the last dock in place, and the furthest left the sidebar's edge went.
+  private var dockFrames = 0
+  private var dockLeftmost: CGFloat = 0
+
+  private func finishDockFromPeek() {
+    guard dockingFromPeek else { return }
+    dockingFromPeek = false
+    floating.flatten = 0
+    // The card is flat against the window now: the sidebar goes back into the window where it already is.
+    peekSpring.jump(to: 0)
+    logState("sidebar")
+  }
+
   func toggleSidebar() {
     resizeHandle.release()
-    endPeek(animated: false)
+    // A second ⌘S on the way: the sidebar is docked from here.
+    finishDockFromPeek()
+    if state.sidebarHidden, peeking {
+      cancelPeekEnd()
+      peeking = false
+      dockingFromPeek = true
+      dockFrames = 0
+      dockLeftmost = floating.frame.minX
+      // Beside the page's own address bar the sidebar's goes: the rows slide up into its place.
+      if toolbarShown, sidebar.showsAddress { sidebar.animateNextChange() }
+    } else {
+      endPeek(animated: false)
+    }
     peekForced = false
     state.sidebarHidden.toggle()
     navigationSteps = 0
@@ -2545,11 +2590,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   private func schedulePeekEnd() {
-    guard peekEndWork == nil, !forcedOpen, !sidebar.isDragging, !downloadsOpen, !panels.holdsSidebar else { return }
+    guard peekEndWork == nil, !forcedOpen, !sidebar.isDragging, !isResizingSidebar, !downloadsOpen, !panels.holdsSidebar else { return }
     let work = DispatchWorkItem { [weak self] in
       guard let self else { return }
       self.peekEndWork = nil
-      if self.sidebar.isDragging || self.downloadsOpen || self.panels.holdsSidebar { return }
+      if self.sidebar.isDragging || self.isResizingSidebar || self.downloadsOpen || self.panels.holdsSidebar { return }
       self.endPeek(animated: true)
     }
     peekEndWork = work
@@ -2611,6 +2656,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func endPeek(animated: Bool) {
     cancelPeekEnd()
     guard peeking else { return }
+    resizeHandle.release()
     peeking = false
     if animated {
       peekSpring.configure(response: 0.15, dampingRatio: 1)
@@ -2622,7 +2668,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   private func finishPeek() {
-    guard !peeking, sidebar.superview !== root else { return }
+    guard !peeking, !dockingFromPeek, sidebar.superview !== root else { return }
     floating.isHidden = true
     sidebar.removeFromSuperview()
     sidebar.layer?.cornerRadius = 0
@@ -3493,6 +3539,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         "changesAnimated": SidebarView.changesAnimated,
         "hidden": self.state.sidebarHidden,
         "peeking": peeking,
+        "dockFromPeek": ["docking": dockingFromPeek, "frames": dockFrames, "leftmost": Double(dockLeftmost)] as [String: Any],
       ] as [String: Any],
       "commandBar": commandBar.map { bar in
         [
@@ -3560,6 +3607,18 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
 final class FloatingSidebarFrame: NSView {
   private static let radius: CGFloat = 12
+  /// 0 as the floating card, 1 flat against the window (a peeking sidebar being docked): the corners, edge and shadow go.
+  var flatten: CGFloat = 0 {
+    didSet {
+      guard oldValue != flatten else { return }
+      let radius = Self.radius * (1 - flatten)
+      layer?.cornerRadius = radius
+      content?.layer?.cornerRadius = radius
+      layer?.borderWidth = 1 - flatten
+      needsDisplay = true
+      needsLayout = true
+    }
+  }
 
   var content: NSView? {
     didSet {
@@ -3568,7 +3627,7 @@ final class FloatingSidebarFrame: NSView {
         content.frame = bounds
         content.autoresizingMask = [.width, .height]
         content.wantsLayer = true
-        content.layer?.cornerRadius = Self.radius
+        content.layer?.cornerRadius = Self.radius * (1 - flatten)
         content.layer?.cornerCurve = .continuous
         content.layer?.masksToBounds = true
         addSubview(content)
@@ -3602,13 +3661,13 @@ final class FloatingSidebarFrame: NSView {
     let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     layer?.backgroundColor = (isPrivate ? SidebarColors.privateBackground : SidebarColors.background).cgColor
     layer?.borderColor = (dark ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.1)).cgColor
-    layer?.shadowOpacity = dark ? 0.18 : 0.12
+    layer?.shadowOpacity = (dark ? 0.18 : 0.12) * Float(1 - flatten)
   }
 
   override func layout() {
     super.layout()
-    layer?.shadowPath = CGPath(
-      roundedRect: bounds, cornerWidth: Self.radius, cornerHeight: Self.radius, transform: nil)
+    let radius = min(Self.radius * (1 - flatten), bounds.width / 2, bounds.height / 2)
+    layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
   }
 
   override func viewDidChangeEffectiveAppearance() {

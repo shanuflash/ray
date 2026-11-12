@@ -6337,23 +6337,33 @@ const checks = {
       console.log(`    sweep: ${sweep.frames} frames, layout ${sweep.layoutMsMean.toFixed(2)} ms mean ${sweep.layoutMsMax.toFixed(2)} ms max, `
         + `frame ${sweep.frameMsMedian.toFixed(1)} ms median ${sweep.frameMsMax.toFixed(1)} ms max, ${sweep.longFrames} long`);
 
-      // A hidden sidebar has no edge to drag, and peeks at the same width (staying out to 24 pt past it).
+      // A hidden sidebar has no edge until it peeks. A peeking one drags too: the page stays where it is, and the
+      // sidebar stays out while its edge is held, wherever the pointer goes, and then to 24 pt past its new edge.
       await it.ok("sidebarwidth 300");
       await it.until("300", settled(300));
       await it.ok("menu toggleSidebar");
       await it.until("hidden", (x) => x.sidebar.hidden && !x.sidebarResize.handleShown && numbers(x.cardFrame)[0] === 8);
       assert(await it.cmd("sidebarwidth drag 20") === "no edge", "a hidden sidebar's edge dragged");
       await it.ok("pointer 4 300");
-      s = await it.until("peeking", (x) => x.sidebar.peeking);
-      assert(numbers(s.sidebarResize.sidebarFrame)[2] === 300 && !s.sidebarResize.handleShown, `peeking ${JSON.stringify(s.sidebarResize)}`);
-      await it.ok("pointer 322 300");
+      s = await it.until("peeking", (x) => x.sidebar.peeking && x.sidebarResize.handleShown && numbers(x.sidebarResize.handle)[0] === 299);
+      assert(numbers(s.sidebarResize.sidebarFrame)[2] === 300 && s.sidebarResize.handleOnTop, `peeking ${JSON.stringify(s.sidebarResize)}`);
+      await it.ok("sidebarwidth drag 40 hold");
+      await it.ok("pointer 700 300");
+      await sleep(400);
+      s = await it.now();
+      assert(s.sidebar.peeking && s.sidebarResize.dragging && s.sidebarResize.width === 340 && numbers(s.sidebarResize.sidebarFrame)[2] === 340
+        && numbers(s.cardFrame)[0] === 8, `a peeking sidebar's edge held: peeking ${s.sidebar.peeking}, card ${s.cardFrame}, ${JSON.stringify(s.sidebarResize)}`);
+      await it.ok("sidebarwidth release");
+      s = await it.until("peeking at 340", (x) => x.sidebar.peeking && settled(340)(x) && x.sidebarResize.remembered === 340);
+      assert(numbers(s.sidebarResize.handle)[0] === 339 && s.sidebarResize.offGrid === 0, `after a peeking drag ${JSON.stringify(s.sidebarResize)}`);
+      await it.ok("pointer 362 300");
       await sleep(300);
-      assert((await it.now()).sidebar.peeking, "inside the slack past a 300 pt sidebar it should stay out");
-      await it.ok("pointer 345 300");
-      await it.until("leaving the slack hides", (x) => !x.sidebar.peeking);
+      assert((await it.now()).sidebar.peeking, "inside the slack past a 340 pt sidebar it should stay out");
+      await it.ok("pointer 385 300");
+      await it.until("leaving the slack hides", (x) => !x.sidebar.peeking && !x.sidebarResize.handleShown);
       await sleep(300);
       await it.ok("menu toggleSidebar");
-      onGrid(await it.until("docked again", (x) => !x.sidebar.hidden && x.sidebarResize.handleShown && settled(300)(x)), 300, "docked again");
+      onGrid(await it.until("docked again", (x) => !x.sidebar.hidden && x.sidebarResize.handleShown && settled(340)(x)), 340, "docked again");
 
       // A double click on the edge: back to the standard width.
       await it.ok("sidebarwidth double");
@@ -6416,6 +6426,41 @@ const checks = {
     assert(!state().sidebar.peeking, "beyond 24 pt outside shouldn't reveal");
     await command("menu toggleSidebar");
     await until("shown", () => !state().sidebar.hidden);
+  },
+  async "peek-dock"() {
+    // ⌘S on a peeking sidebar docks it where it is: it never leaves the screen to slide in again, the page
+    // makes room beside it, and beside the page's own address bar the sidebar's own goes.
+    await needsFrames();
+    await command("menu toggleSidebar");
+    await until("hidden", () => state().sidebar.hidden);
+    await sleep(500);
+    await command("pointer 4 300");
+    await until("peeking", () => state().sidebar.peeking);
+    await sleep(500);
+    await command("state");
+    const peekFrame = state().sidebarResize.sidebarFrame;
+    assert(state().sidebarAddressShown && Number(state().cardFrame.match(/-?[\d.]+/g)[0]) === 8, `peeking: address ${state().sidebarAddressShown}, card ${state().cardFrame}`);
+    await command("menu toggleSidebar");
+    await command("state");
+    assert(!state().sidebar.hidden && !state().sidebar.peeking, "⌘S on a peeking sidebar didn't dock it");
+    await until("docked", async () => {
+      await command("state");
+      return !state().sidebar.dockFromPeek.docking && state().sidebarResize.handleShown;
+    });
+    const dock = state().sidebar.dockFromPeek;
+    assert(dock.frames >= 3, `docked in ${dock.frames} frames: no animation`);
+    assert(dock.leftmost >= 0, `the sidebar went off the window's edge on its way (${dock.leftmost})`);
+    const side = state().sidebarResize.sidebarFrame.match(/-?[\d.]+/g).map(Number);
+    const card = state().cardFrame.match(/-?[\d.]+/g).map(Number);
+    assert(side[0] === 0 && side[1] === 0 && side[2] === 267 && card[0] === 267, `docked: sidebar ${state().sidebarResize.sidebarFrame} (peeking it was ${peekFrame}), card ${state().cardFrame}`);
+    assert(state().sidebarOverToolbar && !state().sidebarAddressShown, `docked: over the toolbar ${state().sidebarOverToolbar}, address ${state().sidebarAddressShown}`);
+    // And it hides and peeks as before.
+    await command("menu toggleSidebar");
+    await until("hidden again", () => state().sidebar.hidden && !state().sidebar.peeking);
+    await sleep(500);
+    await command("menu toggleSidebar");
+    await until("shown", async () => { await command("state"); return !state().sidebar.hidden && state().sidebarResize.handleShown; });
+    assert(state().sidebar.dockFromPeek.frames === dock.frames, "a plain ⌘S docked in place");
   },
   async clear() {
     await command("menu clearToday");

@@ -277,13 +277,14 @@ publicly or create accounts.
 - Sidebar width (`Host/SidebarResize.swift`, `BrowserWindowController` `// MARK: Sidebar width`): dragged at the
   sidebar's edge (owner's pick of `docs/mocks/sidebar-resize.html`, 2026-11-12: Arc's look, nothing drawn, with
   Ardia's rubber band). `SidebarResizeHandle`: an 8 pt strip (6 pt of the sidebar's gutter, 2 pt of the page's edge)
-  right above the sidebar in the root (under a peeking sidebar, panels and notes), added at the first layout, hidden
-  unless the sidebar is docked; the resize cursor by cursor rect and a tracking area (the page under its outer 2 pt
+  right above the sidebar in the root, docked or peeking (`layoutResizeHandle` keeps it there: under the panels and
+  notes that go over the sidebar), hidden while the sidebar is hidden or sliding; the resize cursor by cursor rect and a tracking area (the page under its outer 2 pt
   sets its own); scrolling over it scrolls the list. `SidebarWidth`: 240–480 (the top row's buttons need 234; the
   page keeps 400, so a narrow window lowers the maximum without changing what's remembered), standard 267
   (`SidebarView.width`), whole points always. Past a limit a drag stretches up to 36 pt and springs back on the
   sidebar's spring (`widthSpring`); a double click goes back to 267. `layout()` reads `sidebarWidth` (the peeking
-  sidebar and its hold zone too; a peeking sidebar's edge doesn't drag). One width for every window:
+  sidebar and its hold zone too). A peeking sidebar's edge drags as well (owner, 2026-11-12): the page stays, and it
+  stays out while its edge is held (`isResizingSidebar` in `schedulePeekEnd`). One width for every window:
   `RaySettings.sidebarWidth` (Settings.json state `sidebarWidth`, left out at 267; out of range is clamped, not a
   number is 267); `rememberSidebarWidth` posts `sidebarWidthDidChange` and the other windows follow. Private windows
   follow and drag but never save. No keyboard or VoiceOver resize. Test command `sidebarwidth <n>|drag <dx>
@@ -625,6 +626,11 @@ publicly or create accounts.
 - `Spring`: a CADisplayLink spring. `dockSpring` (⌘S) and `peekSpring` drive `layout()` every frame.
   `Spring.response` / `dampingRatio` (0.26 s, 0.86) are the sidebar's spring that notes, panels, prompts, the find
   bar and the command bar share; `Spring.caAnimation(keyPath:from:to:)` is it as a `CASpringAnimation` for a layer.
+  ⌘S on a peeking sidebar docks it in place (owner 2026-11-12; `dockingFromPeek` in `// MARK: Sidebar
+  visibility`): it stays in `floating`, whose card flattens (`FloatingSidebarFrame.flatten`: inset, corners, edge and
+  shadow go with the dock spring) while the page makes room, and moves into the root when the spring settles; beside
+  the page's address bar the sidebar's own goes at once and the rows slide up (`animateNextChange`). State log
+  `sidebar.dockFromPeek` (`docking`, `frames`, `leftmost`); check `peek-dock`.
   A hidden sidebar peeks only at the window's edge (its first 5 pt, or up to 24 pt past it on the same screen
   while Ray is active; Arc's and Ardia's, check `peek-zones`), and stays out to 24 pt past its own edge.
 - `Branding/Ray.icon` (Icon Composer; `actool` builds Assets.car + Ray.icns) and `tools/rebrand-pak.py` (renames
