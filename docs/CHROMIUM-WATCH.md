@@ -7,7 +7,36 @@ touches engine files or builds. Moving the engine is the owner's call. Ardia's s
 Ray's engine: Chromium 156.0.8078.47 (`engine.lock`), Helium helium-chromium 0.20.1 / helium-macos 0.20.1.1
 (`engine/patches/build/helium-pins.ini`).
 
-Last checked: Chrome 157.0.8103.79 (Mac stable), 156.0.8078.100 (Mac extended), 2026-11-12
+Last checked: Chrome 158.0.8127.37 (Mac early stable), 157.0.8103.80 (Mac stable), 156.0.8078.100 (Mac extended), 2026-11-13
+
+## 2026-11-13
+
+**Helium caught up with the big batch: helium-chromium 0.21.3 (2026-11-12) is Chromium 157.0.8103.78, which has
+the 5 Critical and 78 High fixes of 2026-11-11 (and the in-the-wild XML fix). Its macOS build, helium-macos
+0.21.3.1 (2026-11-13), is still a pre-release. Chrome 158 started its early stable rollout.**
+
+Chrome for Mac (chromiumdash):
+- **158.0.8127.36 / .37**, stable (early stable, a small share of users), 2026-11-12 (blog: "Early Stable Update
+  for Desktop", Windows first, Mac "coming shortly"). No security list: Google posts M158's with the full stable
+  release.
+- **157.0.8103.80**, stable, 2026-11-12. No blog post of its own (no new security fixes listed).
+- Extended: nothing new since 156.0.8078.100.
+- Beta moved to 159.0.8154.6.
+
+Helium:
+- helium-chromium **0.21.3** (2026-11-12): "Update to Chromium 157.0.8103.78" (ungoogled-chromium too), plus its own
+  work (a translation provider API replacing Google Translate branding, web push, sync memory, "copy download link"
+  in the download menu). None of that is Ray's concern beyond the rebase.
+- helium-macos **0.21.3.1** (2026-11-13): **pre-release**, the macOS build for 0.21.3. 0.21.2.1 stays "Latest".
+
+How far behind: unchanged for Ray: one milestone (M156 .47 vs M157 .80), missing the in-the-wild XML fix
+(CVE-2026-125350), the 5 Critical / 78 High of 157.0.8103.78, and everything between. M158 is starting, so Ray is
+about to be two milestones behind stable.
+
+What moving would take: Helium 0.21.3 / 0.21.3.1 (157.0.8103.78) is now the target that closes everything listed
+so far: a new milestone for Ray, full rebuild. It's a pre-release on macOS today; waiting a day or two for it to be
+marked latest (or a 0.21.3.x fix) is reasonable. Ardia's engine is still behind (see `docs/ARDIA-WATCH.md`). Not
+started: owner decides (engine rebuild was put on hold 2026-11-05).
 
 ## 2026-11-12
 
