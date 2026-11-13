@@ -4,20 +4,27 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.46-nightly.5 (engine-054c7f68642e), 2026-11-12
+Last reviewed: v0.2.46 (engine-1c2355ca844e), 2026-11-13
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac
 (`docs/CHROMIUM-WATCH.md`, 2026-11-05): 157.0.8103.39, 158 in early stable. Ardia moved to 156.0.8078.79 on Helium
 0.20.3 in engine-1982453a46fe (v0.2.43), then to 157.0.8103.38 on Helium 0.21.1 / helium-macos 0.21.1.1 in
-engine-44666813bf29 (stable v0.2.45, engine-bc84a70be65a). Chrome's own security releases are tracked in
+engine-44666813bf29 (stable v0.2.45, engine-bc84a70be65a), then to 157.0.8103.50 on Helium 0.21.2 / helium-macos
+0.21.2.1 in engine-6fa48cb43cec (stable v0.2.46, engine-1c2355ca844e). Chrome stable is now 157.0.8103.78/.79
+(2026-11-11, 83 security fixes), which Ardia hasn't taken yet. Chrome's own security releases are tracked in
 `docs/CHROMIUM-WATCH.md`.
 
 ## Ray should
 
 In priority order. Nothing here is started; engine items cost one engine rebuild (the owner's call).
 
-1. **Rebuild the engine on Chromium 157.0.8103.38 (Helium 0.21.1, helium-macos 0.21.1.1) by taking Ardia's
-   engine-bc84a70be65a** (v0.2.45 stable). Ray is on 156.0.8078.47: it misses M156's fixes through .88 and all
+1. **Rebuild the engine on M157 by taking Ardia's engine-1c2355ca844e** (v0.2.46 stable: Chromium 157.0.8103.50,
+   Helium 0.21.2, helium-macos 0.21.2.1; all 354 Helium patches apply with no fuzz). Even .50 lacks Chrome
+   157.0.8103.78/.79's 83 security fixes (5 Critical): take Helium's next tag if it lands first, or bump
+   `helium-pins.ini` to .79 ourselves. v0.2.46 adds to the list below: extensions kept when the Safe Storage key
+   changes (item 1d), the upscaler crash fix (1e), a page drag that always ends (`chromium-drag-always-ends.patch`:
+   a lost drag end left a page deaf to clicks and keys), Memory Saver sleeping pinned tabs on its timer, and
+   `ac_search_suggest.cc`. Was: engine-bc84a70be65a (v0.2.45 stable). Ray is on 156.0.8078.47: it misses M156's fixes through .88 and all
    213 of M157's (7 Critical). helium-macos 0.21.1.1 now exists, so M157 is buildable; Ardia did the work
    (`f8aaa24c`: fourteen patches refreshed, Settings' privacy page is Lit now, 157's CHECKs at two hook sites,
    `//chrome/browser/ui:ui` gone, `ChromeMainDelegate` crash keys moved). Its range from Ray's v0.2.42 adds
@@ -51,6 +58,18 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    by 4 s. Ray's `engine/raycore/src/ray/core/ac_web_contents_delegate.mm:192` has the identical code. Fix: when
    `CanCloseContents` is false, call `BrowserWebContentsDelegate::CloseContents(source)` before returning. Take it
    as an `engine-ray` fixup with item 1 (or alone at the next rebuild); matters most for private windows.
+   Ardia 0.2.46's notes confirm the result: a closed window now goes at once and ⇧⌘T brings its tabs back with Back.
+1d. **Check that Ray 0.1 profiles kept their extensions** (new, engine, MISSING 59; not tried, may already bite).
+   Ardia `004fcffc` (its FB-5GA3): tracked prefs (each extension's `extensions.settings` entry, developer mode) carry a
+   hash encrypted with the Safe Storage key; after a key change every check fails and Chrome silently removes all
+   extensions. Ray's `SafeStorage` move from the mock keychain's key to "Ray Safe Storage" is such a change. First
+   test a 0.1-era data dir with an extension through the move; if it loses it, take
+   `chromium-pref-hash-safe-storage-key-change.patch` (HMAC fallback, re-hash under the current key) as an
+   `engine-ray` patch at the next rebuild, ahead of item 1 if need be.
+1e. **Video upscaler leak crash** (new, engine, MISSING 60). Ray's engine has Ardia's upscaler, on by default; the
+   synchronous VideoToolbox call leaked a pooled object per frame and the GPU process died after ~36 min at 30 fps.
+   Ardia `0998bfa6` rewrites `ac_video_upscaler_job.mm` on the async call. Comes with item 1; until then, consider
+   `RayCoreEngine.setVideoUpscaling(false)` if long-video crashes show up.
 2. ~~**Command bar: arrowing shows the row in the field**~~ (Done 2026-11-10, MISSING known limitation 42). Ardia 0.2.45 (PR #782):
    a search row puts its query in the field, a page row its address, Escape brings back what you typed, as Chrome and
    Dia do. Ray's `CommandBarView.moveSelection` only moves the highlight. App-side, small; mind the inline host
@@ -124,18 +143,73 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
     14 pt band (1 pt line 6.5 pt from each neighbour; was 30 pt edge to edge). Compare Ray's divider against the
     owner's Arc captures before changing anything (Ray matches Arc, not Dia).
 
-21. **Auto PiP when switching apps** (new, app-side, small, MISSING 53; not tried). Ardia 0.2.46-nightly.5
-    (`48498759`, Arc does it): leaving for another app while the window stays on screen pops the playing video out;
-    coming back puts it back. Ardia latches the shown playing tab as "left" on resign-active so `seenByUser` goes
-    false (paused, hidden and already-PiP tabs never latch; the latch isn't restored on reattach). Ray's
-    `PageContainerView` `// MARK: Window sight` follows occlusion, minimise, Space and lock only. Fix: add
-    `NSApplication.didResignActive`/`didBecomeActive` to its observers and note the active tab's page unseen while
-    inactive, then extend `auto-picture-in-picture`.
+21. ~~**Auto PiP when switching apps**~~ (withdrawn 2026-11-13, MISSING 53). Ardia reverted nightly.5's latch in
+    `2acfd1df` (its #1236: a video popped out while the user watched it beside another app or on a second display);
+    0.2.46 pops out only when the window is out of sight, which is Ray's `// MARK: Window sight` already. Nothing to do.
 22. **Extensions in private windows** (new, MISSING 54; not tried). Ardia `df9b9c0e`: its private window listed
     only `"incognito": "split"` extensions, so ordinary spanning ones allowed in Incognito never showed; their popups
     run fine as Chrome's ExtensionViewHost, and Options opens in the normal window. Ray's tiles come from
     `ac_extensions_list` on the private profile: check a spanning extension allowed in Incognito shows a tile and its
-    popup opens in a private window.
+    popup opens in a private window. Ardia 0.2.46 ships the fix (with @FedyaLight's PR #1144).
+23. **Switch tabs on mouse down** (new, app-side, small, MISSING 61). Ardia 0.2.46 (as Chrome, Safari and Arc):
+    about 0.1 s off every click switch; drags, ⌘-click and ⇧-click unchanged. Ray's `SidebarView.pointer` switches in
+    `drop` at the release. Switch at `.leftMouseDown` for a plain click on an unselected tab; keep the release for
+    multi-select's pending clear and for folders; extend `multi-select` and `switch-no-blank`.
+24. **A loading tab's address isn't about:blank** (check, small). Ardia `0f04b997`: a tab opened from a link or
+    another app showed and copied about:blank a second into a slow first load. Ray's `showPendingAddress` covers the
+    address field (`pending-address`); check ⇧⌘C and the row's tooltip on such a tab (`appopen link` to a slow page).
+25. **⌃Tab skips tabs never looked at** (check, small). Ardia 0.2.46: a background-opened tab joins the recent order
+    only once shown. Check Ray's `recentOrder` after a ⌘-click link (likely already right: it orders by activation).
+
+## v0.2.46 (2026-11-13), nightly.6 and .7, engine 054c7f68 → 1c2355ca
+
+Range `v0.2.46-nightly.5..v0.2.46`: 201 commits; engines 933c196a (nightly.6), f1e7a822 (nightly.7), 6fa48cb4,
+72ea0e84, 1c2355ca (stable). Engine diff: +2,104/−125 in 33 files, four new patches.
+
+**Engine:**
+- Chromium 157.0.8103.38 → 157.0.8103.50 on Helium 0.21.2 / helium-macos 0.21.2.1 (`7839a9ae`). A patch release;
+  Helium added two local omnibox prefs (history and bookmark suggestions) and their Settings section, which Ray's
+  `tools/trim-settings-pak.py` may need to account for at the bump. Chrome stable is 157.0.8103.78/.79 (83 security
+  fixes, 5 Critical, 2026-11-11): neither Ardia nor Ray has them. Ray is still on 156.0.8078.47.
+- `chromium-pref-hash-safe-storage-key-change.patch` (`004fcffc`): extensions kept across a Safe Storage key change
+  (item 1d, MISSING 59). Security-neutral: an encrypted hash that fails falls back to the HMAC Chrome already trusts;
+  `kDisallowLegacyPrefMacFallback` still disables it.
+- `chromium-drag-always-ends.patch` (`268de16f` and a dozen follow-ups): a page-started drag that never got its end
+  (mostly Ardia's CLI over DevTools `Input.dispatchDragEvent`) left the page ignoring clicks and keys; now every drag
+  ends, late DevTools replies can't crash. Mostly matters to automation; Ray gets it with item 1.
+- `chromium-memory-saver-pinned-tabs.patch` (`48504051`): Memory Saver's timer sleeps Chrome pinned tabs like any
+  tab (whether Ray's pinned rows and favorites are Chrome pinned tabs is unchecked); only urgent discards spared them before. Weigh with
+  item 3: Arc never sleeps favorites' state away visibly; Ray's unloaded rows already fade.
+- `ac_video_upscaler_job.mm` async VideoToolbox (`0998bfa6`): item 1e, MISSING 60.
+- `ac_search_suggest.cc` (`7c854a06`): suggestions fetched by Chromium, none in private windows (MISSING 62).
+- `ac_host_visibility.mm` grows window-server occlusion checks (`a8646275`, `45a67052`) for Auto PiP; Ray's
+  window sight already reads `occlusionState`.
+- `chromium-device-emulation-size-reset.patch`, `ac_cli_*`: Ardia's `ardia browse` CLI only.
+
+**App features Ray lacks:**
+- Tab switch on mouse down (item 23). Clicking the address edits it in place with a dropdown (⌘T stays centred);
+  Ray's sidebar address opens the command bar, as Arc's does: keep Arc's.
+- ⌥⌘← / ⌥⌘→ switch profiles; ⌥↩ in the command bar opens Split View; borderless page frame; collapsed group keeps
+  tabs opened from it; pinch a Little Ardia window; `ardia tabs --usage` per-tab CPU and memory (Ray has Task
+  Manager); three-step onboarding with Redo Setup… (Ray's onboarding has Show Welcome Again).
+- Unread counts now off by default in Ardia, with a pill and the title's "(3)" dropped: if Ray builds item 17, start
+  off by default the same way.
+- Ray already has: ⌘W closes every selected tab (Ray's multi-select), the "New tab opened" pill (Ray's note), Auto
+  PiP only when out of sight, the location permission asking macOS (not tried in Ray: check a site asking for
+  location gets an answer).
+
+**Fixes to behaviour Ray shares:**
+- Safe Storage key change (1d), upscaler crash (1e), loading tab address (24), ⌃Tab order (25), extensions in
+  private windows (22).
+- One click after a right-click menu: Ardia's lost mouse-up ate the next click (`048b8052`); Ray's row menus are
+  AppKit menus, likely fine (not tried).
+- A light custom colour keeps sidebar text readable in dark mode: Ray's `ProfileColor.foreground(on:)` covers fills;
+  Ray's sidebar isn't tinted by the colour, so nothing to take.
+
+**Competitive notes:** Ardia ahead: a newer Chromium (still behind Chrome's .79), profiles, split view, Peek on by
+default, mouse-down switches, per-tab usage CLI. Ray ahead: Settings › Search and Tab to Search, a share picker and
+⌃Tab switcher of its own, no CLI or telemetry surface. Ardia is shipping a stable roughly weekly with ~200 commits;
+Ray's biggest gap remains the engine rebuild (item 1), now also carrying two user-visible bug fixes (1d, 1e).
 
 ## v0.2.46-nightly.3 to .5 (2026-11-11 to 11-12), engine a840abea → 054c7f68
 

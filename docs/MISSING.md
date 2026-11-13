@@ -385,11 +385,9 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     so the close waits on two 2 s fallback timers: the tabs are saved as lone closed tabs (reopening right after
     loses Back/Forward) and a private window's session outlives it by 4 s. Fix: an `engine-ray` fixup calling
     `BrowserWebContentsDelegate::CloseContents(source)` when `CanCloseContents` is false (next engine rebuild).
-53. **Auto Picture in Picture ignores switching apps** (not tried; from Ardia `48498759`, 2026-11-12). Ray's window
-    sight (`PageContainerView` `// MARK: Window sight`) counts a page unseen only when covered, minimised, on another
-    Space or locked, so going to another app with Ray's window still visible leaves a playing video in the page;
-    Arc and Ardia pop it out and put it back on return. Fix: observe `NSApplication.didResignActive`/`didBecomeActive`
-    and note the active tab's page unseen while inactive (only a playing tab not already in PiP).
+53. ~~**Auto Picture in Picture ignores switching apps**~~ (withdrawn 2026-11-13: Ardia reverted it in `2acfd1df`,
+    its #1236: popping out on any app switch took the video away from a user watching it beside another app or on
+    a second display. Ardia now pops out only when the window is out of sight, which is already Ray's window sight.)
 54. **Extensions allowed in Incognito may not show in private windows** (not tried; from Ardia `df9b9c0e`,
     2026-11-12). Ardia listed only `"incognito": "split"` extensions there. Check that Ray's private window shows a
     spanning extension allowed in Incognito (tile and popup) and that its Options opens in the normal window.
@@ -413,6 +411,25 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     per-tab data, not Ray's UI; Chrome also keeps a 10,000-object zombie treadmill in the browser process). Not
     chased further: it needs Chromium-side tools (memory-infra traces) and an engine rebuild to change. Ray's own
     leaks (closed tabs' ⌃Tab pictures, per-tab bookkeeping) are fixed; `heap`/`leaks` can't see Ray's objects.
+59. **Extensions may vanish when the Safe Storage key changes** (engine, not tried; from Ardia `004fcffc`,
+    2026-11-13). Chrome checks each installed extension's `extensions.settings` entry and developer mode against a
+    tracked-pref hash encrypted with the Safe Storage key; once encrypted hashes exist, a profile hashed under an
+    earlier key fails every check at its next load and Chrome removes all its extensions with no message. Ray's own
+    `SafeStorage` move (mock keychain → "Ray Safe Storage", Ray 0.1 data dirs) changes exactly that key, as would a
+    recreated keychain item. Check: a 0.1-era data dir with an extension, migrated, still has it. Fix: Ardia's
+    `chromium-pref-hash-safe-storage-key-change.patch` (fall back to the pref's HMAC, re-hash with the current key) at
+    the next engine rebuild.
+60. **Upscaled video crashes after ~36 min** (engine, not tried; from Ardia `0998bfa6`, 2026-11-13). Ray's engine has
+    Ardia's video upscaler on by default (`ac_video_upscaling.mm`); macOS's upscaler leaked one object per frame
+    through the synchronous VideoToolbox call until a system pool ran out (~36 min at 30 fps, 18 at 60) and the GPU
+    process died. Fix: Ardia's `ac_video_upscaler_job.mm` rewrite (async VideoToolbox call) at the next rebuild.
+61. **A tab switches on mouse up** (2026-11-13). Ray's sidebar rows switch at the release (`SidebarView.pointer`,
+    `drop`); Chrome, Safari, Arc and now Ardia (0.2.46) switch on the press, about 0.1 s sooner, keeping drags,
+    ⌘-click and ⇧-click. Mind Ray's multi-select (a plain click on a selected tab ends the selection only at the release).
+62. **Search suggestions are fetched outside the engine** (2026-11-13). `Suggestions.swift` asks the search engine through an
+    ephemeral `URLSession` (macOS's identity, no cookies). Ardia moved its fetch into Chromium (`7c854a06`,
+    `ac_search_suggest.cc`) after Google showed some users its "unusual traffic" page, and stopped asking from
+    private windows at all. Ray's way is more private; watch for the same reports before changing it.
 
 ## Done
 
