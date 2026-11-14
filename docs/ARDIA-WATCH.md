@@ -4,14 +4,15 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.46 (engine-1c2355ca844e), 2026-11-13
+Last reviewed: v0.2.47-nightly.1 (engine-ee28c4b3a7d9), 2026-11-14
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac
 (`docs/CHROMIUM-WATCH.md`, 2026-11-05): 157.0.8103.39, 158 in early stable. Ardia moved to 156.0.8078.79 on Helium
 0.20.3 in engine-1982453a46fe (v0.2.43), then to 157.0.8103.38 on Helium 0.21.1 / helium-macos 0.21.1.1 in
 engine-44666813bf29 (stable v0.2.45, engine-bc84a70be65a), then to 157.0.8103.50 on Helium 0.21.2 / helium-macos
 0.21.2.1 in engine-6fa48cb43cec (stable v0.2.46, engine-1c2355ca844e). Chrome stable is now 157.0.8103.78/.79
-(2026-11-11, 83 security fixes), which Ardia hasn't taken yet. Chrome's own security releases are tracked in
+(2026-11-11, 83 security fixes), which Ardia hasn't taken yet (engine-ee28c4b3a7d9, v0.2.47-nightly.1, is still
+157.0.8103.50). Chrome's own security releases are tracked in
 `docs/CHROMIUM-WATCH.md`.
 
 ## Ray should
@@ -160,6 +161,56 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
     address field (`pending-address`); check ⇧⌘C and the row's tooltip on such a tab (`appopen link` to a slow page).
 25. **⌃Tab skips tabs never looked at** (check, small). Ardia 0.2.46: a background-opened tab joins the recent order
     only once shown. Check Ray's `recentOrder` after a ⌘-click link (likely already right: it orders by activation).
+26. **Closing a tab goes back to the tab used before it** (new, app-side, small, MISSING 63). Ardia
+    0.2.47-nightly.1 (PR #416, `024afbee`, "as in Arc"): the most recently used tab, not a neighbour; a sleeping tab
+    isn't woken while an awake one is left (`83df00c3`); the tab a close shows counts as used (`69206f36`). Ray's
+    `window(_:didRemove:)` calls `activateNeighbor`; `lastActive` (the ⌃Tab order) is already there to pick from.
+    Confirm against the owner's Arc first (Chrome goes to the opener or a neighbour).
+27. **Back on a tab a link opened closes it** (new, app-side, small, MISSING 64). Ardia 0.2.47-nightly.1 (PR #1401,
+    `47f41df9`, `state/tabs/navigation.ts`): Back with no history on a tab a link opened closes it and returns to
+    its opener; the swipe shows it too. Ray's back button is just disabled there. Check Arc before building.
+
+## v0.2.47-nightly.1 (2026-11-13), engine 1c2355ca → ee28c4b3
+
+Range `v0.2.46..v0.2.47-nightly.1`: 73 commits. Most of the diff (594 files, +74,746) is a new Android app
+(`d46f2bbc`, `docs/android.md`) and iPhone bottom-bar work; the Mac app and engine are +4,397/−1,113 in 181 files.
+
+**Engine:**
+- Chromium unchanged: 157.0.8103.50, no file under `engine/patches/` touched. Nothing security-related. Chrome
+  stable's 157.0.8103.78/.79 (83 security fixes, 5 Critical) is still missing from Ardia and Ray.
+- Engine diff is +183/−198 in 16 files, all for `ardia browse set viewport` (the CLI): windows can be marked
+  `automation` (`ArdiaCoreWindow.automation`; their tabs can't be adopted and skip tab restore, `ac_seams.mm`),
+  and `ac_cli_owned_tabs.cc` / `ac_cli_token_policy*.cc`. Ray has no CLI; nothing to take.
+- API change to note for item 1's `RayCore.h` diff: `noteInShownSlot` returns void now and `whenSizeRestored:` is
+  gone (`ac_host_visibility.mm` lost its size-restore wait). Ray's v0.2.42 engine has neither; nothing breaks.
+
+**App features Ray lacks:**
+- Closing a tab goes back to the tab used before it (item 26, MISSING 63).
+- Back on a link-opened tab closes it (item 27, MISSING 64).
+- ⌘T then Return goes back to the most recent tab, and ↓ ↑ over tab rows don't fill the field (PR #1355). Ray's bar
+  never offers the active tab and fills the field while arrowing, as Chrome does (the owner's `bar-arrow-fill`): no
+  change unless Arc's recording says otherwise.
+- "Put links from other apps first" (Settings › Tabs, PR #803): such links open just below the pinned tabs. Ray
+  opens them as Today tabs per `newTabNextToActive`; a possible setting once Little Arc (MISSING Arc 4) is decided.
+- Tidy leaves pins alone, the clean-up suggestion's Don't show again and Undo, Live folders hiding a pull request:
+  Ray has neither Tidy nor Live Folders (MISSING, Ardia settings 1). Little Ardia swipe-back and Esc: Little Arc
+  isn't built.
+- Android and iPhone apps: out of Ray's scope (Mac only).
+
+**Fixes to behaviour Ray shares:**
+- ⌘S hides the sidebar in its own window only (`0dc0bd59`, as Dia): Ray's `state.sidebarHidden` is already per
+  window. Nothing to do.
+- ⌘Y focuses History's search field: Ray's ⌘Y opens Chrome's history page, which focuses its own field.
+- Delete on an inline completion keeps the caret after what was typed (`c82c43d3`): check Ray's
+  `CommandBarView.complete` by hand (not tried).
+- Tabs a page opened without a click paint 200 ms sooner (`e84c779c`): Ardia's own link-tab wait, which Ray
+  doesn't have.
+- The back and forward buttons crossfade as history changes, a rename field lined up with its row: look only;
+  Ray's rename field already sits on the row's baseline.
+
+**Competitive notes:** Ardia's ⌃Tab now shows page pictures in a row with sleeping tabs left out (PR #1486): what
+Ray's `TabSwitcher` has done since 2026-11-04. Ardia ahead: close-goes-back, Back closing a link's tab, and now an
+Android app beside the iPhone one. Ray ahead: nothing new; the engine gap (item 1) is unchanged.
 
 ## v0.2.46 (2026-11-13), nightly.6 and .7, engine 054c7f68 → 1c2355ca
 

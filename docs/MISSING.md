@@ -430,6 +430,13 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     ephemeral `URLSession` (macOS's identity, no cookies). Ardia moved its fetch into Chromium (`7c854a06`,
     `ac_search_suggest.cc`) after Google showed some users its "unusual traffic" page, and stopped asking from
     private windows at all. Ray's way is more private; watch for the same reports before changing it.
+63. **Closing a tab shows its neighbour, not the tab used before it** (2026-11-14). `window(_:didRemove:)` calls
+    `activateNeighbor`; Ardia 0.2.47-nightly.1 (PR #416, "as in Arc") goes back to the most recently used tab and
+    never wakes a sleeping one while an awake one is left. Fix: pick by `lastActive` among live entries, the
+    neighbour only when none; confirm Arc's behaviour first.
+64. **Back does nothing on a tab a link opened** (2026-11-14). Ardia 0.2.47-nightly.1 (PR #1401): Back with no
+    history closes such a tab and returns to the tab that opened it. Ray would need to keep each tab's opener
+    (`openToday(_:after:)` has it) and enable Back for it; check Arc before building.
 
 ## Done
 
