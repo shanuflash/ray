@@ -4,7 +4,7 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.47-nightly.1 (engine-ee28c4b3a7d9), 2026-11-14
+Last reviewed: v0.2.47-nightly.4 (engine-3a64a10704ff), 2026-11-16
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac
 (`docs/CHROMIUM-WATCH.md`, 2026-11-05): 157.0.8103.39, 158 in early stable. Ardia moved to 156.0.8078.79 on Helium
@@ -12,7 +12,8 @@ Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.4
 engine-44666813bf29 (stable v0.2.45, engine-bc84a70be65a), then to 157.0.8103.50 on Helium 0.21.2 / helium-macos
 0.21.2.1 in engine-6fa48cb43cec (stable v0.2.46, engine-1c2355ca844e). Chrome stable is now 157.0.8103.78/.79
 (2026-11-11, 83 security fixes), which Ardia hasn't taken yet (engine-ee28c4b3a7d9, v0.2.47-nightly.1, is still
-157.0.8103.50). Chrome's own security releases are tracked in
+157.0.8103.50; so is the Mac engine of v0.2.47-nightly.4, engine-3a64a10704ff, 2026-11-15). Chrome's own security
+releases are tracked in
 `docs/CHROMIUM-WATCH.md`.
 
 ## Ray should
@@ -80,7 +81,9 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    fight Ray's own tab sleeping", so Memory Saver is off unless the user turns it on in chrome://settings/performance
    (which Ray's trim keeps). Ardia 0.2.43 (stable) ships Helium's way: on by default, Moderate / Balanced /
    Maximum, "Always keep these sites active", pinned and current tabs never sleep. Taking item 1 turns it on by
-   default; Settings should give it rows through `ac_memory_saver` (MISSING, Ardia settings 15).
+   default; Settings should give it rows through `ac_memory_saver` (MISSING, Ardia settings 15). Ardia
+   0.2.47-nightly.4 (`2d64f525`) adds a budget on top: past about one loaded tab per GB (Balanced, at least 10) the
+   tabs hidden longest sleep after an hour, since Chrome's own 2–6 h timer let almost none sleep.
 4. **Follow the Mac's language.** Ardia 0.2.43 confirms the fix: Chrome took its UI locale from the app bundle's
    localizations; with none declared every extension saw `en` (uBlock Origin's text was blank). Ray's Info.plist
    (`scripts/build-app.sh`) declares no `CFBundleLocalizations` either (not tried). App-side, no engine: declare
@@ -169,6 +172,68 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
 27. **Back on a tab a link opened closes it** (new, app-side, small, MISSING 64). Ardia 0.2.47-nightly.1 (PR #1401,
     `47f41df9`, `state/tabs/navigation.ts`): Back with no history on a tab a link opened closes it and returns to
     its opener; the swipe shows it too. Ray's back button is just disabled there. Check Arc before building.
+28. **Keep history past 90 days** (new, app-side, one argument, MISSING 66). Ardia `8e47868d`: Chromium expires
+    visits after 90 days, so an imported Arc history loses its old pages on the next expiry pass. Helium's
+    `keep-old-history` switch is in Ray's engine already; append `--keep-old-history` in `main.swift`. Do it before
+    the Arc shutdown wave of imports.
+29. **Pages blank under a same-size window** (new, app-side, one argument, MISSING 65; not reproduced in Ray). Ardia
+    `fcbf63f61`: Chrome's own occlusion guess pauses every page of a window that another browser window of the same
+    size covers, and nothing corrects it. Ardia passes bare `MacOcclusionForceShutoff`, which in Chromium 156's
+    `web_contents_occlusion_checker_mac.mm` is a no-op (`ShutoffType` defaults to `kNoShutoff`); Ray should pass
+    `MacOcclusionForceShutoff:ShutoffType/1` (macOS 26+) after reproducing it with two same-size windows.
+30. **The page keeps the keyboard after the command bar closes** (check, small). Ardia `82847d45` (#1894): after
+    the bar closed by a click elsewhere, or a tab switch with the bar open, Space and the arrows reached nothing.
+    Check both in Ray (`type`, `escape`, a click outside, then a key to the page through DevTools).
+
+## v0.2.47-nightly.2 to .4 (2026-11-14 to 11-15), engine ee28c4b3 → 3a64a107; Windows alpha
+
+Range `v0.2.47-nightly.1..v0.2.47-nightly.4`: 1,571 commits (584 engine files, +96,760), most of them Linux
+(nightly.3, x86-64, Wayland/X11, `.deb`/AppImage) and Windows (installers for x64 and Arm, `windows-alpha` release,
+its own `scripts/windows/engine/helium-pins.ini` on 157.0.8103.38). The nine `engine-*` tags of 2026-11-15 are Linux
+x64 prebuilts. nightly.3 was Linux and Windows only; nightly.4 is the Mac's first since nightly.2. Release notes now
+link github.com/ardia-browser/ardia (the repo moved; `mantrakp04/ardia` still resolves).
+
+**Engine:**
+- Mac Chromium unchanged: 157.0.8103.50, Helium 0.21.2 / helium-macos 0.21.2.1. Still without Chrome stable's
+  157.0.8103.78/.79 (83 security fixes, 5 Critical). Nothing security-related in the Mac engine this range.
+- `engine/patches/series` marks every Mac-only patch `mac` (and the ArdiaCore layer); `helium-linux` 0.21.2.1 is
+  pinned. No Mac patch added or dropped.
+- ArdiaCore: idle profiles can unload (`ardiacore_engine_idle_profiles.mm`, `sleepIdleProfile:hostedTabs:`,
+  `unloadIdleProfile:`), tabs get `sleepIfHiddenFor:` and `unloadKeepingHistory` (the Memory Saver budget,
+  `2d64f525`); `ac_main_delegate.cc` adds `keep-old-history` (item 28); Google Meet auto PiP on leaving its tab
+  (`ac_host_visibility.mm`, `6b1298ca`). For item 1's `RayCore.h` diff: those three API additions.
+- App-side launch flag: `MacOcclusionForceShutoff` (item 29; as passed, a no-op in Chromium's code we read).
+
+**App features Ray lacks:**
+- Air Traffic Control per profile (MISSING Arc 12), Interface Size, Minimalism mode, Reading mode, Hide Element,
+  autoplay and notification blocking everywhere, pop-ups as tabs, a chosen new-tab address (MISSING Ardia settings
+  17–19); custom uBlock filter lists (Ray has no content blocker: open decision); themes that restyle fonts and
+  layout; unloading idle profiles (Ray has one profile); FairPlay Spotify in Chromium (Ardia's way around its
+  WebKit fallback; Ray has neither, not tried how Spotify plays in Ray).
+- Peek kept across a tab switch, PiP ±10 s clicks, a loading pill, tabs-on-top polish, the `ardia` CLI: features
+  Ray hasn't built or left out.
+- The command bar runs Arc's menu commands (Inspect Elements, Task Manager, Manage Extensions): Ray's `BarActions`
+  has done this since the bar landed.
+
+**Fixes to behaviour Ray shares:**
+- Pages blank under a same-size window (item 29, MISSING 65); history past 90 days (item 28, MISSING 66); the page
+  losing the keyboard after the command bar (item 30).
+- Pages stay put while Chrome's screen-sharing bar slides (`c8e37b8b`): Ray hides Chrome's bar (`ChromeShareBar`)
+  for 4 s after a share starts; check the page doesn't move when it comes back. The sidebar marks the shared tab:
+  Ray's share marks do.
+- Downloads panel: a new download opens it, a click outside reaches the page. Ray's downloads are notes plus a
+  panel on request; nothing to take.
+- A `javascript:` bookmark runs in the page: Ray greys bookmarklets on purpose (`Bookmark.opens`, security rule).
+- A link no app opens no longer asks: Ray shows only a note already.
+- ⌥⌘I closes DevTools on a second press; ⌘W on an empty window closes without asking; shortcuts may use arrows,
+  Home/End and F-keys (Ray's Settings › Shortcuts takes F-keys; arrows not tried).
+- Small windows (500 pt wide, the sidebar narrows): Ray keeps 400 pt for the page and lowers the sidebar's maximum.
+
+**Competitive notes:** Ardia is now on Mac, Linux and Windows, with a Windows engine a Chromium step behind its
+Mac one. Ardia ahead: Air Traffic Control, reading mode, interface size, Memory Saver's budget, kept imported
+history. Ray ahead: an occlusion fix that would actually turn Chrome's guess off (if item 29 lands), bookmarklets
+refused rather than run, ⌃Tab pictures and the command bar's menu commands already shipped. The engine gap
+(item 1) is unchanged; neither browser has Chrome's 157.0.8103.79 fixes.
 
 ## v0.2.47-nightly.1 (2026-11-13), engine 1c2355ca → ee28c4b3
 

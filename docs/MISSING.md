@@ -44,7 +44,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 10. Arc's row-menu items that wait on other features: Add Split View (tabs) and Turn "<folder>" into Space (folders)
     once Split View and Spaces exist; Share Folder… as Arc's shared-folder link (Ray shares the folder's links).
 11. Boosts: per-site CSS/JS, zapping elements.
-12. Air Traffic Control: rules for which Space a link opens in (Cra's `LinkRouting`).
+12. Air Traffic Control: rules for which Space a link opens in (Cra's `LinkRouting`). Ardia 0.2.47-nightly.2 ships
+    it per profile (rules by app and by site or pattern, first match wins, Everything Else, a Try a Link tester).
 13. Capture (Arc's screenshot tool).
 14. Easels, Notes, Library.
 15. Sidebar on the right. Ardia shipped it in 0.2.44-nightly.4–6 (traffic lights ride the sidebar, the peek comes
@@ -124,6 +125,13 @@ items above. The revamp that gives these a home is PLAN.md section 13.
     chrome://settings/performance, and off by default (see Known limitations).
 16. Compact toolbar: the address bar above the page at 28 pt instead of 41, so a 16:9 video in web full screen
     fills a maximized window (Ardia 0.2.43-nightly.1).
+17. Reading mode (⌥⌘R, a button in the address field; five sizes, serif or sans; closing it keeps the scroll, no
+    reload) and Hide Element… (⇧⌘H: click an element to hide it on that site from then on, with a list to bring
+    them back). Ardia 0.2.47-nightly.4.
+18. Interface Size (80–150 % of the sidebar, toolbar, menus and Settings; pages unchanged) and a Minimalism mode
+    (⌃⌘M: a column of tabs and the page). Ardia 0.2.47-nightly.4.
+19. Block autoplay on every site and turn every notification request down without asking (Privacy), an Autoplay
+    row in Site controls; pop-ups opened as tabs; a chosen address for new tabs. Ardia 0.2.47-nightly.4.
 
 **Left out on purpose:** WebKit engine and website rules (decided no), setup codes, the `ardia` command-line tool,
 meeting groups (Arc has none; tab groups are Today folders now, owner 2026-10-31), video upscaling, crash reports and usage stats; a choice of when
@@ -437,6 +445,19 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 64. **Back does nothing on a tab a link opened** (2026-11-14). Ardia 0.2.47-nightly.1 (PR #1401): Back with no
     history closes such a tab and returns to the tab that opened it. Ray would need to keep each tab's opener
     (`openToday(_:after:)` has it) and enable Back for it; check Arc before building.
+65. **Pages may stay blank under a same-size window** (2026-11-16, not tried; from Ardia `fcbf63f61`, its #1930).
+    Chrome's `WebContentsOcclusionCheckerMac` guesses a window is covered when another browser window above contains
+    its frame and pauses its pages; with same-size windows the guess goes stale and the pages show only their
+    background colour. Ray passes `MacWebContentsOcclusion` off only in background test launches (`main.swift`).
+    Ardia's fix adds `MacOcclusionForceShutoff` to `--enable-features`, but in Chromium 156's source that feature's
+    `ShutoffType` param defaults to `kNoShutoff`, which keeps the guess on: Ray would need
+    `MacOcclusionForceShutoff:ShutoffType/1` (off on macOS 26+). App-side, one argument; reproduce first (two
+    windows of the same size, one over the other).
+66. **History older than 90 days is deleted, imported Arc history included** (2026-11-16, not tried; from Ardia
+    `8e47868d`, its #766). Chromium expires visits after 90 days; Helium's `keep-old-history` switch
+    (ungoogled's `add-flag-to-disable-local-history-expiration.patch`, in Ray's engine) stops it. Ardia passes it at
+    launch. Ray's import writes old Arc visits that the next expiry pass removes. App-side: append
+    `--keep-old-history` in `main.swift`; check that an imported visit older than 90 days survives a relaunch.
 
 ## Done
 
