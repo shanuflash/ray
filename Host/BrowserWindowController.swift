@@ -635,6 +635,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   /// For tests: draws the page toolbar into a PNG (light appearance), to look at its design.
+  /// For tests: whether `url` fits the page bar's address field without being cut short (nil: no page bar).
+  func toolbarAddressFits(_ url: String) -> Bool? {
+    toolbarShown ? toolbar.addressFits(url) : nil
+  }
+
   func snapshotToolbar(to path: String) -> Bool {
     let view = toolbar
     let old = view.appearance

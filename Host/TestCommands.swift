@@ -712,6 +712,10 @@ enum TestCommands {
       }
     case "sitesnap":
       if AppController.shared.current?.snapshotSiteControls(to: argument) != true { result = "no panel" }
+    case "toolbarfit":
+      // toolbarfit <url>: shows that address in the page bar's field; answers "fits" or "clipped".
+      guard let fits = AppController.shared.current?.toolbarAddressFits(argument) else { result = "no toolbar"; break }
+      result = fits ? "fits" : "clipped"
     case "toolbarsnap":
       if AppController.shared.current?.snapshotToolbar(to: argument) != true { result = "no toolbar" }
     case "sidebarsnap":

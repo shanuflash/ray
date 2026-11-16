@@ -104,6 +104,8 @@ final class PageToolbarView: NSView {
   }
 
   var addressText: String { address.text }
+  /// For tests: `ToolbarAddressView.fits`.
+  func addressFits(_ url: String) -> Bool { address.fits(url) }
   /// The back or forward button, for its history list.
   func historyButton(forward: Bool) -> HistoryButton { forward ? forwardButton : backButton }
   var showsFullAddress: Bool {
@@ -279,11 +281,26 @@ private final class ToolbarAddressView: NSView {
 
   override func mouseDown(with event: NSEvent) { onClick?() }
 
+  /// The label truncates its text (AppKit's own answer: a cell that fits has no expansion frame).
+  private var clipped: Bool {
+    guard let cell = label.cell, !elidesHost else { return false }
+    return !cell.expansionFrame(withFrame: label.bounds, in: label).isEmpty
+  }
+
+  /// For tests: whether `url` fits the field as it is now, shown and laid out.
+  func fits(_ url: String) -> Bool {
+    show(url: url, security: nil)
+    layoutSubtreeIfNeeded()
+    return !clipped
+  }
+
   var debug: [String: Any] {
     layoutSubtreeIfNeeded()
     return [
       "look": "\(look)", "icon": !securityIcon.isHidden, "textOffset": label.frame.midY - bounds.midY,
       "shown": label.attributedStringValue.string, "lead": parts.lead, "host": parts.host, "trail": parts.trail,
+      // The label cut short while the field had room for all of it.
+      "clipped": clipped,
       "elided": elidesHost ? "head" : "tail",
       "loading": wash.loading, "progress": wash.progress, "wash": wash.active, "washFinishing": wash.finishing,
       "washFraction": wash.fraction, "washColor": wash.lineColor, "washPictures": wash.picturesDrawn,
@@ -345,7 +362,9 @@ private final class ToolbarAddressView: NSView {
     // As wide as the text when it fits (the field is wider than that most of the time, and a label that changes
     // width is drawn again: on every frame of ⌘S, 70 samples in 750), else as wide as the field, which truncates it.
     let available = max(0, bounds.width - x - 8)
-    let width = natural.width > 0 ? min(available, ceil(natural.width)) : available
+    // Its own size leaves the medium host's last glyph a hair short, so AppKit cut the address ("beam.shanu.d…") in a
+    // field with room for it: 4 pt more, as the sidebar's labels have.
+    let width = natural.width > 0 ? min(available, ceil(natural.width) + 4) : available
     label.frame = NSRect(x: x, y: (mid - line / 2).rounded(), width: width, height: line)
     let elides = available > 0 && hostWidth > available
     if elides != elidesHost {

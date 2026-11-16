@@ -277,7 +277,7 @@ export const areas = {
   "Host/main.swift#Picture in picture": ["auto-picture-in-picture"],
   // When a page that was just shown has drawn (the tab switch holds the page left until then).
   "Host/PageFrameWatch.swift": pageSurface,
-  "Host/PageToolbar.swift": ["pending-security", "pending-address", "new-tab-sweep", "page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle", "sidebar-motion-cheap",
+  "Host/PageToolbar.swift": ["address-not-clipped", "pending-security", "pending-address", "new-tab-sweep", "page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle", "sidebar-motion-cheap",
     "top-strip-click", "settings-sidebar-button"],
   // Which loads the address field sweeps for.
   "Host/LoadSweep.swift": ["new-tab-sweep", "page-loading", "load-sweep-once", "settings-loading-progress", "page-toolbar", "back-forward-list"],

@@ -3530,6 +3530,49 @@ const checks = {
     }
     assert(!existsSync(join(home, "Library/Application Support/Ray")), "the test app made a profile in the home folder");
   },
+  async "address-not-clipped"() {
+    // The page bar's address was cut short ("beam.shanu.d…") in a field with plenty of room, mostly on new tabs.
+    // Sidebar shown and hidden (the owner's had it hidden: back and forward ride into the bar).
+    const port = new URL(origin).port;
+    const seen = [];
+    let samples = 0;
+    for (const hidden of [false, true]) {
+      if (state().sidebar.hidden !== hidden) {
+        await command("menu toggleSidebar");
+        await until("sidebar", async () => { await command("state"); return state().sidebar.hidden === hidden; });
+      }
+      for (let i = 0; i < 5; i++) {
+        await command("menu newTab");
+        await command(`type http://beam${i}.shanu-dev.ray.test:${port}/${i % 2 ? "a" : ""}`);
+        await command("enter");
+        const end = Date.now() + 2000;
+        while (Date.now() < end) {
+          await command("state");
+          const field = state().toolbar?.field;
+          if (field) samples++;
+          if (field?.clipped) seen.push(`${field.shown} (${hidden ? "hidden" : "shown"} ${i})`);
+          await sleep(50);
+        }
+      }
+    }
+    if (state().sidebar.hidden) {
+      await command("menu toggleSidebar");
+      await until("sidebar back", async () => { await command("state"); return !state().sidebar.hidden; });
+    }
+    assert(samples > 20, `the page bar wasn't there to look at (${samples} samples)`);
+    assert(seen.length === 0, `address cut short with room to spare: ${[...new Set(seen)].join(", ")}`);
+    // The owner's address and its like, straight into the field: AppKit's own truncation test, the medium host's
+    // last glyph included (the label's own size left it a hair short).
+    const cut = [];
+    for (const url of ["https://beam.shanu.dev/", "https://github.com/", "https://www.youtube.com/", "https://mail.google.com/",
+      "https://linear.app/", "https://chatgpt.com/", "https://news.ycombinator.com/", "https://shanu.dev/x/y?z=1",
+      "https://console.jumpcloud.com/", "https://surveysparrow.atlassian.net/browse/SSE-67063", "https://wiki.example.org/w/V"]) {
+      const answer = await commandResult(`toolbarfit ${url}`);
+      if (answer !== "fits") cut.push(`${url}: ${answer}`);
+    }
+    assert(cut.length === 0, `addresses cut short: ${cut.join(", ")}`);
+    await command("state");
+  },
   async "page-toolbar"() {
     // The address bar above the page shows host and path, and View › Show Address Bar on Page turns it off.
     const entryFor = (tabId) => ["favorites", "pinned", "today"].flatMap((k) => state().sidebar[k]).find((e) => e.tab === tabId);

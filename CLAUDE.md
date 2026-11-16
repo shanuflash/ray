@@ -800,7 +800,9 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   views in step otherwise); they take the settled size in the layout after, or in `show` before Chrome is told
   (state log `pages.hiddenResizes`, `hiddenPagesFit`). `LoadingWash` draws its bitmap only for a sweep that shows
   (`washPictures`), and the page address field's label is as wide as its text when that fits and its host width is
-  measured once per address, not per frame (CoreText was a quarter of a ⌘S frame). Check `sidebar-motion-cheap`;
+  measured once per address, not per frame (CoreText was a quarter of a ⌘S frame); 4 pt past its own size, which
+  left the medium host's last glyph short and cut it ("beam.shanu.d…"; test command `toolbarfit <url>`, state log
+  `toolbar.field.clipped`, check `address-not-clipped`). Check `sidebar-motion-cheap`;
   profile with `PERF_SAMPLE=<dir> scripts/locked perflab -- node tests/perf.mjs …` (`sample` over the measured loops).
 - Performance (PLAN.md: measured every release, never regressing silently): `tests/perf.mjs` (+ `tests/perf-rusage.py`:
   proc_pid_rusage CPU, wakeups, footprint per process; `ps -M` for the main thread) on hidden instances, scenarios
