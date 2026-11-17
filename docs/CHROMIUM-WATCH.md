@@ -7,7 +7,32 @@ touches engine files or builds. Moving the engine is the owner's call. Ardia's s
 Ray's engine: Chromium 156.0.8078.47 (`engine.lock`), Helium helium-chromium 0.20.1 / helium-macos 0.20.1.1
 (`engine/patches/build/helium-pins.ini`).
 
-Last checked: Chrome 158.0.8127.37 (Mac early stable), 157.0.8103.80 (Mac stable), 156.0.8078.100 (Mac extended), 2026-11-13
+Last checked: Chrome 158.0.8127.37 (Mac early stable), 157.0.8103.80 (Mac stable), 156.0.8078.100 (Mac extended), 2026-11-17
+
+## 2026-11-17
+
+**No new Chrome. Helium moved: helium-macos 0.21.3.1 (Chromium 157.0.8103.78, the 5 Critical / 78 High batch and
+the in-the-wild XML fix) is no longer a pre-release, it's "Latest". helium-chromium 0.22.0 (2026-11-16) is
+already on M158 (158.0.8127.36); its macOS build isn't out yet.**
+
+Chrome for Mac (chromiumdash): nothing new since 158.0.8127.37 (early stable), 157.0.8103.80 (stable) and
+156.0.8078.100 (extended). The blog still has no M158 security list (it comes with the full stable rollout). Dev
+moved to 160.0.8157.0.
+
+Helium:
+- helium-macos **0.21.3.1** (2026-11-13) is now marked Latest: the macOS build for helium-chromium 0.21.3
+  (157.0.8103.78).
+- helium-chromium **0.22.0** (2026-11-16, Latest): "update to chromium 158.0.8127.36", ungoogled-chromium 158,
+  patch refresh, exclude-flags for 158, uBlock 1.76.4, a spacious interface density option, simpler side panel
+  position settings. No helium-macos 0.22.0.x yet.
+
+How far behind: unchanged: one milestone (M156 .47 vs M157 .80), missing the in-the-wild XML fix (CVE-2026-125350),
+the 5 Critical / 78 High of 157.0.8103.78 and everything between. M158 is rolling out, so two milestones soon.
+
+What moving would take: two choices now. Helium 0.21.3 / 0.21.3.1 (157.0.8103.78) is ready on macOS and closes
+every fix listed so far: a new milestone for Ray, full rebuild. Or wait for helium-macos 0.22.0.x and go straight to
+M158 (two milestones, a bigger rebase, but no second jump soon after; M158's security fixes aren't published yet).
+Ardia's engine: see `docs/ARDIA-WATCH.md`. Not started: owner decides (engine rebuild on hold since 2026-11-05).
 
 ## 2026-11-13
 
