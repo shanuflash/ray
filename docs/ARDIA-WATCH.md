@@ -4,7 +4,7 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.47-nightly.4 (engine-3a64a10704ff), 2026-11-16
+Last reviewed: v0.2.47-nightly.5 (engine-8b7edf233fae), 2026-11-17
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac
 (`docs/CHROMIUM-WATCH.md`, 2026-11-05): 157.0.8103.39, 158 in early stable. Ardia moved to 156.0.8078.79 on Helium
@@ -12,7 +12,8 @@ Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.4
 engine-44666813bf29 (stable v0.2.45, engine-bc84a70be65a), then to 157.0.8103.50 on Helium 0.21.2 / helium-macos
 0.21.2.1 in engine-6fa48cb43cec (stable v0.2.46, engine-1c2355ca844e). Chrome stable is now 157.0.8103.78/.79
 (2026-11-11, 83 security fixes), which Ardia hasn't taken yet (engine-ee28c4b3a7d9, v0.2.47-nightly.1, is still
-157.0.8103.50; so is the Mac engine of v0.2.47-nightly.4, engine-3a64a10704ff, 2026-11-15). Chrome's own security
+157.0.8103.50; so are the Mac engines of v0.2.47-nightly.4, engine-3a64a10704ff, 2026-11-15, and of
+v0.2.47-nightly.5, engine-8b7edf233fae, 2026-11-16). Chrome's own security
 releases are tracked in
 `docs/CHROMIUM-WATCH.md`.
 
@@ -184,6 +185,51 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
 30. **The page keeps the keyboard after the command bar closes** (check, small). Ardia `82847d45` (#1894): after
     the bar closed by a click elsewhere, or a tab switch with the bar open, Space and the arrows reached nothing.
     Check both in Ray (`type`, `escape`, a click outside, then a key to the page through DevTools).
+31. **No upscaling in a tab being shared** (new, app-side, small, MISSING 67; not tried). Ardia `1befa3e8`: the
+    video upscaler stayed on in a tab the user was sharing, and Meet's presentation preview went black. Ray's engine
+    upscales by default and Ray never calls `RayCoreEngine.setVideoUpscaling`. App-side stopgap: turn upscaling off
+    while `ScreenShares` has a share (it's app-wide in Ray's API), on again when the last ends; the per-tab gate comes
+    with item 1's engine. Reproduce first: share a tab playing video in Meet, look at the preview.
+32. **Sidebar rows don't light up while a scroll carries them under the pointer** (check, small). Ardia `2251097f`:
+    the hover waits for the scroll to stop. Ray's rows use tracking areas, which fire as content scrolls under a
+    still pointer; flick the sidebar with many tabs and look.
+33. **The peek stays out in a full-screen window** (check, small). Ardia `d3665f9e` (#2141): its peek slid back in
+    a full-screen window. Try Ray's hidden sidebar at the edge in full screen (`peek-zones` covers only windowed).
+
+## v0.2.47-nightly.5 (2026-11-16), engine 3a64a107 → 8b7edf23
+
+Range `v0.2.47-nightly.4..v0.2.47-nightly.5`: 166 commits, most of them Windows (Memory Saver's `sleepIfHidden`,
+engine pins), iPhone search and the `ardia browse` agent CLI. The Mac engine diff is 13 files (+315).
+
+**Engine:**
+- Chromium unchanged: 157.0.8103.50, Helium 0.21.2 / helium-macos 0.21.2.1. Still without Chrome stable's
+  157.0.8103.78/.79 (83 security fixes, 5 Critical). Nothing security-related in the Mac engine.
+- Video upscaling is gated off in a tab capturing the screen (`ac_video_upscaling.mm`, `IsCapturingScreen` in
+  `ac_tab_bridge_media.mm`): item 31.
+- `chromium-windowless-page-screen-rects.patch` + `ac_windowless_page.mm`: a background tab never shown tells its
+  page the window it belongs to (`screenX`, `outerWidth`…) from its first script. For Ardia's agent driving hidden
+  tabs; Ray's pages are attached but hidden, so a never-shown tab reports a zero window too. Low value for Ray; take
+  it with item 1 if it comes along.
+
+**App features Ray lacks:**
+- FairPlay video (Netflix, Disney+, YouTube movies) in Chromium with the site's controls over a native video, PiP
+  with skip buttons: Ardia's own media path, not Chromium's; Ray has Widevine only (no WebKit, by rule). Not tried
+  how Netflix plays in Ray (Widevine on Mac caps at 720p/1080p in Chrome).
+- Sync of every open tab and group between Macs (MISSING Arc 16, Sync).
+- Air Traffic Control sending a link into a tab group (MISSING Arc 12).
+
+**Fixes to behaviour Ray shares:**
+- Upscaling in a shared tab (item 31, MISSING 67); hover while scrolling (item 32); full-screen peek (item 33).
+- A click on the sidebar or title bar that brings the app forward focuses that window: Ray's sidebar is in the
+  window's own view tree, so AppKit already does; no action.
+- Memory Saver no longer sleeps a loading tab: Ray has no Memory Saver of its own (item 3).
+- A tab without a favicon shows its globe centred: Ray's rows draw `RowSymbols` "globe" in the favicon's frame,
+  already centred.
+- Tabs-on-top scroll and edge fade: Ray has no tabs on top.
+
+**Competitive notes:** Ardia keeps pushing media (FairPlay in Chromium, 4K Netflix) and sync, both far from Ray's
+current scope. Ray stays ahead on its own screen-share picker and marks (Ardia only now fixes upscaling under a
+share). The engine gap (item 1) is unchanged; neither browser has Chrome's 157.0.8103.79 fixes.
 
 ## v0.2.47-nightly.2 to .4 (2026-11-14 to 11-15), engine ee28c4b3 → 3a64a107; Windows alpha
 

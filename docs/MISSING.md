@@ -458,6 +458,10 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     (ungoogled's `add-flag-to-disable-local-history-expiration.patch`, in Ray's engine) stops it. Ardia passes it at
     launch. Ray's import writes old Arc visits that the next expiry pass removes. App-side: append
     `--keep-old-history` in `main.swift`; check that an imported visit older than 90 days survives a relaunch.
+67. **Video upscaling stays on in a tab being shared** (2026-11-17, not tried; from Ardia `1befa3e8`). Ray's engine
+    upscales video by default and Ray never calls `RayCoreEngine.setVideoUpscaling`; in Ardia, upscaling in a shared
+    tab turned Meet's presentation preview black. App-side stopgap: upscaling off while `ScreenShares` has a share;
+    the per-tab gate comes with the next engine rebuild.
 
 ## Done
 
