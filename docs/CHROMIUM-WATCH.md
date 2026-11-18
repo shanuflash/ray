@@ -7,7 +7,40 @@ touches engine files or builds. Moving the engine is the owner's call. Ardia's s
 Ray's engine: Chromium 156.0.8078.47 (`engine.lock`), Helium helium-chromium 0.20.1 / helium-macos 0.20.1.1
 (`engine/patches/build/helium-pins.ini`).
 
-Last checked: Chrome 158.0.8127.37 (Mac early stable), 157.0.8103.80 (Mac stable), 156.0.8078.100 (Mac extended), 2026-11-17
+Last checked: Chrome 158.0.8127.37 (Mac stable, full rollout), 156.0.8078.109 (Mac extended), 2026-11-18
+
+## 2026-11-18
+
+**Chrome 158 is now full stable with 204 security fixes (6 Critical, 62 High; none exploited in the wild).
+Extended stable got 156.0.8078.108/.109, Ray's own milestone, with 79 fixes (3 Critical, 70 High). helium-macos
+0.22.0.1 (Chromium 158) is out as a pre-release.**
+
+Chrome for Mac:
+- **158.0.8127.36/.37**, stable (full rollout), 2026-11-17 ("Stable Channel Update for Desktop", M158). 204
+  security fixes: 6 Critical, 62 High, 82 Medium, 54 Low. No "exploit exists in the wild". Critical:
+  CVE-2026-130963 (use after free, WebView), CVE-2026-131031 (out-of-bounds write, GPU), CVE-2026-131060 (buffer
+  overflow, Media), CVE-2026-131008 (use after free, GarbageCollection), CVE-2026-131054 (out-of-bounds write,
+  ANGLE), CVE-2026-130975 (use after free, WebAudio). Among the High: ANGLE protection failure, use after free in
+  WebGL, Extensions, Autofill, Loader, Forms, Bindings.
+- **156.0.8078.108/.109**, extended stable, 2026-11-17: 79 security fixes (3 Critical: CVE-2026-118331,
+  CVE-2026-118344, CVE-2026-118348; 70 High; 5 Medium; 1 Low), no in-the-wild note. These look like M156 backports
+  of the M157 batch (same CVE ranges).
+
+Helium:
+- helium-macos **0.22.0.1** (2026-11-17): **pre-release**, the macOS build for helium-chromium 0.22.0 (Chromium
+  158.0.8127.36). 0.21.3.1 (157.0.8103.78) stays "Latest".
+- helium-chromium: nothing new since 0.22.0.
+
+How far behind: two milestones now (M156 .47 vs M158 .37 stable). Missing the in-the-wild XML fix
+(CVE-2026-125350), the 5 Critical / 78 High of 157.0.8103.78, M158's 6 Critical / 62 High, and the extended
+channel's 3 Critical / 70 High on Ray's own milestone.
+
+What moving would take: three options. (1) Same milestone: Chromium 156.0.8078.109 is a patch bump (smallest
+rebuild), but Helium makes no extended-stable releases, so the 0.20.1 patches would need to apply onto .109 by hand;
+it doesn't close the M157/M158-only fixes. (2) Helium 0.21.3.1 (M157, released, Latest on macOS): one milestone,
+full rebuild. (3) Wait a few days for helium-macos 0.22.0.x to leave pre-release and go straight to M158: two
+milestones, the biggest rebase, but current with stable. Ardia's engine: see `docs/ARDIA-WATCH.md`. Not started:
+owner decides (engine rebuild on hold since 2026-11-05).
 
 ## 2026-11-17
 
