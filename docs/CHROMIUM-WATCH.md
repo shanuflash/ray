@@ -7,7 +7,34 @@ touches engine files or builds. Moving the engine is the owner's call. Ardia's s
 Ray's engine: Chromium 156.0.8078.47 (`engine.lock`), Helium helium-chromium 0.20.1 / helium-macos 0.20.1.1
 (`engine/patches/build/helium-pins.ini`).
 
-Last checked: Chrome 158.0.8127.37 (Mac stable, full rollout), 156.0.8078.109 (Mac extended), 2026-11-18
+Last checked: Chrome 159.0.8154.13 (Mac early stable), 158.0.8127.37 (Mac stable), 156.0.8078.109 (Mac extended), 2026-11-19
+
+## 2026-11-19
+
+**Chrome 159 reached early stable (159.0.8154.13/.14, a small share of users; no security list yet, that comes with
+the full rollout). Helium is now ready for M158: helium-macos 0.22.1.1 (Chromium 158.0.8127.36) is "Latest", no
+longer a pre-release.**
+
+Chrome for Mac:
+- **159.0.8154.13/.14**, early stable, 2026-11-18 ("Early Stable Update for Desktop", Windows and Mac). No security
+  fixes listed; the M159 list arrives with the full stable promotion.
+- **157.0.8103.81**, on chromiumdash's Mac stable list 2026-11-18 with no blog post (a quiet M157 respin, nothing
+  security-listed).
+- Extended stable: nothing new since 156.0.8078.109.
+
+Helium:
+- helium-chromium **0.22.1** (2026-11-18, Latest): still Chromium 158.0.8127.36; "disable new google bloat added in
+  m158" plus a revision bump.
+- helium-macos **0.22.1.1** (2026-11-18, Latest): its macOS build. 0.22.0.1 stays a pre-release.
+
+How far behind: unchanged, two milestones (M156 .47 vs M158 .37 stable), with M159 a week or two from full stable.
+Still missing yesterday's list: M158's 6 Critical / 62 High, M157's 5 Critical / 78 High and the in-the-wild XML fix
+(CVE-2026-125350), and the extended channel's 3 Critical / 70 High on M156.
+
+What moving would take: the M158 option is now unblocked: Helium 0.22.1 / 0.22.1.1 is a released, de-Googled M158
+with M158's new Google features already switched off. Two milestones means a full rebase of `engine-ray/` and
+Ardia's hosting layer onto it (see `docs/ARDIA-WATCH.md` for whether Ardia has an M158 engine). Waiting for M159
+would add a third milestone. Not started: owner decides (engine rebuild on hold since 2026-11-05).
 
 ## 2026-11-18
 
