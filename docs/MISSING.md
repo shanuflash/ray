@@ -462,6 +462,16 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     upscales video by default and Ray never calls `RayCoreEngine.setVideoUpscaling`; in Ardia, upscaling in a shared
     tab turned Meet's presentation preview black. App-side stopgap: upscaling off while `ScreenShares` has a share;
     the per-tab gate comes with the next engine rebuild.
+68. **A window back from another Space may show a blank page for 2–3 s** (2026-11-19, not tried; from Ardia
+    `78e5e2f1`, its #662). An occluded window's page loses its compositor and stays blank until the renderer draws.
+    Fix: Ardia's `chromium-keep-compositor-on-occlusion.patch` (held up to 10 min, released under memory pressure)
+    at the next engine rebuild, or as an `engine-ray` fixup.
+69. **Google Endpoint Verification can't report the device** (2026-11-19, not tried; from Ardia `e8e242d8`, its
+    #1088). Helium builds answer `chrome.enterprise.reportingPrivate.getContextInfo()` with nothing, so Workspace sites
+    behind context-aware access stay blocked. Fix: Ardia's `chromium-enterprise-context-info.patch` (applies to
+    Ray's 156 tree) as an `engine-ray` fixup or at the next rebuild.
+70. **No pointer to the active tab when it's scrolled out of the sidebar** (2026-11-19; Dia's, Ardia 0.2.47-nightly.6).
+    A pill at the list's edge that glides there on click. App-side in `SidebarView`; not Arc's, owner's call.
 
 ## Done
 

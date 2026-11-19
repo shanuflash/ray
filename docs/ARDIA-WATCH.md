@@ -4,7 +4,7 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.47-nightly.5 (engine-8b7edf233fae), 2026-11-17
+Last reviewed: v0.2.47-nightly.7 (engine-d251ea57a48b), 2026-11-19
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac
 (`docs/CHROMIUM-WATCH.md`, 2026-11-05): 157.0.8103.39, 158 in early stable. Ardia moved to 156.0.8078.79 on Helium
@@ -13,7 +13,8 @@ engine-44666813bf29 (stable v0.2.45, engine-bc84a70be65a), then to 157.0.8103.50
 0.21.2.1 in engine-6fa48cb43cec (stable v0.2.46, engine-1c2355ca844e). Chrome stable is now 157.0.8103.78/.79
 (2026-11-11, 83 security fixes), which Ardia hasn't taken yet (engine-ee28c4b3a7d9, v0.2.47-nightly.1, is still
 157.0.8103.50; so are the Mac engines of v0.2.47-nightly.4, engine-3a64a10704ff, 2026-11-15, and of
-v0.2.47-nightly.5, engine-8b7edf233fae, 2026-11-16). Chrome's own security
+v0.2.47-nightly.5, engine-8b7edf233fae, 2026-11-16, and of v0.2.47-nightly.6/.7, engine-d251ea57a48b,
+2026-11-18). Chrome's own security
 releases are tracked in
 `docs/CHROMIUM-WATCH.md`.
 
@@ -43,6 +44,12 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
    `tab:shareFromContextMenu:`, `windowCanTakeTabs:`; `adoptTab:` now returns refused/adopted/busy (and
    `canAdoptTab:`); `ArdiaCoreEngine.pagesPickDisplayMedia` (on by default). Xcode 27.2 needs the Metal Toolchain
    once. One rebuild, the owner's call (on hold since 2026-11-05).
+   **On M157, also turn `SettingsGlowupJourneys` off** (Ardia `efee5ff2`, engine-d251ea57: in nightly.2–.5 picking
+   a search engine, changing a site permission or clearing browsing data in Chrome's settings pages quit the
+   browser). The feature isn't in Ray's 156 tree, so Ray is safe today, but Ray still uses Chrome's settings pages
+   (Clear browsing data, the per-category defaults): the rebuild must add it to `--disable-features` next to
+   item 1b's glic list, and `settings-trimmed` should click through those pages. engine-d251ea57 also brings the
+   occlusion hold (item 35), Endpoint Verification (item 34) and upscaling only of sources ≤ 720p.
 1a. **No page opens Chrome's screen-share picker without a click** (security, new, MISSING 41; not tried). Ardia
    `b18165de`/`38096782`: a page calling `getDisplayMedia` during load, or from a same-origin about:blank iframe,
    reached Chrome's own picker with no click; its live ScreenCaptureKit thumbnails set off a steady stream of
@@ -195,6 +202,74 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
     still pointer; flick the sidebar with many tabs and look.
 33. **The peek stays out in a full-screen window** (check, small). Ardia `d3665f9e` (#2141): its peek slid back in
     a full-screen window. Try Ray's hidden sidebar at the edge in full screen (`peek-zones` covers only windowed).
+34. **Google Endpoint Verification / context-aware access** (new, engine, one-patch fixup, MISSING 69; not tried).
+    Ardia `e8e242d8`, `chromium-enterprise-context-info.patch`: Helium builds without cloud content analysis, so
+    `chrome.enterprise.reportingPrivate.getContextInfo()` answered with nothing; Endpoint Verification threw and never
+    reported the device, so Google Workspace sites behind context-aware access stay blocked. The same `#if` is in
+    Ray's 156 tree (`enterprise_reporting_private_api.cc:580`): the patch applies as is, as an `engine-ray` fixup or
+    with item 1. Matters for work profiles switching from Chrome.
+35. **A window back from another Space shows a blank page for 2–3 s** (new, engine, MISSING 68; not reproduced in
+    Ray). Ardia `78e5e2f1`/`4ec58c53`, `chromium-keep-compositor-on-occlusion.patch`: an occluded window's page lost
+    its compositor (CLAUDE.md's gotcha: `BrowserCompositorMac` drops it on hide) and stayed blank until the renderer
+    drew; the patch holds it while occluded, for at most 10 min and never under memory pressure (10–30 MB a window).
+    Reproduce first: a page in Ray, switch Spaces, come back. If it bites, take the patch with item 1.
+36. **Arc import: Air Traffic Control rules, archived tabs, space icons; Dia's folders and profiles** (new, app-side,
+    `Importer/`). Ardia's import (`arcExtras.ts`, `diaSidebar.ts`, JS side) now brings these and lists each profile's
+    Web Store extensions on its last screen. Ray's importer is Ardia's Swift core (`Importer/`): compare what Ray's
+    Arc and Dia imports keep before the Arc shutdown wave; ATC rules need MISSING Arc 12 first, archived tabs Arc 5.
+37. **Selected tab scrolled out of the sidebar** (idea, app-side, small, MISSING 70). Ardia 0.2.47-nightly.6 (Dia's,
+    PR #2310): a pill at the list's edge points to the active tab; a click glides there. Not Arc's; owner's call.
+38. **Focus checks** (check, small). Ardia `348fa5a5`: a key window left with no first responder made ⌘A and the
+    arrows chime and the page deaf to hover until restart; and (`3b22ba99`) a pointer a video hid comes back over the
+    app's own UI. Try both in Ray: a command bar closed by a click outside, then ⌘A; a full-screen video's hidden
+    pointer moved onto the sidebar.
+
+## v0.2.47-nightly.7 (2026-11-19) and v0.2.47-nightly.6 (2026-11-18), engine 8b7edf23 → 8afacd4e (Linux) → d251ea57
+
+Range `v0.2.47-nightly.5..v0.2.47-nightly.7`: a big nightly (.6) and a fix-up (.7). Mostly Ardia's app: plugins,
+Settings cut to eight panes, imports, sync device removal, Linux packaging, iPhone. Mac engine: 2 new patches, the
+glic flag line, PiP close records, preload pages, the upscaler.
+
+**Engine:**
+- Chromium unchanged: 157.0.8103.50 (Helium 0.21.2). Still without Chrome stable's 157.0.8103.78/.79 (83 security
+  fixes, 5 Critical). No security fix in the Mac engine.
+- `SettingsGlowupJourneys` off: M157's Chrome settings pages crashed the browser (item 1 note; not in Ray's 156).
+- `chromium-enterprise-context-info.patch`: Endpoint Verification works again (item 34, applies to Ray's 156).
+- `chromium-keep-compositor-on-occlusion.patch`: an occluded window keeps its last frame for up to 10 min (item 35).
+- Video upscaler: only sources of 720p and below (`d9cd6dca`), plus a rare crash fix; Ray's engine upscales every
+  size by default (MISSING 60, 67).
+- `ArdiaCore.h`: `pictureInPictureCloses` (diagnostics), profile `preloadPages` (Chrome's preloading; Ray's preconnect
+  work is on hold), extension pins kept per profile across relaunch (`ac_extension_actions.cc`).
+- engine-8afacd4e is the Linux engine only.
+
+**App features Ray lacks:**
+- Plugins (`plugin.json`: settings, command bar commands, a page in a tab, a sandboxed helper; consent per manifest);
+  the `ardia` CLI is now one. No MISSING line: not a Ray goal before Arc's shutdown.
+- Sleep Tab / Sleep Tabs from a tab's or group's menu (item 3, Memory Saver undecided).
+- Selected-tab pill (item 37), Playing now across profiles, sync device removal (MISSING Arc 16), Little Ardia's
+  global ⌥⌘N (Arc's Little Arc, MISSING), sidebar peek over a full-screen video (item 33), double-click a split
+  divider (no splits in Ray), Help › Copy Last Freeze (a local hang record).
+- ⌃Tab now walks down the tabs as Chrome, the recent switcher needs a key: Ray already has both behind
+  `recentTabCycling`.
+- Import of Arc's ATC rules, archived tabs, space icons and Dia's folders (item 36).
+
+**Fixes to behaviour Ray shares:**
+- Settings crash on M157 (item 1); Endpoint Verification (34); blank page after a Space switch (35); focus (38).
+- A tab pressed in the sidebar shows its page before the UI catches up (5 ms idle): Ray's tab switch already shows the
+  page before any store update (CLAUDE.md rule); `switch-back-latency` measures it.
+- ⇧⌘C with several tabs copies every link, ⌘1–⌘9 count a collapsed group as one: Ray's ⇧⌘C does (`copyLinks`);
+  ⌘-digit with collapsed folders not checked.
+- The command bar offers Google Maps for "maps" and finds renamed tabs: Ray does both (`SearchEngines.offer`,
+  `tab-rename`).
+- ⌘Z in the command bar undoes typing: Ray's `UndoCloseTab` sends `undo:` on in text fields (check
+  `settings-undo-reopens`).
+- nightly.7 reverts nightly.6's press "squish" on rows and folders (it made folder icons bounce): Ray never had it.
+
+**Competitive notes:** Ardia moves toward a platform (plugins, CLI, agent browse, Linux, Windows, iPhone) and a
+smaller Settings (8 panes, rows only when relevant). Ray stays ahead on a native Settings window that also covers
+Chrome's (Privacy, Passwords, Autofill, Extensions), JumpCloud Go, and staying on Chromium only (Ardia's DRM path
+is WebKit, and it just dropped faking Safari in Chromium for licensing). Ray is behind on engine (156 vs 157) and on
+import depth for Arc's extras.
 
 ## v0.2.47-nightly.5 (2026-11-16), engine 3a64a107 → 8b7edf23
 
