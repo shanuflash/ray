@@ -472,6 +472,15 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     Ray's 156 tree) as an `engine-ray` fixup or at the next rebuild.
 70. **No pointer to the active tab when it's scrolled out of the sidebar** (2026-11-19; Dia's, Ardia 0.2.47-nightly.6).
     A pill at the list's edge that glides there on click. App-side in `SidebarView`; not Arc's, owner's call.
+71. **Google Meet may not show the presenter's own preview** (2026-11-20, not tried; from Ardia `18c69f8b`, its #2146).
+    Ray's screen-share picker answers `getDisplayMedia` through desktop getUserMedia, which never binds the page's
+    `CaptureController`; Meet's `getSupportedZoomLevels()` then throws "Not actively capturing", so the presenter's
+    preview and annotation bar never appear (others still see the share). Fix in `page_script.js`: remember the
+    track a controller got and answer `getSupportedZoomLevels()` as Chrome does (empty list for a tab,
+    NotSupportedError for a window or screen).
+72. **No developer bar on local sites** (2026-11-20; Arc's, Ardia `6e30c0d2`). Arc's striped bar on localhost pages
+    with the full address, Copy URL, Console and Inspect when the address lives in the sidebar; Ardia adds a per-site
+    switch in Site controls. Mock first; owner's call.
 
 ## Done
 

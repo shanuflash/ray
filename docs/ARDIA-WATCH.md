@@ -4,7 +4,7 @@ What Ardia (github.com/mantrakp04/ardia, Ray's upstream) ships after the source 
 (`engine.lock`'s `ardia_tag`), and what Ray should take, copy or answer. Newest release first. A daily task
 re-checks Ardia's releases against the line below: keep it accurate.
 
-Last reviewed: v0.2.47-nightly.7 (engine-d251ea57a48b), 2026-11-19
+Last reviewed: engine-4c7db3b6a6fb (main 038eb48f4, after v0.2.47-nightly.7), 2026-11-20
 
 Ray's engine: Ardia v0.2.42's `engine/` (tree `529394c5`), Chromium 156.0.8078.47. Chrome stable for Mac
 (`docs/CHROMIUM-WATCH.md`, 2026-11-05): 157.0.8103.39, 158 in early stable. Ardia moved to 156.0.8078.79 on Helium
@@ -14,7 +14,9 @@ engine-44666813bf29 (stable v0.2.45, engine-bc84a70be65a), then to 157.0.8103.50
 (2026-11-11, 83 security fixes), which Ardia hasn't taken yet (engine-ee28c4b3a7d9, v0.2.47-nightly.1, is still
 157.0.8103.50; so are the Mac engines of v0.2.47-nightly.4, engine-3a64a10704ff, 2026-11-15, and of
 v0.2.47-nightly.5, engine-8b7edf233fae, 2026-11-16, and of v0.2.47-nightly.6/.7, engine-d251ea57a48b,
-2026-11-18). Chrome's own security
+2026-11-18). Since 2026-11-19 Ardia's main is on Chromium 158.0.8127.36 / Helium 0.22.1 / helium-macos 0.22.1.1
+(engine-82944557afd4 and engine-4c7db3b6a6fb for Mac; no app release on it yet). Chrome stable for Mac is
+158.0.8127.37 (2026-11-19), 159 in early stable. Chrome's own security
 releases are tracked in
 `docs/CHROMIUM-WATCH.md`.
 
@@ -22,7 +24,18 @@ releases are tracked in
 
 In priority order. Nothing here is started; engine items cost one engine rebuild (the owner's call).
 
-1. **Rebuild the engine on M157 by taking Ardia's engine-1c2355ca844e** (v0.2.46 stable: Chromium 157.0.8103.50,
+1. **Rebuild the engine on M158 by taking Ardia's engine-4c7db3b6a6fb** (new 2026-11-20: Ardia's main, Chromium
+   158.0.8127.36 on Helium 0.22.1 / helium-macos 0.22.1.1, one patch level under Chrome stable's .37). That skips
+   M157 and brings M157's and M158's security fixes (M158: 6 Critical / 62 High) in one rebuild. On top of everything
+   below, M158 needs: **`chromium-safe-storage-one-key-for-every-data-dir.patch`** (Ray passes `--user-data-dir`
+   too, so without it Chrome 158 calls the "v10" key unavailable and every user's saved passwords and cookies stop
+   decrypting: must be in the rename map with "Ray Safe Storage"); the `apply.sh` H6 gate extended past
+   `InitMacCrashReporter` (`fce5be62`: every launch crashed in Crashpad); `TabBridge` asking for the live popup
+   blocker helper (a use-after-free on every window close); `WindowOpenDisposition` kCamelCase and Document PiP as
+   a `TYPE_FLOATING` browser (`9082e68c`); and Helium 0.22's new services held off (`web-push-off`,
+   `translate-providers-off`). Ardia's own acceptance on it: 181/193, the 12 misses the same as on 157. Wait for an
+   Ardia app release on it (or a few more days of nightlies) unless the owner wants it now. Older plan follows.
+   Was: **Rebuild the engine on M157 by taking Ardia's engine-1c2355ca844e** (v0.2.46 stable: Chromium 157.0.8103.50,
    Helium 0.21.2, helium-macos 0.21.2.1; all 354 Helium patches apply with no fuzz). Even .50 lacks Chrome
    157.0.8103.78/.79's 83 security fixes (5 Critical): take Helium's next tag if it lands first, or bump
    `helium-pins.ini` to .79 ourselves. v0.2.46 adds to the list below: extensions kept when the Safe Storage key
@@ -223,6 +236,44 @@ In priority order. Nothing here is started; engine items cost one engine rebuild
     arrows chime and the page deaf to hover until restart; and (`3b22ba99`) a pointer a video hid comes back over the
     app's own UI. Try both in Ray: a command bar closed by a click outside, then ⌘A; a full-screen video's hidden
     pointer moved onto the sidebar.
+
+## Engines 0a6f7a93 → 4c7db3b6 (2026-11-19, no app release): Chromium 158
+
+Range `v0.2.47-nightly.7..038eb48f4` (84 commits): six engine pre-releases. 0a6f7a93, 87371402 and 97c96733 are the
+`engine/helium-0.22.1` branch; 5c55cc85 a Mac-only build at `e32dc4d1`; 82944557 (main `6a164162`) and 4c7db3b6
+(main `038eb48f`) are main after the merge (`bddde2e6`). The rest is iPhone, Android, Linux and Ardia's app.
+
+**Engine:**
+- Chromium 157.0.8103.50 → **158.0.8127.36** (Helium 0.22.1, helium-macos 0.22.1.1). Chrome stable for Mac is
+  158.0.8127.37: Ardia now carries M157's 83 and M158's fixes (6 Critical / 62 High, `docs/CHROMIUM-WATCH.md`)
+  that Ray's 156 lacks. This is the security headline: Ray is now two milestones behind Ardia's engine.
+- New Mac patches: `chromium-safe-storage-one-key-for-every-data-dir.patch` (M158's
+  `KeychainKeyProviderUserDataDirProtection` would make every non-default data dir, which every Ardia and Ray profile
+  is, lose its passwords and cookies), `chromium-helium-web-push-off.patch` (Helium 0.22's autopush WebSocket to
+  push.helium.computer, behind its services consent, forced off) and `chromium-helium-translate-providers-off.patch`
+  (Helium 0.22's translation provider API, which would send page text to a provider, forced off). Fourteen patches
+  refreshed (`506392da`); keep-compositor uses `ReleaseMemoryDataAccess` (`f22559f4`).
+- Hosting fixes for 158: Crashpad init moved out of the gated `PreSandboxStartup` block (crash on every launch,
+  `fce5be62`); `PopupBlockerTabHelper` is a tab feature now, freed before the WebContents (crash on window close);
+  `WindowOpenDisposition` kCamelCase; `TYPE_PICTURE_IN_PICTURE` gone (Document PiP is a floating browser);
+  `FakeKeychainV2::AddGenericPasswordIfAbsent` takes its lock.
+- No `ArdiaCore.h` API change in this range.
+
+**App features Ray lacks:**
+- Developer Mode (`6e30c0d2`, `48c25eaf`): Arc's striped developer bar on local sites (full address in monospace,
+  Copy URL, Console, Inspect, Network), per-site switch in Site controls. New MISSING 72.
+- Peek's Genie open and close (Peek undecided), drag a tab to another profile (no profiles in Ray yet), splits by
+  drop (no splits), the Back tooltip "Close Tab and Go Back" (MISSING 64), Stage Manager click fix.
+
+**Fixes to behaviour Ray shares:**
+- Google Meet's presenter preview (`18c69f8b`): a picker that answers through desktop getUserMedia never binds the
+  page's `CaptureController`, so Meet's `getSupportedZoomLevels()` throws and the presenter's preview and annotation
+  bar never show. Ray's `page_script.js` answers the same way: likely the same bug. New MISSING 71.
+- The sidebar slides on ease-in-out over 200 ms (`1b95ea44`): Ray's is the 0.26 s spring, nothing to take.
+
+**Competitive notes:** Ardia did the M158 move in a day after Helium shipped it; Ray, on 156, is now furthest behind
+on security of the three (Chrome, Ardia, Ray). Ray stays ahead on its native Settings and JumpCloud Go; Ardia adds
+Arc's developer bar, which Ray lacks.
 
 ## v0.2.47-nightly.7 (2026-11-19) and v0.2.47-nightly.6 (2026-11-18), engine 8b7edf23 → 8afacd4e (Linux) → d251ea57
 
