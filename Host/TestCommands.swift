@@ -629,6 +629,12 @@ enum TestCommands {
         controller.scrollSidebarList(to: y)
       } else if parts == ["doubleclick"] {
         if !controller.doubleClickSidebarSpace() { result = "no sidebar" }
+      } else if parts == ["dragedge"] {
+        // `sidebarlist dragedge`: a drag from elsewhere reaching the hidden sidebar's edge.
+        controller.dragReachedEdge()
+      } else if parts.count == 3, parts[0] == "dragto", let x = Double(parts[1]), let y = Double(parts[2]) {
+        // `sidebarlist dragto <x> <y>`: the view AppKit gives a drag at that window point (top left).
+        result = controller.dragDestination(at: NSPoint(x: x, y: y))
       } else if parts.count >= 5, parts[0] == "drop", let x = Double(parts[1]), let y = Double(parts[2]) {
         // `sidebarlist drop <x> <y> link|text|file <value…>`: a drop from elsewhere at that window point (top left).
         let value = parts[4...].joined(separator: " ")
@@ -640,7 +646,7 @@ enum TestCommands {
         }
         if let item, controller.dropOnSidebar([item], at: NSPoint(x: x, y: y)) {} else { result = "nothing dropped" }
       } else {
-        result = "usage: sidebarlist scroll <y>|doubleclick|drop <x> <y> link|text|file <value>"
+        result = "usage: sidebarlist scroll <y>|doubleclick|dragedge|dragto <x> <y>|drop <x> <y> link|text|file <value>"
       }
     case "iconpicker":
       result = iconPicker(argument)

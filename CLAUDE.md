@@ -640,7 +640,9 @@ publicly or create accounts.
   Open as Tab (`adoptFromPopup`: a Today tab right after the opener, shown), the page a card 6 pt in with 9 pt
   corners. Its own `RayCoreWindow` adopts the tab on the next run-loop turn (Ardia's `ArdiaPopupWindow`); a page that
   closes itself takes the window; ⌘W (the page's key or the menu's, `PopupWindow.key`) closes it; tabs it opens go to
-  Ray's window (`popupAdoptions` binds them), pop-ups it opens get windows. Test command `popup opentab|close|snap
+  Ray's window (`popupAdoptions` binds them), pop-ups it opens get windows. It's a child window of the window that
+  opened it (`.fullScreenAuxiliary`): above it and on its Space, so a full-screen Ray keeps it there instead of macOS
+  sending it to the desktop's Space (state log `child`, `fullScreenAuxiliary`). Test command `popup opentab|close|snap
   <path>`; state log `popupWindows`; check `popup-window`.
 - Sidebar drops (`SidebarView` `// MARK: Drops from elsewhere`, `BrowserWindowController` `// MARK: Sidebar drops`):
   a link dragged from a page, a file from Finder or text from anywhere opens as a tab where it lands, with the gap a
@@ -648,6 +650,12 @@ publicly or create accounts.
   `document(fromOtherApp:)`, text through `url(for:)` but only to an http(s) page or a search, 20 items at most. ⌥-drag
   on a row leaves it and drops a copy with its history (`sidebar(_:duplicate:to:)`, Arc's). Test commands
   `sidebarlist drop <x> <y> link|text|file <value>`, `release x y opt`; state log `lastDrop`; check `sidebar-drops`.
+  Drag to peek (`// MARK: Drag to peek`, `SidebarView` `// MARK: Drop edge`): Ray gets no pointer moves during a drag,
+  so with the sidebar hidden `SidebarDropEdge` (the window's left 8 pt, a drop target, only while hidden and not
+  peeking) brings the sidebar out when such a drag reaches it; the peek stays while the drag is over the sidebar
+  (`hasExternalDrag`) and the pointer decides after. Test commands `sidebarlist dragedge`, `sidebarlist dragto <x>
+  <y>` (the view AppKit's `_hitTest:dragTypes:` gives a drag there, test builds only); state log `dragPeek`; check
+  `drag-to-peek`.
 - History (`main.swift` `// MARK: History`): `--keep-old-history` (Helium's switch, Ardia passes it): without it
   Chromium refuses visits older than 90 days at import (`IsExpiredVisitTime`) and deletes old ones 30 s after the
   history database opens, so imported Arc history lost everything past three months. Test builds drop it with

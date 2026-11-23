@@ -499,6 +499,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
+| Pop-up windows stay on a full-screen Ray's Space (a child window), and a drag that reaches the window's left edge brings a hidden sidebar out to take the drop | 2026-11-23, `fix: popup in full screen, drag to peek` |
 | A page's sized pop-up (Google, Apple, Microsoft sign-ins) opens in a small window of its own in Ray's look, with its address on top and Open as Tab, instead of as a Today tab | 2026-11-23, `feat: popup windows` |
 | Imported history older than 90 days arrives and stays (Chromium refused it at import and deleted old visits; `--keep-old-history`) | 2026-11-23, `feat: keep old history, sidebar drops` |
 | Links, files and text dropped on the sidebar open as tabs where they land (text as a search); ⌥-drag a tab to copy it | 2026-11-23, `feat: keep old history, sidebar drops` |

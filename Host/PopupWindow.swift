@@ -31,14 +31,18 @@ final class PopupWindow: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   private var adopted = false
   private var closeObserver: NSObjectProtocol?
   private var closed = false
+  /// The window whose page opened it. The pop-up is its child window: it stays above it and on its Space, so a
+  /// full-screen Ray keeps it on its own Space (a window of its own went to the desktop's).
+  private weak var parent: NSWindow?
 
   var window: NSWindow { coreWindow.window }
 
   /// A pop-up the page in `owner`'s window opened (the engine's `popup` disposition): its window, at the size and
   /// place the page asked for (kept on the opener's screen).
   @discardableResult
-  static func open(_ tab: RayCoreTab, from owner: BrowserWindowController, opener: SidebarEntry?) -> PopupWindow {
-    let popup = PopupWindow(tab: tab, owner: owner, openerID: opener?.id)
+  static func open(_ tab: RayCoreTab, from owner: BrowserWindowController, opener: SidebarEntry?,
+                   parent: NSWindow? = nil) -> PopupWindow {
+    let popup = PopupWindow(tab: tab, owner: owner, openerID: opener?.id, parent: parent ?? owner.window)
     all.append(popup)
     // Adopting the tab inside the engine's tab strip notification would trip its reentrancy check.
     DispatchQueue.main.async { popup.takeTab() }
@@ -48,7 +52,8 @@ final class PopupWindow: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   /// The pop-up window that's key, if one is (⌘W from the menu closes it, not a tab behind it).
   static var key: PopupWindow? { all.first { $0.window.isKeyWindow } }
 
-  private init(tab: RayCoreTab, owner: BrowserWindowController, openerID: UUID?) {
+  private init(tab: RayCoreTab, owner: BrowserWindowController, openerID: UUID?, parent: NSWindow) {
+    self.parent = parent
     self.tab = tab
     self.owner = owner
     self.openerID = openerID
@@ -67,6 +72,7 @@ final class PopupWindow: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     window.isRestorable = false
     window.tabbingMode = .disallowed
     window.animationBehavior = .documentWindow
+    window.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
     window.minSize = NSSize(width: Self.minimumSize.width + Self.inset * 2,
                             height: Self.minimumSize.height + Self.rowHeight + Self.inset)
     let isPrivate = tab.profile?.offTheRecord == true
@@ -102,7 +108,6 @@ final class PopupWindow: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   /// The page's x and y are screen points from the top left of the main screen, as `window.open` gives them; without
   /// them, centred over the opener's window and a little down. Always kept on the opener's screen.
   private func place(features: [String: NSNumber]) {
-    let parent = owner?.window
     let screen = parent?.screen ?? NSScreen.main
     let visible = screen?.visibleFrame ?? .zero
     var frame = window.frame
@@ -138,6 +143,7 @@ final class PopupWindow: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     card.addSubview(tab.view)
     layout()
     if launchedInBackground { coreWindow.showInactive() } else { window.makeKeyAndOrderFront(nil) }
+    if let parent, parent.isVisible, window.parent == nil { parent.addChildWindow(window, ordered: .above) }
     tab.focus()
     owner?.logState("popupWindow")
   }
@@ -196,6 +202,7 @@ final class PopupWindow: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
     closeObserver = nil
     if tab.delegate === self { tab.delegate = nil }
+    window.parent?.removeChildWindow(window)
     let me = self
     DispatchQueue.main.async {
       Self.all.removeAll { $0 === me }
@@ -208,7 +215,7 @@ final class PopupWindow: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   func window(_ window: RayCoreWindow, didInsert tab: RayCoreTab, opener: RayCoreTab?, disposition: String) {
     guard tab !== self.tab, let owner else { return }
     if disposition == "popup" {
-      PopupWindow.open(tab, from: owner, opener: nil)
+      PopupWindow.open(tab, from: owner, opener: nil, parent: self.window)
       return
     }
     // A tab the pop-up opens goes to Ray's window, after the tab that opened the pop-up.
@@ -269,7 +276,9 @@ final class PopupWindow: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   var debug: [String: Any] {
     ["url": tab.url, "address": address.text, "frame": NSStringFromRect(window.frame),
      "card": NSStringFromRect(card.frame), "page": NSStringFromRect(tab.view.frame), "adopted": adopted,
-     "pageInCard": tab.view.superview === card, "visible": window.isVisible, "title": window.title]
+     "pageInCard": tab.view.superview === card, "visible": window.isVisible, "title": window.title,
+     "child": window.parent != nil && window.parent === parent,
+     "fullScreenAuxiliary": window.collectionBehavior.contains(.fullScreenAuxiliary)]
   }
 }
 
