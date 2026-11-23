@@ -46,11 +46,12 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Closing a tab goes back to the tab you used before it, like Arc
   - The list scrolls to the tab you switch to
   - Double-click empty space for a new tab
+  - Drop a link, a file or text on it to open a tab there; ⌥-drag a tab to copy it
   - Clear Today (⇧⌘K) keeps the tab you're on; ⇧⌘T or ⌘Z brings the rest back
   - Today tabs archive after 12 hours
 - **Moving in**
   - Also from Dia, Chrome, Brave, Edge, Helium, Firefox, Zen and Safari
-  - Tabs, folders, history, bookmarks, passwords and cookies
+  - Tabs, folders, history (all of it, not just the last 90 days), bookmarks, passwords and cookies
   - Asks once to open links from other apps, then rarely
 - **Other**
   - Address bar above the page, like Dia

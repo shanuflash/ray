@@ -16,7 +16,7 @@ const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-
   "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions", "bar-search-google", "bar-actions",
   "bar-ranking", "bar-sites", "bar-arrow-fill", "tab-to-search", "bar-fills-rows", "bar-key-work", "settings-bar",
   "search-engine", "search-suggestions-off", "site-search", "bookmarks", "bar-address-return"];
-const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
+const drag = ["sidebar-drops", "drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];
 // Folders in Pinned and Today (Today's are Chrome tab groups), their icon and Change Icon.
 const folders = ["folders", "folders-relaunch", "multi-select", "folder-create", "folder-toggle", "folder-rename", "folder-animation",
@@ -116,6 +116,11 @@ export const areas = {
   // BrowserWindowController: by section. Lines outside them (properties, init) run everything.
   // A page in full screen: the window's chrome out of the way, Escape and a tab switch end it.
   "Host/BrowserWindowController.swift#Page full screen": ["page-fullscreen"],
+  // The launch's --keep-old-history (and the test switch that drops it).
+  "Host/main.swift#History": ["keep-old-history"],
+  // Links, files and text dropped on the sidebar, and ⌥-drag's copy.
+  "Host/SidebarView.swift#Drops from elsewhere": ["sidebar-drops"],
+  "Host/BrowserWindowController.swift#Sidebar drops": ["sidebar-drops", "row-menus"],
   // Back closing a tab a link opened; ⌘-click and a middle click on Back and Forward.
   "Host/BrowserWindowController.swift#Back and forward": ["back-closes-link-tab", "back-forward-list", "navigate", "reopen-closed-tab"],
   "Host/SidebarView.swift#Active tab in view": ["sidebar-follows-active", "tab-switcher", "bar-switch-to-tab"],

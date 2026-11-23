@@ -632,6 +632,16 @@ publicly or create accounts.
   it's out of it (Arc's; 0.22 s, none with Reduce Motion), and a double click on the list's empty space opens a new
   tab (Arc's). Test command `sidebarlist scroll <y>|doubleclick`; state log `sidebar.activeInView`,
   `sidebar.emptyDoubleClicks`; check `sidebar-follows-active`.
+- Sidebar drops (`SidebarView` `// MARK: Drops from elsewhere`, `BrowserWindowController` `// MARK: Sidebar drops`):
+  a link dragged from a page, a file from Finder or text from anywhere opens as a tab where it lands, with the gap a
+  dragged tab opens (a placeholder `SidebarDrag`); links only http(s) (`AddressInput.link(fromOtherApp:)`), files only
+  `document(fromOtherApp:)`, text through `url(for:)` but only to an http(s) page or a search, 20 items at most. ⌥-drag
+  on a row leaves it and drops a copy with its history (`sidebar(_:duplicate:to:)`, Arc's). Test commands
+  `sidebarlist drop <x> <y> link|text|file <value>`, `release x y opt`; state log `lastDrop`; check `sidebar-drops`.
+- History (`main.swift` `// MARK: History`): `--keep-old-history` (Helium's switch, Ardia passes it): without it
+  Chromium refuses visits older than 90 days at import (`IsExpiredVisitTime`) and deletes old ones 30 s after the
+  history database opens, so imported Arc history lost everything past three months. Test builds drop it with
+  `RAY_HISTORY_EXPIRES=1`; test command `importcheck oldvisit <url> <days>`; check `keep-old-history`.
 - `Bookmarks` (`Host/Bookmarks.swift`): Chrome's bookmark model, the normal profile's (private windows show the same):
   `Bookmarks.shared` reads the tree (`ac_bookmarks_tree`, roots "bar" and "other"), changes it with ops
   (`ac_bookmarks_apply`; add, update, move, remove; ids are lowercase UUIDs Ray makes) and reloads on

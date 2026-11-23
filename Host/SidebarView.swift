@@ -37,6 +37,10 @@ protocol SidebarViewDelegate: AnyObject {
   /// Several selected tabs: a menu action on all of them, or dragged together (`entries[0]` is the one held).
   func sidebar(_ sidebar: SidebarView, perform action: SidebarRowAction, onAll entries: [SidebarEntry])
   func sidebar(_ sidebar: SidebarView, move entries: [SidebarEntry], to target: SidebarDropTarget)
+  /// ⌥-drag: a copy of the tab goes there and the tab stays (Arc's).
+  func sidebar(_ sidebar: SidebarView, duplicate entry: SidebarEntry, to target: SidebarDropTarget)
+  /// Links, files or text dropped from a page, Finder or another app: tabs where they landed (Arc's).
+  func sidebar(_ sidebar: SidebarView, drop items: [SidebarDroppedItem], to target: SidebarDropTarget) -> Bool
   func sidebar(_ sidebar: SidebarView, rename entry: SidebarEntry, to title: String)
   /// A tab's own name, as typed in its row (empty: back to the page's title).
   func sidebar(_ sidebar: SidebarView, name entry: SidebarEntry, as name: String)
@@ -67,6 +71,14 @@ enum SidebarColors {
   static let lifted = NSColor.dynamic(light: NSColor(white: 1, alpha: 1), dark: NSColor(white: 0.2, alpha: 1))
   /// A private window's sidebar: near-black with a purple cast.
   static let privateBackground = NSColor(srgbRed: 0.105, green: 0.078, blue: 0.157, alpha: 1)
+}
+
+/// What a drop from elsewhere carries, as read from the pasteboard; the window controller checks each through
+/// `AddressInput` before anything opens.
+enum SidebarDroppedItem: Equatable {
+  case link(String)
+  case file(URL)
+  case text(String)
 }
 
 private final class SidebarDrag {
@@ -267,6 +279,7 @@ final class SidebarView: NSView {
     [windowLights, toggleButton, downloadsButton, bookmarksButton, backButton, forwardButton, reloadButton, addressPill, tilesView, scrollView]
       .forEach(addSubview)
     privateBadge.isHidden = true
+    registerForDraggedTypes(Self.droppedTypes)
     addSubview(privateBadge)
 
     addressPill.onClick = { [weak self] in
@@ -964,7 +977,7 @@ final class SidebarView: NSView {
       }
       if !drag.lifted, pendingClear === drag.entry { clearSelection() }
       pendingClear = nil
-      drop(drag)
+      drop(drag, copying: event.modifierFlags.contains(.option))
     default:
       break
     }
@@ -1172,7 +1185,7 @@ final class SidebarView: NSView {
     retarget(drag)
   }
 
-  private func drop(_ drag: SidebarDrag) {
+  private func drop(_ drag: SidebarDrag, copying: Bool = false) {
     self.drag = nil
     springOpen?.cancel()
     springOpen = nil
@@ -1193,7 +1206,9 @@ final class SidebarView: NSView {
     let together = selection.count > 1 && selection.contains { $0 === drag.entry }
       ? [drag.entry] + selection.filter { $0 !== drag.entry } : []
     if let target {
-      if together.isEmpty {
+      if copying, together.isEmpty, !drag.entry.isFolder {
+        delegate?.sidebar(self, duplicate: drag.entry, to: target)
+      } else if together.isEmpty {
         delegate?.sidebar(self, move: drag.entry, to: target)
       } else {
         clearSelection()
@@ -1203,6 +1218,81 @@ final class SidebarView: NSView {
     pendingShow?()
     needsLayout = true
     layoutSubtreeIfNeeded()
+  }
+
+  // MARK: Drops from elsewhere
+
+  /// A link dragged from a page, a file from Finder or text from anywhere: the same gap a dragged tab opens shows where
+  /// it lands, and it opens there as a tab (Arc's; text as a search). Never a tab of Ray's own: those drag by hand.
+  private let dropPlaceholder = SidebarEntry(kind: .today, url: "")
+  static let droppedTypes: [NSPasteboard.PasteboardType] = [.URL, .fileURL, .string]
+  /// At most this many items from one drop.
+  static let dropLimit = 20
+
+  override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { externalDragMoved(sender) }
+  override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { externalDragMoved(sender) }
+  override func draggingExited(_ sender: NSDraggingInfo?) { endExternalDrag() }
+  override func draggingEnded(_ sender: NSDraggingInfo) { endExternalDrag() }
+
+  override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+    let items = Self.droppedItems(sender.draggingPasteboard)
+    return dropItems(items, at: convert(sender.draggingLocation, from: nil))
+  }
+
+  private func externalDragMoved(_ sender: NSDraggingInfo) -> NSDragOperation {
+    guard !Self.droppedItems(sender.draggingPasteboard).isEmpty else { return [] }
+    return showExternalDrag(at: convert(sender.draggingLocation, from: nil)) ? .copy : []
+  }
+
+  /// Opens the gap at `point` for a drop from elsewhere; false where nothing can land.
+  @discardableResult
+  private func showExternalDrag(at point: NSPoint) -> Bool {
+    if drag == nil {
+      let external = SidebarDrag(entry: dropPlaceholder, view: self, press: point)
+      external.lifted = true
+      external.grab = NSPoint(x: 0, y: Self.rowHeight / 2)
+      drag = external
+    }
+    guard let drag, drag.entry === dropPlaceholder else { return false }
+    drag.pointer = point
+    retarget(drag)
+    return drag.target != nil
+  }
+
+  private func endExternalDrag() {
+    guard let drag, drag.entry === dropPlaceholder else { return }
+    self.drag = nil
+    springOpen?.cancel()
+    springOpen = nil
+    pendingShow?()
+    needsLayout = true
+  }
+
+  /// Opens what was dropped at `point` (the drop itself, and the test command's).
+  func dropItems(_ items: [SidebarDroppedItem], at point: NSPoint) -> Bool {
+    showExternalDrag(at: point)
+    let target = drag.flatMap { $0.entry === dropPlaceholder ? dropTarget(for: $0) : nil }
+    endExternalDrag()
+    guard let target, !items.isEmpty else { return false }
+    return delegate?.sidebar(self, drop: Array(items.prefix(Self.dropLimit)), to: target) ?? false
+  }
+
+  /// What a pasteboard holds that the sidebar takes: URLs (files apart), else lines of text.
+  static func droppedItems(_ pasteboard: NSPasteboard) -> [SidebarDroppedItem] {
+    let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] ?? []
+    if !urls.isEmpty {
+      return urls.prefix(dropLimit).map { $0.isFileURL ? .file($0) : .link($0.absoluteString) }
+    }
+    guard let text = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty,
+          text.count <= 8_192 else { return [] }
+    return [.text(text)]
+  }
+
+  /// For tests: a drop at a point in window coordinates with the top left as origin (`sidebarlist drop`).
+  func debugDrop(_ items: [SidebarDroppedItem], atWindowPoint point: NSPoint) -> Bool {
+    guard let height = window?.contentView?.bounds.height else { return false }
+    layoutSubtreeIfNeeded()
+    return dropItems(items, at: convert(NSPoint(x: point.x, y: height - point.y), from: nil))
   }
 
   private func isInside(_ entry: SidebarEntry, _ folder: SidebarEntry) -> Bool {

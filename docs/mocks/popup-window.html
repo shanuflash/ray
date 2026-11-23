@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Pop-up Window</title>
+<style>
+:root {
+  --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --hair: rgba(0,0,0,.08);
+  --side: #E8E5EF; --sideInk: #3A3A3F; --page: #FFFFFF; --line: #EDEDF0; --chip: #FFFFFF;
+  --frame: #ECEBEE; --strip: #F4F3F6; --field: rgba(0,0,0,.05);
+  --accent: #8257E5; --onAccent: #fff; --google: #1A73E8;
+}
+:root[data-theme="dark"] {
+  --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09);
+  --side: #1D1B22; --sideInk: #D8D6DE; --page: #242428; --line: #2F2F34; --chip: #28282D;
+  --frame: #232227; --strip: #2A292E; --field: rgba(255,255,255,.07);
+  --accent: #A486F0; --onAccent: #000; --google: #8AB4F8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09);
+    --side: #1D1B22; --sideInk: #D8D6DE; --page: #242428; --line: #2F2F34; --chip: #28282D;
+    --frame: #232227; --strip: #2A292E; --field: rgba(255,255,255,.07);
+    --accent: #A486F0; --onAccent: #000; --google: #8AB4F8;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px 64px; }
+h1 { font-size: 22px; font-weight: 600; margin: 26px 0 4px; letter-spacing: -.01em; }
+.sub { color: var(--ink2); margin: 0 0 14px; max-width: 760px; }
+h3 { font-size: 13px; font-weight: 600; margin: 28px 0 4px; }
+.note { color: var(--ink2); margin: 0 0 10px; max-width: 760px; }
+.bar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--desk) 86%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 10px 0; border-bottom: 1px solid var(--hair); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.lab { color: var(--ink2); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; min-width: 58px; }
+button.t { font: inherit; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--chip); border: 1px solid var(--hair); border-radius: 7px; padding: 4px 9px; cursor: pointer; }
+button.t[aria-pressed="true"] { background: var(--accent); color: var(--onAccent); border-color: transparent; }
+.rec { display: inline-block; font-size: 10px; font-weight: 700; color: var(--onAccent); background: var(--accent); border-radius: 4px; padding: 1px 5px; margin-left: 4px; vertical-align: 1px; }
+
+/* The Ray window behind */
+.scene { position: relative; height: 560px; margin-top: 10px; }
+.win { position: absolute; inset: 0 90px 40px 0; border-radius: 12px; background: var(--side); overflow: hidden;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.2), 0 20px 50px -12px rgba(0,0,0,.28); display: flex; filter: saturate(.9); }
+.side { width: 200px; flex: none; padding: 12px 10px; color: var(--sideInk); }
+.lights { display: flex; gap: 8px; margin: 3px 0 16px 5px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; } .lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+.dim .lights i { background: color-mix(in srgb, var(--ink) 22%, transparent); }
+.tab { height: 32px; border-radius: 8px; margin-bottom: 2px; display: flex; align-items: center; gap: 9px; padding: 0 9px; font-size: 12.5px; white-space: nowrap; }
+.tab.on { background: var(--page); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.tab b { width: 16px; height: 16px; border-radius: 4px; background: var(--c); flex: none; }
+.main { flex: 1; display: flex; flex-direction: column; }
+.toolbar { height: 41px; display: flex; align-items: center; padding: 0 14px; color: var(--ink2); }
+.toolbar b { color: var(--ink); font-weight: 500; }
+.page { flex: 1; margin: 0 8px 8px 0; border-radius: 10px; background: var(--page); box-shadow: 0 0 0 .5px rgba(0,0,0,.08); padding: 40px 48px; }
+.page .h { width: 220px; height: 18px; border-radius: 5px; background: var(--line); margin-bottom: 14px; }
+.page .l { height: 10px; border-radius: 4px; background: var(--line); margin-bottom: 9px; }
+.page .btn { display: inline-block; margin-top: 18px; padding: 8px 14px; border-radius: 8px; background: var(--ink); color: var(--page); font-weight: 600; font-size: 12px; }
+
+/* The pop-up */
+.pop { position: absolute; right: 0; top: 46px; width: 400px; height: 500px; border-radius: 11px; overflow: hidden; display: flex; flex-direction: column;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.25), 0 24px 60px -10px rgba(0,0,0,.4); background: var(--frame); }
+.signin { flex: 1; background: var(--page); padding: 34px 36px; }
+.signin .g { font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin-bottom: 6px; }
+.signin .g span:nth-child(1) { color: #4285F4; } .signin .g span:nth-child(2) { color: #EA4335; } .signin .g span:nth-child(3) { color: #FBBC05; }
+.signin .g span:nth-child(4) { color: #4285F4; } .signin .g span:nth-child(5) { color: #34A853; } .signin .g span:nth-child(6) { color: #EA4335; }
+.signin h2 { font-size: 20px; font-weight: 500; margin: 14px 0 4px; }
+.signin p { color: var(--ink2); margin: 0 0 22px; }
+.signin .in { height: 44px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent); padding: 12px; color: var(--ink2); }
+.signin .next { float: right; margin-top: 26px; padding: 8px 20px; border-radius: 18px; background: var(--google); color: #fff; font-weight: 600; }
+.lock { width: 11px; height: 11px; flex: none; color: var(--ink2); }
+.host { font-weight: 500; color: var(--ink); }
+.path { color: var(--ink2); }
+.addr { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; font-size: 12.5px; }
+.addr .path { overflow: hidden; text-overflow: ellipsis; }
+.iconbtn { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: var(--ink2); flex: none; }
+.iconbtn:hover { background: var(--field); }
+.iconbtn svg { width: 14px; height: 14px; }
+
+/* A: macOS's own title bar (the page's title) and a read-only address strip under it, Chrome's and Ardia's */
+.a .title { height: 28px; display: flex; align-items: center; padding: 0 10px; position: relative; }
+.a .title .lights { margin: 0; gap: 8px; }
+.a .title .name { position: absolute; left: 0; right: 0; text-align: center; font-size: 12.5px; font-weight: 600; color: var(--ink); pointer-events: none; }
+.a .strip { height: 28px; display: flex; align-items: center; padding: 0 12px; background: var(--strip); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+/* B: one 38 pt row, Ray's own: lights, the address, Open as Tab; the page a card inside the frame as in Ray's window */
+.b { background: var(--side); }
+.b .top { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 12px; }
+.b .top .lights { margin: 0; flex: none; }
+.b .top .addr { flex: 1; justify-content: center; }
+.b .signin { margin: 0 6px 6px; border-radius: 9px; box-shadow: 0 0 0 .5px rgba(0,0,0,.08); }
+/* C: the address takes the title's place in macOS's title bar; nothing else */
+.c .title { height: 30px; display: flex; align-items: center; padding: 0 10px; position: relative; border-bottom: 1px solid var(--hair); }
+.c .title .lights { margin: 0; }
+.c .title .addr { position: absolute; left: 70px; right: 70px; justify-content: center; }
+</style>
+</head>
+<body>
+<div class="bar"><div class="wrap">
+  <div class="row"><span class="lab">Theme</span>
+    <button class="t" data-theme-set="light" aria-pressed="true">Light</button>
+    <button class="t" data-theme-set="dark" aria-pressed="false">Dark</button>
+  </div>
+</div></div>
+<div class="wrap">
+  <h1>Pop-up window</h1>
+  <p class="sub">A page's sized pop-up (<code>window.open</code> with a width and height: Google, Apple and Microsoft sign-ins, payment
+    checks, "Connect to Slack") opens in its own small window at the size the page asked, over Ray's window, as Arc,
+    Chrome and Ardia do. Today Ray makes it a Today tab. Every option shows the pop-up's full origin (a pop-up can be
+    any site), never page text where the address goes, and closes when the page closes itself after the sign-in.
+    ⌘W closes it; it has no sidebar, tabs or command bar. Links it opens in a new tab go to Ray's window.</p>
+
+  <h3>A · Title bar and an address strip <span class="rec">Chrome / Ardia</span></h3>
+  <p class="note">macOS's title bar with the page's title, then a read-only 28 pt strip: lock, host, path in grey. The
+    most familiar; two rows of chrome.</p>
+  <div class="scene"><div class="win dim" data-window></div>
+    <div class="pop a">
+      <div class="title"><div class="lights"><i></i><i></i><i></i></div><div class="name">Sign in – Google Accounts</div></div>
+      <div class="strip"><div class="addr" data-addr></div></div>
+      <div class="signin" data-signin></div>
+    </div>
+  </div>
+
+  <h3>B · One row in Ray's colour, page as a card <span class="rec">Ray's look</span></h3>
+  <p class="note">Ray's sidebar colour framing the page card, as Ray's own window does: the traffic lights, the address
+    centred, and an "Open as Tab" button (moves the page into a Today tab in Ray's window). One row of chrome; looks
+    like part of Ray rather than a stray window.</p>
+  <div class="scene"><div class="win dim" data-window></div>
+    <div class="pop b">
+      <div class="top"><div class="lights"><i></i><i></i><i></i></div><div class="addr" data-addr></div>
+        <div class="iconbtn" title="Open as Tab"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M6 8h4M8 6v4"/></svg></div>
+      </div>
+      <div class="signin" data-signin></div>
+    </div>
+  </div>
+
+  <h3>C · The address in the title bar</h3>
+  <p class="note">macOS's title bar alone, its title replaced by the address (lock, host, path). The least chrome;
+    no way to move it into a tab (drag-free).</p>
+  <div class="scene"><div class="win dim" data-window></div>
+    <div class="pop c">
+      <div class="title"><div class="lights"><i></i><i></i><i></i></div><div class="addr" data-addr></div></div>
+      <div class="signin" data-signin></div>
+    </div>
+  </div>
+</div>
+<script>
+const lockSVG = '<svg class="lock" viewBox="0 0 12 12" fill="currentColor"><path d="M3.5 5V3.8a2.5 2.5 0 0 1 5 0V5h.5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h.5Zm1 0h3V3.8a1.5 1.5 0 0 0-3 0V5Z"/></svg>';
+document.querySelectorAll("[data-addr]").forEach((el) => {
+  el.innerHTML = lockSVG + '<span class="host">accounts.google.com</span><span class="path">/o/oauth2/v2/auth?client_id=…</span>';
+});
+document.querySelectorAll("[data-signin]").forEach((el) => {
+  el.innerHTML = '<div class="g"><span>G</span><span>o</span><span>o</span><span>g</span><span>l</span><span>e</span></div>' +
+    '<h2>Sign in</h2><p>to continue to Linear</p><div class="in">Email or phone</div><div class="next">Next</div>';
+});
+document.querySelectorAll("[data-window]").forEach((el) => {
+  el.innerHTML = '<div class="side"><div class="lights"><i></i><i></i><i></i></div>' +
+    [["#5E6AD2", "Linear", 1], ["#E01E5A", "Slack"], ["#0A66C2", "Inbox"], ["#24292F", "Pull requests"]]
+      .map(([c, n, on]) => `<div class="tab${on ? " on" : ""}" style="--c:${c}"><b></b>${n}</div>`).join("") +
+    '</div><div class="main"><div class="toolbar"><b>linear.app</b>&nbsp;/login</div>' +
+    '<div class="page"><div class="h"></div><div class="l" style="width:70%"></div><div class="l" style="width:55%"></div>' +
+    '<div class="btn">Continue with Google</div></div></div>';
+});
+const setTheme = (theme) => {
+  document.documentElement.dataset.theme = theme;
+  document.querySelectorAll("[data-theme-set]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeSet === theme)));
+};
+document.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => setTheme(b.dataset.themeSet)));
+setTheme(matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+</script>
+</body>
+</html>

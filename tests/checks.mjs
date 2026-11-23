@@ -1338,6 +1338,42 @@ const checks = {
     const moved = frameOf(first.id), was = frameOf(state().sidebar.today[1].id);
     assert(moved.y > was.y, `dropped row at ${moved.y}, above its neighbour at ${was.y}`);
   },
+  async "sidebar-drops"() {
+    // Arc's: a link, text or a file dropped on the sidebar opens as a tab where it lands (text as a search); never
+    // javascript: or file: text. ⌥-drag leaves the tab and drops a copy.
+    await todayTabs(3);
+    const today = () => state().sidebar.today.filter((e) => e.kind !== "folder");
+    const between = () => { const second = frameOf(today()[1].id); return [second.cx, second.y]; };
+    let [x, y] = between();
+    let before = today().length;
+    assert((await commandResult(`sidebarlist drop ${x} ${y} link ${origin}/b?dropped`)) === "ok", "the link drop was refused");
+    await until("link tab at the drop", async () => { await command("state"); return today().length === before + 1 && today()[1]?.url.endsWith("/b?dropped") && state().activeEntry === today()[1].id; });
+    [x, y] = between();
+    before = today().length;
+    assert((await commandResult(`sidebarlist drop ${x} ${y} text ray drop words`)) === "ok", "the text drop was refused");
+    await until("search tab", async () => { await command("state"); return today().length === before + 1 && /\/search\?q=ray(\+|%20)drop/.test(activeTabState()?.url ?? ""); });
+    for (const [kind, value] of [["link", "javascript:alert(1)"], ["text", "javascript:alert(1)"], ["text", "file:///etc/hosts"], ["file", "/etc/hosts"]]) {
+      [x, y] = between();
+      assert((await commandResult(`sidebarlist drop ${x} ${y} ${kind} ${value}`)) === "nothing dropped", `${kind} ${value} was taken`);
+    }
+    // ⌥-drag the first row below the third: it stays, a copy lands there.
+    await settle();
+    before = today().length;
+    const first = today()[0];
+    const a = frameOf(first.id);
+    await command(`press ${a.cx} ${a.cy}`);
+    await command(`move ${a.cx} ${a.cy + 10}`);
+    await settle();
+    const c = frameOf(today()[2].id);
+    await command(`move ${a.cx} ${c.cy + 4}`);
+    await command(`release ${a.cx} ${c.cy + 4} opt`);
+    await until("copied, the tab stays", async () => {
+      await command("state");
+      return today().length === before + 1 && today()[0].id === first.id && today().slice(1).some((e) => e.id !== first.id && e.url === first.url);
+    });
+    for (const t of (await targets()).filter((t) => t.url.includes("?dropped") || t.url.includes("/search?q=ray"))) await send("Target.closeTarget", { targetId: t.targetId });
+    await settle();
+  },
   async "drag-to-pin"() {
     await todayTabs(2);
     const entry = state().sidebar.today[0];
@@ -3334,6 +3370,30 @@ const checks = {
     } finally {
       for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
       for (const it of running) rmSync(it.dir, { recursive: true, force: true });
+    }
+  },
+  async "keep-old-history"() {
+    // History older than 90 days imports and stays (--keep-old-history, Ardia's). Without it Chromium refuses such a
+    // visit at import (`IsExpiredVisitTime`) and its expiry pass, 30 s after the history database opens, deletes the
+    // rest: a second instance that drops the switch shows the first.
+    const kept = ownInstance("keep-history", {});
+    const expiring = ownInstance("expire-history", { RAY_HISTORY_EXPIRES: "1" });
+    const url = "https://old-visit.example/";
+    const has = async (it) => JSON.parse(await it.cmd(`importcheck history ${url}`)).has;
+    try {
+      for (const it of [kept, expiring]) {
+        await until("instance up", async () => (await it.cmd("state").catch(() => null)) === "ok", 30000, 500);
+        const added = JSON.parse(await it.cmd(`importcheck oldvisit ${url} 200`));
+        assert(!added?.error, `import: ${JSON.stringify(added)}`);
+      }
+      await until("old visit imported", () => has(kept), 10000, 500);
+      assert(!(await has(expiring)), "Chromium took a 200-day-old visit without the switch: the check can't tell");
+      // Past the first expiry pass.
+      await sleep(40000);
+      assert(await has(kept), "the old visit was deleted with --keep-old-history");
+    } finally {
+      await kept.stop().catch(() => {});
+      await expiring.stop().catch(() => {});
     }
   },
   async "import-browser"() {

@@ -2168,9 +2168,13 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   /// Duplicate: a copy right after it in the same place. A live tab's copy is the engine's duplicate (its history
   /// too, as Chrome's Duplicate) and becomes the active tab; an unloaded one's opens on its page when clicked.
-  func duplicate(_ entry: SidebarEntry, select: Bool = true) {
-    guard state.entry(id: entry.id) === entry else { return }
-    if entry.isFolder { return duplicateFolder(entry) }
+  @discardableResult
+  func duplicate(_ entry: SidebarEntry, select: Bool = true) -> SidebarEntry? {
+    guard state.entry(id: entry.id) === entry else { return nil }
+    if entry.isFolder {
+      duplicateFolder(entry)
+      return nil
+    }
     let copy = entry.duplicate()
     switch entry.kind {
     case .favorite:
@@ -2189,6 +2193,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       if select { self.select(copy) }
     }
     changed("duplicate")
+    return copy
   }
 
   /// A folder's copy, right after it: the same name, look and tabs (unloaded), nested folders too.
@@ -3111,6 +3116,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// For tests: the sidebar's list scrolled (`sidebarlist`), and a double click on its empty space.
   func scrollSidebarList(to y: Double) { sidebar.debugScroll(to: CGFloat(y)) }
   func doubleClickSidebarSpace() -> Bool { sidebar.debugDoubleClickEmpty() }
+  func dropOnSidebar(_ items: [SidebarDroppedItem], at point: NSPoint) -> Bool { sidebar.debugDrop(items, atWindowPoint: point) }
 
   // MARK: SidebarViewDelegate
 
@@ -3123,6 +3129,68 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func sidebar(_ sidebar: SidebarView, move entry: SidebarEntry, to target: SidebarDropTarget) {
     move(entry, to: target)
   }
+
+  // MARK: Sidebar drops
+
+  /// ⌥-drag (Arc's): a copy, with the tab's history, goes where the tab was dropped; the tab stays where it was. The
+  /// target was measured without the dragged tab in its list, so a place below it in the same list moves one on.
+  func sidebar(_ sidebar: SidebarView, duplicate entry: SidebarEntry, to target: SidebarDropTarget) {
+    func after(_ list: [SidebarEntry], _ index: Int) -> Int {
+      (list.firstIndex { $0 === entry }).map { $0 < index ? index + 1 : index } ?? index
+    }
+    var adjusted = target
+    switch target {
+    case .today(let index, let parent): adjusted = .today(after(state.today, index), parent: parent)
+    case .pinned(let index, let parent): adjusted = .pinned(after(state.pinned, index), parent: parent)
+    case .favorites(let index): adjusted = .favorites(after(state.favorites, index))
+    case .folder: break
+    }
+    sidebar.animateNextChange()
+    guard let copy = duplicate(entry, select: false) else { return }
+    move(copy, to: adjusted)
+    logState("dropCopy")
+  }
+
+  /// Links, files and text dropped on the sidebar (Arc's): each a tab where it landed, the first one shown. Links
+  /// only http(s) (`AddressInput.link(fromOtherApp:)`), files only the documents Ray opens from Finder, text as
+  /// typed in the command bar but only an http(s) page or a search: never `javascript:`, `data:` or `file:`.
+  func sidebar(_ sidebar: SidebarView, drop items: [SidebarDroppedItem], to target: SidebarDropTarget) -> Bool {
+    let urls: [String] = items.compactMap { item in
+      switch item {
+      case .link(let text): return URL(string: text).flatMap(AddressInput.link(fromOtherApp:))
+      case .file(let url): return AddressInput.document(fromOtherApp: url)
+      case .text(let text):
+        guard let url = AddressInput.url(for: text), let scheme = URLComponents(string: url)?.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else { return nil }
+        return url
+      }
+    }
+    guard !urls.isEmpty else { return false }
+    sidebar.animateNextChange()
+    var placed: [SidebarEntry] = []
+    for url in urls.reversed() {
+      // Each one in at the same place, last first, so they end up in the order dropped.
+      let entry = SidebarEntry(kind: .today, url: url)
+      state.today.insert(entry, at: 0)
+      move(entry, to: target)
+      if state.entry(id: entry.id) !== entry {
+        state.remove(entry)
+        continue
+      }
+      placed.insert(entry, at: 0)
+    }
+    guard let first = placed.first else {
+      changed("drop")
+      return false
+    }
+    select(first)
+    lastDrop = placed.map(\.url)
+    logState("drop")
+    return true
+  }
+
+  /// For the state log: the addresses the last drop opened.
+  private var lastDrop: [String] = []
 
   // MARK: Selection
 
@@ -3838,6 +3906,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["shortcuts"] = MenuShortcuts.debug
     state["welcomeAgainItem"] = MainMenu.alternateInfo(of: #selector(AppController.showWelcomeAgain(_:))) ?? NSNull()
     state["pageFullscreen"] = pageFullscreenDebug
+    state["lastDrop"] = lastDrop
     state["back"] = ["enabled": canGoBack, "tooltip": backToolTip, "lastPress": HistoryButton.lastPress]
     state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
       .sorted { $0.lastUsed > $1.lastUsed }.map(tabID)

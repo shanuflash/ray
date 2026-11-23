@@ -449,11 +449,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     `ShutoffType` param defaults to `kNoShutoff`, which keeps the guess on: Ray would need
     `MacOcclusionForceShutoff:ShutoffType/1` (off on macOS 26+). App-side, one argument; reproduce first (two
     windows of the same size, one over the other).
-66. **History older than 90 days is deleted, imported Arc history included** (2026-11-16, not tried; from Ardia
-    `8e47868d`, its #766). Chromium expires visits after 90 days; Helium's `keep-old-history` switch
-    (ungoogled's `add-flag-to-disable-local-history-expiration.patch`, in Ray's engine) stops it. Ardia passes it at
-    launch. Ray's import writes old Arc visits that the next expiry pass removes. App-side: append
-    `--keep-old-history` in `main.swift`; check that an imported visit older than 90 days survives a relaunch.
+66. *(Done 2026-11-23: `--keep-old-history`; imported history older than 90 days now arrives and stays. See Done.)*
 67. **Video upscaling stays on in a tab being shared** (2026-11-17, not tried; from Ardia `1befa3e8`). Ray's engine
     upscales video by default and Ray never calls `RayCoreEngine.setVideoUpscaling`; in Ardia, upscaling in a shared
     tab turned Meet's presentation preview black. App-side stopgap: upscaling off while `ScreenShares` has a share;
@@ -493,14 +489,16 @@ Smaller gaps found while building the items above. Each says where the fix goes.
    - Keys Arc has that Ray doesn't: ⌘. for keyboard focus in the sidebar; Back to Pinned URL has no key (Ardia ⌘↩).
    - Command bar: no way to remove a suggestion (Arc's ⌘⌥⌫ or a row's ✕); Tab with nothing typed doesn't open the
      actions list.
-   - Sidebar: nothing for a link, text or file dropped on it, or an ⌥-drag (Arc duplicates); closed folders spring
-     open under a drag (Arc stopped that); a favorite tile ignores a middle click; ⇧⌘C doesn't strip trackers.
+   - Sidebar: closed folders spring open under a drag (Arc stopped that); a favorite tile ignores a middle click;
+     ⇧⌘C doesn't strip trackers. (Drops and ⌥-drag landed 2026-11-23.)
    - Clear Today keeps at most 25 tabs for ⇧⌘T (`ClosedTabs.limit`); a bigger clear loses the oldest.
 
 ## Done
 
 | What | When |
 |---|---|
+| Imported history older than 90 days arrives and stays (Chromium refused it at import and deleted old visits; `--keep-old-history`) | 2026-11-23, `feat: keep old history, sidebar drops` |
+| Links, files and text dropped on the sidebar open as tabs where they land (text as a search); ⌥-drag a tab to copy it | 2026-11-23, `feat: keep old history, sidebar drops` |
 | Arc's tab rules: closing a tab shows the tab used before it (Chrome's own pick no longer wins), Back on a tab a link opened closes it and returns to the opener, a tab opened behind doesn't count as used (⌃Tab), ⌘-click or middle-click on Back/Forward opens a new tab, Clear Today (⇧⌘K) keeps the current and playing tabs and comes back in one ⇧⌘T/⌘Z, ⌥⌘↓/↑, ⌥⌘V, ⇧⌥⌘C, ⌘Z reopens by default | 2026-11-23, `fix: arc tab and bar rules` |
 | Command bar: ⌘L then Return reloads (it switched tabs), ⌘↩ opens in a new tab, a second ⌘T/⌘L closes it, nothing typed lists recent tabs first, the sidebar takes clicks while it's open | 2026-11-23, `fix: arc tab and bar rules` |
 | A page's full screen (videos, YouTube's F) fills the window and screen; Escape or a tab switch leaves it | 2026-11-23, `fix: arc tab and bar rules` |
