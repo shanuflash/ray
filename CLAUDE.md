@@ -66,6 +66,10 @@ publicly or create accounts.
   show on the card. Delete with nothing typed leaves the scope with what you typed back. The field is one line tall,
   centred on the icon, as are the chip and hint (state log `commandBar.lineOffsets`). Checks `tab-to-search`,
   `site-search`, `search-engine`, `search-suggestions-off`.
+  Preconnect (`BrowserWindowController` `// MARK: Preconnect`): the top row, when it's a page, bookmark or typed
+  http(s) address, gets `ac_preconnect` (fixup 0006) once per origin per bar session, never in a private window, so a
+  site's DNS, connect and TLS are done by Enter. Off with Preload pages off (fixup 0007 makes it on by default): the
+  engine replies `started` false. State log `preconnects`; check `bar-preconnect`.
 - `SearchEngines` (`Host/SearchEngines.swift`): what the bar searches with. Ray's own list (Google, DuckDuckGo, Bing,
   Brave Search, Ecosia, Kagi, Startpage, Perplexity; Ardia's minus its regional and AI-chat extras), not Chrome's
   TemplateURLService (`ac_search_engines_list` only reads it, and the bar searches by itself), so pages that search
@@ -750,7 +754,7 @@ publicly or create accounts.
   pickers show. Implementing one in Swift switches Chrome's off for it.
 - `engine-ray/fixups/0006`: `ac_preconnect` (`{"url"}` → `{"started"}`), Chrome's omnibox preconnect for the
   command bar's top row (`LoadingPredictor::PrepareForPageLoad`, `HintOrigin::OMNIBOX`), gated on network
-  prediction as Chrome's is. The Ray side and its check `bar-preconnect` land on their own branch.
+  prediction as Chrome's is. The bar's side: Preconnect under `CommandBarView` above.
 - `engine-ray/fixups/0008`: keeps `RayCoreTab.canShareThisTabInsteadFor:` (Ardia dropped it in v0.2.48), which
   `ScreenShare` asks before offering Share This Tab. `0009` keeps `autoPictureInPictureIsChromes` (the state log's
   `pictureInPicture` `auto`; v0.2.48's event carries it only when a window closes).

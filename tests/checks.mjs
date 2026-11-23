@@ -1098,6 +1098,52 @@ const checks = {
     assert(work.rowsMade <= 10, `rows made for "zz": ${JSON.stringify(work)}`);
     await command("escape");
   },
+  async "bar-preconnect"() {
+    // The bar's top row preconnects while you type, as Chrome's omnibox does (`ac_preconnect`): the fixture sees a
+    // connection before Enter, with no request on it, and the page then comes over that same connection. Chrome only
+    // preconnects with network prediction on: Ray's default (engine-ray fixup 0007; Helium's is off).
+    const sockets = [];
+    const requests = [];
+    const site = createServer((req, res) => {
+      requests.push({ path: req.url, socket: sockets.indexOf(req.socket) });
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end("<title>Preconnected</title><p>preconnected</p>");
+    });
+    site.on("connection", (socket) => sockets.push(socket));
+    await new Promise((r) => site.listen(0, "127.0.0.1", r));
+    const siteOrigin = `http://preconnect.ray.test:${site.address().port}`;
+    try {
+      const { target: a } = await session("/a");
+      await send("Target.activateTarget", { targetId: a.targetId });
+      await until("/a active", () => state().active === tabFor("/a").id);
+      await command("menu newTab");
+      await command(`type ${siteOrigin}/page`);
+      const asked = await until("preconnect asked", async () => {
+        await command("state");
+        return state().preconnects.find((p) => p.origin === `${siteOrigin}/`);
+      }, 8000);
+      if (asked.started === null) throw new Skip("this engine has no ac_preconnect (engine-ray fixup 0006)");
+      assert(asked.started === true,
+        `the engine didn't preconnect (network prediction off by default, or battery saver on?): ${JSON.stringify(asked)}`);
+      await until("connection before Enter", () => sockets.length > 0, 5000);
+      assert(requests.length === 0, `requests before Enter: ${JSON.stringify(requests)}`);
+      // Typing on keeps the same top row's site: asked once per bar session.
+      await command("type ?more");
+      await command("state");
+      assert(state().preconnects.filter((p) => p.origin === `${siteOrigin}/`).length === 1,
+        `asked again: ${JSON.stringify(state().preconnects)}`);
+      await command("enter");
+      await until("page loaded", () => tabFor("preconnect.ray.test")?.title === "Preconnected", 10000);
+      const page = requests.find((r) => r.path.startsWith("/page"));
+      assert(page?.socket === 0, `the page didn't come over the preconnected connection: ${JSON.stringify(requests)}, ${sockets.length} connections`);
+      const { target } = await session("preconnect.ray.test");
+      await send("Target.closeTarget", { targetId: target.targetId });
+      await until("page closed", async () => { await command("state"); return !tabFor("preconnect.ray.test"); });
+    } finally {
+      site.close();
+      for (const socket of sockets) socket.destroy();
+    }
+  },
   async "bar-ranking"() {
     // Arc's order: a page you go to that matches leads (Enter opens it), then what you typed, then the other pages;
     // the search engine's suggestions (the fixture's, for "zz…") only fill what's left of the five rows shown at once.

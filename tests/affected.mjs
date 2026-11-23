@@ -14,7 +14,7 @@ const permissions = ["permission", "permission-allow"];
 const pagePrompts = ["app-link-prompt", "popup-blocked", "crashed-page", "page-unresponsive"];
 const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-switch-to-tab", "bar-history",
   "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions", "bar-search-google", "bar-actions",
-  "bar-ranking", "bar-sites", "bar-arrow-fill", "tab-to-search", "bar-fills-rows", "bar-key-work", "settings-bar",
+  "bar-ranking", "bar-sites", "bar-preconnect", "bar-arrow-fill", "tab-to-search", "bar-fills-rows", "bar-key-work", "settings-bar",
   "search-engine", "search-suggestions-off", "site-search", "bookmarks", "bar-address-return"];
 const drag = ["sidebar-drops", "drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];
@@ -97,6 +97,9 @@ export const areas = {
   "engine/patches/series": [],
   "engine/patches/chromium-web-dialog-rounded-corners.patch": ["page-commands"],
   "engine-ray/fixups/0004-dialogs-centred-and-rounded.patch": ["page-commands"],
+  // The command bar's preconnect (ac_preconnect): a new engine call, nothing else in the engine changes.
+  "engine/chromium/src/chrome/browser/ray/ac_preconnect.cc": ["bar-preconnect"],
+  "engine-ray/fixups/0006-command-bar-preconnect.patch": ["bar-preconnect"],
   "engine-ray/": "all",
   "engine.lock": "all",
   "scripts/build-app.sh": "all",
@@ -181,6 +184,7 @@ export const areas = {
   "Host/SidebarResize.swift": ["sidebar-resize"],
   "Host/RaySettings.swift#Sidebar width": ["sidebar-resize"],
   "Host/BrowserWindowController.swift#Command bar": [...commandBar, "copy-url", "onboarding", "tab-rename"],
+  "Host/BrowserWindowController.swift#Preconnect": ["bar-preconnect"],
   "Host/BrowserWindowController.swift#Pages": pageSurface,
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",
   "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "tab-pictures-dropped", "private-window", "close-last-window", "warn-before-closing-window",

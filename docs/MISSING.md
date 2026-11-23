@@ -302,15 +302,9 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     the visible entry, and a pending https navigation has no certificate, which it reports as `certificateError`
     (Chrome's `SecurityStateTabHelper` says none). Ray reads levels through `ConnectionLook.level`, which treats one
     with no errors as none. Fix in the engine (`engine-ray` fixup), then drop the workaround. Found 2026-11-03.
-36. **No preconnect: a site's first visit pays DNS, connect and TLS after Enter.** Measured on a hidden instance
-    (2026-11-03): navigation starts 2–30 ms after Enter (Ray adds nothing), then 50–90 ms of DNS and 100–800 ms of
-    connect and TLS per new host before the request. Chrome and Arc start that while you type (the omnibox
-    preconnects its top match through `LoadingPredictor::PrepareForPageLoad`, and pages' links are DNS-prefetched),
-    so the page seems to start at once. Ray has neither: its command bar isn't Chrome's omnibox and the engine has no
-    preconnect call, and Helium's `inox-patchset/modify-default-prefs.patch` defaults network prediction to off
-    (Chrome: standard), which also blocks link prefetch and Chrome's own preconnects. Fix: an engine call
-    (`ac_preconnect(url)`, `engine-ray` fixup) that the bar calls for its top row's host as you type, and network
-    prediction on by default (an owner decision: Helium turned it off for privacy).
+36. ~~No preconnect: a site's first visit paid DNS, connect and TLS after Enter~~ (Done 2026-11-23: the command
+    bar's top row preconnects as you type, `ac_preconnect`, and network prediction is on by default; check
+    `bar-preconnect`).
 37. **Full-screen Ray once hid some menu bar items** (2026-11-04): with Ray full screen, Stats' RAM and CPU, Maccy and
     one more status item were gone while Ray was in front (Chrome and Arc full screen showed them), though the menu bar
     had room. Leaving and re-entering full screen fixed it. Not reproduced. Lead: a window restored into full screen at
@@ -497,6 +491,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
+| The command bar preconnects to its top row's site as you type (Chrome's omnibox preconnect), so a first visit's DNS, connect and TLS are done by Enter; never in a private window | 2026-11-23, `feat: command bar preconnects top row` |
 | Engine on Ardia v0.2.48: Chromium 158.0.8127.36 (Helium 0.22.1), M157 and M158 security fixes, Memory Saver and preloading on by default, install by dropping a .crx on a page (Ray's prompt; a failure says why in a note), `ac_preconnect`, glic off, the 4 s window close fixed, Ardia's M158 safe-storage fix | 2026-11-23, 0.10.0 (not built yet) |
 | Pop-up windows stay on a full-screen Ray's Space (a child window), and a drag that reaches the window's left edge brings a hidden sidebar out to take the drop | 2026-11-23, `fix: popup in full screen, drag to peek` |
 | A page's sized pop-up (Google, Apple, Microsoft sign-ins) opens in a small window of its own in Ray's look, with its address on top and Open as Tab, instead of as a Today tab | 2026-11-23, `feat: popup windows` |

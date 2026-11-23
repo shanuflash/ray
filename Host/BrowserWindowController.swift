@@ -3010,6 +3010,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     bar.show(rows)
     let offered = SearchEngines.offer(for: query, use: history.use(ofHost:))
     bar.offer(offered)
+    preconnect(to: rows.first)
     var pages = rows.compactMap { row -> String? in
       if case .history(let url) = row.kind { return url }
       if case .bookmark(let url) = row.kind { return url }
@@ -3051,6 +3052,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard let bar = commandBar else { return }
     commandBar = nil
     bar.removeFromSuperview()
+    preconnected.removeAll()
     sidebar.setNewTabActive(false)
     newTabFolder = nil
     if focus, let tab = activeTab { focusPage(tab) }
@@ -3144,6 +3146,40 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     closeCommandBar(focus: false)
     for (index, url) in urls.enumerated() {
       openToday(url, after: nil, foreground: index == urls.count - 1)
+    }
+  }
+
+  // MARK: Preconnect
+
+  /// Sites the open command bar has preconnected to (scheme, host and port), so each goes once per bar session.
+  private var preconnected: Set<String> = []
+  /// Test builds' state log: each preconnect asked for, and whether the engine started it.
+  private var preconnects: [[String: Any]] = []
+
+  /// Chrome's omnibox preconnects its default match while you type, so a site's first visit has DNS, connect and TLS
+  /// done by Enter. The bar's top row does the same when it's a page or a typed address (`ac_preconnect`, engine-ray
+  /// fixup 0006, gated on network prediction as Chrome's is); never in a private window, as Chrome has no loading
+  /// predictor there.
+  private func preconnect(to row: Suggestion?) {
+    guard !isPrivate, let row else { return }
+    let address: String
+    switch row.kind {
+    case .url(let url), .history(let url), .bookmark(let url): address = url
+    default: return
+    }
+    guard var parts = URLComponents(string: address), let scheme = parts.scheme?.lowercased(),
+      scheme == "http" || scheme == "https", let host = parts.host, !host.isEmpty
+    else { return }
+    parts.user = nil
+    parts.password = nil
+    parts.path = "/"
+    parts.query = nil
+    parts.fragment = nil
+    guard let origin = parts.string, preconnected.insert(origin).inserted else { return }
+    EngineCalls.call("ac_preconnect", profile: profile, args: ["url": origin]) { [weak self] reply in
+      guard let self, Self.logsState else { return }
+      self.preconnects.append(["origin": origin, "started": reply?["started"] as? Bool ?? NSNull()])
+      self.logState("preconnect")
     }
   }
 
@@ -3851,6 +3887,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "active": activeTab.map { Int($0.tabId) } ?? NSNull(),
       "activeEntry": self.state.activeEntryID?.uuidString ?? NSNull(),
       "sharedLinks": lastShared,
+      "preconnects": preconnects,
       "address": sidebar.addressText,
       "addressField": sidebar.addressDebug,
       "sidebarAddressShown": sidebar.addressShown,
