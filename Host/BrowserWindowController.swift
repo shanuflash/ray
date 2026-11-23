@@ -105,6 +105,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     coreWindow.activeProfile = profile
     configureWindow()
     sidebar.delegate = self
+    sidebar.onExternalDrag = { [weak self] over in self?.externalDragChanged(over: over) }
     let host = coreWindow.hostView
     root.frame = host.bounds
     root.autoresizingMask = [.width, .height]
@@ -214,6 +215,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     layoutResizeHandle(docked: peek <= 0.001 && shown >= 0.999)
     if fullPage { resizeHandle.isHidden = true }
+    layoutDropEdge()
     let edge = isFullScreen ? margin * shown : margin
     let cardX = max(edge, width * shown)
     // Whole points only: Chrome's content layer follows the page by CALayer autoresizing, which rounds each
@@ -2746,11 +2748,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   private func schedulePeekEnd() {
-    guard peekEndWork == nil, !forcedOpen, !sidebar.isDragging, !isResizingSidebar, !downloadsOpen, !panels.holdsSidebar else { return }
+    guard peekEndWork == nil, !forcedOpen, !sidebar.isDragging, !sidebar.hasExternalDrag, !isResizingSidebar, !downloadsOpen, !panels.holdsSidebar else { return }
     let work = DispatchWorkItem { [weak self] in
       guard let self else { return }
       self.peekEndWork = nil
-      if self.sidebar.isDragging || self.isResizingSidebar || self.downloadsOpen || self.panels.holdsSidebar { return }
+      if self.sidebar.isDragging || self.sidebar.hasExternalDrag || self.isResizingSidebar || self.downloadsOpen || self.panels.holdsSidebar { return }
       self.endPeek(animated: true)
     }
     peekEndWork = work
@@ -2831,6 +2833,54 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     sidebar.layer?.masksToBounds = false
     root.addSubview(sidebar, positioned: .above, relativeTo: toolbar)
     layout()
+  }
+
+  // MARK: Drag to peek
+
+  /// The hidden sidebar's edge as a drop target (`SidebarDropEdge`): a drag from a page, Finder or anywhere that
+  /// reaches the window's left edge brings the sidebar out, which then takes the drop and stays out while the drag is
+  /// over it (Arc's). Pointer moves never reach Ray during a drag, so the peek's own watch can't see it.
+  private lazy var dropEdge: SidebarDropEdge = {
+    let edge = SidebarDropEdge(frame: .zero)
+    edge.onEnter = { [weak self] in self?.dragReachedEdge() }
+    return edge
+  }()
+  static let dropEdgeWidth: CGFloat = 8
+  /// For tests: peeks a drag brought.
+  private var dragPeeks = 0
+
+  private func layoutDropEdge() {
+    let shows = state.sidebarHidden && !peeking && !pageFillsWindow && dockSpring.value < 0.001
+    if shows, dropEdge.superview !== root { root.addSubview(dropEdge, positioned: .above, relativeTo: toolbar) }
+    dropEdge.isHidden = !shows
+    dropEdge.frame = NSRect(x: 0, y: 0, width: Self.dropEdgeWidth, height: root.bounds.height)
+  }
+
+  func dragReachedEdge() {
+    guard state.sidebarHidden, !peeking else { return }
+    beginPeek()
+    if peeking { dragPeeks += 1 }
+  }
+
+  private func externalDragChanged(over: Bool) {
+    guard peeking else { return }
+    if over {
+      cancelPeekEnd()
+    } else if launchedInBackground {
+      schedulePeekEnd()
+    } else {
+      // Dropped, or the drag left: where the pointer is now decides, as for any peek.
+      pointerMoved(screenPoint: NSEvent.mouseLocation)
+    }
+  }
+
+  /// For tests: which view takes a drag at a window point (top left), and the drop edge.
+  func dragDestination(at point: NSPoint) -> String {
+    SidebarView.debugDragDestination(in: window, at: point) ?? "none"
+  }
+  var dragPeekState: [String: Any] {
+    ["edgeShown": dropEdge.superview === root && !dropEdge.isHidden, "edge": NSStringFromRect(dropEdge.frame),
+     "peeks": dragPeeks, "peeking": peeking, "overSidebar": sidebar.hasExternalDrag]
   }
 
   // MARK: Command bar
@@ -3944,6 +3994,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["welcomeAgainItem"] = MainMenu.alternateInfo(of: #selector(AppController.showWelcomeAgain(_:))) ?? NSNull()
     state["pageFullscreen"] = pageFullscreenDebug
     state["lastDrop"] = lastDrop
+    state["dragPeek"] = dragPeekState
     state["popupWindows"] = PopupWindow.all.map(\.debug)
     state["back"] = ["enabled": canGoBack, "tooltip": backToolTip, "lastPress": HistoryButton.lastPress]
     state["recentOrder"] = self.state.allEntries.filter { $0.isLive }

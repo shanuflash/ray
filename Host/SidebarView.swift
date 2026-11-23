@@ -1228,8 +1228,15 @@ final class SidebarView: NSView {
   static let droppedTypes: [NSPasteboard.PasteboardType] = [.URL, .fileURL, .string]
   /// At most this many items from one drop.
   static let dropLimit = 20
+  /// A drag from elsewhere came over the sidebar (true) or left it, dropped or ended (false): a peeking sidebar stays
+  /// out while one is over it.
+  var onExternalDrag: ((Bool) -> Void)?
+  var hasExternalDrag: Bool { drag?.entry === dropPlaceholder }
 
-  override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { externalDragMoved(sender) }
+  override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+    onExternalDrag?(true)
+    return externalDragMoved(sender)
+  }
   override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { externalDragMoved(sender) }
   override func draggingExited(_ sender: NSDraggingInfo?) { endExternalDrag() }
   override func draggingEnded(_ sender: NSDraggingInfo) { endExternalDrag() }
@@ -1266,6 +1273,7 @@ final class SidebarView: NSView {
     springOpen = nil
     pendingShow?()
     needsLayout = true
+    onExternalDrag?(false)
   }
 
   /// Opens what was dropped at `point` (the drop itself, and the test command's).
@@ -1286,6 +1294,28 @@ final class SidebarView: NSView {
     guard let text = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty,
           text.count <= 8_192 else { return [] }
     return [.text(text)]
+  }
+
+  /// For tests: which view takes a drag at a point in window coordinates with the top left as origin, as AppKit picks
+  /// it (`_hitTest:dragTypes:`); nil when none.
+  static func debugDragDestination(in window: NSWindow, at point: NSPoint) -> String? {
+    #if RAY_TEST_HOOKS
+    guard let content = window.contentView else { return nil }
+    let location = NSPoint(x: point.x, y: content.bounds.height - point.y)
+    let types = Set(droppedTypes)
+    // AppKit's choice: the frontmost, deepest shown view under the point registered for one of the drag's types.
+    // (Its private `_hitTest:dragTypes:` hung the app when called from here.)
+    func target(_ view: NSView, _ point: NSPoint) -> NSView? {
+      guard !view.isHidden, view.alphaValue > 0, view.frame.contains(point) else { return nil }
+      let local = view.convert(point, from: view.superview)
+      for sub in view.subviews.reversed() { if let hit = target(sub, local) { return hit } }
+      return Set(view.registeredDraggedTypes).isDisjoint(with: types) ? nil : view
+    }
+    return target(content, content.superview.map { content.convert(location, to: $0) } ?? location)
+      .map { String(describing: type(of: $0)) }
+    #else
+    return nil
+    #endif
   }
 
   /// For tests: a drop at a point in window coordinates with the top left as origin (`sidebarlist drop`).
@@ -3126,4 +3156,28 @@ final class PointingButton: NSButton {
   override func resetCursorRects() {
     addCursorRect(bounds, cursor: .pointingHand)
   }
+}
+
+// MARK: Drop edge
+
+/// The hidden sidebar's edge as a drop target: a link, file or text dragged to the window's left edge brings the
+/// sidebar out (no pointer moves reach Ray during a drag, so the peek's own watch never sees it), and the drop lands
+/// in it (Arc's).
+final class SidebarDropEdge: NSView {
+  var onEnter: (() -> Void)?
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    registerForDraggedTypes(SidebarView.droppedTypes)
+  }
+
+  required init?(coder: NSCoder) { nil }
+
+  override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+    guard !SidebarView.droppedItems(sender.draggingPasteboard).isEmpty else { return [] }
+    onEnter?()
+    return []
+  }
+
+  override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { [] }
 }

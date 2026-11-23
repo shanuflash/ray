@@ -122,7 +122,9 @@ export const areas = {
   "Host/PopupWindow.swift": ["popup-window", "window-open", "popup-blocked"],
   "Host/BrowserWindowController.swift#Pop-up windows": ["popup-window"],
   // Links, files and text dropped on the sidebar, and ⌥-drag's copy.
-  "Host/SidebarView.swift#Drops from elsewhere": ["sidebar-drops"],
+  "Host/SidebarView.swift#Drops from elsewhere": ["sidebar-drops", "drag-to-peek"],
+  "Host/SidebarView.swift#Drop edge": ["drag-to-peek"],
+  "Host/BrowserWindowController.swift#Drag to peek": ["drag-to-peek", "peek-zones", "peek-dock"],
   "Host/BrowserWindowController.swift#Sidebar drops": ["sidebar-drops", "row-menus"],
   // Back closing a tab a link opened; ⌘-click and a middle click on Back and Forward.
   "Host/BrowserWindowController.swift#Back and forward": ["back-closes-link-tab", "back-forward-list", "navigate", "reopen-closed-tab"],
@@ -173,7 +175,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Row menus": ["row-menus", "folders", "multi-select"],
   "Host/BrowserWindowController.swift#Page toolbar": ["pending-security", "pending-address", "page-toolbar", "address-fragment", "page-loading", "load-sweep-once", "site-controls",
     "sidebar-toggle", "settings-page-address-bar"],
-  "Host/BrowserWindowController.swift#Sidebar visibility": [...sidebarMotion, "page-toolbar", "downloads"],
+  "Host/BrowserWindowController.swift#Sidebar visibility": [...sidebarMotion, "page-toolbar", "downloads", "drag-to-peek"],
   // The sidebar's width: the strip on its edge, the drag and its rubber band, the remembered width.
   "Host/BrowserWindowController.swift#Sidebar width": sidebarMotion,
   "Host/SidebarResize.swift": ["sidebar-resize"],

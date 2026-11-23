@@ -498,6 +498,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 | What | When |
 |---|---|
 | Engine on Ardia v0.2.48: Chromium 158.0.8127.36 (Helium 0.22.1), M157 and M158 security fixes, Memory Saver and preloading on by default, install by dropping a .crx on a page (Ray's prompt; a failure says why in a note), `ac_preconnect`, glic off, the 4 s window close fixed, Ardia's M158 safe-storage fix | 2026-11-23, 0.10.0 (not built yet) |
+| Pop-up windows stay on a full-screen Ray's Space (a child window), and a drag that reaches the window's left edge brings a hidden sidebar out to take the drop | 2026-11-23, `fix: popup in full screen, drag to peek` |
 | A page's sized pop-up (Google, Apple, Microsoft sign-ins) opens in a small window of its own in Ray's look, with its address on top and Open as Tab, instead of as a Today tab | 2026-11-23, `feat: popup windows` |
 | Imported history older than 90 days arrives and stays (Chromium refused it at import and deleted old visits; `--keep-old-history`) | 2026-11-23, `feat: keep old history, sidebar drops` |
 | Links, files and text dropped on the sidebar open as tabs where they land (text as a search); ⌥-drag a tab to copy it | 2026-11-23, `feat: keep old history, sidebar drops` |

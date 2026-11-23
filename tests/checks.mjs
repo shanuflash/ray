@@ -503,6 +503,7 @@ const checks = {
     };
     let popup = await openPopup("popupA");
     assert(state().tabs.length === before, "the pop-up became a tab too");
+    assert(popup.child && popup.fullScreenAuxiliary, `the pop-up isn't a child window on Ray's Space: child ${popup.child}, auxiliary ${popup.fullScreenAuxiliary}`);
     assert(popup.address.startsWith("127.0.0.1") && popup.address.includes("/b?popupA"), `address ${popup.address}`);
     const card = popup.card.match(/[-\d.]+/g).map(Number);
     assert(card[2] === 420 && card[3] === 500, `page card ${popup.card}`);
@@ -1455,6 +1456,39 @@ const checks = {
       return today().length === before + 1 && today()[0].id === first.id && today().slice(1).some((e) => e.id !== first.id && e.url === first.url);
     });
     for (const t of (await targets()).filter((t) => t.url.includes("?dropped") || t.url.includes("/search?q=ray"))) await send("Target.closeTarget", { targetId: t.targetId });
+    await settle();
+  },
+  async "drag-to-peek"() {
+    // Arc's: with the sidebar hidden, a link, file or text dragged to the window's left edge brings it out to take the
+    // drop (no pointer moves reach Ray during a drag). AppKit's own pick of the drop target is checked at each step.
+    await todayTabs(2);
+    const today = () => state().sidebar.today.filter((e) => e.kind !== "folder");
+    const docked = frameOf(today()[0].id);
+    assert((await commandResult(`sidebarlist dragto ${docked.cx} ${docked.cy}`)) === "SidebarView", "a docked sidebar row doesn't take drags");
+    await command("menu toggleSidebar");
+    await until("hidden", async () => { await command("state"); return state().sidebar.hidden && !state().sidebar.peeking; });
+    await settle();
+    await command("state");
+    assert(state().dragPeek.edgeShown, `no drop edge with the sidebar hidden: ${JSON.stringify(state().dragPeek)}`);
+    const peeks = state().dragPeek.peeks;
+    assert((await commandResult("sidebarlist dragto 3 300")) === "SidebarDropEdge", "the window's edge doesn't take the drag");
+    await command("sidebarlist dragedge");
+    await until("the drag brought the sidebar out", async () => { await command("state"); return state().sidebar.peeking && state().dragPeek.peeks === peeks + 1; });
+    await settle();
+    await command("state");
+    assert(!state().dragPeek.edgeShown, "the drop edge stayed over a peeking sidebar");
+    const row = frameOf(today()[1].id);
+    assert((await commandResult(`sidebarlist dragto ${row.cx} ${row.y}`)) === "SidebarView", "the peeking sidebar doesn't take the drag");
+    const before = today().length;
+    assert((await commandResult(`sidebarlist drop ${row.cx} ${row.y} link ${origin}/b?edgedrop`)) === "ok", "the drop was refused");
+    await until("dropped as a tab", async () => { await command("state"); return today().length === before + 1 && today().some((e) => e.url.endsWith("/b?edgedrop")); });
+    await until("the peek ends after the drop", async () => { await command("state"); return !state().sidebar.peeking; }, 4000);
+    await command("menu toggleSidebar");
+    await until("docked again", async () => { await command("state"); return !state().sidebar.hidden; });
+    await settle();
+    await command("state");
+    assert(!state().dragPeek.edgeShown, "the drop edge stayed with the sidebar docked");
+    for (const t of (await targets()).filter((t) => t.url.includes("?edgedrop"))) await send("Target.closeTarget", { targetId: t.targetId });
     await settle();
   },
   async "drag-to-pin"() {
