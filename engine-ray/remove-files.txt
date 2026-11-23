@@ -1,5 +1,6 @@
 # Engine files that only served a dropped patch.
-# chromium-devtools-control-token.patch: the control server, its token policy and the tabs it owns or shows.
+# The `ardia` command's DevTools control server, its token policy and the tabs it owns or shows (the only code that
+# sets chromium-devtools-control-token.patch's hooks). Ray's tests use --remote-debugging-port in the test build only.
 chromium/src/chrome/browser/ray/ac_cli_control.cc
 chromium/src/chrome/browser/ray/ac_cli_token_policy.cc
 chromium/src/chrome/browser/ray/ac_cli_token_policy.h

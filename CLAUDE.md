@@ -693,10 +693,20 @@ publicly or create accounts.
   command bar's top row (`LoadingPredictor::PrepareForPageLoad`, `HintOrigin::OMNIBOX`), gated on network
   prediction as Chrome's is. The Ray side and its check `bar-preconnect` land on their own branch.
 - `engine-ray/fixups/0008`: keeps `RayCoreTab.canShareThisTabInsteadFor:` (Ardia dropped it in v0.2.48), which
-  `ScreenShare` asks before offering Share This Tab.
+  `ScreenShare` asks before offering Share This Tab. `0009` keeps `autoPictureInPictureIsChromes` (the state log's
+  `pictureInPicture` `auto`; v0.2.48's event carries it only when a window closes).
+- `chromium-devtools-control-token.patch` stays in the series (since 0.10.0): Ardia's `chromium-drag-always-ends.patch`
+  is built on its hooks, which stay unset because `remove-files.txt` drops the control server, the only code that
+  sets them (fixup 0002 takes it out of BUILD.gn and `ac_seams.mm`).
 - `engine-ray/fixups/0007`: network prediction on by default (owner, 2026-11-04): one FIXUPS entry in
   `03-helium.py` puts `preloading_prefs.h`'s `kDefault` back to Chrome's standard over Helium's off, which
   `ac_preconnect` needs (the profile's `preloadPages` is the user's switch; Ardia keeps it off). A tree step 3 already ran on needs its `fixups` stage again (its record refuses a rerun).
+- Engine bumps (v0.2.48's scripts): step 1 refuses while `src/out` exists (move it aside for the sync and back
+  after; a hook may leave an empty `src/out`); googlesource rate-limits a 16-job sync (HTTP 429): rerun `gclient sync
+  -j 4`; step 3 checks `~/chromium-build/helium` and `helium-macos` are at `helium-pins.ini`'s commits (check them
+  out first); step 5 needs `JOBS` set under macOS's bash 3.2 (an empty array trips `set -u`). Chrome's settings page
+  is Lit since 158 (`trim-settings-pak.py`'s Search section pattern). M158's engine answers an identical login added
+  again as saved: Settings › Passwords' CSV import tells "already saved" from its list taken first.
 - A fixup that only changes `engine/chromium` or `engine/raycore` on an already-prepared tree: run that layer's
   `apply.sh` under the chromium lock, not step 4 again, which stops at `chromium-main-frame-throttle-after-show.patch`
   (the next patch edits the same header, so its already-applied test fails).

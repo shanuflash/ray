@@ -2230,7 +2230,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard !closing, let entry = state.entry(for: tab) else { return }
     let step: [String: Any] = [
       "entry": entry.id.uuidString, "kind": change["kind"] as? String ?? "", "active": change["active"] as? Bool ?? false,
-      "tabShown": tab === pages.shown && pages.windowSeen, "auto": change["auto"] as? Bool ?? false,
+      "tabShown": tab === pages.shown && pages.windowSeen, "auto": tab.autoPictureInPictureIsChromes,
     ]
     pictureInPictureSteps = Array((pictureInPictureSteps + [step]).suffix(20))
     logState("pictureInPicture")

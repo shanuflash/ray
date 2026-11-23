@@ -55,15 +55,16 @@ def menu_item(item_id: str, href: str):
     )
 
 
-# settings-main's stamp for the Search engine section (`<div slot="view" id="search">` and what's inside it): the other
-# sections sit in a `dom-if` on their visibility, this one doesn't, so it gets the same.
+# settings-main's stamp for the Search engine section (`<div slot="view" id="search">` and what's inside it, a Lit
+# template since Chromium 158): the other sections sit in `${this.showPage_(this.pageVisibility_?.<key>)?html`…`:""}`,
+# this one doesn't, so it gets the same.
 SEARCH_VIEW = re.compile(
-    rb'<div\s+slot="view"\s+id="search">\s*<template\s+is="dom-if"\s+if="\[\[renderPlugin_\(\s*routes_\.SEARCH,\s*lastRoute_,'
-    rb'\s*inSearchMode_\)\]\]">\s*<settings-search-page-index\s[^>]*>\s*</settings-search-page-index>\s*</template>\s*</div>')
+    rb'<div\s+slot="view"\s+id="search">\s*\$\{this\.renderPlugin_\(this\.routes_\.SEARCH\)\?html`\s*'
+    rb'<settings-search-page-index\s[^>]*>\s*</settings-search-page-index>\s*`:""\}\s*</div>')
 
 
 def wrap_search_view(match):
-    return b'<template is="dom-if" if="[[showPage_(pageVisibility_.search)]]">' + match.group(0) + b"</template>"
+    return b"${this.showPage_(this.pageVisibility_?.search)?html`" + match.group(0) + b'`:""}'
 
 
 PATCHES = [

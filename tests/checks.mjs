@@ -2125,8 +2125,13 @@ const checks = {
     assert(state().installPrompt.name === name, `the prompt names ${state().installPrompt.name}`);
     assert(state().installPrompt.addEnabled === false, "Add was clickable straight away");
     assert(state().panels.open?.name === "extensionInstall" && state().panels.open.asks, `prompt panel: ${JSON.stringify(state().panels.open)}`);
-    await command("key return");
-    await until("Return cancelled it", async () => { await command("state"); return state().installPrompt === null; });
+    // A prompt a page brought: Return answers nothing; Cancel closes it.
+    await command("key return keywin");
+    await sleep(300);
+    await command("state");
+    assert(state().installPrompt && state().panels.open?.name === "extensionInstall", "Return answered the install prompt");
+    await command("extprompt cancel");
+    await until("Cancel closed it", async () => { await command("state"); return state().installPrompt === null; });
     await sleep(500);
     await command("state");
     assert(state().extensions.length === before && !state().extensions.some((e) => e.name === name), "the dropped extension installed");

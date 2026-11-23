@@ -29,6 +29,7 @@ chromium chromium-devtools-redock-display.patch mac
 chromium chromium-devtools-window-title.patch
 chromium chromium-global-trace-id-64bit.patch
 chromium chromium-drag-start-event-id.patch
+chromium chromium-devtools-control-token.patch
 chromium chromium-drag-always-ends.patch
 chromium chromium-capture-wake-lock-awake-only.patch
 chromium chromium-device-emulation-size-reset.patch

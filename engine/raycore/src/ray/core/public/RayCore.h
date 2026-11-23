@@ -382,6 +382,8 @@ RAYCORE_EXPORT
 - (void)exitFullscreen;
 - (void)exitExclusiveAccess;
 - (void)tracePictureInPicture:(NSString*)line withInputs:(BOOL)withInputs;
+// Ray: whether a picture in picture now is Chrome's automatic one (its own state log; Ardia dropped it).
+@property(readonly) BOOL autoPictureInPictureIsChromes;
 - (void)exitPictureInPicture;
 - (void)enterPictureInPictureForClickAt:(NSTimeInterval)clickTime
                              completion:(void (^)(NSString* route, BOOL opened))completion;

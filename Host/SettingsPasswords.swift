@@ -858,11 +858,26 @@ final class PasswordsMoreView: NSView, SettingsSizing {
           self.finishImport(status: "That file has more than \(Self.importLimit.formatted()) passwords, more than Ray imports at once.",
                             saved: 0, existing: 0, skipped: credentials.count)
         case .success(let credentials):
-          self.save(credentials, from: 0, saved: 0, existing: 0, skipped: 0)
+          // The logins already saved, by origin and username: the engine answers a login saved with the same
+          // password as a fresh save (since 0.10.0's engine), so only this list tells the two apart.
+          guard let profile = settingsDataProfile else {
+            return self.save(credentials, from: 0, saved: 0, existing: 0, skipped: 0)
+          }
+          EngineCalls.call("ac_passwords_list", profile: profile) { [weak self] reply in
+            self?.importKnown = Set((reply?["passwords"] as? [[String: Any]] ?? []).compactMap { item in
+              (item["origin"] as? String).map { Self.importKey($0, item["username"] as? String ?? "") }
+            })
+            self?.save(credentials, from: 0, saved: 0, existing: 0, skipped: 0)
+          }
         }
       }
     }
   }
+
+  /// The logins saved when an import started (and those it saved since), as `importKey`s.
+  private var importKnown: Set<String> = []
+
+  private static func importKey(_ origin: String, _ username: String) -> String { origin + "\n" + username }
 
   private func save(_ credentials: [Credential], from index: Int, saved: Int, existing: Int, skipped: Int) {
     guard index < credentials.count else {
@@ -879,8 +894,10 @@ final class PasswordsMoreView: NSView, SettingsSizing {
                                   ("password", .text(credential.password))])
     EngineCalls.callWithSecret("ac_passwords_add", profile: profile, json: json) { [weak self] reply in
       let error = reply == nil ? "no reply" : reply?["error"] as? String
-      let there = error?.contains("already saved") == true
-      self?.save(credentials, from: index + 1, saved: saved + (error == nil ? 1 : 0), existing: existing + (there ? 1 : 0),
+      let had = self?.importKnown.contains(Self.importKey(origin, credential.username)) == true
+      let there = error?.contains("already saved") == true || (error == nil && had)
+      if error == nil { self?.importKnown.insert(Self.importKey(origin, credential.username)) }
+      self?.save(credentials, from: index + 1, saved: saved + (error == nil && !had ? 1 : 0), existing: existing + (there ? 1 : 0),
                  skipped: skipped + (error != nil && !there ? 1 : 0))
     }
   }
