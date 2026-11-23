@@ -260,10 +260,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     only sets the default now); no "Changed" or "Conflicts" filter (Ardia has them); the Settings search doesn't find
     single commands; moving Close Tab off ⌘W also stops ⌘W closing the Settings window, without a warning; recording
     by real keyboard and non-US layouts aren't tried by hand.
-28. **⌘W on the last Today tab with only pinned tabs or favorites left: not tried.** Ardia closed the whole window
-    there (unloaded pinned tiles counted as asleep) and fixed it to keep the window, as Arc does (0.2.43-nightly.5,
-    `d8e1098b`). Ray's `close-last-window` check covers closing the window, not this. Fix if it closes: keep the
-    window while anything is pinned; add a check. Found 2026-10-30.
+28. **⌘W on the last Today tab with only pinned tabs or favorites left: no check.** Ardia closed the whole window
+    there and fixed it to keep the window, as Arc does (0.2.43-nightly.5, `d8e1098b`). Ray's code keeps it
+    (`activateNeighbor` → `showNothing`, nothing shown, the sidebar forced out; a second ⌘W closes the window; read
+    2026-11-23, docs/ARC-BEHAVIOUR-AUDIT.md). Arc shows a centred "Search or Enter URL…" bar there instead. Left: a
+    check. Found 2026-10-30.
 29. **Private-window guard lives in Host only.** Ray's engine (Ardia 0.2.42) lets most `ac_*` calls run with
     `offTheRecord` unchecked and relies on Host to refuse; Ardia's engine-4d8c64033b08 refuses every call for a
     private profile unless it is marked `kAllow`, rejects empty args for sensitive calls, and zeroes decrypted
@@ -431,9 +432,9 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     Ardia's video upscaler on by default (`ac_video_upscaling.mm`); macOS's upscaler leaked one object per frame
     through the synchronous VideoToolbox call until a system pool ran out (~36 min at 30 fps, 18 at 60) and the GPU
     process died. Fix: Ardia's `ac_video_upscaler_job.mm` rewrite (async VideoToolbox call) at the next rebuild.
-61. **A tab switches on mouse up** (2026-11-13). Ray's sidebar rows switch at the release (`SidebarView.pointer`,
-    `drop`); Chrome, Safari, Arc and now Ardia (0.2.46) switch on the press, about 0.1 s sooner, keeping drags,
-    ⌘-click and ⇧-click. Mind Ray's multi-select (a plain click on a selected tab ends the selection only at the release).
+61. **A tab switches on mouse up: not so** (2026-11-13; corrected 2026-11-23). `SidebarRowView.mouseDown` and the
+    favorite tile's already call `onClick` at the press (since `feat: rename tabs`), as Chrome, Safari and Ardia 0.2.46
+    do; only a plain click on a selected tab waits for the release. Left: a check that a press alone switches.
 62. **Search suggestions are fetched outside the engine** (2026-11-13). `Suggestions.swift` asks the search engine through an
     ephemeral `URLSession` (macOS's identity, no cookies). Ardia moved its fetch into Chromium (`7c854a06`,
     `ac_search_suggest.cc`) after Google showed some users its "unusual traffic" page, and stopped asking from
@@ -481,6 +482,33 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 72. **No developer bar on local sites** (2026-11-20; Arc's, Ardia `6e30c0d2`). Arc's striped bar on localhost pages
     with the full address, Copy URL, Console and Inspect when the address lives in the sidebar; Ardia adds a per-site
     switch in Site controls. Mock first; owner's call.
+73. **Arc behaviour audit gaps** (2026-11-23, docs/ARC-BEHAVIOUR-AUDIT.md has the evidence, Arc's and Ardia's
+    behaviour and a ranked list). Probed on a hidden instance where marked.
+   - ⌘L then Return with the address unchanged switches to another tab instead of reloading (probe): the unchanged
+     address counts as nothing typed (`refreshSuggestions`), so the rows are other tabs. Bug.
+   - A page's own full screen (YouTube's F) stays inside the page card with the sidebar and address bar showing
+     (probe): Ray doesn't implement the engine's `window:tab:didChangeFullscreen:`.
+   - ⌃Tab after a ⌘-click goes to the background tab you never saw: `SidebarEntry.lastActive` starts at creation.
+   - ⌘T then Return with nothing typed goes to the top tab in sidebar order (probe); the empty bar lists other tabs in
+     sidebar order, not most recent first (Arc ranks recent switches; Ardia lists recent tabs).
+   - Links from a pinned tab or favorite to another site move the pinned tab away (Arc: Peek, or a new tab with Peek
+     off).
+   - Sized pop-ups (`window.open` with width/height, OAuth sign-ins) open as Today tabs (probe; Arc and Ardia: a
+     pop-up window; `popupFeatures` is unused).
+   - ⌘N never opens a second normal window (`openMainWindow` brings the one forward); so no tab dragged out to a new
+     window either.
+   - The sidebar never scrolls to the active tab after a switch (⌃Tab, ⌘1–9, Switch to Tab) or to a new tab at the
+     top of Today (MISSING 70 is the indicator; this is the scroll).
+   - Today archives only at launch, only unloaded tabs, counted from when a tab was last selected; Clear Today has no
+     key (Arc ⇧⌘K), closes the selected tab too and has no single undo.
+   - Keys Arc has: ⌥⌘↓/↑ next/previous tab, ⌘⌥V paste as a new tab, ⇧⌥⌘C copy as Markdown, ⌘. sidebar keyboard
+     focus; ⌘Z reopening a tab is off by default (Arc: on); ⌘-click or middle-click Back/Forward doesn't open a new
+     tab; Back to Pinned URL has no key (Ardia ⌘↩).
+   - Command bar: no ⌘↩ (new tab) or ⌥↩; ⌘T again doesn't close it; a click on the sidebar only closes it (Arc's
+     sidebar takes the click); no way to remove a suggestion (⌘⌥⌫).
+   - Sidebar: nothing for a double-click on empty space (Arc: new tab), a link, text or file dropped on it, or an
+     ⌥-drag (Arc duplicates); closed folders spring open under a drag (Arc stopped that); a favorite tile ignores a
+     middle click; ⇧⌘C doesn't strip trackers.
 
 ## Done
 
