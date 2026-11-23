@@ -45,6 +45,8 @@ protocol SidebarViewDelegate: AnyObject {
   func sidebarOpenAddress(_ sidebar: SidebarView)
   func sidebarToggle(_ sidebar: SidebarView)
   func sidebarBack(_ sidebar: SidebarView)
+  /// ⌘-click or a middle click on Back or Forward: that page in a new tab.
+  func sidebarHistoryInNewTab(_ sidebar: SidebarView, forward: Bool)
   func sidebarHistory(_ sidebar: SidebarView, forward: Bool, from button: HistoryButton)
   func sidebarForward(_ sidebar: SidebarView)
   func sidebarReload(_ sidebar: SidebarView)
@@ -242,6 +244,10 @@ final class SidebarView: NSView {
         guard let self, let button = button as? HistoryButton else { return }
         self.delegate?.sidebarHistory(self, forward: forward, from: button)
       }
+      (button as? HistoryButton)?.onNewTab = { [weak self] in
+        guard let self else { return }
+        self.delegate?.sidebarHistoryInNewTab(self, forward: forward)
+      }
     }
     forwardButton.target = self
     forwardButton.action = #selector(forward)
@@ -320,6 +326,7 @@ final class SidebarView: NSView {
     foldPending = foldPending || window != nil && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
       && open.contains { id, now in folderOpen[id].map { $0 != now } ?? false }
     folderOpen = open
+    if active !== self.active, active != nil { revealsActive = true }
     self.favorites = favorites
     self.pinned = pinned
     self.today = today
@@ -384,8 +391,12 @@ final class SidebarView: NSView {
     addressPill.show(url: entry?.currentURL ?? "", security: level)
   }
 
-  func setNavigation(canGoBack: Bool, canGoForward: Bool) {
+  func setNavigation(canGoBack: Bool, canGoForward: Bool, backToolTip: String = "Back") {
     backButton.isEnabled = canGoBack
+    if backButton.toolTip != backToolTip {
+      backButton.toolTip = backToolTip
+      backButton.setAccessibilityLabel(backToolTip)
+    }
     forwardButton.isEnabled = canGoForward
   }
 
@@ -624,6 +635,88 @@ final class SidebarView: NSView {
     moving = false
     content.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(rowY + inset, scrollView.frame.height))
     landing = [:]
+    revealActiveIfNeeded()
+  }
+
+  // MARK: Active tab in view
+
+  /// Set when the active tab changes (`show`): the next layout scrolls its row into view if it's out of it, as Arc's
+  /// list follows the tab you go to (⌃Tab, ⌘1–9, Switch to Tab, a new tab at the top of Today, a close).
+  private var revealsActive = false
+  /// For the state log: how many times the list scrolled to show the active tab.
+  static var activeReveals = 0
+
+  private func revealActiveIfNeeded() {
+    guard revealsActive else { return }
+    revealsActive = false
+    guard !isDragging, let active,
+          let row = zip(pinnedRows + todayRows, pinned + today).first(where: { $0.1 === active })?.0, !row.isHidden
+    else { return }
+    let clip = scrollView.contentView
+    let visible = clip.bounds
+    let frame = row.frame
+    guard frame.minY < visible.minY || frame.maxY > visible.maxY else { return }
+    // Half a row of room past it, so the tab doesn't sit against the edge.
+    let wanted = frame.minY < visible.minY ? frame.minY - Self.rowHeight / 2 : frame.maxY + Self.rowHeight / 2 - visible.height
+    let next = NSPoint(x: 0, y: min(max(wanted, 0), max(0, content.frame.height - visible.height)).rounded())
+    Self.activeReveals += 1
+    if window == nil || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+      clip.scroll(to: next)
+      scrollView.reflectScrolledClipView(clip)
+      return
+    }
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = 0.22
+      context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+      clip.animator().setBoundsOrigin(next)
+    } completionHandler: { [weak self] in
+      guard let self else { return }
+      self.scrollView.reflectScrolledClipView(clip)
+    }
+  }
+
+  /// For tests: how far the list is scrolled, and whether the active tab's row is in view.
+  var debugActiveInView: [String: Any] {
+    layoutSubtreeIfNeeded()
+    let visible = scrollView.contentView.bounds
+    let row = active.flatMap { a in zip(pinnedRows + todayRows, pinned + today).first(where: { $0.1 === a })?.0 }
+    let inView = row.map { !$0.isHidden && $0.frame.minY >= visible.minY - 0.5 && $0.frame.maxY <= visible.maxY + 0.5 }
+    return ["scrollY": Double(visible.minY), "activeInView": inView ?? NSNull(), "reveals": Self.activeReveals]
+  }
+
+  /// For tests: scrolls the list to `y` at once (a user's scroll).
+  func debugScroll(to y: CGFloat) {
+    layoutSubtreeIfNeeded()
+    let clip = scrollView.contentView
+    clip.scroll(to: NSPoint(x: 0, y: min(max(y, 0), max(0, content.frame.height - clip.bounds.height))))
+    scrollView.reflectScrolledClipView(clip)
+  }
+
+  /// A double click on the sidebar's empty space (below and between its rows, not its top bar) opens a new tab, as
+  /// Arc's does.
+  override func mouseDown(with event: NSEvent) {
+    let point = convert(event.locationInWindow, from: nil)
+    if event.clickCount == 2, point.y >= scrollView.frame.minY, point.y <= scrollView.frame.maxY, delegate != nil {
+      emptyDoubleClicks += 1
+      delegate?.sidebarNewTab(self)
+      return
+    }
+    super.mouseDown(with: event)
+  }
+
+  /// For tests and the state log: double clicks on empty space so far.
+  private(set) var emptyDoubleClicks = 0
+
+  /// For tests: a double click below the last row.
+  func debugDoubleClickEmpty() -> Bool {
+    guard let window else { return false }
+    layoutSubtreeIfNeeded()
+    let point = convert(NSPoint(x: bounds.midX, y: scrollView.frame.maxY - 4), to: nil)
+    guard let event = NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [],
+                                         timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                         context: nil, eventNumber: 0, clickCount: 2, pressure: 1) else { return false }
+    mouseDown(with: event)
+    return true
   }
 
   typealias TreeRow = (index: Int, entry: SidebarEntry, depth: Int)
@@ -1763,12 +1856,18 @@ class HoverIconButton: NSButton {
 /// quick click still goes. Its own class: overriding `mouseDown` changes how AppKit tracks every button's press.
 final class HistoryButton: HoverIconButton {
   var onHistory: (() -> Void)?
+  /// ⌘-click or a middle click: the page back (or forward) in a new tab, as Arc and Chrome do.
+  var onNewTab: (() -> Void)?
   static let holdDelay: TimeInterval = 0.5
   /// How the last press on a history button ended, for the state log: click, hold, drag, right or control.
   static var lastPress = ""
 
   override func mouseDown(with event: NSEvent) {
     guard let onHistory, isEnabled, let window else { return super.mouseDown(with: event) }
+    if event.modifierFlags.contains(.command), let onNewTab {
+      Self.lastPress = "command"
+      return onNewTab()
+    }
     if event.modifierFlags.contains(.control) {
       Self.lastPress = "control"
       return onHistory()
@@ -1804,6 +1903,18 @@ final class HistoryButton: HoverIconButton {
     onHistory()
   }
 
+  override func otherMouseDown(with event: NSEvent) {
+    guard event.buttonNumber == 2, middleClick() else { return super.otherMouseDown(with: event) }
+  }
+
+  @discardableResult
+  private func middleClick() -> Bool {
+    guard isEnabled, let onNewTab else { return false }
+    Self.lastPress = "middle"
+    onNewTab()
+    return true
+  }
+
   /// For tests: a press as the pointer would make it, at the button's middle: `click` (released at once), `hold`
   /// (never released), `drag` (moved down 20 pt), `right` or `control`.
   func simulatePress(_ how: String) -> Bool {
@@ -1825,6 +1936,11 @@ final class HistoryButton: HoverIconButton {
     case "control":
       guard let down = event(.leftMouseDown, point, .control) else { return false }
       mouseDown(with: down)
+    case "command":
+      guard let down = event(.leftMouseDown, point, .command) else { return false }
+      mouseDown(with: down)
+    case "middle":
+      return middleClick()
     default:
       return false
     }

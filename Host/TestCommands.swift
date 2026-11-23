@@ -49,7 +49,8 @@ enum TestCommands {
 
   private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53, "tab": 48, ",": 43, "=": 24, "-": 27,
                                                      "0": 29, "p": 35, "u": 32, "y": 16, "z": 6, "k": 40, "j": 38, "q": 12, "h": 4, "m": 46,
-                                                     "e": 14, "o": 31, "b": 11, "space": 49, "left": 123, "right": 124, "return": 36, "delete": 51, "fwddelete": 117, "f5": 96, "3": 20]
+                                                     "e": 14, "o": 31, "b": 11, "space": 49, "left": 123, "right": 124, "return": 36, "delete": 51, "fwddelete": 117, "f5": 96, "3": 20,
+                                                     "up": 126, "down": 125, "v": 9]
 
   /// What a key types when it isn't its own name.
   private static let typedCharacters: [String: String] = [
@@ -57,6 +58,8 @@ enum TestCommands {
     "left": String(Character(UnicodeScalar(UInt32(NSLeftArrowFunctionKey))!)),
     "right": String(Character(UnicodeScalar(UInt32(NSRightArrowFunctionKey))!)),
     "fwddelete": String(Character(UnicodeScalar(UInt32(NSDeleteFunctionKey))!)),
+    "up": String(Character(UnicodeScalar(UInt32(NSUpArrowFunctionKey))!)),
+    "down": String(Character(UnicodeScalar(UInt32(NSDownArrowFunctionKey))!)),
     "f5": String(Character(UnicodeScalar(UInt32(NSF5FunctionKey))!)),
   ]
 
@@ -346,7 +349,7 @@ enum TestCommands {
     #endif
   }
 
-  /// `navhistory open|press back|forward toolbar|sidebar [click|hold|drag|right|control]`, `navhistory pick <n> [cmd]`,
+  /// `navhistory open|press back|forward toolbar|sidebar [click|hold|drag|right|control|command|middle]`, `navhistory pick <n> [cmd]`,
   /// `navhistory key up|down|return`: back's and forward's history lists.
   private static func navHistory(_ argument: String) -> String {
     let usage = "usage: navhistory open|press back|forward toolbar|sidebar [how] | pick <n> [cmd] | key up|down|return"
@@ -548,6 +551,9 @@ enum TestCommands {
       if !NSApp.sendAction(action, to: target, from: nil) { result = "no action" }
     case "type":
       if let editor { editor.insertText(argument, replacementRange: editor.selectedRange()) } else { result = "no editor" }
+    case "enter" where argument == "cmd":
+      // ⌘↩ in the command bar.
+      if AppController.shared.current?.commandBarReturn(command: true) != true { result = "no command bar" }
     case "enter":
       if let editor { editor.doCommand(by: #selector(NSResponder.insertNewline(_:))) } else { result = "no editor" }
     case "escape":
@@ -594,6 +600,17 @@ enum TestCommands {
         if !controller.clickRow(entry, flags: flags) { result = "not a row" }
       } else {
         result = "usage: rowclick <id> cmd|shift|cmdshift|plain"
+      }
+    case "sidebarlist":
+      // `sidebarlist scroll <y>` (a user's scroll), `sidebarlist doubleclick` (a double click on empty space).
+      let parts = argument.split(separator: " ").map(String.init)
+      guard let controller = AppController.shared.current else { result = "no window"; break }
+      if parts.count == 2, parts[0] == "scroll", let y = Double(parts[1]) {
+        controller.scrollSidebarList(to: y)
+      } else if parts == ["doubleclick"] {
+        if !controller.doubleClickSidebarSpace() { result = "no sidebar" }
+      } else {
+        result = "usage: sidebarlist scroll <y>|doubleclick"
       }
     case "iconpicker":
       result = iconPicker(argument)

@@ -43,6 +43,10 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Select several tabs
   - ⌃Tab switcher with page previews, like Arc
   - Pinned tabs reset when closed
+  - Closing a tab goes back to the tab you used before it, like Arc
+  - The list scrolls to the tab you switch to
+  - Double-click empty space for a new tab
+  - Clear Today (⇧⌘K) keeps the tab you're on; ⇧⌘T or ⌘Z brings the rest back
   - Today tabs archive after 12 hours
 - **Moving in**
   - Also from Dia, Chrome, Brave, Edge, Helium, Firefox, Zen and Safari
@@ -51,7 +55,11 @@ Ray updates itself after that (Ray › Check for Updates…).
 - **Other**
   - Address bar above the page, like Dia
   - A link's address at the bottom corner on hover
-  - Back and forward history lists: right-click or hold
+  - Back and forward history lists: right-click or hold; ⌘-click opens the page in a new tab
+  - Back on a tab a link opened closes it and returns to the page that opened it
+  - Videos' full screen fills the screen
+  - ⌘L then Return reloads; ⌘↩ opens in a new tab
+  - Arc's keys: ⌥⌘↓/↑ for the next tab, ⌥⌘V pastes a link as a new tab, ⇧⌥⌘C copies a Markdown link
   - Swiping back or forward shows a frosted chip that ticks when letting go will navigate
   - Edge-to-edge full screen
   - Settings in the command bar

@@ -20,6 +20,8 @@ struct ClosedTab {
   /// The key the engine's tab restore service holds the tab's back/forward list under (`ac_tab_restore_take`). Nil
   /// in a private window: the engine keeps nothing off the record, so those come back on their last page only.
   let restoreKey: String?
+  /// The tabs one Clear Today closed share this: ⇧⌘T (and ⌘Z) brings them all back at once, as Arc's ⌘Z undoes a clear.
+  var batch: UUID? = nil
 
   var host: String {
     let host = URLComponents(string: url)?.host ?? ""
@@ -54,6 +56,12 @@ final class ClosedTabs {
   func take(_ id: UUID? = nil) -> ClosedTab? {
     guard let at = id.map({ id in items.lastIndex { $0.id == id } }) ?? items.indices.last else { return nil }
     return items.remove(at: at)
+  }
+
+  /// The newest tab closed together with the one just taken (one Clear Today), if there is one left.
+  func takeNext(inBatch batch: UUID) -> ClosedTab? {
+    guard items.last?.batch == batch else { return nil }
+    return items.removeLast()
   }
 
   /// A pinned or favorite row opened again by hand: its closed page is no longer one to bring back.

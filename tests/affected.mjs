@@ -15,7 +15,7 @@ const pagePrompts = ["app-link-prompt", "popup-blocked", "crashed-page", "page-u
 const commandBar = ["address-new-tab", "address-cancel", "bar-lists-tabs", "bar-switch-to-tab", "bar-history",
   "address-navigate", "address-javascript", "bar-one-row", "bar-search-suggestions", "bar-search-google", "bar-actions",
   "bar-ranking", "bar-sites", "bar-arrow-fill", "tab-to-search", "bar-fills-rows", "bar-key-work", "settings-bar",
-  "search-engine", "search-suggestions-off", "site-search", "bookmarks"];
+  "search-engine", "search-suggestions-off", "site-search", "bookmarks", "bar-address-return"];
 const drag = ["drag-click-selects", "drag-reorder", "drag-to-pin", "drag-to-favorite", "drag-pin-hint-gone",
   "drag-out-cancels", "drag-favorite-to-today"];
 // Folders in Pinned and Today (Today's are Chrome tab groups), their icon and Change Icon.
@@ -114,7 +114,12 @@ export const areas = {
   "scripts/fetch-sparkle.sh": ["updater-config"],
 
   // BrowserWindowController: by section. Lines outside them (properties, init) run everything.
-  "Host/BrowserWindowController.swift#Layout": [...sidebarMotion, ...pageSurface, "page-toolbar", "site-controls",
+  // A page in full screen: the window's chrome out of the way, Escape and a tab switch end it.
+  "Host/BrowserWindowController.swift#Page full screen": ["page-fullscreen"],
+  // Back closing a tab a link opened; ⌘-click and a middle click on Back and Forward.
+  "Host/BrowserWindowController.swift#Back and forward": ["back-closes-link-tab", "back-forward-list", "navigate", "reopen-closed-tab"],
+  "Host/SidebarView.swift#Active tab in view": ["sidebar-follows-active", "tab-switcher", "bar-switch-to-tab"],
+  "Host/BrowserWindowController.swift#Layout": [...sidebarMotion, ...pageSurface, "page-toolbar", "site-controls", "page-fullscreen",
     "find-in-page", "copy-url", "notes", "crashed-page"],
   "Host/BrowserWindowController.swift#Extensions and downloads": ["extensions", "extension-prompt", "downloads",
     "download-held", "download-insecure-blocked", "site-controls"],
@@ -142,18 +147,18 @@ export const areas = {
   "Host/BrowserWindowController.swift#Find in page": ["find-in-page", "copy-url"],
   "Host/BrowserWindowController.swift#Site controls": ["panels", "site-controls", "extensions", "copy-url", "find-in-page", "settings-privacy"],
   "Host/BrowserWindowController.swift#Entries": "all",
-  "Host/BrowserWindowController.swift#Closing": ["multi-select", "close-last-window", "reopen-closed-tab",
+  "Host/BrowserWindowController.swift#Closing": ["multi-select", "close-last-window", "reopen-closed-tab", "close-shows-last-used",
     "settings-undo-reopens", "address-fragment", "page-commands", "bar-actions"],
   // What a row's menu items, close buttons and the `rowaction` test command do (pin, move, folders, close…).
   "Host/BrowserWindowController.swift#Row actions": [...drag, ...folders, "row-menus", "favorites", "pin-unload-restore",
     "tab-rename", "reopen-closed-tab", "tile-hover", "peek-zones", "clear", "copy-url", "bar-actions", "bar-ranking",
     "settings-fade-unloaded", "settings-new-tab-position", "warn-before-quitting"],
   // File › New Folder, ⌘D, Back to Pinned URL, Clear Today, tab cycling and ⌘1–9: the rest of Entries.
-  "Host/BrowserWindowController.swift#Sidebar commands": [...folders, "clear", "peek-zones", "pin-unload-restore", "favorites",
+  "Host/BrowserWindowController.swift#Sidebar commands": [...folders, "clear", "clear-today-keeps-current", "arc-keys", "peek-zones", "pin-unload-restore", "favorites",
     "settings-recent-tab-cycling", "settings-shortcut-editor", "folder-rename", "row-menus"],
   // Arc's ⌃Tab switcher: the walk, its panel and the page pictures.
-  "Host/BrowserWindowController.swift#Tab switcher": ["settings-recent-tab-cycling", ...tabSwitchCost, "tab-pictures-dropped"],
-  "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename", "warn-before-quitting"],
+  "Host/BrowserWindowController.swift#Tab switcher": ["settings-recent-tab-cycling", ...tabSwitchCost, "tab-pictures-dropped", "close-shows-last-used"],
+  "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename", "warn-before-quitting", "clear-today-keeps-current", "back-closes-link-tab"],
   // A tab's own name: Rename…, the double click, the test command's `rename` (folders too).
   "Host/BrowserWindowController.swift#Tab names": ["tab-rename", "folder-rename"],
   // The rows' menu items: Duplicate, Share Folder…, Edit Pinned Page.
@@ -169,6 +174,7 @@ export const areas = {
   "Host/BrowserWindowController.swift#Pages": pageSurface,
   "Host/BrowserWindowController.swift#SidebarViewDelegate": "all",
   "Host/BrowserWindowController.swift#RayCoreWindowDelegate": [...pages, "tab-pictures-dropped", "private-window", "close-last-window", "warn-before-closing-window",
+    "close-shows-last-used", "back-closes-link-tab", "page-fullscreen",
     "crashed-page", "quit-with-downloads"],
   "Host/BrowserWindowController.swift#RayCoreTabDelegate": [...pages, ...permissions, "pending-address", "pending-security", "page-toolbar", "page-loading",
     "load-sweep-once", "site-controls", "find-in-page", "settings-zoom", "settings-routes", "settings-trimmed",
@@ -305,7 +311,7 @@ export const areas = {
   "Host/Surface.swift": ["surfaces-snap", "panels", "notes", "site-controls", "permission", "permission-allow", "downloads"],
   "Host/Updater.swift": ["updater-config", "settings-general"],
   // ⇧⌘T and History › Recently Closed.
-  "Host/ClosedTabs.swift": ["reopen-closed-tab", "tab-rename"],
+  "Host/ClosedTabs.swift": ["reopen-closed-tab", "tab-rename", "clear-today-keeps-current"],
   // ⌘Z: Edit › Undo, or reopening a closed tab outside text.
   "Host/ClosedTabs.swift#Undo close tab": ["settings-undo-reopens", "reopen-closed-tab", "settings-shortcuts"],
   // Light or dark for Ray's windows, and the scroll bars pages are told to draw.

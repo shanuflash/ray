@@ -118,6 +118,11 @@ needs a mock and the owner's pick before it is built.
 
 ## What to fix first
 
+**Status (2026-11-23, `fix: arc tab and bar rules`):** 1, 2, 3, 5, 6, 7, 8, 9, 10, 12 and 15 are fixed (8 without a
+Back to Pinned URL key; 12 without ⌥↩ Split View). Left: 4 (needs an engine hook), 11, 13, 14 and the bigger items
+below; `docs/MISSING.md` Known limitations 73 tracks them. Fixing 3 found that Chrome had been choosing the tab after
+every ⌘W: it activates its own pick before Ray hears of the close, so Ray's neighbour rule never ran.
+
 Ranked by hurt × how often it happens ÷ size. Items 1–9 are app-side and small; none needs a mock except where noted.
 
 1. **⌘L then Return switches tabs** (bug). Treat the unchanged address as typed (or show no rows until it is edited, as

@@ -439,13 +439,8 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     ephemeral `URLSession` (macOS's identity, no cookies). Ardia moved its fetch into Chromium (`7c854a06`,
     `ac_search_suggest.cc`) after Google showed some users its "unusual traffic" page, and stopped asking from
     private windows at all. Ray's way is more private; watch for the same reports before changing it.
-63. **Closing a tab shows its neighbour, not the tab used before it** (2026-11-14). `window(_:didRemove:)` calls
-    `activateNeighbor`; Ardia 0.2.47-nightly.1 (PR #416, "as in Arc") goes back to the most recently used tab and
-    never wakes a sleeping one while an awake one is left. Fix: pick by `lastActive` among live entries, the
-    neighbour only when none; confirm Arc's behaviour first.
-64. **Back does nothing on a tab a link opened** (2026-11-14). Ardia 0.2.47-nightly.1 (PR #1401): Back with no
-    history closes such a tab and returns to the tab that opened it. Ray would need to keep each tab's opener
-    (`openToday(_:after:)` has it) and enable Back for it; check Arc before building.
+63. *(Done 2026-11-23: closing a tab shows the tab used before it; see Done. The number stays for references.)*
+64. *(Done 2026-11-23: Back on a tab a link opened closes it and returns to its opener; see Done.)*
 65. **Pages may stay blank under a same-size window** (2026-11-16, not tried; from Ardia `fcbf63f61`, its #1930).
     Chrome's `WebContentsOcclusionCheckerMac` guesses a window is covered when another browser window above contains
     its frame and pauses its pages; with same-size windows the guess goes stale and the pages show only their
@@ -483,37 +478,33 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     with the full address, Copy URL, Console and Inspect when the address lives in the sidebar; Ardia adds a per-site
     switch in Site controls. Mock first; owner's call.
 73. **Arc behaviour audit gaps** (2026-11-23, docs/ARC-BEHAVIOUR-AUDIT.md has the evidence, Arc's and Ardia's
-    behaviour and a ranked list). Probed on a hidden instance where marked.
-   - ⌘L then Return with the address unchanged switches to another tab instead of reloading (probe): the unchanged
-     address counts as nothing typed (`refreshSuggestions`), so the rows are other tabs. Bug.
-   - A page's own full screen (YouTube's F) stays inside the page card with the sidebar and address bar showing
-     (probe): Ray doesn't implement the engine's `window:tab:didChangeFullscreen:`.
-   - ⌃Tab after a ⌘-click goes to the background tab you never saw: `SidebarEntry.lastActive` starts at creation.
-   - ⌘T then Return with nothing typed goes to the top tab in sidebar order (probe); the empty bar lists other tabs in
-     sidebar order, not most recent first (Arc ranks recent switches; Ardia lists recent tabs).
+    behaviour and a ranked list). Fixed the same day: ⌘L Return, page full screen, the close successor, ⌃Tab and
+    unseen tabs, the empty bar's order, the list following the active tab, Clear Today's rules and key, ⌥⌘↓/↑, ⌥⌘V,
+    ⇧⌥⌘C, ⌘Z on by default, ⌘-click on Back/Forward, ⌘↩ in the bar, ⌘T/⌘L closing the bar, sidebar clicks through
+    the bar, a double click on empty sidebar space. Left:
    - Links from a pinned tab or favorite to another site move the pinned tab away (Arc: Peek, or a new tab with Peek
-     off).
-   - Sized pop-ups (`window.open` with width/height, OAuth sign-ins) open as Today tabs (probe; Arc and Ardia: a
-     pop-up window; `popupFeatures` is unused).
+     off). Needs an engine hook for same-tab link navigations (none in `RayCore.h`), so it waits for the engine work.
+   - Sized pop-ups (`window.open` with width/height, OAuth sign-ins) open as Today tabs (Arc and Ardia: a pop-up
+     window; `popupFeatures` is unused).
    - ⌘N never opens a second normal window (`openMainWindow` brings the one forward); so no tab dragged out to a new
      window either.
-   - The sidebar never scrolls to the active tab after a switch (⌃Tab, ⌘1–9, Switch to Tab) or to a new tab at the
-     top of Today (MISSING 70 is the indicator; this is the scroll).
-   - Today archives only at launch, only unloaded tabs, counted from when a tab was last selected; Clear Today has no
-     key (Arc ⇧⌘K), closes the selected tab too and has no single undo.
-   - Keys Arc has: ⌥⌘↓/↑ next/previous tab, ⌘⌥V paste as a new tab, ⇧⌥⌘C copy as Markdown, ⌘. sidebar keyboard
-     focus; ⌘Z reopening a tab is off by default (Arc: on); ⌘-click or middle-click Back/Forward doesn't open a new
-     tab; Back to Pinned URL has no key (Ardia ⌘↩).
-   - Command bar: no ⌘↩ (new tab) or ⌥↩; ⌘T again doesn't close it; a click on the sidebar only closes it (Arc's
-     sidebar takes the click); no way to remove a suggestion (⌘⌥⌫).
-   - Sidebar: nothing for a double-click on empty space (Arc: new tab), a link, text or file dropped on it, or an
-     ⌥-drag (Arc duplicates); closed folders spring open under a drag (Arc stopped that); a favorite tile ignores a
-     middle click; ⇧⌘C doesn't strip trackers.
+   - Today archives only at launch, only unloaded tabs, counted from when a tab was last selected; what it archives
+     vanishes (Arc keeps an Archive).
+   - Keys Arc has that Ray doesn't: ⌘. for keyboard focus in the sidebar; Back to Pinned URL has no key (Ardia ⌘↩).
+   - Command bar: no way to remove a suggestion (Arc's ⌘⌥⌫ or a row's ✕); Tab with nothing typed doesn't open the
+     actions list.
+   - Sidebar: nothing for a link, text or file dropped on it, or an ⌥-drag (Arc duplicates); closed folders spring
+     open under a drag (Arc stopped that); a favorite tile ignores a middle click; ⇧⌘C doesn't strip trackers.
+   - Clear Today keeps at most 25 tabs for ⇧⌘T (`ClosedTabs.limit`); a bigger clear loses the oldest.
 
 ## Done
 
 | What | When |
 |---|---|
+| Arc's tab rules: closing a tab shows the tab used before it (Chrome's own pick no longer wins), Back on a tab a link opened closes it and returns to the opener, a tab opened behind doesn't count as used (⌃Tab), ⌘-click or middle-click on Back/Forward opens a new tab, Clear Today (⇧⌘K) keeps the current and playing tabs and comes back in one ⇧⌘T/⌘Z, ⌥⌘↓/↑, ⌥⌘V, ⇧⌥⌘C, ⌘Z reopens by default | 2026-11-23, `fix: arc tab and bar rules` |
+| Command bar: ⌘L then Return reloads (it switched tabs), ⌘↩ opens in a new tab, a second ⌘T/⌘L closes it, nothing typed lists recent tabs first, the sidebar takes clicks while it's open | 2026-11-23, `fix: arc tab and bar rules` |
+| A page's full screen (videos, YouTube's F) fills the window and screen; Escape or a tab switch leaves it | 2026-11-23, `fix: arc tab and bar rules` |
+| The sidebar scrolls to the tab you switch to; a double click on its empty space opens a new tab | 2026-11-23, `fix: arc tab and bar rules` |
 | Delta updates: a release whose engine is unchanged downloads a few hundred KB instead of the 146 MB zip (Sparkle deltas from the last 3 releases, each checked before release) | 2026-11-12, `feat: sparkle delta updates` |
 | Resizable sidebar: drag its edge (240–480 pt, a rubber band at the limits as Ardia's, nothing drawn as Arc's), double-click for the standard width; one width for every window, remembered | 2026-11-12, `feat: resizable sidebar` |
 | A peeking sidebar's edge drags too, and ⌘S on a peeking sidebar docks it in place (no slide out and in again) | 2026-11-12, `fix: peeking sidebar resizes and docks in place` |

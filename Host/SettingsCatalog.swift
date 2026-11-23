@@ -228,7 +228,7 @@ extension AnySettingKey {
 
   /// Edit › Undo reopens the last closed tab outside text (`UndoCloseTab`), as in Arc.
   static let undoReopensClosedTab = SettingKey<Bool>(
-    "undoReopensClosedTab", default: false,
+    "undoReopensClosedTab", default: true,
     ui: SettingUI(
       pane: .shortcuts, group: .keys, title: "Reopen closed tabs with ⌘Z",
       detail: "Outside text fields.", about: "Outside text fields, as in Arc; press it again for the tab closed before. In a text field ⌘Z still undoes typing.",

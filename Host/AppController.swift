@@ -211,7 +211,7 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-  @objc func newTab(_ sender: Any?) { current?.beginNewTab() }
+  @objc func newTab(_ sender: Any?) { current?.beginNewTab(toggles: true) }
 
   /// Ray › Check for Updates…
   @objc func checkForUpdates(_ sender: Any?) { Updater.shared.checkForUpdates(sender) }
@@ -252,7 +252,7 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
       .credits: credits,
     ])
   }
-  @objc func focusAddress(_ sender: Any?) { current?.focusAddress() }
+  @objc func focusAddress(_ sender: Any?) { current?.focusAddress(toggles: true) }
   @objc func copyURL(_ sender: Any?) { current?.copyURL() }
   @objc func newFolder(_ sender: Any?) { current?.newFolder() }
   /// The sidebar-only Arc import (no menu item since Import from Browser…; its check still drives it).
@@ -286,10 +286,12 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
   @objc func togglePin(_ sender: Any?) { current?.togglePin() }
   @objc func backToPinned(_ sender: Any?) { current?.backToPinned() }
   @objc func clearToday(_ sender: Any?) { current?.clearToday() }
+  @objc func pasteURLAsNewTab(_ sender: Any?) { current?.pasteURLAsNewTab() }
+  @objc func copyURLAsMarkdown(_ sender: Any?) { current?.copyURLAsMarkdown() }
   @objc func reload(_ sender: Any?) { current?.activeTab?.userReload() }
   @objc func reloadIgnoringCache(_ sender: Any?) { current?.activeTab?.userReloadIgnoringCache() }
-  @objc func goBack(_ sender: Any?) { current?.activeTab?.userGoBack() }
-  @objc func goForward(_ sender: Any?) { current?.activeTab?.userGoForward() }
+  @objc func goBack(_ sender: Any?) { current?.goBack() }
+  @objc func goForward(_ sender: Any?) { current?.goForward() }
   @objc func toggleDevTools(_ sender: Any?) { current?.toggleDevTools() }
   @objc func printPage(_ sender: Any?) { current?.runChromeCommand(.print) }
   @objc func printWithSystemDialog(_ sender: Any?) { current?.runChromeCommand(.systemPrint) }
@@ -344,8 +346,8 @@ extension AppController: NSMenuItemValidation {
   /// The menu's, and the command bar's too: the bar offers a command only while this enables it (BarActions).
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
-    case #selector(goBack(_:)): return current?.activeTab?.canGoBack ?? false
-    case #selector(goForward(_:)): return current?.activeTab?.canGoForward ?? false
+    case #selector(goBack(_:)): return current?.canGoBack ?? false
+    case #selector(goForward(_:)): return current?.canGoForward ?? false
     case #selector(checkForUpdates(_:)): return Updater.shared.canCheck
     case #selector(toggleToolbar(_:)):
       item.state = current?.toolbarShown == true ? .on : .off
@@ -376,8 +378,11 @@ extension AppController: NSMenuItemValidation {
       return current?.activeEntry?.isAwayFromPinned == true
     case #selector(clearToday(_:)):
       return current?.state.today.isEmpty == false
-    case #selector(copyURL(_:)):
+    case #selector(copyURL(_:)), #selector(copyURLAsMarkdown(_:)):
       return current?.activeEntry.map { !$0.currentURL.isEmpty } ?? false
+    case #selector(pasteURLAsNewTab(_:)):
+      return current != nil && BrowserWindowController.pasteboard.string(forType: .string)?
+        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     case #selector(find(_:)), #selector(toggleSiteControls(_:)):
       return current?.activeTab != nil
     default: return true

@@ -3,6 +3,8 @@ import AppKit
 protocol PageToolbarDelegate: AnyObject {
   func toolbarToggleSidebar(_ toolbar: PageToolbarView)
   func toolbarBack(_ toolbar: PageToolbarView)
+  /// ⌘-click or a middle click on Back or Forward: that page in a new tab.
+  func toolbarHistoryInNewTab(_ toolbar: PageToolbarView, forward: Bool)
   func toolbarHistory(_ toolbar: PageToolbarView, forward: Bool, from button: HistoryButton)
   func toolbarForward(_ toolbar: PageToolbarView)
   func toolbarReload(_ toolbar: PageToolbarView)
@@ -68,6 +70,10 @@ final class PageToolbarView: NSView {
         guard let self, let button else { return }
         self.delegate?.toolbarHistory(self, forward: forward, from: button)
       }
+      button.onNewTab = { [weak self] in
+        guard let self else { return }
+        self.delegate?.toolbarHistoryInNewTab(self, forward: forward)
+      }
     }
     address.onClick = { [weak self] in
       guard let self else { return }
@@ -81,9 +87,13 @@ final class PageToolbarView: NSView {
   override var isFlipped: Bool { true }
   override var mouseDownCanMoveWindow: Bool { true }
 
-  func show(url: String, security: String?, canGoBack: Bool, canGoForward: Bool) {
+  func show(url: String, security: String?, canGoBack: Bool, canGoForward: Bool, backToolTip: String = "Back") {
     address.show(url: url, security: security)
     backButton.isEnabled = canGoBack
+    if backButton.toolTip != backToolTip {
+      backButton.toolTip = backToolTip
+      backButton.setAccessibilityLabel(backToolTip)
+    }
     forwardButton.isEnabled = canGoForward
     reloadButton.isEnabled = !url.isEmpty
     copyButton.isHidden = url.isEmpty
