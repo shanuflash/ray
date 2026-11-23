@@ -450,6 +450,51 @@ const checks = {
     const opened = await until("new /c tab", () => state().tabs.length === before + 1 && tabFor("/c"));
     await until("popup active", () => state().active === opened.id && oneVisibleActive());
   },
+  async "popup-window"() {
+    // A sized pop-up (OAuth sign-ins) opens in a small window of its own (owner's pick B), never a tab: its page in a
+    // card at the size asked for, the engine's address on top. Open as Tab moves it beside its opener; a pop-up that
+    // closes itself takes its window with it.
+    const { target, sessionId } = await session("/a");
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    const before = state().tabs.length;
+    const popups = async () => { await command("state"); return state().popupWindows; };
+    const openPopup = async (marker) => {
+      assert((await evaluate(sessionId, `!!window.open("/b?${marker}", "signin", "width=420,height=500")`)) === true, "window.open refused");
+      return until("pop-up window", async () => { const p = await popups(); return p.length === 1 && p[0].pageInCard && p[0].url.includes(marker) && p[0]; }, 8000);
+    };
+    let popup = await openPopup("popupA");
+    assert(state().tabs.length === before, "the pop-up became a tab too");
+    assert(popup.address.startsWith("127.0.0.1") && popup.address.includes("/b?popupA"), `address ${popup.address}`);
+    const card = popup.card.match(/[-\d.]+/g).map(Number);
+    assert(card[2] === 420 && card[3] === 500, `page card ${popup.card}`);
+    const inPopup = await session("?popupA");
+    assert((await evaluate(inPopup.sessionId, "innerWidth")) === 420, "the page isn't as wide as asked");
+    // Open as Tab: a Today tab right after its opener, shown; the window gone.
+    await command("popup opentab");
+    await until("moved into a tab", async () => {
+      const p = await popups();
+      const ids = state().tabs.map((t) => t.id);
+      const moved = tabFor("?popupA");
+      return p.length === 0 && state().tabs.length === before + 1 && moved && state().active === moved.id &&
+        ids.indexOf(moved.id) === ids.indexOf(tabFor("/a").id) + 1;
+    });
+    await send("Target.closeTarget", { targetId: (await targets()).find((t) => t.url.includes("?popupA")).targetId });
+    await until("closed", () => state().tabs.length === before);
+    // A pop-up that closes itself (a sign-in done) takes its window along.
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    popup = await openPopup("popupB");
+    const b = await session("?popupB");
+    await evaluate(b.sessionId, "setTimeout(() => window.close(), 50), 1");
+    await until("window went with it", async () => (await popups()).length === 0);
+    assert(state().tabs.length === before, "closing the pop-up changed the tabs");
+    // The window's own close.
+    popup = await openPopup("popupC");
+    await command("popup close");
+    await until("closed by hand", async () => (await popups()).length === 0);
+    assert(!(await targets()).some((t) => t.url.includes("?popupC")), "its page stayed open");
+  },
   async "background-tab"() {
     const { target } = await session("/a");
     await send("Target.activateTarget", { targetId: target.targetId });

@@ -118,6 +118,9 @@ export const areas = {
   "Host/BrowserWindowController.swift#Page full screen": ["page-fullscreen"],
   // The launch's --keep-old-history (and the test switch that drops it).
   "Host/main.swift#History": ["keep-old-history"],
+  // A page's sized pop-up in its own window (owner's pick B), Open as Tab, and the tabs it opens.
+  "Host/PopupWindow.swift": ["popup-window", "window-open", "popup-blocked"],
+  "Host/BrowserWindowController.swift#Pop-up windows": ["popup-window"],
   // Links, files and text dropped on the sidebar, and ⌥-drag's copy.
   "Host/SidebarView.swift#Drops from elsewhere": ["sidebar-drops"],
   "Host/BrowserWindowController.swift#Sidebar drops": ["sidebar-drops", "row-menus"],

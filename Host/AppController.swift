@@ -272,7 +272,14 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
   @objc func findPrevious(_ sender: Any?) { current?.findAgain(forward: false) }
   @objc func closeTab(_ sender: Any?) {
     // ⌘W in the Settings window closes it, not a tab of the browser behind it.
-    if SettingsWindowController.shared.isKey { SettingsWindowController.shared.close() } else { current?.closeActive() }
+    if SettingsWindowController.shared.isKey {
+      SettingsWindowController.shared.close()
+    } else if let popup = PopupWindow.key {
+      // A pop-up window in front: ⌘W closes it, not a tab of the window behind.
+      popup.close()
+    } else {
+      current?.closeActive()
+    }
   }
   @objc func showSettings(_ sender: Any?) { SettingsWindowController.shared.show() }
 

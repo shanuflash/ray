@@ -59,6 +59,7 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Back and forward history lists: right-click or hold; ⌘-click opens the page in a new tab
   - Back on a tab a link opened closes it and returns to the page that opened it
   - Videos' full screen fills the screen
+  - Sign-in pop-ups open in a small window with their address on top, not as tabs
   - ⌘L then Return reloads; ⌘↩ opens in a new tab
   - Arc's keys: ⌥⌘↓/↑ for the next tab, ⌥⌘V pastes a link as a new tab, ⇧⌥⌘C copies a Markdown link
   - Swiping back or forward shows a frosted chip that ticks when letting go will navigate

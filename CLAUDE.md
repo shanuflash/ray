@@ -632,6 +632,16 @@ publicly or create accounts.
   it's out of it (Arc's; 0.22 s, none with Reduce Motion), and a double click on the list's empty space opens a new
   tab (Arc's). Test command `sidebarlist scroll <y>|doubleclick`; state log `sidebar.activeInView`,
   `sidebar.emptyDoubleClicks`; check `sidebar-follows-active`.
+- `PopupWindow` (`Host/PopupWindow.swift`, `BrowserWindowController` `// MARK: Pop-up windows`): a page's sized
+  pop-up (the engine's `popup` disposition with an opener: OAuth sign-ins) gets a small window of its own at the size
+  and place it asked for (`popupFeatures`, kept on the opener's screen), never a tab. Owner's pick B of
+  `docs/mocks/popup-window.html` (2026-11-23): Ray's sidebar colour, one 38 pt row with Ray's `WindowLights`, the
+  engine's address centred (`PopupAddressView`: a lock for https, Ray's marks otherwise, host medium, path grey) and
+  Open as Tab (`adoptFromPopup`: a Today tab right after the opener, shown), the page a card 6 pt in with 9 pt
+  corners. Its own `RayCoreWindow` adopts the tab on the next run-loop turn (Ardia's `ArdiaPopupWindow`); a page that
+  closes itself takes the window; ⌘W (the page's key or the menu's, `PopupWindow.key`) closes it; tabs it opens go to
+  Ray's window (`popupAdoptions` binds them), pop-ups it opens get windows. Test command `popup opentab|close|snap
+  <path>`; state log `popupWindows`; check `popup-window`.
 - Sidebar drops (`SidebarView` `// MARK: Drops from elsewhere`, `BrowserWindowController` `// MARK: Sidebar drops`):
   a link dragged from a page, a file from Finder or text from anywhere opens as a tab where it lands, with the gap a
   dragged tab opens (a placeholder `SidebarDrag`); links only http(s) (`AddressInput.link(fromOtherApp:)`), files only

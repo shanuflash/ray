@@ -3130,6 +3130,32 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     move(entry, to: target)
   }
 
+  // MARK: Pop-up windows
+
+  /// Tabs on their way here from a pop-up window, by tab: the entry each binds to when the engine inserts it.
+  private var popupAdoptions: [ObjectIdentifier: SidebarEntry] = [:]
+
+  /// A pop-up window's page as a Today tab (its Open as Tab, or a tab it opened), right after `openerID`'s tab.
+  func adoptFromPopup(_ tab: RayCoreTab, after openerID: UUID?, foreground: Bool) {
+    guard !tab.closed, !closing else { return }
+    let entry = SidebarEntry(kind: .today, url: tab.url, title: tab.title)
+    entry.openerID = openerID
+    insertToday(entry, after: openerID.flatMap { state.entry(id: $0) })
+    popupAdoptions[ObjectIdentifier(tab)] = entry
+    coreWindow.adoptTab(tab)
+    // The engine may insert it later (adopting from inside a tab strip notification is put off).
+    DispatchQueue.main.async { [weak self, weak tab] in
+      guard let self, let tab, !tab.closed else { return }
+      if let waiting = self.popupAdoptions.removeValue(forKey: ObjectIdentifier(tab)), waiting.tab == nil { self.bind(waiting, tab) }
+      guard self.state.entry(id: entry.id) === entry else { return }
+      if foreground { self.select(entry) } else {
+        entry.unseen = true
+        self.changed("insert")
+      }
+    }
+    changed("insert")
+  }
+
   // MARK: Sidebar drops
 
   /// ⌥-drag (Arc's): a copy, with the tab's history, goes where the tab was dropped; the tab stays where it was. The
@@ -3340,6 +3366,16 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if state.entry(for: tab) != nil { return }
     if let entry = loadingEntry, entry.tab == nil {
       bind(entry, tab)
+      return
+    }
+    // A tab coming from a pop-up window (Open as Tab, or a link the pop-up opened): its entry is waiting.
+    if let entry = popupAdoptions.removeValue(forKey: ObjectIdentifier(tab)) {
+      if entry.tab == nil { bind(entry, tab) }
+      return
+    }
+    // A page's sized pop-up (`PopupWindow`): its own small window, never a tab here.
+    if disposition == "popup", let opener {
+      PopupWindow.open(tab, from: self, opener: state.entry(for: opener))
       return
     }
     let entry = SidebarEntry(kind: .today, url: tab.url)
@@ -3907,6 +3943,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["welcomeAgainItem"] = MainMenu.alternateInfo(of: #selector(AppController.showWelcomeAgain(_:))) ?? NSNull()
     state["pageFullscreen"] = pageFullscreenDebug
     state["lastDrop"] = lastDrop
+    state["popupWindows"] = PopupWindow.all.map(\.debug)
     state["back"] = ["enabled": canGoBack, "tooltip": backToolTip, "lastPress": HistoryButton.lastPress]
     state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
       .sorted { $0.lastUsed > $1.lastUsed }.map(tabID)

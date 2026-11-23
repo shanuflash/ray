@@ -480,8 +480,10 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     the bar, a double click on empty sidebar space. Left:
    - Links from a pinned tab or favorite to another site move the pinned tab away (Arc: Peek, or a new tab with Peek
      off). Needs an engine hook for same-tab link navigations (none in `RayCore.h`), so it waits for the engine work.
-   - Sized pop-ups (`window.open` with width/height, OAuth sign-ins) open as Today tabs (Arc and Ardia: a pop-up
-     window; `popupFeatures` is unused).
+   - Pop-up windows (landed 2026-11-23) don't show Ray's save-password, save-address or permission prompts for their
+     page: those are the main window's delegate calls, and `PopupWindow` doesn't take them yet (Ardia sends the
+     password prompt to the opener's page and asks permissions in a sheet). No setting to open pop-ups as tabs
+     (Ardia's "Open pop-ups as tabs").
    - ⌘N never opens a second normal window (`openMainWindow` brings the one forward); so no tab dragged out to a new
      window either.
    - Today archives only at launch, only unloaded tabs, counted from when a tab was last selected; what it archives
@@ -497,6 +499,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
+| A page's sized pop-up (Google, Apple, Microsoft sign-ins) opens in a small window of its own in Ray's look, with its address on top and Open as Tab, instead of as a Today tab | 2026-11-23, `feat: popup windows` |
 | Imported history older than 90 days arrives and stays (Chromium refused it at import and deleted old visits; `--keep-old-history`) | 2026-11-23, `feat: keep old history, sidebar drops` |
 | Links, files and text dropped on the sidebar open as tabs where they land (text as a search); ⌥-drag a tab to copy it | 2026-11-23, `feat: keep old history, sidebar drops` |
 | Arc's tab rules: closing a tab shows the tab used before it (Chrome's own pick no longer wins), Back on a tab a link opened closes it and returns to the opener, a tab opened behind doesn't count as used (⌃Tab), ⌘-click or middle-click on Back/Forward opens a new tab, Clear Today (⇧⌘K) keeps the current and playing tabs and comes back in one ⇧⌘T/⌘Z, ⌥⌘↓/↑, ⌥⌘V, ⇧⌥⌘C, ⌘Z reopens by default | 2026-11-23, `fix: arc tab and bar rules` |

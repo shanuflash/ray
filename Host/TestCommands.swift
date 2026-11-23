@@ -611,6 +611,16 @@ enum TestCommands {
       } else {
         result = "usage: rowclick <id> cmd|shift|cmdshift|plain"
       }
+    case "popup":
+      // `popup opentab|close`: the newest pop-up window's Open as Tab, or its close (⌘W).
+      guard let popup = PopupWindow.all.last else { result = "no pop-up window"; break }
+      switch argument {
+      case "opentab": popup.pressOpenAsTab()
+      case "close": popup.close()
+      case let snap where snap.hasPrefix("snap "):
+        if !popup.snapshot(to: String(snap.dropFirst(5))) { result = "no picture" }
+      default: result = "usage: popup opentab|close|snap <path>"
+      }
     case "sidebarlist":
       // `sidebarlist scroll <y>` (a user's scroll), `sidebarlist doubleclick` (a double click on empty space).
       let parts = argument.split(separator: " ").map(String.init)
