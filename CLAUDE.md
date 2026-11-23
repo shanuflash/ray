@@ -43,6 +43,12 @@ publicly or create accounts.
   the pointer picking a row puts the typed text back; `typed` stays what you typed meanwhile (check `bar-arrow-fill`). This window's active tab is never offered
   (nor its page as history); another tab on the same address is. Page rows: title, then `Suggestions.shortAddress`
   (host, "…", the path's last ~16 characters; a long host loses its start instead). Check `bar-ranking`.
+  Nothing typed, the other tabs come most recently used first (`SidebarEntry.lastUsed`), so ⌘T and Return goes back
+  to the tab before. ⌘L's bar on the unchanged address shows no rows and Return reloads (Arc's;
+  `commandBarReturnWithoutRow`); ⌘↩ opens the chosen page (or ⌘L's address) in a new tab, ⌥↩ is Return
+  (`returnPressed`; ⌘↩ reaches the field as `noop:`); a second ⌘T or ⌘L closes the bar it opened (`toggles`). The
+  sidebar takes clicks through the bar (`commandBar(_:passesClickAt:)`), and a tab switch closes it. Check
+  `bar-address-return` (test command `enter cmd`).
   Per-key cost (a letter matches most of 20,000 history entries): `Suggestions.build` makes a page's row (address
   shortened, icon) only for the few that are shown (`Page.source`, `Page.row`), reads each entry's host, domain and
   front-page flag once (`HistoryItem.site`, `Suggestions.facts`, cached by address), searches plain-ASCII titles and
@@ -603,7 +609,52 @@ publicly or create accounts.
   private windows keep their own in-memory list. Check `reopen-closed-tab`. `UndoCloseTab` (`// MARK: Undo close
   tab`): Settings › Reopen closed tabs with ⌘Z makes it Edit › Undo's target; outside text it reopens through
   `ClosedTabsMenu`, and in Ray's text fields or an editable page element (the page view's `textInputType`, as
-  Ardia reads it) it sends `undo:` on down the responder chain. Check `settings-undo-reopens`.
+  Ardia reads it) it sends `undo:` on down the responder chain (on by default, Arc's). Check `settings-undo-reopens`.
+- Closing and Back (`BrowserWindowController` `// MARK: Closing`, `// MARK: Back and forward`): the tab shown after
+  the active one closes is the one used before it (Arc's, Ardia's PR #416): `successor(closing:)` takes Back's opener
+  first, else the most recently used awake tab, never a tab closing with it (`closingTogether`), one opened behind and
+  never shown (`SidebarEntry.unseen`, which `lastUsed` ranks last, ⌃Tab too) only if nothing else is open, the
+  nearest for ties. `closeByUser` selects it **before** `tab.close()`: Chrome activates its own pick (opener or next
+  in its strip) and reports it before `didRemove`. A tab its page or an extension closes keeps Chrome's pick.
+  `SidebarEntry.openerID` (never saved) is the tab whose page opened it; Back on such a Today tab with no history of
+  its own closes it and shows the opener (Ardia's "Close Tab and Go Back", the Back buttons' tooltip, `backCloses`);
+  typing an address into it drops the opener. ⌘-click or a middle click on Back or Forward
+  (`HistoryButton.onNewTab`) opens that page in a new tab behind. Clear Today (⇧⌘K) keeps the active tab and tabs
+  playing sound; its tabs share a `ClosedTab.batch`, which ⇧⌘T (and ⌘Z) bring back at once. Arc's keys: ⌥⌘↓/↑
+  (hidden aliases of Show Next/Previous Tab), ⌥⌘V Paste URL as New Tab, ⇧⌥⌘C Copy URL as Markdown. State log
+  `back` (`enabled`, `tooltip`, `lastPress`); test commands `navhistory press back|forward toolbar|sidebar
+  command|middle`, `key up|down|v`. Checks `close-shows-last-used`, `back-closes-link-tab`,
+  `clear-today-keeps-current`, `arc-keys`.
+- Page full screen (`BrowserWindowController` `// MARK: Page full screen`): the engine's
+  `window:tab:didChangeFullscreen:` (a video's button, YouTube's F). While that tab shows, the page fills the window
+  (`pageFillsWindow`: no sidebar, address bar, resize strip or peek), and the window goes full screen if it wasn't
+  (`fullScreenForPage`, out again when the page leaves). Escape (`preHandleKeyEvent`), a tab switch or leaving the
+  window's full screen end it. Test instances never take the window full screen. State log `pageFullscreen`; check
+  `page-fullscreen`.
+- Sidebar list (`SidebarView` `// MARK: Active tab in view`): a change of active tab scrolls its row into view when
+  it's out of it (Arc's; 0.22 s, none with Reduce Motion), and a double click on the list's empty space opens a new
+  tab (Arc's). Test command `sidebarlist scroll <y>|doubleclick`; state log `sidebar.activeInView`,
+  `sidebar.emptyDoubleClicks`; check `sidebar-follows-active`.
+- `PopupWindow` (`Host/PopupWindow.swift`, `BrowserWindowController` `// MARK: Pop-up windows`): a page's sized
+  pop-up (the engine's `popup` disposition with an opener: OAuth sign-ins) gets a small window of its own at the size
+  and place it asked for (`popupFeatures`, kept on the opener's screen), never a tab. Owner's pick B of
+  `docs/mocks/popup-window.html` (2026-11-23): Ray's sidebar colour, one 38 pt row with Ray's `WindowLights`, the
+  engine's address centred (`PopupAddressView`: a lock for https, Ray's marks otherwise, host medium, path grey) and
+  Open as Tab (`adoptFromPopup`: a Today tab right after the opener, shown), the page a card 6 pt in with 9 pt
+  corners. Its own `RayCoreWindow` adopts the tab on the next run-loop turn (Ardia's `ArdiaPopupWindow`); a page that
+  closes itself takes the window; ⌘W (the page's key or the menu's, `PopupWindow.key`) closes it; tabs it opens go to
+  Ray's window (`popupAdoptions` binds them), pop-ups it opens get windows. Test command `popup opentab|close|snap
+  <path>`; state log `popupWindows`; check `popup-window`.
+- Sidebar drops (`SidebarView` `// MARK: Drops from elsewhere`, `BrowserWindowController` `// MARK: Sidebar drops`):
+  a link dragged from a page, a file from Finder or text from anywhere opens as a tab where it lands, with the gap a
+  dragged tab opens (a placeholder `SidebarDrag`); links only http(s) (`AddressInput.link(fromOtherApp:)`), files only
+  `document(fromOtherApp:)`, text through `url(for:)` but only to an http(s) page or a search, 20 items at most. ⌥-drag
+  on a row leaves it and drops a copy with its history (`sidebar(_:duplicate:to:)`, Arc's). Test commands
+  `sidebarlist drop <x> <y> link|text|file <value>`, `release x y opt`; state log `lastDrop`; check `sidebar-drops`.
+- History (`main.swift` `// MARK: History`): `--keep-old-history` (Helium's switch, Ardia passes it): without it
+  Chromium refuses visits older than 90 days at import (`IsExpiredVisitTime`) and deletes old ones 30 s after the
+  history database opens, so imported Arc history lost everything past three months. Test builds drop it with
+  `RAY_HISTORY_EXPIRES=1`; test command `importcheck oldvisit <url> <days>`; check `keep-old-history`.
 - `Bookmarks` (`Host/Bookmarks.swift`): Chrome's bookmark model, the normal profile's (private windows show the same):
   `Bookmarks.shared` reads the tree (`ac_bookmarks_tree`, roots "bar" and "other"), changes it with ops
   (`ac_bookmarks_apply`; add, update, move, remove; ids are lowercase UUIDs Ray makes) and reloads on
@@ -883,6 +934,8 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   if it stops, re-read `shared.rollup.js` (the resource that holds `function createPageVisibility()`; decompress it
   from resources.pak) and fix the patterns, then run `settings-trimmed`. The bare `/` route's top-level page must be one
   that draws on `/` (Performance); Privacy draws nothing there.
+- When the active tab closes, Chrome activates its own pick and reports it (`didActivate`) before `didRemove`: a
+  successor Ray wants must be selected before `tab.close()` (`closeByUser`). Ray's old `activateNeighbor` never ran.
 - A tab switch the engine reports (`window(_:didActivate:)`) is never sent back to it (`select(_:fromEngine:)`): two
   tabs opened in front at once (Open on two blocked pop-ups) leave a stale activation of each in flight, and echoing
   them flipped the two forever, each flip copying a page picture for ⌃Tab until the app ran out of memory.

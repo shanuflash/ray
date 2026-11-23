@@ -387,7 +387,7 @@ async function resetSettings() {
   for (const [name, value] of [["minimalURL", "off"], ["loadingProgress", "on"], ["theme", "default"], ["defaultZoom", "1"],
     ["newTabNextToActive", "off"], ["recentTabCycling", "on"], ["copyLinkShortcut", "on"], ["sidebarShortcut", "on"],
     ["appearanceMode", "auto"], ["scrollBars", "system"], ["pageAddressBar", "on"], ["showSidebarButton", "on"],
-    ["fadeUnloadedTabs", "off"], ["tabReorderHaptics", "on"], ["undoReopensClosedTab", "off"], ["shortcuts", "default"], ["surfaceStyle", "glass"]])
+    ["fadeUnloadedTabs", "off"], ["tabReorderHaptics", "on"], ["undoReopensClosedTab", "on"], ["shortcuts", "default"], ["surfaceStyle", "glass"]])
     await command(`setting ${name} ${value}`);
   await command("state");
 }
@@ -487,6 +487,51 @@ const checks = {
     await evaluate(sessionId, `document.querySelector("#open").click()`);
     const opened = await until("new /c tab", () => state().tabs.length === before + 1 && tabFor("/c"));
     await until("popup active", () => state().active === opened.id && oneVisibleActive());
+  },
+  async "popup-window"() {
+    // A sized pop-up (OAuth sign-ins) opens in a small window of its own (owner's pick B), never a tab: its page in a
+    // card at the size asked for, the engine's address on top. Open as Tab moves it beside its opener; a pop-up that
+    // closes itself takes its window with it.
+    const { target, sessionId } = await session("/a");
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    const before = state().tabs.length;
+    const popups = async () => { await command("state"); return state().popupWindows; };
+    const openPopup = async (marker) => {
+      assert((await evaluate(sessionId, `!!window.open("/b?${marker}", "signin", "width=420,height=500")`)) === true, "window.open refused");
+      return until("pop-up window", async () => { const p = await popups(); return p.length === 1 && p[0].pageInCard && p[0].url.includes(marker) && p[0]; }, 8000);
+    };
+    let popup = await openPopup("popupA");
+    assert(state().tabs.length === before, "the pop-up became a tab too");
+    assert(popup.address.startsWith("127.0.0.1") && popup.address.includes("/b?popupA"), `address ${popup.address}`);
+    const card = popup.card.match(/[-\d.]+/g).map(Number);
+    assert(card[2] === 420 && card[3] === 500, `page card ${popup.card}`);
+    const inPopup = await session("?popupA");
+    assert((await evaluate(inPopup.sessionId, "innerWidth")) === 420, "the page isn't as wide as asked");
+    // Open as Tab: a Today tab right after its opener, shown; the window gone.
+    await command("popup opentab");
+    await until("moved into a tab", async () => {
+      const p = await popups();
+      const ids = state().tabs.map((t) => t.id);
+      const moved = tabFor("?popupA");
+      return p.length === 0 && state().tabs.length === before + 1 && moved && state().active === moved.id &&
+        ids.indexOf(moved.id) === ids.indexOf(tabFor("/a").id) + 1;
+    });
+    await send("Target.closeTarget", { targetId: (await targets()).find((t) => t.url.includes("?popupA")).targetId });
+    await until("closed", () => state().tabs.length === before);
+    // A pop-up that closes itself (a sign-in done) takes its window along.
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    popup = await openPopup("popupB");
+    const b = await session("?popupB");
+    await evaluate(b.sessionId, "setTimeout(() => window.close(), 50), 1");
+    await until("window went with it", async () => (await popups()).length === 0);
+    assert(state().tabs.length === before, "closing the pop-up changed the tabs");
+    // The window's own close.
+    popup = await openPopup("popupC");
+    await command("popup close");
+    await until("closed by hand", async () => (await popups()).length === 0);
+    assert(!(await targets()).some((t) => t.url.includes("?popupC")), "its page stayed open");
   },
   async "background-tab"() {
     const { target } = await session("/a");
@@ -1375,6 +1420,42 @@ const checks = {
     await settle();
     const moved = frameOf(first.id), was = frameOf(state().sidebar.today[1].id);
     assert(moved.y > was.y, `dropped row at ${moved.y}, above its neighbour at ${was.y}`);
+  },
+  async "sidebar-drops"() {
+    // Arc's: a link, text or a file dropped on the sidebar opens as a tab where it lands (text as a search); never
+    // javascript: or file: text. ⌥-drag leaves the tab and drops a copy.
+    await todayTabs(3);
+    const today = () => state().sidebar.today.filter((e) => e.kind !== "folder");
+    const between = () => { const second = frameOf(today()[1].id); return [second.cx, second.y]; };
+    let [x, y] = between();
+    let before = today().length;
+    assert((await commandResult(`sidebarlist drop ${x} ${y} link ${origin}/b?dropped`)) === "ok", "the link drop was refused");
+    await until("link tab at the drop", async () => { await command("state"); return today().length === before + 1 && today()[1]?.url.endsWith("/b?dropped") && state().activeEntry === today()[1].id; });
+    [x, y] = between();
+    before = today().length;
+    assert((await commandResult(`sidebarlist drop ${x} ${y} text ray drop words`)) === "ok", "the text drop was refused");
+    await until("search tab", async () => { await command("state"); return today().length === before + 1 && /\/search\?q=ray(\+|%20)drop/.test(activeTabState()?.url ?? ""); });
+    for (const [kind, value] of [["link", "javascript:alert(1)"], ["text", "javascript:alert(1)"], ["text", "file:///etc/hosts"], ["file", "/etc/hosts"]]) {
+      [x, y] = between();
+      assert((await commandResult(`sidebarlist drop ${x} ${y} ${kind} ${value}`)) === "nothing dropped", `${kind} ${value} was taken`);
+    }
+    // ⌥-drag the first row below the third: it stays, a copy lands there.
+    await settle();
+    before = today().length;
+    const first = today()[0];
+    const a = frameOf(first.id);
+    await command(`press ${a.cx} ${a.cy}`);
+    await command(`move ${a.cx} ${a.cy + 10}`);
+    await settle();
+    const c = frameOf(today()[2].id);
+    await command(`move ${a.cx} ${c.cy + 4}`);
+    await command(`release ${a.cx} ${c.cy + 4} opt`);
+    await until("copied, the tab stays", async () => {
+      await command("state");
+      return today().length === before + 1 && today()[0].id === first.id && today().slice(1).some((e) => e.id !== first.id && e.url === first.url);
+    });
+    for (const t of (await targets()).filter((t) => t.url.includes("?dropped") || t.url.includes("/search?q=ray"))) await send("Target.closeTarget", { targetId: t.targetId });
+    await settle();
   },
   async "drag-to-pin"() {
     await todayTabs(2);
@@ -3412,6 +3493,30 @@ const checks = {
     } finally {
       for (const it of running) if (it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
       for (const it of running) rmSync(it.dir, { recursive: true, force: true });
+    }
+  },
+  async "keep-old-history"() {
+    // History older than 90 days imports and stays (--keep-old-history, Ardia's). Without it Chromium refuses such a
+    // visit at import (`IsExpiredVisitTime`) and its expiry pass, 30 s after the history database opens, deletes the
+    // rest: a second instance that drops the switch shows the first.
+    const kept = ownInstance("keep-history", {});
+    const expiring = ownInstance("expire-history", { RAY_HISTORY_EXPIRES: "1" });
+    const url = "https://old-visit.example/";
+    const has = async (it) => JSON.parse(await it.cmd(`importcheck history ${url}`)).has;
+    try {
+      for (const it of [kept, expiring]) {
+        await until("instance up", async () => (await it.cmd("state").catch(() => null)) === "ok", 30000, 500);
+        const added = JSON.parse(await it.cmd(`importcheck oldvisit ${url} 200`));
+        assert(!added?.error, `import: ${JSON.stringify(added)}`);
+      }
+      await until("old visit imported", () => has(kept), 10000, 500);
+      assert(!(await has(expiring)), "Chromium took a 200-day-old visit without the switch: the check can't tell");
+      // Past the first expiry pass.
+      await sleep(40000);
+      assert(await has(kept), "the old visit was deleted with --keep-old-history");
+    } finally {
+      await kept.stop().catch(() => {});
+      await expiring.stop().catch(() => {});
     }
   },
   async "import-browser"() {
@@ -6723,6 +6828,10 @@ const checks = {
   },
   async clear() {
     await command("menu clearToday");
+    // Arc's Clear keeps the tab you're on (clear-today-keeps-current): that one closes by hand.
+    const tabsLeft = () => state().sidebar.today.filter((e) => e.kind !== "folder");
+    await until("today cleared but the current", () => tabsLeft().every((e) => e.id === state().activeEntry));
+    for (const e of tabsLeft()) await command(`rowaction close ${e.id}`);
     await until("today cleared", () => state().sidebar.today.length === 0);
     await command("menu toggleSidebar");
     await until("hidden", () => state().sidebar.hidden);
@@ -7841,6 +7950,181 @@ const checks = {
       await command(`row ${id}`);
       await command("menu closeTab");
     }
+  },
+  async "bar-address-return"() {
+    // ⌘L then Return on the unchanged address reloads the page (Arc's), never another tab; ⌘↩ opens it in a new tab
+    // beside it; ⌘T and ⌘L close the bar they opened.
+    await send("Target.createTarget", { url: `${origin}/c?reloadme` });
+    await until("tab", () => activeTabState()?.url.includes("?reloadme"));
+    const { sessionId } = await session("?reloadme");
+    await evaluate(sessionId, "window.__mark = 1");
+    const id = state().active;
+    await command("menu focusAddress");
+    await until("bar, no rows", async () => { await command("state"); return state().commandBar?.mode === "currentTab" && state().commandBar.rows.length === 0; });
+    await command("enter");
+    await until("reloaded in place", async () => { await command("state"); return !state().commandBar && state().active === id && (await evaluate(sessionId, "window.__mark")) === undefined; });
+    const before = state().tabs.length;
+    await command("menu focusAddress");
+    await command("enter cmd");
+    await until("new tab beside", async () => {
+      await command("state");
+      const ids = state().tabs.map((t) => t.id);
+      return state().tabs.length === before + 1 && state().active !== id && activeTabState()?.url.includes("?reloadme") &&
+        ids.indexOf(state().active) === ids.indexOf(id) + 1;
+    });
+    await send("Target.closeTarget", { targetId: (await targets()).filter((t) => t.url.includes("?reloadme")).at(-1).targetId });
+    await until("closed", () => state().tabs.length === before);
+    for (const key of ["newTab", "focusAddress"]) {
+      await command(`menu ${key}`);
+      await until(`${key} bar`, async () => { await command("state"); return state().commandBar; });
+      await command(`menu ${key}`);
+      await until(`${key} closes it`, async () => { await command("state"); return !state().commandBar; });
+    }
+  },
+  async "close-shows-last-used"() {
+    // Arc's and Ardia's: closing a tab shows the one used before it, not a neighbour; a tab opened behind and never
+    // shown doesn't count as used (⌃Tab skips it too); ⌘T's empty bar lists tabs most recent first.
+    const tabs = await usedTabs();
+    await command(`row ${tabs[0].id}`);
+    await until("first", () => state().activeEntry === tabs[0].id);
+    await sleep(30);
+    await command(`row ${tabs[3].id}`);
+    await until("last", () => state().activeEntry === tabs[3].id);
+    await command("menu newTab");
+    await until("bar", async () => { await command("state"); return state().commandBar; });
+    const first = state().commandBar.rows[0];
+    assert(first?.kind === "tab" && first.tab === tabs[0].tab, `empty bar leads with ${JSON.stringify(first)}, not the tab before`);
+    await command("escape");
+    await command("key w cmd keywin");
+    await until("the tab used before", async () => { await command("state"); return state().activeEntry === tabs[0].id; }, 5000);
+    // A background tab from the page doesn't take ⌃Tab's first step: the tab before it does.
+    const { target } = await session("/a");
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    const before = state().tabs.length;
+    const { sessionId } = await session("/a");
+    await evaluate(sessionId, `(() => { const a = document.createElement("a"); a.id = "unseenbg"; a.href = "/b?unseenbg"; a.textContent = "bg"; document.body.prepend(a); })()`);
+    await clickElement(sessionId, "#unseenbg", 4);
+    await until("background tab", () => state().tabs.length === before + 1);
+    await evaluate(sessionId, `document.querySelector("#unseenbg").remove()`);
+    await settle();
+    const prior = state().recentOrder[1];
+    assert(prior !== tabFor("?unseenbg")?.id, "the unseen tab counts as the tab used before");
+    await command("key ctrltap");
+    await until("⌃Tab went back", async () => { await command("state"); return state().active === prior; }, 5000);
+    await send("Target.closeTarget", { targetId: (await targets()).find((t) => t.url.includes("?unseenbg")).targetId });
+    await until("closed", () => state().tabs.length === before);
+  },
+  async "back-closes-link-tab"() {
+    // Back on a tab a link opened, with no history of its own, closes it and goes back to the tab that opened it
+    // (Ardia's "Close Tab and Go Back"); ⌘-click and a middle click on Back open the page before in a new tab.
+    const { target } = await session("/a");
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    const opener = state().active;
+    const before = state().tabs.length;
+    const { sessionId } = await session("/a");
+    await evaluate(sessionId, `document.querySelector("#blank").click()`);
+    const opened = await until("link tab", () => state().tabs.length === before + 1 && state().active !== opener && activeTabState());
+    await until("back closes", async () => { await command("state"); return state().back.enabled && state().back.tooltip === "Close Tab and Go Back"; });
+    await command("menu goBack");
+    await until("closed, opener shown", async () => { await command("state"); return state().tabs.length === before && state().active === opener && !state().tabs.some((t) => t.id === opened.id); });
+    assert(state().back.tooltip === "Back", `tooltip ${state().back.tooltip}`);
+    // A tab with history of its own: ⌘-click (and a middle click) on Back opens the page before behind it.
+    await goTo(`${origin}/h?histsrc`, true);
+    await until("/h", () => activeTabState()?.url.endsWith("/h?histsrc"));
+    const own = state().active;
+    const h = await session("/h?histsrc");
+    await evaluate(h.sessionId, `location.href = "/b?histdst"`);
+    await until("/b in place", async () => { await command("state"); return activeTabState()?.url.endsWith("/b?histdst") && activeTabState().canGoBack; });
+    for (const how of ["command", "middle"]) {
+      const count = state().tabs.length;
+      await command(`navhistory press back sidebar ${how}`);
+      await until(`${how}: new tab behind`, async () => { await command("state"); return state().tabs.length === count + 1 && state().active === own && state().back.lastPress === how && tabFor("/h?histsrc"); });
+      assert(activeTabState().url.endsWith("/b?histdst"), "the tab itself went back");
+      await send("Target.closeTarget", { targetId: (await targets()).find((t) => t.url.endsWith("/h?histsrc")).targetId });
+      await until("closed", () => state().tabs.length === count);
+    }
+    await command("key w cmd keywin");
+    await until("own tab closed", () => !state().tabs.some((t) => t.id === own));
+  },
+  async "clear-today-keeps-current"() {
+    // Arc's Clear (⇧⌘K): every Today tab but the one you're on; ⇧⌘T brings the whole clear back.
+    await todayTabs(3);
+    const { target } = await session("/a");
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    const tabsOf = () => state().sidebar.today.filter((e) => e.kind !== "folder");
+    const count = tabsOf().length;
+    const active = state().activeEntry;
+    await command("key k cmd shift keywin");
+    await until("cleared but the current", async () => { await command("state"); return tabsOf().length === 1 && tabsOf()[0].id === active; });
+    await command("key t cmd shift keywin");
+    await until("all back", async () => { await command("state"); return tabsOf().length === count; }, 10000);
+    assert(state().activeEntry === active, "reopening the clear changed the tab shown");
+  },
+  async "page-fullscreen"() {
+    // A page's full screen fills the window (no sidebar, no address bar); Escape and a tab switch end it.
+    const { target, sessionId } = await session("/a");
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    const width = await evaluate(sessionId, "innerWidth");
+    const enter = () => evaluate(sessionId, "document.documentElement.requestFullscreen().then(() => 'in', (e) => e.message)");
+    assert((await enter()) === "in", "the page couldn't go full screen");
+    await until("fills the window", async () => { await command("state"); return state().pageFullscreen.fillsWindow && state().pageFullscreen.sidebarHidden; });
+    const rootWidth = Number(state().pageFullscreen.root.match(/\{\{[^}]*\}, \{([\d.]+)/)[1]);
+    await until("page as wide as the window", async () => (await evaluate(sessionId, "innerWidth")) === rootWidth && rootWidth > width);
+    await command("key esc keywin");
+    await until("Escape left it", async () => { await command("state"); return state().pageFullscreen.tab === null && !state().pageFullscreen.sidebarHidden; });
+    await until("page back in its card", async () => (await evaluate(sessionId, "innerWidth")) === width && !(await evaluate(sessionId, "!!document.fullscreenElement")));
+    assert((await enter()) === "in", "the page couldn't go full screen again");
+    await until("full screen again", async () => { await command("state"); return state().pageFullscreen.fillsWindow; });
+    const other = state().sidebar.today.find((e) => e.live && e.tab !== state().active);
+    await command(`row ${other.id}`);
+    await until("a switch left it", async () => { await command("state"); return state().pageFullscreen.tab === null; });
+    await until("page left full screen", async () => !(await evaluate(sessionId, "!!document.fullscreenElement")));
+  },
+  async "sidebar-follows-active"() {
+    // Switching to a tab scrolled out of the sidebar scrolls it into view (Arc's); a double click on empty space opens
+    // a new tab.
+    for (let i = 0; i < 24; i++) await send("Target.createTarget", { url: `${origin}/c?follow=${i}` });
+    await until("tabs", () => state().tabs.filter((t) => t.url.includes("?follow=")).length === 24, 20000);
+    await settle();
+    const live = () => state().sidebar.today.filter((e) => e.live);
+    const bottom = live().at(-1);
+    await command("sidebarlist scroll 0");
+    await command(`row ${bottom.id}`);
+    await until("bottom tab in view", async () => { await command("state"); return state().sidebar.activeInView.activeInView === true && state().sidebar.activeInView.scrollY > 0; }, 4000);
+    await command("sidebarlist scroll 100000");
+    const top = live()[0];
+    await command(`row ${top.id}`);
+    await until("top tab in view", async () => { await command("state"); return state().sidebar.activeInView.activeInView === true; }, 4000);
+    await command("sidebarlist doubleclick");
+    await until("new tab bar", async () => { await command("state"); return state().commandBar?.mode === "newTab" && state().sidebar.emptyDoubleClicks > 0; });
+    await command("escape");
+    for (const t of (await targets()).filter((t) => t.url.includes("?follow="))) await send("Target.closeTarget", { targetId: t.targetId });
+    await until("cleaned up", () => !state().tabs.some((t) => t.url.includes("?follow=")), 15000);
+  },
+  async "arc-keys"() {
+    // ⌥⌘↓ / ⌥⌘↑ step tabs, ⇧⌥⌘C copies a Markdown link, ⌥⌘V opens what's copied in a new tab.
+    await todayTabs(2);
+    const { target } = await session("/a");
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("/a active", () => state().active === tabFor("/a")?.id);
+    const start = state().active;
+    await command("key down cmd opt keywin");
+    await until("next tab", async () => { await command("state"); return state().active !== start; });
+    await command("key up cmd opt keywin");
+    await until("previous tab", async () => { await command("state"); return state().active === start; });
+    await command("key c cmd opt shift keywin");
+    await until("markdown", async () => { await command("state"); return /^\[Page A\]\(http:\/\/127\.0\.0\.1:\d+\/a\)$/.test(state().pasteboard ?? ""); });
+    await command("key c cmd shift keywin");
+    await until("url copied", async () => { await command("state"); return state().pasteboard === tabFor("/a").url; });
+    const before = state().tabs.length;
+    await command("key v cmd opt keywin");
+    await until("pasted as a new tab", async () => { await command("state"); return state().tabs.length === before + 1 && state().active !== start && activeTabState()?.url === tabFor("/a").url; });
+    await command("key w cmd keywin");
+    await until("closed", () => state().tabs.length === before);
   },
   async "back-forward-list"() {
     // Back's and forward's history lists, from the page bar's and the sidebar's buttons.

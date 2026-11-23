@@ -49,7 +49,8 @@ enum TestCommands {
 
   private static let keyCodes: [String: UInt16] = ["s": 1, "t": 17, "w": 13, "l": 37, "r": 15, "d": 2, "c": 8, "f": 3, "g": 5, "n": 45, "esc": 53, "tab": 48, ",": 43, "=": 24, "-": 27,
                                                      "0": 29, "p": 35, "u": 32, "y": 16, "z": 6, "k": 40, "j": 38, "q": 12, "h": 4, "m": 46,
-                                                     "e": 14, "o": 31, "b": 11, "space": 49, "left": 123, "right": 124, "return": 36, "delete": 51, "fwddelete": 117, "f5": 96, "3": 20]
+                                                     "e": 14, "o": 31, "b": 11, "space": 49, "left": 123, "right": 124, "return": 36, "delete": 51, "fwddelete": 117, "f5": 96, "3": 20,
+                                                     "up": 126, "down": 125, "v": 9]
 
   /// What a key types when it isn't its own name.
   private static let typedCharacters: [String: String] = [
@@ -57,6 +58,8 @@ enum TestCommands {
     "left": String(Character(UnicodeScalar(UInt32(NSLeftArrowFunctionKey))!)),
     "right": String(Character(UnicodeScalar(UInt32(NSRightArrowFunctionKey))!)),
     "fwddelete": String(Character(UnicodeScalar(UInt32(NSDeleteFunctionKey))!)),
+    "up": String(Character(UnicodeScalar(UInt32(NSUpArrowFunctionKey))!)),
+    "down": String(Character(UnicodeScalar(UInt32(NSDownArrowFunctionKey))!)),
     "f5": String(Character(UnicodeScalar(UInt32(NSF5FunctionKey))!)),
   ]
 
@@ -249,10 +252,12 @@ enum TestCommands {
   private static func mouse(_ type: NSEvent.EventType, _ argument: String, in window: NSWindow?) -> String {
     let numbers = argument.split(separator: " ").compactMap { Double($0) }
     guard let window, let content = window.contentView, numbers.count == 2 || numbers.count == 3 else {
-      return "usage: press|move|release x y [clickCount]"
+      return "usage: press|move|release x y [clickCount] [opt]"
     }
+    // `opt`: ⌥ held (an ⌥-drag's release duplicates).
+    let flags: NSEvent.ModifierFlags = argument.split(separator: " ").contains("opt") ? .option : []
     guard let event = NSEvent.mouseEvent(
-      with: type, location: NSPoint(x: numbers[0], y: content.bounds.height - numbers[1]), modifierFlags: [],
+      with: type, location: NSPoint(x: numbers[0], y: content.bounds.height - numbers[1]), modifierFlags: flags,
       timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
       eventNumber: 0, clickCount: numbers.count == 3 ? Int(numbers[2]) : 1, pressure: 1) else { return "no event" }
     NSApp.sendEvent(event)
@@ -346,7 +351,7 @@ enum TestCommands {
     #endif
   }
 
-  /// `navhistory open|press back|forward toolbar|sidebar [click|hold|drag|right|control]`, `navhistory pick <n> [cmd]`,
+  /// `navhistory open|press back|forward toolbar|sidebar [click|hold|drag|right|control|command|middle]`, `navhistory pick <n> [cmd]`,
   /// `navhistory key up|down|return`: back's and forward's history lists.
   private static func navHistory(_ argument: String) -> String {
     let usage = "usage: navhistory open|press back|forward toolbar|sidebar [how] | pick <n> [cmd] | key up|down|return"
@@ -519,6 +524,14 @@ enum TestCommands {
         respond(line, json(reply?["passwords"] ?? reply?["error"] ?? NSNull()))
       }
       return nil
+    case "oldvisit":
+      // `importcheck oldvisit <url> <days>`: one visit that many days ago, as an import writes it.
+      let words = argument.split(separator: " ").map(String.init)
+      guard words.count == 3, let days = Double(words[2]), let url = URL(string: words[1]), url.scheme?.hasPrefix("http") == true,
+            let body = try? JSONSerialization.data(withJSONObject: ["rows": [["u": words[1], "t": "Old visit", "n": 1,
+              "l": Int((Date().timeIntervalSince1970 - days * 86_400) * 1000)]]]) else { return "usage: importcheck oldvisit <url> <days>" }
+      EngineCalls.call("ac_history_import", profile: profile, json: body) { reply in respond(line, json(reply ?? NSNull())) }
+      return nil
     case "history":
       guard words.count == 2 else { return "usage: importcheck history <url>" }
       EngineCalls.call("ac_history_query", profile: profile, args: ["maxUrls": 100_000, "maxVisits": 1]) { reply in
@@ -576,6 +589,9 @@ enum TestCommands {
       if !NSApp.sendAction(action, to: target, from: nil) { result = "no action" }
     case "type":
       if let editor { editor.insertText(argument, replacementRange: editor.selectedRange()) } else { result = "no editor" }
+    case "enter" where argument == "cmd":
+      // ⌘↩ in the command bar.
+      if AppController.shared.current?.commandBarReturn(command: true) != true { result = "no command bar" }
     case "enter":
       if let editor { editor.doCommand(by: #selector(NSResponder.insertNewline(_:))) } else { result = "no editor" }
     case "escape":
@@ -622,6 +638,37 @@ enum TestCommands {
         if !controller.clickRow(entry, flags: flags) { result = "not a row" }
       } else {
         result = "usage: rowclick <id> cmd|shift|cmdshift|plain"
+      }
+    case "popup":
+      // `popup opentab|close`: the newest pop-up window's Open as Tab, or its close (⌘W).
+      guard let popup = PopupWindow.all.last else { result = "no pop-up window"; break }
+      switch argument {
+      case "opentab": popup.pressOpenAsTab()
+      case "close": popup.close()
+      case let snap where snap.hasPrefix("snap "):
+        if !popup.snapshot(to: String(snap.dropFirst(5))) { result = "no picture" }
+      default: result = "usage: popup opentab|close|snap <path>"
+      }
+    case "sidebarlist":
+      // `sidebarlist scroll <y>` (a user's scroll), `sidebarlist doubleclick` (a double click on empty space).
+      let parts = argument.split(separator: " ").map(String.init)
+      guard let controller = AppController.shared.current else { result = "no window"; break }
+      if parts.count == 2, parts[0] == "scroll", let y = Double(parts[1]) {
+        controller.scrollSidebarList(to: y)
+      } else if parts == ["doubleclick"] {
+        if !controller.doubleClickSidebarSpace() { result = "no sidebar" }
+      } else if parts.count >= 5, parts[0] == "drop", let x = Double(parts[1]), let y = Double(parts[2]) {
+        // `sidebarlist drop <x> <y> link|text|file <value…>`: a drop from elsewhere at that window point (top left).
+        let value = parts[4...].joined(separator: " ")
+        let item: SidebarDroppedItem? = switch parts[3] {
+        case "link": .link(value)
+        case "text": .text(value)
+        case "file": .file(URL(fileURLWithPath: value))
+        default: nil
+        }
+        if let item, controller.dropOnSidebar([item], at: NSPoint(x: x, y: y)) {} else { result = "nothing dropped" }
+      } else {
+        result = "usage: sidebarlist scroll <y>|doubleclick|drop <x> <y> link|text|file <value>"
       }
     case "iconpicker":
       result = iconPicker(argument)

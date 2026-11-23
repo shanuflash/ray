@@ -446,7 +446,8 @@ enum Suggestions {
     query raw: String, tabs: [RayCoreTab], active: RayCoreTab?, history: [HistoryItem], searches: [String],
     bookmarks: [BookmarkItem] = [], actions: () -> [BarAction] = { [] },
     settings: (String) -> [(target: SettingsTarget, exact: Bool)] = { _ in [] }, frecency: (String) -> Double = { _ in 0 },
-    favicon: (String) -> NSImage? = { _ in nil }, name: (RayCoreTab) -> String? = { _ in nil }
+    favicon: (String) -> NSImage? = { _ in nil }, name: (RayCoreTab) -> String? = { _ in nil },
+    lastUsed: (RayCoreTab) -> Date = { _ in .distantPast }
   ) -> [Suggestion] {
     let started = DispatchTime.now().uptimeNanoseconds
     work.builds += 1
@@ -462,7 +463,11 @@ enum Suggestions {
     let others = tabs.filter { $0 !== active }
     let openURLs = Set(tabs.map(\.url))
     if query.isEmpty {
-      let open = others.prefix(limit).map { tabSuggestion($0, name: name($0)) }
+      // The tabs you were on last first (Arc ranks recent switches; Ardia lists recent tabs), so ⌘T and Return goes
+      // back to the tab before; ties keep the sidebar's order.
+      let recent = others.enumerated().sorted { (lastUsed($0.element), $1.offset) > (lastUsed($1.element), $0.offset) }
+        .map(\.element)
+      let open = recent.prefix(limit).map { tabSuggestion($0, name: name($0)) }
       let frequent = history
         .filter { !openURLs.contains($0.url) && $0.url.hasPrefix("http") }
         .sorted { ($0.visits, $0.lastVisit) > ($1.visits, $1.lastVisit) }

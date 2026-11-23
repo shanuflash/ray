@@ -99,6 +99,16 @@ if launchedInBackground {
   engineArguments += ["--mute-audio", "--disable-modal-animations", "--disable-backgrounding-occluded-windows"]
 }
 
+// MARK: History
+
+// Chromium deletes visits older than 90 days, which took imported Arc history with it on the next pass (30 s after
+// launch). Helium's switch (ungoogled's add-flag-to-disable-local-history-expiration.patch) keeps them, as Ardia does.
+engineArguments.append("--keep-old-history")
+#if RAY_TEST_HOOKS
+// RAY_HISTORY_EXPIRES=1: Chromium's own expiry, so the check can see what the switch prevents.
+if TestEnvironment["RAY_HISTORY_EXPIRES"] == "1" { engineArguments.removeAll { $0 == "--keep-old-history" } }
+#endif
+
 // MARK: Picture in picture
 
 // Automatic picture in picture (`AutoPictureInPicture`) for any page's one playing video, not only pages that ask for

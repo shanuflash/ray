@@ -86,7 +86,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   let closedTabs: ClosedTabs
   /// Tabs the user is closing (⌘W, the row's close button, Clear), by entry: they're remembered once the engine has
   /// removed them, with the key their history went to the engine's tab restore service under.
-  private var userClosing: [UUID: (key: String?, favicon: NSImage?)] = [:]
+  private var userClosing: [UUID: (key: String?, favicon: NSImage?, batch: UUID?)] = [:]
 
   init(profile: RayCoreProfile, mainProfile: RayCoreProfile, store: SidebarStore) {
     self.profile = profile
@@ -167,6 +167,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   @objc private func hostResized() { layout() }
 
   @objc private func fullScreenChanged() {
+    // Leaving the window's full screen by hand (the green button, ⌃⌘F) takes the page out of its full screen too.
+    if !isFullScreen, let tab = pageFullscreenTab {
+      fullScreenForPage = false
+      tab.exitFullscreen()
+    }
     layout()
     guard !closing, state.fullScreen != isFullScreen else { return }
     state.fullScreen = isFullScreen
@@ -180,6 +185,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private func layout() {
     let bounds = root.bounds
     let margin = Self.margin
+    // A page in full screen (`// MARK: Page full screen`) fills the window: nothing of Ray's around it.
+    let fullPage = pageFillsWindow
+    sidebar.isHidden = fullPage
     let width = sidebarWidth
     let shown = dockSpring.value
     let peek = peekSpring.value
@@ -205,6 +213,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       sidebar.reservesTrafficLights = !isFullScreen
     }
     layoutResizeHandle(docked: peek <= 0.001 && shown >= 0.999)
+    if fullPage { resizeHandle.isHidden = true }
     let edge = isFullScreen ? margin * shown : margin
     let cardX = max(edge, width * shown)
     // Whole points only: Chrome's content layer follows the page by CALayer autoresizing, which rounds each
@@ -212,7 +221,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let left = cardX.rounded(), right = (bounds.width - edge).rounded()
     let bottom = edge.rounded()
     var top = (bounds.height - edge).rounded()
-    toolbar.isHidden = !toolbarShown
+    toolbar.isHidden = !toolbarShown || fullPage
     sidebar.showsAddress = !toolbarShown || (sidebar.superview === floating && !dockingFromPeek)
     sidebar.showsSiteButton = !toolbarShown
     toolbar.showsFullAddress = fullAddressShown
@@ -228,10 +237,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       if toolbar.navigation > 0.05 && toolbar.navigation < 0.95 { navigationSteps += 1 }
       top = (bounds.height - height).rounded()
     }
-    pages.frame = NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
+    pages.frame = fullPage ? bounds
+      : NSRect(x: left, y: bottom, width: max(0, right - left), height: max(0, top - bottom))
     // Hidden pages sit out the frames of ⌘S and of a drag of the sidebar's edge, and take the size it settles at.
     pages.defersHiddenPages = dockSpring.isMoving || widthSpring.isMoving || resizeStart != nil
-    pages.cornerRadius = isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
+    pages.cornerRadius = fullPage ? 0 : isFullScreen ? PageContainerView.radius * shown : PageContainerView.radius
+    if fullPage { pages.showsProgress = false }
     if let crashed = crashedPages.view, crashed.superview != nil {
       crashed.frame = pages.frame
       crashed.layer?.cornerRadius = pages.cornerRadius
@@ -254,6 +265,63 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
       window.standardWindowButton(kind)?.isHidden = !isFullScreen
     }
+  }
+
+  // MARK: Page full screen
+
+  /// The tab whose page asked for full screen (a video's button, YouTube's F): while it's the one shown it fills the
+  /// window with nothing of Ray's around it (Chrome's and Ardia's), and the window goes full screen if it wasn't,
+  /// coming back out when the page leaves it. Escape, a tab switch or leaving the window's full screen end it.
+  private(set) var pageFullscreenTab: RayCoreTab?
+  /// Ray took the window full screen for the page, so it takes it out again.
+  private var fullScreenForPage = false
+  /// For the state log: what happened, in order (entered, left, windowIn, windowOut).
+  private var pageFullscreenSteps: [String] = []
+
+  private var pageFillsWindow: Bool { pageFullscreenTab != nil && pageFullscreenTab === activeTab }
+
+  func window(_ window: RayCoreWindow, tab: RayCoreTab, didChangeFullscreen fullscreen: Bool) {
+    if fullscreen {
+      guard tab === activeTab else { return tab.exitFullscreen() }
+      pageFullscreenTab = tab
+      pageFullscreenSteps.append("entered")
+      closeCommandBar(focus: false)
+      panels.close()
+      if peeking { endPeek(animated: false) }
+      // Test instances stay out of the window's full screen: it would take over the screen.
+      if !isFullScreen, !launchedInBackground {
+        fullScreenForPage = true
+        pageFullscreenSteps.append("windowIn")
+        self.window.toggleFullScreen(nil)
+      }
+    } else if pageFullscreenTab === tab {
+      pageFullscreenTab = nil
+      pageFullscreenSteps.append("left")
+      if fullScreenForPage {
+        fullScreenForPage = false
+        if isFullScreen {
+          pageFullscreenSteps.append("windowOut")
+          self.window.toggleFullScreen(nil)
+        }
+      }
+    }
+    layout()
+    updateForcedPeek()
+    logState("pageFullscreen")
+  }
+
+  /// Escape leaves a page's full screen before the page sees the key, as Chrome's does.
+  private func exitPageFullscreen(on event: NSEvent) -> Bool {
+    guard event.type == .keyDown, event.keyCode == 53, let tab = pageFullscreenTab else { return false }
+    tab.exitFullscreen()
+    return true
+  }
+
+  private var pageFullscreenDebug: [String: Any] {
+    ["tab": pageFullscreenTab.map { Int($0.tabId) } ?? NSNull(), "fillsWindow": pageFillsWindow,
+     "windowForPage": fullScreenForPage, "steps": pageFullscreenSteps,
+     "pages": NSStringFromRect(pages.frame), "root": NSStringFromRect(root.bounds), "sidebarHidden": sidebar.isHidden,
+     "toolbarHidden": toolbar.isHidden]
   }
 
   // MARK: Extensions and downloads
@@ -1415,7 +1483,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private func reloadSidebar() {
     sidebar.show(favorites: state.favorites, pinned: state.pinned, today: state.today, active: activeEntry)
     sidebar.showAddress(activeEntry)
-    sidebar.setNavigation(canGoBack: activeTab?.canGoBack ?? false, canGoForward: activeTab?.canGoForward ?? false)
+    sidebar.setNavigation(canGoBack: canGoBack, canGoForward: canGoForward, backToolTip: backToolTip)
     updateToolbar()
   }
 
@@ -1509,6 +1577,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if switched, !switcherChoosing { tabSwitcher.cancel("other switch") }
     if switched, findTab != nil, findTab !== tab { closeFind() }
     if switched { panels.tabSwitched() }
+    if switched, let full = pageFullscreenTab, full !== tab { full.exitFullscreen() }
+    // A click on another tab while the bar is open (the sidebar takes clicks through it, as Arc's) closes it.
+    if switched, commandBar != nil { closeCommandBar(focus: false) }
     if switched { iconPicker?.close() }
     // An extension's popup belongs to the tab it opened over.
     if switched { extensions.closePopup() }
@@ -1519,6 +1590,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if switched { popups.tabSwitched() }
     if switched { crashedPages.tabSwitched() }
     entry.lastActive = Date()
+    entry.unseen = false
     if commandBar == nil { focusPage(tab) }
     if switched { changed("activate") }
   }
@@ -1535,14 +1607,26 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     changed("activate")
   }
 
-  private func activateNeighbor(of index: Int, in list: [SidebarEntry]) {
-    let candidates = list.indices.sorted { abs($0 - index) < abs($1 - index) }.map { list[$0] }
-    if let next = candidates.first(where: { $0.isLive }) ?? state.allEntries.first(where: { $0.isLive }) {
-      select(next)
-    } else {
-      showNothing()
-    }
+  /// The tab to show when the active one closes: Back's "Close Tab and Go Back" target, else the tab used before it,
+  /// as Arc and Ardia do: never one asleep while one is awake, one opened behind and never shown only when nothing
+  /// else is open, and never one closing with it; the nearest neighbour breaks ties.
+  private func successor(closing entry: SidebarEntry) -> SidebarEntry? {
+    let preferred = closingTo
+    closingTo = nil
+    if let preferred, state.entry(id: preferred.id) === preferred, !preferred.isFolder, preferred !== entry { return preferred }
+    let list = state.allEntries
+    let index = list.firstIndex { $0 === entry } ?? 0
+    let excluded = closingTogether.union([entry.id])
+    let open = list.indices.sorted { abs($0 - index) < abs($1 - index) }.map { list[$0] }
+      .filter { $0.isLive && !$0.isFolder && !excluded.contains($0.id) }
+    // `max(by:)` keeps the first of equals: the nearest.
+    return open.filter { !$0.unseen }.max(by: { $0.lastActive < $1.lastActive }) ?? open.first
   }
+
+  /// Set just before Back closes a tab a link opened: the tab to go back to.
+  private var closingTo: SidebarEntry?
+  /// Tabs closing together (a selection, a folder's Close Tabs): none of them is shown after.
+  private var closingTogether: Set<UUID> = []
 
   // MARK: Closing
 
@@ -1683,6 +1767,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     case .closeFolderTabs:
       guard state.isTodayFolder(entry) else { return }
       let tabs = state.today.filter { $0.parentID == entry.id }
+      closingTogether = Set(tabs.map(\.id))
+      defer { closingTogether = [] }
       for tab in tabs.reversed() {
         if tab.isLive {
           closeByUser(tab)
@@ -1844,12 +1930,16 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     perform(.backToPinned, on: entry)
   }
 
+  /// Clear Today (⇧⌘K), as Arc's: every Today tab but the one you're on and those playing sound; ⇧⌘T (or ⌘Z) brings
+  /// the whole clear back.
   func clearToday() {
+    let batch = UUID()
     for entry in state.today where !entry.isFolder {
+      if entry.id == state.activeEntryID || entry.isLive && entry.tab?.audible == true { continue }
       if entry.isLive {
-        closeByUser(entry)
+        closeByUser(entry, batch: batch)
       } else {
-        rememberClosed(entry, key: nil, favicon: nil)
+        rememberClosed(entry, key: nil, favicon: nil, batch: batch)
         state.remove(entry)
       }
     }
@@ -1879,7 +1969,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if tabSwitcher.isOpen { return tabSwitcher.step(step, order: [], cards: 0, held: true) }
     let live = state.allEntries.filter { $0.isLive && !$0.isFolder }
     // Most recently used first, the current tab on top; ties keep the sidebar's order.
-    var order = live.enumerated().sorted { ($0.element.lastActive, $1.offset) > ($1.element.lastActive, $0.offset) }.map(\.element)
+    var order = live.enumerated().sorted { ($0.element.lastUsed, $1.offset) > ($1.element.lastUsed, $0.offset) }.map(\.element)
     if let active = activeEntry, let at = order.firstIndex(where: { $0 === active }) {
       order.remove(at: at)
       order.insert(active, at: 0)
@@ -1935,15 +2025,18 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// The user closes a live tab. In a normal window its back/forward list goes to the engine's tab restore service
   /// (as Chrome's own closes do) under a key of its own, so ⇧⌘T can ask for exactly that tab back; it's remembered
   /// once the engine has removed it (`window(_:didRemove:)`), at the place it had then.
-  private func closeByUser(_ entry: SidebarEntry) {
+  private func closeByUser(_ entry: SidebarEntry, batch: UUID? = nil) {
     guard let tab = entry.tab, !tab.closed else { return }
+    // The tab to show is picked and shown first: closed while active, Chrome would show its own pick (the opener or
+    // the next tab in its strip) before Ray hears of the close.
+    if entry.id == state.activeEntryID, let next = successor(closing: entry) { select(next) }
     var key: String?
     if !isPrivate, Self.isReopenable(entry.currentURL) {
       let tag = "ray-closed-" + UUID().uuidString
       EngineCalls.call("ac_tab_restore_tag", profile: profile, args: ["tab": Int(tab.tabId), "key": tag]) { _ in }
       key = tag
     }
-    userClosing[entry.id] = (key, tab.favicon)
+    userClosing[entry.id] = (key, tab.favicon, batch)
     tab.close()
   }
 
@@ -1955,14 +2048,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   /// Remembers a closed entry with its place in its section, before it leaves the sidebar (Today) or goes back to its
   /// pinned address (pinned and favorites).
-  private func rememberClosed(_ entry: SidebarEntry, key: String?, favicon: NSImage?) {
+  private func rememberClosed(_ entry: SidebarEntry, key: String?, favicon: NSImage?, batch: UUID? = nil) {
     let url = entry.currentURL
     let section = entry.kind == .today ? state.today : entry.kind == .favorite ? state.favorites : state.pinned
     guard Self.isReopenable(url), !entry.isFolder, let index = section.firstIndex(where: { $0 === entry }) else { return }
     closedTabs.add(ClosedTab(
       entryID: entry.id, kind: entry.kind, index: index, parentID: entry.parentID, pinnedURL: entry.pinnedURL,
       url: url, title: entry.title, customTitle: entry.customTitle, favicon: favicon ?? favicons.image(for: url),
-      restoreKey: key))
+      restoreKey: key, batch: batch))
   }
 
   /// Settings › General › When Ray quits › Start fresh, as the launch's first window opens: last time's Today tabs
@@ -1984,11 +2077,19 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// ⇧⌘T goes on to the tab closed before it.
   func reopenClosedTab(_ id: UUID? = nil) {
     while let closed = closedTabs.take(id) {
+      // A whole Clear Today comes back at once, each tab to its place, behind the tab you're on (which it kept).
+      if id == nil, let batch = closed.batch {
+        var reopened = reopen(closed, shows: false)
+        while let next = closedTabs.takeNext(inBatch: batch) { reopened = reopen(next, shows: false) || reopened }
+        if reopened { return }
+        continue
+      }
       if reopen(closed) || id != nil { return }
     }
   }
 
-  private func reopen(_ closed: ClosedTab) -> Bool {
+  /// `shows`: the reopened tab becomes the active one (all but the rest of a Clear Today's tabs).
+  private func reopen(_ closed: ClosedTab, shows: Bool = true) -> Bool {
     let entry: SidebarEntry
     if let existing = state.entry(id: closed.entryID) {
       // A pinned or favorite row (closing only unloaded it): the same row comes back to life.
@@ -2016,7 +2117,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     entry.url = closed.url
     if !closed.title.isEmpty { entry.title = closed.title }
     guard let key = closed.restoreKey else {
-      select(entry)
+      if shows { select(entry) }
       changed("reopen")
       return true
     }
@@ -2025,12 +2126,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       guard let self, !self.closing, self.state.entry(id: entry.id) === entry, !entry.isLive else { return }
       if let saved = reply?["state"] as? String, !saved.isEmpty {
         self.loadingEntry = entry
-        let tab = self.coreWindow.restoreTab(saved, profile: self.profile, foreground: true)
+        let tab = self.coreWindow.restoreTab(saved, profile: self.profile, foreground: shows)
         self.loadingEntry = nil
         if let tab, entry.tab !== tab { self.bind(entry, tab) }
       }
       // Without its history (the engine no longer had it), the tab opens on the page it was on.
-      self.select(entry)
+      if shows { self.select(entry) } else { self.load(entry, foreground: false) }
       self.logState("reopen")
     }
     return true
@@ -2067,9 +2168,13 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   /// Duplicate: a copy right after it in the same place. A live tab's copy is the engine's duplicate (its history
   /// too, as Chrome's Duplicate) and becomes the active tab; an unloaded one's opens on its page when clicked.
-  func duplicate(_ entry: SidebarEntry, select: Bool = true) {
-    guard state.entry(id: entry.id) === entry else { return }
-    if entry.isFolder { return duplicateFolder(entry) }
+  @discardableResult
+  func duplicate(_ entry: SidebarEntry, select: Bool = true) -> SidebarEntry? {
+    guard state.entry(id: entry.id) === entry else { return nil }
+    if entry.isFolder {
+      duplicateFolder(entry)
+      return nil
+    }
     let copy = entry.duplicate()
     switch entry.kind {
     case .favorite:
@@ -2088,6 +2193,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       if select { self.select(copy) }
     }
     changed("duplicate")
+    return copy
   }
 
   /// A folder's copy, right after it: the same name, look and tabs (unloaded), nested folders too.
@@ -2165,7 +2271,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let entry = activeEntry
     let level = entry.flatMap { $0.isLive ? $0.tab.flatMap { ConnectionLook.level($0.securityInfo) } : nil }
     toolbar.show(url: entry?.currentURL ?? "", security: level,
-                 canGoBack: activeTab?.canGoBack ?? false, canGoForward: activeTab?.canGoForward ?? false)
+                 canGoBack: canGoBack, canGoForward: canGoForward, backToolTip: backToolTip)
     updateToolbarLoading()
   }
 
@@ -2194,8 +2300,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func toolbarToggleSidebar(_ toolbar: PageToolbarView) { toggleSidebar() }
-  func toolbarBack(_ toolbar: PageToolbarView) { activeTab?.userGoBack() }
-  func toolbarForward(_ toolbar: PageToolbarView) { activeTab?.userGoForward() }
+  func toolbarBack(_ toolbar: PageToolbarView) { goBack() }
+  func toolbarForward(_ toolbar: PageToolbarView) { goForward() }
+  func toolbarHistoryInNewTab(_ toolbar: PageToolbarView, forward: Bool) { openHistoryInNewTab(forward: forward) }
   func toolbarReload(_ toolbar: PageToolbarView) { activeTab?.userReload() }
   func toolbarStop(_ toolbar: PageToolbarView) { activeTab?.stop() }
   func toolbarEditAddress(_ toolbar: PageToolbarView) { focusAddress() }
@@ -2241,6 +2348,48 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     pages.fakeSight = seen
     logState("windowSight")
   }
+
+  // MARK: Back and forward
+
+  /// The tab Back closes and goes back to (Ardia's "Close Tab and Go Back", PR #1401): on a Today tab a page opened,
+  /// with no history of its own, the tab that opened it, while that is still in this window.
+  private func backCloses(_ entry: SidebarEntry?) -> SidebarEntry? {
+    guard let entry, entry.kind == .today, entry.isLive, entry.tab?.canGoBack == false, let id = entry.openerID,
+          let opener = state.entry(id: id), opener !== entry, !opener.isFolder else { return nil }
+    return opener
+  }
+
+  /// Whether Back does something: the page before, or closing a tab a link opened.
+  var canGoBack: Bool { activeTab?.canGoBack == true || backCloses(activeEntry) != nil }
+  var canGoForward: Bool { activeTab?.canGoForward == true }
+
+  /// Back (⌘[, both Back buttons): the page before; on a tab a link opened that has none, the tab closes and the one
+  /// that opened it shows.
+  func goBack() {
+    guard let tab = activeTab else { return }
+    if tab.canGoBack { return tab.userGoBack() }
+    guard let entry = activeEntry, let opener = backCloses(entry) else { return }
+    closingTo = opener
+    closeByUser(entry)
+    logState("closeAndGoBack")
+  }
+
+  func goForward() { activeTab?.userGoForward() }
+
+  /// ⌘-click or a middle click on Back or Forward: that page in a new tab behind this one, as Arc and Chrome do
+  /// (http(s) pages only, as the history list's ⌘-click).
+  func openHistoryInNewTab(forward: Bool) {
+    guard let entry = activeEntry, let tab = activeTab,
+          let item = HistoryList.items(tab.navigationEntries, forward: forward).first,
+          let url = URL(string: item.url).flatMap(AddressInput.link(fromOtherApp:)) else { return }
+    let opened = openToday(url, after: entry, foreground: false)
+    opened.unseen = true
+    notes.show(Note("Opened in Background Tab", icon: .symbol("plus.square.on.square"), key: "backgroundTab"))
+    logState("historyInNewTab")
+  }
+
+  /// Back's tooltip says when it closes the tab, as Ardia's does.
+  private var backToolTip: String { activeTab?.canGoBack == false && backCloses(activeEntry) != nil ? "Close Tab and Go Back" : "Back" }
 
   // MARK: History list
 
@@ -2582,7 +2731,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func beginPeek() {
-    guard state.sidebarHidden, !peeking else { return }
+    guard state.sidebarHidden, !peeking, !pageFillsWindow else { return }
     peekEndWork?.cancel()
     peeking = true
     sidebar.removeFromSuperview()
@@ -2686,12 +2835,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   // MARK: Command bar
 
-  func beginNewTab() {
-    openCommandBar(.newTab, query: "")
+  /// ⌘T (`toggles`: a second ⌘T closes the bar, as Arc's), New Tab, New Tab in Folder.
+  func beginNewTab(toggles: Bool = false) {
+    openCommandBar(.newTab, query: "", toggles: toggles)
   }
 
-  func focusAddress() {
-    openCommandBar(.currentTab, query: activeEntry.map { AddressInput.display(for: $0.currentURL) } ?? "")
+  /// ⌘L (`toggles`: a second ⌘L closes it), or a click on the address.
+  func focusAddress(toggles: Bool = false) {
+    openCommandBar(.currentTab, query: activeEntry.map { AddressInput.display(for: $0.currentURL) } ?? "", toggles: toggles)
   }
 
   /// ⇧⌘C, as in Arc and Chrome: the current page's full URL to the clipboard, and Arc's "Copied Current URL" note
@@ -2708,6 +2859,30 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       NSSharingServicePicker(items: [link]).show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     })
     logState("copyURL")
+  }
+
+  /// Edit › Copy URL as Markdown (⇧⌥⌘C, Arc's): `[title](url)`.
+  func copyURLAsMarkdown() {
+    guard let entry = activeEntry, !entry.currentURL.isEmpty else { return }
+    let title = (entry.displayTitle.isEmpty ? AddressInput.display(for: entry.currentURL) : entry.displayTitle)
+      .components(separatedBy: .newlines).joined(separator: " ")
+    let escaped = title.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "[", with: "\\[")
+      .replacingOccurrences(of: "]", with: "\\]")
+    let url = entry.currentURL.replacingOccurrences(of: "(", with: "%28").replacingOccurrences(of: ")", with: "%29")
+    let pasteboard = Self.pasteboard
+    pasteboard.clearContents()
+    pasteboard.setString("[\(escaped)](\(url))", forType: .string)
+    notes.show(Note("Copied URL as Markdown", icon: .symbol("link"), lasts: .seconds(3)))
+    logState("copyURL")
+  }
+
+  /// File › Paste URL as New Tab (⌥⌘V, Arc's): what's on the clipboard, as if typed in ⌘T's bar and entered.
+  func pasteURLAsNewTab() {
+    guard let text = Self.pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !text.isEmpty, text.count <= 8_192, let url = AddressInput.url(for: text) else { return }
+    closeCommandBar(focus: false)
+    if showNativeSettings(for: url) { return }
+    openToday(url, after: nil, foreground: true)
   }
 
   /// Several tabs' links, one per line, in sidebar order.
@@ -2727,10 +2902,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// Test instances copy to a pasteboard of their own so checks never touch the user's clipboard.
   static let pasteboard = TestEnvironment["RAY_PASTEBOARD"].map { NSPasteboard(name: .init($0)) } ?? .general
 
-  private func openCommandBar(_ mode: CommandBarMode, query: String) {
+  private func openCommandBar(_ mode: CommandBarMode, query: String, toggles: Bool = false) {
     // Nothing opens under the onboarding's veil (⌘T there would type into a bar you can't see).
     guard onboarding == nil else { return }
-    commandBarMode = activeEntry == nil ? .newTab : mode
+    let mode = activeEntry == nil ? .newTab : mode
+    if toggles, commandBar != nil, commandBarMode == mode { return closeCommandBar(focus: true) }
+    commandBarMode = mode
     let bar = commandBar ?? CommandBarView(frame: root.bounds)
     if commandBar == nil {
       bar.autoresizingMask = [.width, .height]
@@ -2749,10 +2926,21 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if !isPrivate { history.refresh(profile: profile) { [weak self] in self?.refreshSuggestions() } }
   }
 
+  /// ⌘L's bar still holding the page's own address, untouched: no rows (Ardia's), and Return reloads (Arc's).
+  private var addressUnchanged: Bool {
+    guard let bar = commandBar, commandBarMode == .currentTab, bar.scope == nil, let url = activeEntry?.currentURL else { return false }
+    return bar.typed == url || bar.typed == AddressInput.display(for: url)
+  }
+
   private func refreshSuggestions() {
     guard let bar = commandBar else { return }
-    let query =
-      commandBarMode == .currentTab && bar.typed == activeEntry?.currentURL ? "" : bar.typed
+    if addressUnchanged {
+      bar.show([])
+      bar.offer(nil)
+      logState("commandBar")
+      return
+    }
+    let query = bar.typed
     // Scoped to a site search: only that search, nothing from tabs, history or the engine's suggestions.
     if let scope = bar.scope {
       bar.show(Suggestions.scoped(scope, query: query))
@@ -2767,7 +2955,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       searches: wantsSearches ? searches.current(for: trimmed) : [], bookmarks: Bookmarks.shared.barItems,
       actions: BarActions.available,
       settings: SettingsSearch.barMatches, frecency: history.frecency(of:), favicon: favicons.image(for:),
-      name: { [weak self] tab in self?.state.entry(for: tab)?.customTitle })
+      name: { [weak self] tab in self?.state.entry(for: tab)?.customTitle },
+      lastUsed: { [weak self] tab in self?.state.entry(for: tab)?.lastUsed ?? .distantPast })
     bar.show(rows)
     let offered = SearchEngines.offer(for: query, use: history.use(ofHost:))
     bar.offer(offered)
@@ -2823,7 +3012,34 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     requestSearchSuggestions()
   }
 
-  func commandBar(_ bar: CommandBarView, choose suggestion: Suggestion) {
+  /// For tests: Return in the bar with these modifiers (`enter cmd`), as the keyboard's ⌘↩ arrives.
+  func commandBarReturn(command: Bool) -> Bool {
+    guard let bar = commandBar else { return false }
+    bar.returnPressed(modifiers: command ? .command : [])
+    return true
+  }
+
+  func commandBarReturnWithoutRow(_ bar: CommandBarView, newTab: Bool) {
+    guard addressUnchanged, let entry = activeEntry, let tab = activeTab else { return }
+    let url = entry.currentURL
+    closeCommandBar(focus: false)
+    if newTab {
+      openToday(url, after: entry, foreground: true)
+    } else {
+      tab.userReload()
+      focusPage(tab)
+    }
+  }
+
+  func commandBar(_ bar: CommandBarView, passesClickAt point: NSPoint) -> Bool {
+    // The sidebar, docked or peeking: a click there switches tabs (closing the bar) or opens a folder.
+    guard !sidebar.isHidden, sidebar.window != nil else { return false }
+    let local = sidebar.convert(point, from: nil)
+    guard sidebar.bounds.contains(local) else { return false }
+    return sidebar.superview === floating ? peeking : dockSpring.value > 0.5
+  }
+
+  func commandBar(_ bar: CommandBarView, choose suggestion: Suggestion, newTab: Bool) {
     let mode = commandBarMode
     let folder = newTabFolder
     closeCommandBar(focus: false)
@@ -2851,9 +3067,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     // ray://settings/appearance is Ray's own Settings window, never a page.
     if showNativeSettings(for: url) { return }
-    if mode == .newTab || activeTab == nil {
+    if newTab, mode == .currentTab, let entry = activeEntry {
+      // ⌘↩ from ⌘L: a new tab beside this one.
+      openToday(url, after: entry, foreground: true)
+    } else if mode == .newTab || activeTab == nil || newTab {
       openToday(url, after: nil, foreground: true)
     } else if let tab = activeTab {
+      // A page the user goes to by hand is no longer one a link opened: Back won't close it.
+      activeEntry?.openerID = nil
       tab.userLoad(url)
       focusPage(tab)
     }
@@ -2892,6 +3113,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if tab.devToolsView == nil { tab.showDevTools() } else { tab.closeDevTools() }
   }
 
+  /// For tests: the sidebar's list scrolled (`sidebarlist`), and a double click on its empty space.
+  func scrollSidebarList(to y: Double) { sidebar.debugScroll(to: CGFloat(y)) }
+  func doubleClickSidebarSpace() -> Bool { sidebar.debugDoubleClickEmpty() }
+  func dropOnSidebar(_ items: [SidebarDroppedItem], at point: NSPoint) -> Bool { sidebar.debugDrop(items, atWindowPoint: point) }
+
   // MARK: SidebarViewDelegate
 
   func sidebar(_ sidebar: SidebarView, select entry: SidebarEntry) { select(entry) }
@@ -2903,6 +3129,94 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func sidebar(_ sidebar: SidebarView, move entry: SidebarEntry, to target: SidebarDropTarget) {
     move(entry, to: target)
   }
+
+  // MARK: Pop-up windows
+
+  /// Tabs on their way here from a pop-up window, by tab: the entry each binds to when the engine inserts it.
+  private var popupAdoptions: [ObjectIdentifier: SidebarEntry] = [:]
+
+  /// A pop-up window's page as a Today tab (its Open as Tab, or a tab it opened), right after `openerID`'s tab.
+  func adoptFromPopup(_ tab: RayCoreTab, after openerID: UUID?, foreground: Bool) {
+    guard !tab.closed, !closing else { return }
+    let entry = SidebarEntry(kind: .today, url: tab.url, title: tab.title)
+    entry.openerID = openerID
+    insertToday(entry, after: openerID.flatMap { state.entry(id: $0) })
+    popupAdoptions[ObjectIdentifier(tab)] = entry
+    coreWindow.adoptTab(tab)
+    // The engine may insert it later (adopting from inside a tab strip notification is put off).
+    DispatchQueue.main.async { [weak self, weak tab] in
+      guard let self, let tab, !tab.closed else { return }
+      if let waiting = self.popupAdoptions.removeValue(forKey: ObjectIdentifier(tab)), waiting.tab == nil { self.bind(waiting, tab) }
+      guard self.state.entry(id: entry.id) === entry else { return }
+      if foreground { self.select(entry) } else {
+        entry.unseen = true
+        self.changed("insert")
+      }
+    }
+    changed("insert")
+  }
+
+  // MARK: Sidebar drops
+
+  /// ⌥-drag (Arc's): a copy, with the tab's history, goes where the tab was dropped; the tab stays where it was. The
+  /// target was measured without the dragged tab in its list, so a place below it in the same list moves one on.
+  func sidebar(_ sidebar: SidebarView, duplicate entry: SidebarEntry, to target: SidebarDropTarget) {
+    func after(_ list: [SidebarEntry], _ index: Int) -> Int {
+      (list.firstIndex { $0 === entry }).map { $0 < index ? index + 1 : index } ?? index
+    }
+    var adjusted = target
+    switch target {
+    case .today(let index, let parent): adjusted = .today(after(state.today, index), parent: parent)
+    case .pinned(let index, let parent): adjusted = .pinned(after(state.pinned, index), parent: parent)
+    case .favorites(let index): adjusted = .favorites(after(state.favorites, index))
+    case .folder: break
+    }
+    sidebar.animateNextChange()
+    guard let copy = duplicate(entry, select: false) else { return }
+    move(copy, to: adjusted)
+    logState("dropCopy")
+  }
+
+  /// Links, files and text dropped on the sidebar (Arc's): each a tab where it landed, the first one shown. Links
+  /// only http(s) (`AddressInput.link(fromOtherApp:)`), files only the documents Ray opens from Finder, text as
+  /// typed in the command bar but only an http(s) page or a search: never `javascript:`, `data:` or `file:`.
+  func sidebar(_ sidebar: SidebarView, drop items: [SidebarDroppedItem], to target: SidebarDropTarget) -> Bool {
+    let urls: [String] = items.compactMap { item in
+      switch item {
+      case .link(let text): return URL(string: text).flatMap(AddressInput.link(fromOtherApp:))
+      case .file(let url): return AddressInput.document(fromOtherApp: url)
+      case .text(let text):
+        guard let url = AddressInput.url(for: text), let scheme = URLComponents(string: url)?.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else { return nil }
+        return url
+      }
+    }
+    guard !urls.isEmpty else { return false }
+    sidebar.animateNextChange()
+    var placed: [SidebarEntry] = []
+    for url in urls.reversed() {
+      // Each one in at the same place, last first, so they end up in the order dropped.
+      let entry = SidebarEntry(kind: .today, url: url)
+      state.today.insert(entry, at: 0)
+      move(entry, to: target)
+      if state.entry(id: entry.id) !== entry {
+        state.remove(entry)
+        continue
+      }
+      placed.insert(entry, at: 0)
+    }
+    guard let first = placed.first else {
+      changed("drop")
+      return false
+    }
+    select(first)
+    lastDrop = placed.map(\.url)
+    logState("drop")
+    return true
+  }
+
+  /// For the state log: the addresses the last drop opened.
+  private var lastDrop: [String] = []
 
   // MARK: Selection
 
@@ -2927,6 +3241,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       sidebar.animateNextChange()
       for tab in tabs { duplicate(tab, select: tab === tabs.last) }
     case .close:
+      // The tab shown after is one that isn't closing with them.
+      closingTogether = Set(tabs.map(\.id))
+      defer { closingTogether = [] }
       for tab in tabs.reversed() { perform(.close, on: tab) }
     case .copyLinks:
       copyLinks(tabs)
@@ -3027,8 +3344,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func sidebarNewTab(_ sidebar: SidebarView) { beginNewTab() }
   func sidebarOpenAddress(_ sidebar: SidebarView) { focusAddress() }
   func sidebarToggle(_ sidebar: SidebarView) { toggleSidebar() }
-  func sidebarBack(_ sidebar: SidebarView) { activeTab?.userGoBack() }
-  func sidebarForward(_ sidebar: SidebarView) { activeTab?.userGoForward() }
+  func sidebarBack(_ sidebar: SidebarView) { goBack() }
+  func sidebarForward(_ sidebar: SidebarView) { goForward() }
+  func sidebarHistoryInNewTab(_ sidebar: SidebarView, forward: Bool) { openHistoryInNewTab(forward: forward) }
   func sidebarReload(_ sidebar: SidebarView) { activeTab?.userReload() }
 
   func sidebarIcon(for entry: SidebarEntry) -> NSImage? {
@@ -3050,10 +3368,24 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       bind(entry, tab)
       return
     }
+    // A tab coming from a pop-up window (Open as Tab, or a link the pop-up opened): its entry is waiting.
+    if let entry = popupAdoptions.removeValue(forKey: ObjectIdentifier(tab)) {
+      if entry.tab == nil { bind(entry, tab) }
+      return
+    }
+    // A page's sized pop-up (`PopupWindow`): its own small window, never a tab here.
+    if disposition == "popup", let opener {
+      PopupWindow.open(tab, from: self, opener: state.entry(for: opener))
+      return
+    }
     let entry = SidebarEntry(kind: .today, url: tab.url)
     bind(entry, tab)
-    insertToday(entry, after: opener.flatMap(state.entry(for:)))
+    let openerEntry = opener.flatMap(state.entry(for:))
+    entry.openerID = openerEntry?.id
+    insertToday(entry, after: openerEntry)
     if disposition == "background_tab" {
+      // Not used until it's shown: ⌃Tab and a close go to the tabs you were on first.
+      entry.unseen = true
       changed("insert")
       // A link the page opened behind it (⌘-click, a middle click) says so, as Crest does; another one updates the note.
       if opener != nil {
@@ -3065,6 +3397,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func window(_ window: RayCoreWindow, didRemove tab: RayCoreTab) {
+    if tab === pageFullscreenTab { self.window(window, tab: tab, didChangeFullscreen: false) }
     ScreenShares.shared.forget(tab)
     LoadSweeps.shared.forget(tab)
     guard let entry = state.entry(for: tab) else { return }
@@ -3073,8 +3406,6 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       if tab.delegate === self { tab.delegate = nil }
       return
     }
-    let list = state.allEntries
-    let index = list.firstIndex { $0 === entry } ?? 0
     pages.detach(tab)
     if tab.delegate === self { tab.delegate = nil }
     entry.remember()
@@ -3082,8 +3413,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     tabPictures.drop(entry.id)
     zoomHosts[tab.tabId] = nil
     if let closing = userClosing.removeValue(forKey: entry.id) {
-      rememberClosed(entry, key: closing.key, favicon: closing.favicon)
+      rememberClosed(entry, key: closing.key, favicon: closing.favicon, batch: closing.batch)
     }
+    // Still active: closed without Ray picking first (by its page, an extension, Chrome), so pick now, while the
+    // entry still has its place for the nearest-neighbour tie.
+    let next = state.activeEntryID == entry.id ? successor(closing: entry) : nil
     let wasActive = state.activeEntryID == entry.id
     if entry.kind == .today {
       state.remove(entry)
@@ -3091,7 +3425,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       entry.url = pinnedURL
     }
     if wasActive {
-      activateNeighbor(of: index, in: state.allEntries)
+      if let next { select(next) } else { showNothing() }
     }
     changed("remove")
     crashedPages.update()
@@ -3108,7 +3442,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func window(_ window: RayCoreWindow, preHandleKeyEvent event: NSEvent) -> Bool {
-    Shortcuts.isReserved(event) && (NSApp.mainMenu?.performKeyEquivalent(with: event) ?? false)
+    if exitPageFullscreen(on: event) { return true }
+    return Shortcuts.isReserved(event) && (NSApp.mainMenu?.performKeyEquivalent(with: event) ?? false)
   }
 
   func window(_ window: RayCoreWindow, handleKeyEvent event: NSEvent) -> Bool {
@@ -3139,7 +3474,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       // A navigation to another site leaves the panel showing the old one's settings.
       panels.navigated(to: tab.committedOrigin)
       sidebar.showAddress(entry)
-      sidebar.setNavigation(canGoBack: tab.canGoBack, canGoForward: tab.canGoForward)
+      sidebar.setNavigation(canGoBack: canGoBack, canGoForward: canGoForward, backToolTip: backToolTip)
       updateToolbar()
     }
     store.save(state)
@@ -3548,6 +3883,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         "iconPicker": iconPicker?.debug ?? NSNull(),
         "iconPickerAnimations": FolderIconPicker.animations,
         "changesAnimated": SidebarView.changesAnimated, "iconSets": RowSymbols.sets,
+        "activeInView": sidebar.debugActiveInView, "emptyDoubleClicks": sidebar.emptyDoubleClicks,
         "hidden": self.state.sidebarHidden,
         "peeking": peeking,
         "dockFromPeek": ["docking": dockingFromPeek, "frames": dockFrames, "leftmost": Double(dockLeftmost)] as [String: Any],
@@ -3606,8 +3942,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     ] as [String: Any]
     state["shortcuts"] = MenuShortcuts.debug
     state["welcomeAgainItem"] = MainMenu.alternateInfo(of: #selector(AppController.showWelcomeAgain(_:))) ?? NSNull()
+    state["pageFullscreen"] = pageFullscreenDebug
+    state["lastDrop"] = lastDrop
+    state["popupWindows"] = PopupWindow.all.map(\.debug)
+    state["back"] = ["enabled": canGoBack, "tooltip": backToolTip, "lastPress": HistoryButton.lastPress]
     state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
-      .sorted { $0.lastActive > $1.lastActive }.map(tabID)
+      .sorted { $0.lastUsed > $1.lastUsed }.map(tabID)
     state["recentlyClosed"] = ClosedTabsMenu.shared.debug(for: self)
     state["looks"] = AppLook.debug.merging([
       "window": window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? "dark" : "light",

@@ -22,6 +22,7 @@ enum MainMenu {
 
     main.addItem(submenu("File", [
       item("New Tab", #selector(AppController.newTab(_:)), "t", target: target),
+      item("Paste URL as New Tab", #selector(AppController.pasteURLAsNewTab(_:)), "v", [.command, .option], target: target),
       item("New Window", #selector(AppController.newWindow(_:)), "n", target: target),
       item("New Private Window", #selector(AppController.newPrivateWindow(_:)), "n", [.command, .shift], target: target),
       item("Open Location…", #selector(AppController.focusAddress(_:)), "l", target: target),
@@ -31,7 +32,7 @@ enum MainMenu {
       item("Pin Tab", #selector(AppController.togglePin(_:)), "d", target: target),
       item("New Folder", #selector(AppController.newFolder(_:)), "n", [.command, .option], target: target),
       item("Back to Pinned URL", #selector(AppController.backToPinned(_:)), nil, target: target),
-      item("Clear Today's Tabs", #selector(AppController.clearToday(_:)), nil, target: target),
+      item("Clear Today's Tabs", #selector(AppController.clearToday(_:)), "k", [.command, .shift], target: target),
       .separator(),
       item("Import from Browser…", #selector(AppController.importFromBrowser(_:)), nil, target: target),
       .separator(),
@@ -52,6 +53,7 @@ enum MainMenu {
       item("Select All", #selector(NSText.selectAll(_:)), "a"),
       .separator(),
       item("Copy URL", #selector(AppController.copyURL(_:)), "c", [.command, .shift], target: target),
+      item("Copy URL as Markdown", #selector(AppController.copyURLAsMarkdown(_:)), "c", [.command, .option, .shift], target: target),
       .separator(),
       item("Find…", #selector(AppController.find(_:)), "f", target: target),
       item("Find Next", #selector(AppController.findNext(_:)), "g", target: target),
@@ -110,6 +112,9 @@ enum MainMenu {
       .separator(),
       item("Show Next Tab", #selector(AppController.nextTab(_:)), "]", [.command, .shift], target: target),
       item("Show Previous Tab", #selector(AppController.previousTab(_:)), "[", [.command, .shift], target: target),
+      // Arc's ⌥⌘↓ and ⌥⌘↑ answer for them too (they follow the items if Settings › Shortcuts changes them).
+      item("Show Next Tab", #selector(AppController.nextTab(_:)), arrow(NSDownArrowFunctionKey), [.command, .option], target: target, alternate: true),
+      item("Show Previous Tab", #selector(AppController.previousTab(_:)), arrow(NSUpArrowFunctionKey), [.command, .option], target: target, alternate: true),
       // ⌃Tab: most recently used order when Settings says so (and the sidebar's order when it doesn't).
       item("Show Next Tab", #selector(AppController.nextTabWithControl(_:)), "\t", [.control], target: target, alternate: true),
       item("Show Previous Tab", #selector(AppController.previousTabWithControl(_:)), "\t", [.control, .shift], target: target, alternate: true),
@@ -172,6 +177,8 @@ enum MainMenu {
     holder.submenu = menu
     return holder
   }
+
+  private static func arrow(_ key: Int) -> String { String(Character(UnicodeScalar(UInt16(key))!)) }
 
   private static func item(
     _ title: String,

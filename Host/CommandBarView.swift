@@ -2,8 +2,14 @@ import AppKit
 
 protocol CommandBarDelegate: AnyObject {
   func commandBar(_ bar: CommandBarView, queryChanged query: String)
-  func commandBar(_ bar: CommandBarView, choose suggestion: Suggestion)
+  /// A row chosen; `newTab` with ⌘↩ (or ⌘-click): a page opens in a new tab even from ⌘L.
+  func commandBar(_ bar: CommandBarView, choose suggestion: Suggestion, newTab: Bool)
+  /// Return with no row: ⌘L's bar on the unchanged address reloads the page, as Arc's does.
+  func commandBarReturnWithoutRow(_ bar: CommandBarView, newTab: Bool)
   func commandBarDismiss(_ bar: CommandBarView)
+  /// Whether a click at this point (window coordinates) goes through to what's under the bar: the sidebar takes its
+  /// clicks while the bar is open, as Arc's does.
+  func commandBar(_ bar: CommandBarView, passesClickAt point: NSPoint) -> Bool
 }
 
 final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
@@ -215,7 +221,12 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
   }
 
   override func hitTest(_ point: NSPoint) -> NSView? {
-    super.hitTest(point) ?? (isHidden ? nil : self)
+    if let hit = super.hitTest(point) { return hit }
+    if isHidden { return nil }
+    if let inWindow = superview?.convert(point, to: nil), delegate?.commandBar(self, passesClickAt: inWindow) == true {
+      return nil
+    }
+    return self
   }
 
   override func mouseDown(with event: NSEvent) {
@@ -419,16 +430,28 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
                                     length: min(selection.length, length - min(selection.location, length))))
   }
 
-  func chooseSelected() {
+  /// Return: the chosen row; ⌘↩ opens a page in a new tab (Ardia's, Chrome's ⌥↩), ⌥↩ is Return (never a newline).
+  func returnPressed(modifiers: NSEvent.ModifierFlags = []) {
+    chooseSelected(newTab: modifiers.contains(.command))
+  }
+
+  func chooseSelected(newTab: Bool = false) {
     let row = tableView.selectedRow
-    guard row >= 0, row < suggestions.count else { return }
-    delegate?.commandBar(self, choose: suggestions[row])
+    guard row >= 0, row < suggestions.count else { return delegate?.commandBarReturnWithoutRow(self, newTab: newTab) ?? () }
+    delegate?.commandBar(self, choose: suggestions[row], newTab: newTab)
   }
 
   @objc private func rowClicked() {
     let row = tableView.clickedRow
     guard row >= 0, row < suggestions.count else { return }
-    delegate?.commandBar(self, choose: suggestions[row])
+    let newTab = NSApp.currentEvent?.modifierFlags.contains(.command) == true
+    delegate?.commandBar(self, choose: suggestions[row], newTab: newTab)
+  }
+
+  /// Whether the key being handled is Return (or Enter), for the selectors ⌘↩ and ⌥↩ arrive as.
+  private static var currentKeyIsReturn: Bool {
+    guard let event = NSApp.currentEvent, event.type == .keyDown else { return false }
+    return event.keyCode == 36 || event.keyCode == 76
   }
 
   func controlTextDidChange(_ notification: Notification) {
@@ -565,8 +588,11 @@ final class CommandBarView: NSView, NSTextFieldDelegate, NSTableViewDataSource, 
 
   func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
     switch selector {
-    case #selector(NSResponder.insertNewline(_:)):
-      chooseSelected()
+    case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
+      returnPressed(modifiers: Self.currentKeyIsReturn ? NSApp.currentEvent?.modifierFlags ?? [] : [])
+    case Selector(("noop:")) where Self.currentKeyIsReturn:
+      // ⌘↩ has no key binding of its own: the text system calls it noop:.
+      returnPressed(modifiers: NSApp.currentEvent?.modifierFlags ?? [])
     case #selector(NSResponder.cancelOperation(_:)):
       if !revertArrowing() { delegate?.commandBarDismiss(self) }
     case #selector(NSResponder.deleteBackward(_:)):
