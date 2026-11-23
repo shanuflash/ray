@@ -2230,7 +2230,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard !closing, let entry = state.entry(for: tab) else { return }
     let step: [String: Any] = [
       "entry": entry.id.uuidString, "kind": change["kind"] as? String ?? "", "active": change["active"] as? Bool ?? false,
-      "tabShown": tab === pages.shown && pages.windowSeen, "auto": tab.autoPictureInPictureIsChromes,
+      "tabShown": tab === pages.shown && pages.windowSeen, "auto": change["auto"] as? Bool ?? false,
     ]
     pictureInPictureSteps = Array((pictureInPictureSteps + [step]).suffix(20))
     logState("pictureInPicture")
@@ -3522,6 +3522,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "sidebarOverToolbar": (root.subviews.firstIndex(of: sidebar.superview === root ? sidebar : floating) ?? -1)
         > (root.subviews.firstIndex(of: toolbar) ?? 0),
       "installPrompt": extensions.promptState ?? NSNull(),
+      "engine": ["chromium": RayCoreEngine.shared?.chromiumVersion ?? ""],
       "displayAsleep": CGDisplayIsAsleep(window.screen?.displayID ?? CGMainDisplayID()) != 0,
       // A password or card number copied from Settings is concealed: never in this log.
       "pasteboard": (SettingsPasteboard.isConcealed ? "<concealed>" : Self.pasteboard.string(forType: .string)) ?? NSNull(),

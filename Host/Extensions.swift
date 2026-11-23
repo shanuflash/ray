@@ -271,6 +271,13 @@ final class ExtensionsController: NSObject, RayCoreTabDelegate {
 
   // MARK: Helpers
 
+  /// Chrome's reason a dropped .crx didn't install, as a note at the top of the page.
+  func installFailed(_ message: String, in controller: BrowserWindowController) {
+    let reason = Self.plain(message, limit: 160)
+    controller.notes.show(Note("Couldn't add the extension", detail: reason.isEmpty ? nil : reason,
+                               icon: .symbol("puzzlepiece.extension"), spot: .top, key: "extensionInstall"))
+  }
+
   private static func plain(_ text: String, limit: Int) -> String {
     let single = text.components(separatedBy: .newlines).joined(separator: " ")
     return single.count > limit ? String(single.prefix(limit)) + "…" : single

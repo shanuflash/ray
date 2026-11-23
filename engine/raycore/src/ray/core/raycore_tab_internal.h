@@ -6,8 +6,14 @@
 #import "ray/core/public/RayCore.h"
 #include "base/memory/raw_ptr.h"
 
+class SkBitmap;
+
 namespace content {
 class WebContents;
+}
+
+namespace raycore {
+CGImageRef CreatePicture(const SkBitmap& bitmap);
 }
 
 @interface RayCoreTab () {

@@ -152,6 +152,13 @@ using raycore::NS;
   }
 }
 
+- (void)grantUserActivationToFrame:(NSString*)frameId {
+  if (_contents) {
+    raycore::PageChannel::GetOrCreate(_contents)->GrantUserActivation(
+        base::SysNSStringToUTF8(frameId));
+  }
+}
+
 - (void)callFrame:(NSString*)frameId kind:(NSString*)kind json:(NSString*)json {
   if (_contents) {
     raycore::EndAheadBlank(_contents);

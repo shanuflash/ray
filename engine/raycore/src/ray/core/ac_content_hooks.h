@@ -18,6 +18,7 @@ class DevToolsAgentHost;
 class DevToolsAgentHostClient;
 class DevToolsSocketFactory;
 class RenderFrameHost;
+class RenderWidgetHost;
 class WebContents;
 
 extern bool g_ray_opacity_from_default_color;
@@ -25,6 +26,14 @@ extern bool g_ray_opacity_from_default_color;
 bool RayHasAccessedInitialMainDocument(WebContents* contents);
 
 bool RayMainFrameHandlesEnterPictureInPicture(WebContents* contents);
+
+DevToolsAgentHost* RayDevToolsAgentHostForId(const std::string& id);
+}
+
+namespace gfx {
+class Point;
+class Rect;
+class Size;
 }
 
 namespace crypto::apple {
@@ -46,7 +55,19 @@ struct RequestAction;
 
 extern int g_ray_disk_space_check_seconds;
 
+enum RayDragEnd {
+  kRayDragEndOwnerGone,
+  kRayDragEndDebuggerUnowned,
+  kRayDragEndNativeRefused,
+  kRayDragEndSourceGone,
+  kRayDragEndKinds,
+};
+
+extern int g_ray_drags_ended[kRayDragEndKinds];
+
 extern bool g_ray_auto_picture_in_picture_off;
+
+extern bool g_ray_widevine_without_cdm;
 
 extern bool (*g_ray_safe_storage_key_may_be_created)();
 
@@ -70,8 +91,6 @@ void RaySetHybridUiShown(const void* model, bool shown);
 extern bool (*g_ray_restricted_component_extension)(
     const extensions::ExtensionId& extension_id);
 
-extern bool g_ray_begin_frame_bridge;
-
 extern void (*g_ray_initial_main_document_accessed)(
     content::WebContents* contents);
 
@@ -79,6 +98,15 @@ extern bool (*g_ray_live_tab_skips_restore)(sessions::LiveTab* live_tab,
                                               SessionID* source);
 
 extern int (*g_ray_permission_tab_shown)(content::WebContents*);
+
+extern bool (*g_ray_windowless_page_screen_rects)(
+    content::RenderWidgetHost* host,
+    const gfx::Size& view_size,
+    gfx::Rect* window_frame_in_screen,
+    gfx::Point* view_origin_in_window);
+
+extern bool (*g_ray_hidden_widget_takes_screen_rects)(
+    content::RenderWidgetHost* widget);
 
 extern void (*g_ray_dnr_rule_matched)(
     content::BrowserContext* browser_context,
@@ -132,5 +160,12 @@ extern bool (*g_ray_devtools_may_attach)(
 extern bool (*g_ray_devtools_may_input)(
     content::DevToolsAgentHostClient* root_client,
     content::RenderFrameHost* frame);
+
+extern void (*g_ray_devtools_session_attached)(
+    content::DevToolsAgentHostClient* root_client,
+    content::DevToolsAgentHost* host,
+    const void* session);
+
+extern void (*g_ray_devtools_session_detached)(const void* session);
 
 #endif

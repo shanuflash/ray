@@ -13,6 +13,7 @@
 #include "ray/core/ac_contents_background.h"
 #include "ray/core/ac_desktop_capture.h"
 #include "ray/core/ac_fake_media.h"
+#include "ray/core/ac_app_urls.h"
 #include "ray/core/ac_page_channel.h"
 #import "ray/core/raycore_internal.h"
 #include "ui/gfx/geometry/rect.h"
@@ -47,14 +48,14 @@ ACWebContentsDelegate::~ACWebContentsDelegate() {
 
 namespace {
 bool IsWindowDisposition(WindowOpenDisposition d) {
-  return d == WindowOpenDisposition::NEW_POPUP ||
-         d == WindowOpenDisposition::NEW_WINDOW;
+  return d == WindowOpenDisposition::kNewPopup ||
+         d == WindowOpenDisposition::kNewWindow;
 }
 bool IsNewTabDisposition(WindowOpenDisposition d) {
   return IsWindowDisposition(d) ||
-         d == WindowOpenDisposition::NEW_FOREGROUND_TAB ||
-         d == WindowOpenDisposition::NEW_BACKGROUND_TAB ||
-         d == WindowOpenDisposition::NEW_SPLIT_VIEW;
+         d == WindowOpenDisposition::kNewForegroundTab ||
+         d == WindowOpenDisposition::kNewBackgroundTab ||
+         d == WindowOpenDisposition::kNewSplitView;
 }
 }
 
@@ -66,10 +67,7 @@ content::WebContents* ACWebContentsDelegate::OpenURLFromTab(
   if (source && params.url.SchemeIs(url::kJavaScriptScheme)) {
     EndAheadBlank(source);
   }
-  if (IsAppURL(params.url)) {
-    if (source && IsWebUIURL(source->GetLastCommittedURL())) {
-      ReportAppURLRequest(source, params.url, params.user_gesture);
-    }
+  if (InterceptAppURL(source, params.url, params.user_gesture)) {
     return nullptr;
   }
   WindowHost* host = host_.get();
@@ -78,14 +76,12 @@ content::WebContents* ACWebContentsDelegate::OpenURLFromTab(
         source, params, std::move(navigation_handle_callback));
   }
   content::OpenURLParams tab_params(params);
-  WindowHost::PendingOpen open{params.disposition,
-                              source ? source->GetWeakPtr() : nullptr};
-  base::AutoReset<WindowHost::PendingOpen> pending(&host->pending_open(),
-                                                   std::move(open));
+  auto pending = host->ScopedPendingOpen(
+      {params.disposition, source ? source->GetWeakPtr() : nullptr});
   if (IsWindowDisposition(params.disposition)) {
-    tab_params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
-  } else if (params.disposition == WindowOpenDisposition::NEW_SPLIT_VIEW) {
-    tab_params.disposition = WindowOpenDisposition::NEW_BACKGROUND_TAB;
+    tab_params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  } else if (params.disposition == WindowOpenDisposition::kNewSplitView) {
+    tab_params.disposition = WindowOpenDisposition::kNewBackgroundTab;
   }
   return BrowserWebContentsDelegate::OpenURLFromTab(
       source, tab_params, std::move(navigation_handle_callback));
@@ -99,16 +95,13 @@ content::WebContents* ACWebContentsDelegate::AddNewContents(
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
-  if (IsAppURL(target_url)) {
-    if (source && IsWebUIURL(source->GetLastCommittedURL())) {
-      ReportAppURLRequest(source, target_url, user_gesture);
-    }
+  if (InterceptAppURL(source, target_url, user_gesture)) {
     return nullptr;
   }
   if (host_ && new_contents) {
     TabBridge* bridge = TabBridge::GetOrCreate(new_contents.get());
-    bridge->set_open(disposition, source);
-    if (disposition == WindowOpenDisposition::NEW_POPUP) {
+    bridge->set_open({disposition, source ? source->GetWeakPtr() : nullptr});
+    if (disposition == WindowOpenDisposition::kNewPopup) {
       NSMutableDictionary* features = [NSMutableDictionary dictionary];
       const gfx::Rect& bounds = window_features.bounds;
       if (window_features.has_x) {
@@ -126,7 +119,7 @@ content::WebContents* ACWebContentsDelegate::AddNewContents(
       bridge->set_popup_features(features);
     }
     if (IsWindowDisposition(disposition)) {
-      disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
+      disposition = WindowOpenDisposition::kNewForegroundTab;
     }
   }
   return BrowserWebContentsDelegate::AddNewContents(
@@ -189,7 +182,11 @@ void ACWebContentsDelegate::CloseContents(content::WebContents* source) {
   }
   BrowserWindowInterface* browser =
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(source);
-  if (!browser || !UnloadController::From(browser)->CanCloseContents(source)) {
+  if (!browser) {
+    return;
+  }
+  if (!UnloadController::From(browser)->CanCloseContents(source)) {
+    BrowserWebContentsDelegate::CloseContents(source);
     return;
   }
   DeleteTabClosedByHost(source);

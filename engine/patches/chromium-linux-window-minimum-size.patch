@@ -1,0 +1,26 @@
+The Ray Linux host may set a browser window's minimum size, so a Little Ray window keeps the Mac's 420 by 300
+instead of the tabbed layout's own minimum.
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -443,6 +443,8 @@
+ int (*g_ray_linux_window_tab_count)(const BrowserWindowInterface*) = nullptr;
+ bool (*g_ray_linux_shell_passes_point)(gfx::NativeView child,
+                                          const gfx::Point& location) = nullptr;
++void (*g_ray_linux_minimum_size)(const BrowserWindowInterface*,
++                                   gfx::Size* minimum) = nullptr;
+ 
+ namespace {
+ 
+@@ -5640,7 +5642,11 @@
+ 
+ gfx::Size BrowserView::GetMinimumSize() const {
+   auto* const layout = GetBrowserViewLayout();
+-  return layout ? layout->GetMinimumSize(this) : gfx::Size();
++  gfx::Size minimum = layout ? layout->GetMinimumSize(this) : gfx::Size();
++  if (g_ray_linux_minimum_size) {
++    g_ray_linux_minimum_size(browser_.get(), &minimum);
++  }
++  return minimum;
+ }
+ 
+ ///////////////////////////////////////////////////////////////////////////////

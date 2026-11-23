@@ -60,15 +60,29 @@ using raycore::NS;
   }
   content::NavigationController& controller = _contents->GetController();
   const int current = controller.GetCurrentEntryIndex();
+  const int committed = controller.GetLastCommittedEntryIndex();
   for (int i = 0; i < controller.GetEntryCount(); ++i) {
     content::NavigationEntry* entry = controller.GetEntryAtIndex(i);
     [entries addObject:@{
       @"url" : NS(entry->GetURL().spec()),
       @"title" : NS(entry->GetTitle()),
       @"current" : @(i == current),
+      @"committed" : @(i == committed),
     }];
   }
   return entries;
+}
+
+- (int)committedHTTPStatus {
+  raycore::TabBridge* bridge =
+      _contents ? raycore::TabBridge::FromWebContents(_contents) : nullptr;
+  return bridge ? bridge->document_http_status() : 0;
+}
+
+- (int)committedDocumentCount {
+  raycore::TabBridge* bridge =
+      _contents ? raycore::TabBridge::FromWebContents(_contents) : nullptr;
+  return bridge ? bridge->document_commits() : 0;
 }
 
 - (void)goBack {

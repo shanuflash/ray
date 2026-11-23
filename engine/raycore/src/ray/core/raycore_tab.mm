@@ -2,20 +2,30 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "base/strings/sys_string_conversions.h"
+#include "chrome/browser/ray/ac_tab_restore.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
+#include "chrome/browser/performance_manager/policies/cannot_discard_reason.h"
+#include "chrome/browser/performance_manager/policies/discard_eligibility_policy.h"
+#include "chrome/browser/performance_manager/policies/page_discarding_helper.h"
+#include "chrome/browser/performance_manager/public/user_tuning/user_performance_tuning_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom.h"
 #include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/recently_audible_helper.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/unload_controller.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/find_in_page/find_tab_helper.h"
 #include "components/find_in_page/find_types.h"
+#include "components/performance_manager/public/graph/graph.h"
+#include "components/performance_manager/public/graph/page_node.h"
+#include "components/performance_manager/public/performance_manager.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
@@ -135,7 +145,13 @@ using raycore::NS;
 }
 
 - (BOOL)audible {
-  return _contents && _contents->IsCurrentlyAudible();
+  if (!_contents) {
+    return NO;
+  }
+  if (auto* helper = RecentlyAudibleHelper::FromWebContents(_contents)) {
+    return helper->WasRecentlyAudible();
+  }
+  return _contents->IsCurrentlyAudible();
 }
 
 - (BOOL)muted {
@@ -162,8 +178,97 @@ using raycore::NS;
                      ::mojom::LifecycleUnitDiscardReason::EXTERNAL);
 }
 
+- (NSArray<NSNumber*>*)sleepIfHiddenFor:(NSTimeInterval)seconds {
+  namespace policies = performance_manager::policies;
+  using performance_manager::PerformanceManager;
+  NSArray<NSNumber*>* unavailable = @[ @-1 ];
+  if (!_contents) {
+    return unavailable;
+  }
+  if (_contents->WasDiscarded()) {
+    return @[];
+  }
+  if (!PerformanceManager::IsAvailable()) {
+    return unavailable;
+  }
+  base::WeakPtr<performance_manager::PageNode> page =
+      PerformanceManager::GetPrimaryPageNodeForWebContents(_contents);
+  if (!page) {
+    return unavailable;
+  }
+  performance_manager::Graph* graph = page->GetGraph();
+  auto* eligibility = policies::DiscardEligibilityPolicy::GetFromGraph(graph);
+  auto* discarding = policies::PageDiscardingHelper::GetFromGraph(graph);
+  if (!eligibility || !discarding) {
+    return unavailable;
+  }
+  const auto reason =
+      policies::DiscardEligibilityPolicy::DiscardReason::PROACTIVE;
+  std::vector<policies::CannotDiscardReason> kept_by;
+  if (eligibility->CanDiscardWithCustomRecentVisibilityWindow(
+          page.get(), reason, base::Seconds(seconds), &kept_by) !=
+      policies::CanDiscardResult::kEligible) {
+    NSMutableArray<NSNumber*>* codes = [NSMutableArray array];
+    for (policies::CannotDiscardReason kept : kept_by) {
+      [codes addObject:@(static_cast<int>(kept))];
+    }
+    return codes.count ? codes : unavailable;
+  }
+  if (!discarding->ImmediatelyDiscardMultiplePages({page.get()}, reason)) {
+    return unavailable;
+  }
+  return @[];
+}
+
 - (BOOL)discarded {
   return _contents && _contents->WasDiscarded();
+}
+
+- (BOOL)unloadKeepingHistory {
+  if (!_contents || !_contents->WasDiscarded() || raycore::IsNotifyingAny() ||
+      browser_shutdown::IsTryingToQuit()) {
+    return NO;
+  }
+  BrowserWindowInterface* browser =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(_contents);
+  raycore::TabBridge* bridge = raycore::TabBridge::GetOrCreate(_contents);
+  if (!browser || !raycore::WindowHost::ForBrowser(browser) ||
+      bridge->closing_after_unload() ||
+      UnloadController::From(browser)->is_attempting_to_close_browser() ||
+      browser->GetTabStripModel()->GetIndexOfWebContents(_contents) ==
+          TabStripModel::kNoTab) {
+    return NO;
+  }
+  if (!ray::KeepTabHistoryWhenClosed(_contents)) {
+    return NO;
+  }
+  bridge->set_closed_by_host();
+  raycore::DeleteTabClosedByHost(_contents, raycore::ClosedTabRecord::kNone);
+  return !_contents;
+}
+
+- (NSString*)discardReason {
+  if (!_contents || !_contents->WasDiscarded()) {
+    return nil;
+  }
+  auto* usage = performance_manager::user_tuning::UserPerformanceTuningManager::
+      PreDiscardResourceUsage::FromWebContents(_contents);
+  if (!usage) {
+    return nil;
+  }
+  switch (usage->discard_reason()) {
+    case ::mojom::LifecycleUnitDiscardReason::EXTERNAL:
+      return @"external";
+    case ::mojom::LifecycleUnitDiscardReason::URGENT:
+      return @"urgent";
+    case ::mojom::LifecycleUnitDiscardReason::PROACTIVE:
+      return @"proactive";
+    case ::mojom::LifecycleUnitDiscardReason::SUGGESTED:
+      return @"suggested";
+    case ::mojom::LifecycleUnitDiscardReason::FROZEN_WITH_GROWING_MEMORY:
+      return @"frozen";
+  }
+  return nil;
 }
 
 - (BOOL)frozen {
@@ -330,10 +435,9 @@ using raycore::NS;
 }
 
 - (void)closeNow {
-  if (raycore::IsNotifyingTabStrip() || raycore::IsNotifyingNavigation()) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self closeNow];
-    });
+  if (raycore::DeferWhileAnyNotifies(^{
+        [self closeNow];
+      })) {
     return;
   }
   if (!_contents || raycore::CloseExtensionView(_contents)) {
@@ -362,10 +466,9 @@ using raycore::NS;
 }
 
 - (void)close {
-  if (raycore::IsNotifyingTabStrip() || raycore::IsNotifyingNavigation()) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self close];
-    });
+  if (raycore::DeferWhileAnyNotifies(^{
+        [self close];
+      })) {
     return;
   }
   if (!_contents || raycore::CloseExtensionView(_contents)) {

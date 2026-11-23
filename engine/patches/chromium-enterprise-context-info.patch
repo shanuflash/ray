@@ -1,0 +1,28 @@
+`chrome.enterprise.reportingPrivate.getContextInfo()` answers with the device's context again (#1088). Builds
+without cloud content analysis (Helium's and ungoogled's: `enterprise_cloud_content_analysis=false`) answered with
+no arguments, so callers got `undefined` and no `lastError`: Google's Endpoint Verification read
+`realtimeUrlCheckMode` from it, threw and never reported the device, which kept context-aware access blocked.
+`ContextInfoFetcher` already leaves the connector fields out in such builds, so it now runs in every build:
+affiliation ids, browser version, site isolation, the built-in DNS client, Chrome Remote Desktop blocking, the OS
+firewall and DNS servers, with real-time URL checks reported as disabled.
+
+--- a/chrome/browser/extensions/api/enterprise_reporting_private/enterprise_reporting_private_api.cc
++++ b/chrome/browser/extensions/api/enterprise_reporting_private/enterprise_reporting_private_api.cc
+@@ -577,7 +577,6 @@
+ 
+ ExtensionFunction::ResponseAction
+ EnterpriseReportingPrivateGetContextInfoFunction::Run() {
+-#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
+   auto* connectors_service =
+       enterprise_connectors::ConnectorsServiceFactory::GetInstance()
+           ->GetForBrowserContext(browser_context());
+@@ -591,9 +590,6 @@
+       this));
+ 
+   return RespondLater();
+-#else
+-  return RespondNow(NoArguments());
+-#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
+ }
+ 
+ void EnterpriseReportingPrivateGetContextInfoFunction::OnContextInfoRetrieved(

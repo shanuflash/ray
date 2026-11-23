@@ -19,7 +19,7 @@ Helium's no-tracking choice stays: no utm_source on store links. Update pings ha
 
 --- a/chrome/browser/extensions/chrome_content_browser_client_extensions_part.cc
 +++ b/chrome/browser/extensions/chrome_content_browser_client_extensions_part.cc
-@@ -682,6 +682,12 @@
+@@ -700,6 +700,12 @@
  std::vector<url::Origin> ChromeContentBrowserClientExtensionsPart::
      GetOriginsRequiringDedicatedProcess() {
    std::vector<url::Origin> list;
@@ -55,7 +55,7 @@ Helium's no-tracking choice stays: no utm_source on store links. Update pings ha
  }
 --- a/chrome/browser/extensions/extension_management.cc
 +++ b/chrome/browser/extensions/extension_management.cc
-@@ -283,19 +283,12 @@
+@@ -352,19 +352,12 @@
      return update_url;
    }
  
@@ -238,7 +238,7 @@ Helium's no-tracking choice stays: no utm_source on store links. Update pings ha
      result.push_back(it.first);
 --- a/extensions/browser/updater/extension_downloader.cc
 +++ b/extensions/browser/updater/extension_downloader.cc
-@@ -93,16 +93,25 @@
+@@ -96,16 +96,25 @@
  const char kDefaultInstallSource[] = "";
  const char kReinstallInstallSource[] = "reinstall";
  
@@ -265,7 +265,7 @@ Helium's no-tracking choice stays: no utm_source on store links. Update pings ha
  
  bool ShouldRetryRequest(const network::SimpleURLLoader* loader) {
    DCHECK(loader);
-@@ -158,7 +167,7 @@
+@@ -161,7 +170,7 @@
                                        const GURL& update_url) {
    if (update_url.is_empty()) {
      // Fill in default update URL.
@@ -274,7 +274,7 @@ Helium's no-tracking choice stays: no utm_source on store links. Update pings ha
    }
  
    // Skip extensions with non-empty invalid update URLs.
-@@ -176,6 +185,11 @@
+@@ -179,6 +188,11 @@
      return std::nullopt;
    }
  
@@ -286,7 +286,7 @@ Helium's no-tracking choice stays: no utm_source on store links. Update pings ha
  
    return update_url;
  }
-@@ -809,6 +823,20 @@
+@@ -812,6 +826,20 @@
              std::move(update.first), crx_url, update.second->package_hash,
              update.second->version, fetch_data->fetch_priority()),
          update.second->info);
@@ -307,7 +307,7 @@ Helium's no-tracking choice stays: no utm_source on store links. Update pings ha
    }
  
    ExtensionIdSet extension_ids_with_errors;
-@@ -1405,7 +1433,11 @@
+@@ -1424,7 +1452,11 @@
    // fetch.
    switch (fetch->credentials) {
      case ExtensionFetch::CREDENTIALS_NONE:
@@ -342,16 +342,16 @@ Helium's no-tracking choice stays: no utm_source on store links. Update pings ha
  
 --- a/extensions/common/extension_urls.cc
 +++ b/extensions/common/extension_urls.cc
-@@ -44,7 +44,7 @@
-     "https://developer.chrome.com/docs/extensions/ai/"
-     "build-with-ai#modern_web_guidance";
+@@ -63,7 +63,7 @@
+ const char kChromeWebstoreBaseURL[] = "https://chrome.google.com/webstore";
+ const char kNewChromeWebstoreBaseURL[] = "https://chromewebstore.google.com/";
  const char kChromeWebstoreUpdateURL[] =
 -    "https://update-url-to-be-replaced.qjz9zk";
 +    "https://clients2.google.com/service/update2/crx";
  const char kChromeWebstoreApiURL[] = "https://chromewebstore.googleapis.com/";
  
  const char kAppMenuUtmSource[] = "ext_app_menu";
-@@ -86,6 +86,8 @@
+@@ -101,6 +101,8 @@
  
  GURL GetWebstoreExtensionsCategoryURL() {
    GURL base_url = GetNewWebstoreLaunchURL();
@@ -360,7 +360,7 @@ Helium's no-tracking choice stays: no utm_source on store links. Update pings ha
    return base_url.Resolve("category/extensions");
  }
  
-@@ -94,7 +96,18 @@
+@@ -109,7 +111,18 @@
  }
  
  GURL GetWebstoreItemSnippetURL(const extensions::ExtensionId& extension_id) {
@@ -380,7 +380,7 @@ Helium's no-tracking choice stays: no utm_source on store links. Update pings ha
  }
  
  GURL GetWebstoreBlockStatusURL() {
-@@ -112,6 +125,9 @@
+@@ -127,6 +140,9 @@
  }
  
  GURL GetWebstoreUpdateUrl() {

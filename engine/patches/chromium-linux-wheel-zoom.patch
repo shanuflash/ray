@@ -1,0 +1,15 @@
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+@@ -856,7 +856,12 @@
+   }
+ }
+ 
++bool g_ray_linux_wheel_zoom_off = false;
++
+ void BrowserWebContentsDelegate::ContentsZoomChange(bool zoom_in) {
++  if (g_ray_linux_wheel_zoom_off) {
++    return;
++  }
+   chrome::ExecuteCommand(&*browser_, zoom_in ? IDC_ZOOM_PLUS : IDC_ZOOM_MINUS);
+ }
+ 

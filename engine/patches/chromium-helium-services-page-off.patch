@@ -8,20 +8,20 @@ and no "set up services" button that opened chrome://setup, which isn't built. H
 
 --- a/chrome/browser/resources/settings/privacy_page/privacy_page.ts
 +++ b/chrome/browser/resources/settings/privacy_page/privacy_page.ts
-@@ -179,12 +179,6 @@
+@@ -167,12 +167,6 @@
      Router.getInstance().navigateTo(routes.SITE_SETTINGS);
    }
  
--  private onHeliumServicesPageClick_() {
+-  protected onHeliumServicesPageClick_() {
 -    this.interactedWithPage_();
 -
 -    Router.getInstance().navigateTo(routes.HELIUM_SERVICES);
 -  }
 -
-   private onSecurityPageClick_() {
+   protected onSecurityPageClick_() {
      this.interactedWithPage_();
      this.metricsBrowserProxy_.recordAction(
-@@ -250,10 +244,6 @@
+@@ -236,10 +230,6 @@
        map.set(routes.NOISE.path, '#noiseLinkRow');
      }
  
@@ -32,7 +32,7 @@ and no "set up services" button that opened chrome://setup, which isn't built. H
      if (routes.COOKIES) {
        map.set(routes.COOKIES.path, '#thirdPartyCookiesLinkRow');
      }
-@@ -280,9 +270,6 @@
+@@ -266,9 +256,6 @@
        case 'noise':
          triggerId = 'noiseLinkRow';
          break;
@@ -45,7 +45,7 @@ and no "set up services" button that opened chrome://setup, which isn't built. H
 --- a/chrome/browser/resources/settings/privacy_page/privacy_page_index.html
 +++ b/chrome/browser/resources/settings/privacy_page/privacy_page_index.html
 @@ -19,14 +19,6 @@
-     <settings-privacy-page slot="view" id="privacy" prefs="{{prefs}}"
+     <settings-privacy-page slot="view" id="privacy"
          route-path$="[[routes_.PRIVACY.path]]">
      </settings-privacy-page>
 -  </template>
@@ -53,7 +53,7 @@ and no "set up services" button that opened chrome://setup, which isn't built. H
 -  <template is="dom-if" if="[[renderView_(
 -      routes_.HELIUM_SERVICES, currentRoute, inSearchMode)]]">
 -    <settings-helium-services-page slot="view" id="heliumServices"
--        data-parent-view-id="privacy" prefs="{{prefs}}"
+-        data-parent-view-id="privacy"
 -        route-path$="[[routes_.HELIUM_SERVICES.path]]">
 -    </settings-helium-services-page>
    </template>
@@ -61,11 +61,11 @@ and no "set up services" button that opened chrome://setup, which isn't built. H
    <!-- Keep entries below sorted based on the route name. -->
 --- a/chrome/browser/resources/settings/privacy_page/services_page.html
 +++ b/chrome/browser/resources/settings/privacy_page/services_page.html
-@@ -41,20 +41,6 @@
+@@ -47,20 +47,6 @@
  
  <settings-subpage page-title="$i18n{heliumServicesTitle}" route-path$="[[routePath]]">
  <div class="cr-col first">
--    <template is="dom-if" if="[[!prefs.helium.services.user_consented.value]]">
+-    <template is="dom-if" if="[[!userConsentedPref_.value]]">
 -        <div class="cr-row" id="onboarding-notice">
 -            <div id="onboarding-text">
 -                  <cr-icon icon="cr:security" aria-hidden="true"></cr-icon>
@@ -79,14 +79,14 @@ and no "set up services" button that opened chrome://setup, which isn't built. H
 -        </div>
 -    </template>
 -
-     <template is="dom-if" if="[[prefs.helium.services.user_consented.value]]">
+     <template is="dom-if" if="[[userConsentedPref_.value]]">
          <template is="dom-if" if="[[changes_.length]]">
            <div id="changelog-notice">
 --- a/chrome/browser/resources/settings/privacy_page/services_page.ts
 +++ b/chrome/browser/resources/settings/privacy_page/services_page.ts
-@@ -167,10 +167,6 @@
- 
-     this.setPrefValue('helium.services.origin_override', target.value);
+@@ -231,10 +231,6 @@
+           'helium.services.push_server', target.value);
+     }
    }
 -
 -  private onServicesPendingButtonClick_() {
@@ -108,7 +108,7 @@ and no "set up services" button that opened chrome://setup, which isn't built. H
  
 --- a/chrome/browser/resources/settings/router.ts
 +++ b/chrome/browser/resources/settings/router.ts
-@@ -39,7 +39,6 @@ export interface SettingsRoutes {
+@@ -39,7 +39,6 @@
    GEMINI_LOGIN: Route;
    GEMINI_ENTERPRISE: Route;
    GLIC_SECTION: Route;

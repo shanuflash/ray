@@ -24,6 +24,8 @@ class Canvas;
 inline constexpr int kRayPipButtonMargin = 12;
 inline constexpr int kRayPipButtonSize = 28;
 
+void SetRayPipButtonDrawnNatively(views::View* button, bool natively);
+
 class RayBackToTabButton : public OverlayWindowBackToTabButton {
   METADATA_HEADER(RayBackToTabButton, OverlayWindowBackToTabButton)
 
@@ -111,7 +113,8 @@ class RayControlsFadeAnimation : public OverlayControlsFadeAnimation {
  public:
   RayControlsFadeAnimation(
       const std::vector<raw_ptr<views::View>>& controls,
-      Type type);
+      Type type,
+      base::RepeatingClosure on_step);
   RayControlsFadeAnimation(const RayControlsFadeAnimation&) =
       delete;
   RayControlsFadeAnimation& operator=(
@@ -119,6 +122,9 @@ class RayControlsFadeAnimation : public OverlayControlsFadeAnimation {
   ~RayControlsFadeAnimation() override;
 
   void AnimateToState(double state) override;
+
+ private:
+  base::RepeatingClosure on_step_;
 };
 
 #endif

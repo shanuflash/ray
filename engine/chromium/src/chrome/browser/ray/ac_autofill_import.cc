@@ -11,7 +11,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/uuid.h"
-#include "chrome/browser/ray/ac_autofill.h"
+#include "chrome/browser/ray/ac_engine.h"
 #include "chrome/browser/ray/ac_autofill_internal.h"
 #include "chrome/browser/ray/ac_sensitive_args.h"
 #include "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
@@ -226,52 +226,33 @@ void ImportLoaded(ImportBatch batch, PersonalDataManager* pdm, Reply reply) {
 
 using ray::Call;
 
-AC_ENGINE_CALL(ac_autofill_import) {
-  Call call(profile_dir, nullptr, reply, context);
-  if (!call) {
-    return;
-  }
-  if (call.profile()->IsOffTheRecord()) {
-    return call.TakeReply().Error("private profile");
-  }
+AC_PROFILE_CALL(ac_autofill_import,
+                ray::Sensitive{ray::autofill_internal::kMaxImportBytes}) {
   ray::autofill_internal::ImportBatch batch;
-  {
-    ray::SensitiveArgs args(args_json,
-                              ray::autofill_internal::kMaxImportBytes);
-    if (args.too_large()) {
-      return call.TakeReply().Error("arguments too large");
-    }
-    if (!args.dict()) {
-      return call.TakeReply().Error("arguments are not a JSON object");
-    }
-    if (args.dict()->FindBool("offTheRecord").value_or(false)) {
-      return call.TakeReply().Error("not for a private session");
-    }
-    const base::ListValue* addresses = args.dict()->FindList("addresses");
-    const base::ListValue* cards = args.dict()->FindList("cards");
-    if ((addresses &&
-         addresses->size() > ray::autofill_internal::kMaxImportItems) ||
-        (cards && cards->size() > ray::autofill_internal::kMaxImportItems)) {
-      return call.TakeReply().Error("too many items in one call");
-    }
-    if (addresses) {
-      for (const base::Value& entry : *addresses) {
-        if (std::optional<ray::autofill_internal::ImportedAddress> address =
-                ray::autofill_internal::ToAddress(entry)) {
-          batch.addresses.push_back(std::move(*address));
-        } else {
-          ++batch.rejected;
-        }
+  const base::ListValue* addresses = call.args().FindList("addresses");
+  const base::ListValue* cards = call.args().FindList("cards");
+  if ((addresses &&
+       addresses->size() > ray::autofill_internal::kMaxImportItems) ||
+      (cards && cards->size() > ray::autofill_internal::kMaxImportItems)) {
+    return call.TakeReply().Error("too many items in one call");
+  }
+  if (addresses) {
+    for (const base::Value& entry : *addresses) {
+      if (std::optional<ray::autofill_internal::ImportedAddress> address =
+              ray::autofill_internal::ToAddress(entry)) {
+        batch.addresses.push_back(std::move(*address));
+      } else {
+        ++batch.rejected;
       }
     }
-    if (cards) {
-      for (const base::Value& entry : *cards) {
-        if (std::optional<autofill::CreditCard> card =
-                ray::autofill_internal::ToCard(entry)) {
-          batch.cards.push_back(std::move(*card));
-        } else {
-          ++batch.rejected;
-        }
+  }
+  if (cards) {
+    for (const base::Value& entry : *cards) {
+      if (std::optional<autofill::CreditCard> card =
+              ray::autofill_internal::ToCard(entry)) {
+        batch.cards.push_back(std::move(*card));
+      } else {
+        ++batch.rejected;
       }
     }
   }

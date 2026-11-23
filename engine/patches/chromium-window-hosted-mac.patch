@@ -1,0 +1,74 @@
+--- a/components/remote_cocoa/app_shim/bridged_content_view.h
++++ b/components/remote_cocoa/app_shim/bridged_content_view.h
+@@ -71,6 +71,13 @@
+ // ends.
+ @property(assign, nonatomic) BOOL deferInputContextActivation;
+ 
++// Ray: a view the embedder added as a subview of this one to show its
++// own UI over the widget's views (RayCore's windows, engine/raycore). Hit
++// testing and accessibility ask it first, so
++// the points it covers reach its views and assistive technologies see its
++// tree rather than the widget's views underneath.
++@property(weak, nonatomic) NSView* rayEmbeddedView;
++
+ // Initialize the NSView -> views::View bridge. |viewToHost| must be non-NULL.
+ - (instancetype)initWithBridge:(remote_cocoa::NativeWidgetNSWindowBridge*)bridge
+                         bounds:(gfx::Rect)rect;
+--- a/components/remote_cocoa/app_shim/bridged_content_view.mm
++++ b/components/remote_cocoa/app_shim/bridged_content_view.mm
+@@ -221,6 +221,7 @@
+ @synthesize drawMenuBackgroundForBlur = _drawMenuBackgroundForBlur;
+ @synthesize keyDownEventForTesting = _keyDownEvent;
+ @synthesize deferInputContextActivation = _deferInputContextActivation;
++@synthesize rayEmbeddedView = _rayEmbeddedView;
+ 
+ - (instancetype)initWithBridge:(remote_cocoa::NativeWidgetNSWindowBridge*)bridge
+                         bounds:(gfx::Rect)bounds {
+@@ -369,6 +370,13 @@
+   // This is important when the window has a native titlebar, in which case the
+   // superview is taller than the contentView.
+   NSPoint pointInView = [self convertPoint:point fromView:self.superview];
++
++  // Ray: the embedder's views come first.
++  if (NSView* embedded = [self rayEmbeddedSubview]) {
++    if (NSView* hit = [embedded hitTest:pointInView]) {
++      return hit;
++    }
++  }
+   gfx::Point flippedPoint(point.x, NSHeight(self.frame) - pointInView.y);
+   remote_cocoa::mojom::HitTestResult hitTestResult;
+   _bridge->host()->GetHitTestResult(flippedPoint, &hitTestResult);
+@@ -1812,6 +1820,10 @@
+ // NSAccessibility formal protocol implementation:
+ 
+ - (NSArray*)accessibilityChildren {
++  // Ray: the embedder's views cover the widget's.
++  if (NSView* embedded = [self rayEmbeddedSubview]) {
++    return NSAccessibilityUnignoredChildren(@[ embedded ]);
++  }
+   if (id accessible = _bridge->host_helper()->GetNativeViewAccessible())
+     return @[ accessible ];
+   return [super accessibilityChildren];
+@@ -1820,10 +1832,22 @@
+ // NSAccessibility informal protocol implementation:
+ 
+ - (id)accessibilityHitTest:(NSPoint)point {
++  if (NSView* embedded = [self rayEmbeddedSubview]) {
++    if (id hit = [embedded accessibilityHitTest:point]) {
++      return hit;
++    }
++  }
+   return [_bridge->host_helper()->GetNativeViewAccessible()
+       accessibilityHitTest:point];
+ }
+ 
++// Ray: rayEmbeddedView while it is a visible subview of this view.
++- (NSView*)rayEmbeddedSubview {
++  NSView* embedded = self.rayEmbeddedView;
++  return embedded && embedded.superview == self && !embedded.hidden ? embedded
++                                                                     : nil;
++}
++
+ - (id)accessibilityFocusedUIElement {
+   // This function should almost-never be called because when |self| is the
+   // first responder for the key NSWindow, NativeWidgetMacNSWindowHost's

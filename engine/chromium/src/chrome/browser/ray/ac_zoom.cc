@@ -1,15 +1,11 @@
 // Copyright 2026 Ray. Apache-2.0.
 
-#include "chrome/browser/ray/ac_zoom.h"
+#include "chrome/browser/ray/ac_engine.h"
 
 #include <cmath>
 
 #include "base/callback_list.h"
 #include "base/functional/bind.h"
-#include "chrome/browser/extensions/extension_tab_util.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
-#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/host_zoom_map.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
@@ -26,22 +22,11 @@ Profile* ZoomProfile(const Call& call) {
   if (!tab) {
     return call.profile();
   }
-  Profile* found = nullptr;
-  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
-      [&](BrowserWindowInterface* window) {
-        TabStripModel* strip = window->GetTabStripModel();
-        for (int i = 0; strip && i < strip->count(); ++i) {
-          content::WebContents* contents = strip->GetWebContentsAt(i);
-          if (extensions::ExtensionTabUtil::GetTabId(contents) == *tab) {
-            found = Profile::FromBrowserContext(contents->GetBrowserContext());
-            return false;
-          }
-        }
-        return true;
-      });
-  if (!found) {
+  content::WebContents* contents = TabWithId(*tab);
+  if (!contents) {
     return nullptr;
   }
+  Profile* found = Profile::FromBrowserContext(contents->GetBrowserContext());
   if (call.profile()->IsOffTheRecord()) {
     return found == call.profile() ? found : nullptr;
   }
@@ -74,12 +59,7 @@ class ZoomState : public ProfileState {
 }
 }
 
-AC_ENGINE_CALL(ac_zoom_list) {
-  ray::Call call(profile_dir, args_json, reply, context,
-                       ray::OffTheRecord::kAllow);
-  if (!call) {
-    return;
-  }
+AC_PROFILE_CALL(ac_zoom_list, ray::OffTheRecord::kAllow) {
   Profile* profile = ray::ZoomProfile(call);
   if (!profile) {
     return call.TakeReply().Error("no such tab");
@@ -97,12 +77,7 @@ AC_ENGINE_CALL(ac_zoom_list) {
   call.TakeReply().Send(base::DictValue().Set("levels", std::move(levels)));
 }
 
-AC_ENGINE_CALL(ac_zoom_set) {
-  ray::Call call(profile_dir, args_json, reply, context,
-                       ray::OffTheRecord::kAllow);
-  if (!call) {
-    return;
-  }
+AC_PROFILE_CALL(ac_zoom_set, ray::OffTheRecord::kAllow) {
   Profile* profile = ray::ZoomProfile(call);
   if (!profile) {
     return call.TakeReply().Error("no such tab");

@@ -336,9 +336,12 @@ publicly or create accounts.
 - `Extensions` (tiles in site controls, whose sliders button is in the sidebar's address field too while the page
   address bar is off; action popups in a borderless child window under that button, Crest's way: rounded, no arrow, sized by the page, closed by a click elsewhere, Escape, a tab switch, Ray
   going to the background or the page closing itself; state log `extensionPopupView`, check `extensions` reads its
-  pixels back with `onscreen on`; the install prompt is a `Panels` question that waits 0.5 s, Return does nothing),
+  pixels back with `onscreen on`; the install prompt is a `Panels` question that waits 0.5 s, Return does nothing; a .crx
+  dropped on a page installs through it (the engine's `ac_extension_drop.mm`), and one that fails says why in a top
+  note, `engine:extensionInstallFailed:tab:`; test commands `crxdrop <path>` (a real AppKit drop on the page's
+  `WebContentsViewCocoa`), `extfailed <message>`; check `extension-crx-drop`, which builds a signed CRX3 itself),
   `Downloads` (button in the sidebar footer, ⌥⌘L; the list is a `Panels` panel above that button, over the sidebar,
-  a peeking sidebar kept out while it's open; a held dangerous download's Keep and Discard are `PanelButton`s,
+  a peeking sidebar kept out while it's open; cancel/keep/pause/resume/remove go through `ac_downloads_command`; a held dangerous download's Keep and Discard are `PanelButton`s,
   Discard leading, Keep dead 0.5 s, Return nothing; test command `dlhold <id>` fakes one, state log
   `downloadAnswer`, check `download-held`), `FindBar` (⌘F,
   on `SurfaceBackdrop`, dropping in on the panels' spring),
@@ -678,8 +681,25 @@ publicly or create accounts.
   `engine/raycore/src/ray/core/public/RayCore.h`. Built in `~/chromium-build` (steps 1, 3, 4, 2, 5 of
   `engine/patches/build/`, under `scripts/locked chromium`; never clean that build cache).
 - `engine.lock`: `source=local` builds against `~/chromium-build/…/out/Release_GN_arm64/Chromium Framework.framework`
-  (`RAY_ENGINE_FRAMEWORK` overrides); `ardia_tag` is the Ardia source `engine/` was made from.
-  `scripts/fetch-engine.sh` resolves it.
+  (`RAY_ENGINE_FRAMEWORK` overrides); `ardia_tag` is the Ardia source `engine/` was made from (v0.2.48,
+  Chromium 158.0.8127.36 on Helium 0.22.1, since 0.10.0). `scripts/fetch-engine.sh` resolves it. The state log's `engine.chromium` is
+  the version the engine reports (check `engine-version`). Memory Saver is on by default (Helium's; test command
+  `memorysaver`, check `memory-saver-default`).
+- `engine-ray/fixups/0005`: Ardia made every engine delegate method required (and calls them unconditionally); this
+  fixup keeps the six Ray doesn't answer optional with their `respondsToSelector` checks (Cast dialog and routes,
+  device chooser, extension side panel and shortcut, reserved key), so Chrome's own Cast dialog and WebUSB/Bluetooth
+  pickers show. Implementing one in Swift switches Chrome's off for it.
+- `engine-ray/fixups/0006`: `ac_preconnect` (`{"url"}` → `{"started"}`), Chrome's omnibox preconnect for the
+  command bar's top row (`LoadingPredictor::PrepareForPageLoad`, `HintOrigin::OMNIBOX`), gated on network
+  prediction as Chrome's is. The Ray side and its check `bar-preconnect` land on their own branch.
+- `engine-ray/fixups/0008`: keeps `RayCoreTab.canShareThisTabInsteadFor:` (Ardia dropped it in v0.2.48), which
+  `ScreenShare` asks before offering Share This Tab.
+- `engine-ray/fixups/0007`: network prediction on by default (owner, 2026-11-04): one FIXUPS entry in
+  `03-helium.py` puts `preloading_prefs.h`'s `kDefault` back to Chrome's standard over Helium's off, which
+  `ac_preconnect` needs (the profile's `preloadPages` is the user's switch; Ardia keeps it off). A tree step 3 already ran on needs its `fixups` stage again (its record refuses a rerun).
+- A fixup that only changes `engine/chromium` or `engine/raycore` on an already-prepared tree: run that layer's
+  `apply.sh` under the chromium lock, not step 4 again, which stops at `chromium-main-frame-throttle-after-show.patch`
+  (the next patch edits the same header, so its already-applied test fails).
 - `SafeStorage` (`Host/SafeStorage.swift`): before the engine starts, moves a Ray 0.1 data dir from the mock
   keychain's key to "Ray Safe Storage" in the login keychain (once; marker `Chromium/Ray Safe Storage`, originals a
   week in `Safe Storage Migration/backup`), and decides `--use-mock-keychain`: only test builds and a launch whose
@@ -731,8 +751,10 @@ publicly or create accounts.
 - `scripts/test.sh [check …]`: unit tests (address parsing, the keychain move, the importer's XCTest suite against
   `Importer/fixtures`), then `tests/checks.mjs` (hidden instance, own data dir, local fixture pages). Add a check for
   every behaviour you add or fix.
-- Engine delegate methods are `@optional`: a Swift name that's slightly off compiles with only a "nearly matches"
-  warning and is never called. Treat those warnings as errors.
+- The engine delegate's methods are required (since 0.10.0), except fixup 0005's six; a missing one fails the build.
+  Tab and window delegate methods are `@optional`: a Swift name that's slightly off compiles with only a "nearly
+  matches" warning and is never called. Treat those warnings as errors. Ray leaves `tab:shareFromContextMenu:` out
+  for now, so the page menu has no Share… items.
 
 ## Shipping to friends
 Ray updates itself with Sparkle 2: the feed is `https://github.com/shanuflash/ray/releases/latest/download/appcast.xml`
@@ -866,7 +888,7 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   handlers there and holds the first window until didFinishLaunching (13 ms on a link launch, none otherwise).
 - The engine silently cancels insecure downloads (HTTPS page → HTTP file); Keep/Discard only shows for files Chrome
   holds as dangerous. Ardia 0.2.42's "insecure download waits for Keep" is its app UI over the same engine tree
-  (`ac_downloads_keep` already handles insecure ones), so on this engine nothing changes.
+  (`ac_downloads_command` `keep` already handles insecure ones), so on this engine nothing changes.
 - NSPopover is Liquid Glass on macOS 26+, and on macOS 27 it blanks Chrome's content: the popover composites its
   material with what it hosts and an opaque view behind a render view occludes the renderer's remote layer, so an
   extension popup in one showed plain white though its page had drawn (Crest found the same). Never host a page in

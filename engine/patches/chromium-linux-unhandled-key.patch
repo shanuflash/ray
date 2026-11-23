@@ -1,0 +1,21 @@
+A tab hands a key its page left unhandled to the Ray Linux host before the window gets it, so the host can tell
+the shell about an unhandled Escape (which closes Peek and Little Ray windows) as the Mac does.
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+@@ -331,9 +331,16 @@
+   return window_->PreHandleKeyboardEvent(event);
+ }
+ 
++void (*g_ray_linux_unhandled_key)(
++    content::WebContents*,
++    const input::NativeWebKeyboardEvent&) = nullptr;
++
+ bool BrowserWebContentsDelegate::HandleKeyboardEvent(
+     content::WebContents* source,
+     const input::NativeWebKeyboardEvent& event) {
++  if (g_ray_linux_unhandled_key) {
++    g_ray_linux_unhandled_key(source, event);
++  }
+   DevToolsWindow* devtools_window =
+       DevToolsWindow::GetInstanceForInspectedWebContents(source);
+   return (devtools_window && devtools_window->ForwardKeyboardEvent(event)) ||

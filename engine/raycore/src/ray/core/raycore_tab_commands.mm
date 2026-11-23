@@ -17,6 +17,7 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/devtools/devtools_contents_resizing_strategy.h"
 #include "chrome/browser/devtools/devtools_toggle_action.h"
+#include "chrome/browser/devtools/devtools_ui_bindings.h"
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_commands.h"
@@ -30,6 +31,7 @@
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
+#include "components/prefs/scoped_user_pref_update.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
@@ -139,10 +141,9 @@ std::optional<bool> RunPageCommand(content::WebContents* contents, int command) 
 @implementation RayCoreTab (Commands)
 
 - (void)openBlockedPopup:(NSString*)popupId always:(BOOL)always {
-  if (raycore::IsNotifyingTabStrip()) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self openBlockedPopup:popupId always:always];
-    });
+  if (raycore::DeferWhileTabStripNotifies(^{
+        [self openBlockedPopup:popupId always:always];
+      })) {
     return;
   }
   if (!_contents) {
@@ -160,24 +161,19 @@ std::optional<bool> RunPageCommand(content::WebContents* contents, int command) 
                                         ContentSettingsType::POPUPS,
                                         CONTENT_SETTING_ALLOW);
   }
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(_contents);
-  raycore::WindowHost* host = raycore::WindowHost::ForBrowser(browser);
-  std::optional<base::AutoReset<raycore::WindowHost::PendingOpen>> pending;
+  raycore::WindowHost* host = raycore::WindowHost::ForContents(_contents);
+  std::optional<base::AutoReset<raycore::OpenOrigin>> pending;
   if (host) {
-    pending.emplace(&host->pending_open(),
-                    raycore::WindowHost::PendingOpen{
-                        WindowOpenDisposition::NEW_FOREGROUND_TAB,
-                        _contents->GetWeakPtr()});
+    pending.emplace(host->ScopedPendingOpen(
+        {WindowOpenDisposition::kNewForegroundTab, _contents->GetWeakPtr()}));
   }
-  popups->ShowBlockedPopup(id_number, WindowOpenDisposition::NEW_FOREGROUND_TAB);
+  popups->ShowBlockedPopup(id_number, WindowOpenDisposition::kNewForegroundTab);
 }
 
 - (BOOL)executeChromeCommand:(int)command {
-  if (raycore::IsNotifyingTabStrip()) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self executeChromeCommand:command];
-    });
+  if (raycore::DeferWhileTabStripNotifies(^{
+        [self executeChromeCommand:command];
+      })) {
     return YES;
   }
   if (!_contents) {
@@ -254,6 +250,29 @@ std::optional<bool> RunPageCommand(content::WebContents* contents, int command) 
     DevToolsWindow::OpenDevToolsWindow(_contents, DevToolsToggleAction::Show(),
                                        DevToolsOpenedByAction::kUnknown);
   }
+}
+
+- (void)showDevToolsPanel:(NSString*)panel {
+  if (!_contents) {
+    return;
+  }
+  const std::string name = base::SysNSStringToUTF8(panel);
+  Profile* profile =
+      Profile::FromBrowserContext(_contents->GetBrowserContext());
+  ScopedDictPrefUpdate preferences(profile->GetPrefs(),
+                                   prefs::kDevToolsPreferences);
+  preferences->Set("panel-selected-tab",
+                   base::WriteJson(base::Value(name)).value_or(std::string()));
+  DevToolsWindow* window =
+      DevToolsWindow::GetInstanceForInspectedWebContents(_contents);
+  if (DevToolsUIBindings* bindings =
+          window ? DevToolsUIBindings::ForWebContents(
+                       window->GetDevToolsWebContents())
+                 : nullptr) {
+    bindings->CallClientMethod("DevToolsAPI", "showPanel", base::Value(name));
+  }
+  DevToolsWindow::OpenDevToolsWindow(_contents, DevToolsToggleAction::Show(),
+                                     DevToolsOpenedByAction::kUnknown);
 }
 
 - (void)closeDevTools {

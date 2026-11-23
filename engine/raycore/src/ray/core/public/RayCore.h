@@ -11,7 +11,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 @protocol RayCoreEngineDelegate <NSObject>
 - (void)engineDidStart;
-@optional
 - (void)engineWillShutDown;
 - (void)engineQuitCancelled;
 - (nullable RayCoreWindow*)engineWindowForNewBrowserOfProfile:(RayCoreProfile*)profile
@@ -20,22 +19,29 @@ NS_ASSUME_NONNULL_BEGIN
     permissionRequest:(NSDictionary<NSString*, id>*)request
                   tab:(RayCoreTab*)tab;
 - (void)engine:(RayCoreEngine*)engine permissionRequestDismissed:(NSString*)requestId;
+- (BOOL)engine:(RayCoreEngine*)engine
+    extensionActionPopup:(NSDictionary<NSString*, id>*)popup
+                     tab:(RayCoreTab*)tab;
+- (BOOL)engineIsReservedKeyEvent:(NSEvent*)event;
+- (void)engine:(RayCoreEngine*)engine
+    extensionInstallPrompt:(NSDictionary<NSString*, id>*)prompt
+                   profile:(RayCoreProfile*)profile
+                       tab:(nullable RayCoreTab*)tab;
+- (void)engine:(RayCoreEngine*)engine
+    extensionInstallFailed:(NSString*)message
+                       tab:(nullable RayCoreTab*)tab;
+// Ray leaves these to Chrome: without them Chrome's own Cast dialog and device chooser show, and side panels,
+// extension shortcuts and reserved keys work as Chrome's.
+@optional
 - (void)engine:(RayCoreEngine*)engine
     extensionSidePanel:(NSDictionary<NSString*, id>*)panel
                    tab:(RayCoreTab*)tab;
 - (BOOL)engine:(RayCoreEngine*)engine
-    extensionActionPopup:(NSDictionary<NSString*, id>*)popup
-                     tab:(RayCoreTab*)tab;
-- (BOOL)engine:(RayCoreEngine*)engine
     extensionActionShortcut:(NSDictionary<NSString*, id>*)shortcut
                         tab:(RayCoreTab*)tab;
-- (BOOL)engineIsReservedKeyEvent:(NSEvent*)event;
 - (BOOL)engineIsReservedKey:(NSString*)key
                unshiftedKey:(NSString*)unshiftedKey
                   modifiers:(NSEventModifierFlags)modifiers;
-- (void)engine:(RayCoreEngine*)engine
-    extensionInstallPrompt:(NSDictionary<NSString*, id>*)prompt
-                       tab:(nullable RayCoreTab*)tab;
 - (void)engine:(RayCoreEngine*)engine
     deviceChooser:(NSDictionary<NSString*, id>*)chooser
               tab:(RayCoreTab*)tab;
@@ -72,7 +78,6 @@ RAYCORE_EXPORT
 + (void)setVideoUpscalingTestConditions:(NSDictionary<NSString*, NSNumber*>*)conditions;
 @property(class, readonly) NSDictionary<NSString*, id>* videoUpscalingState;
 + (void)reservedShortcutsChanged;
-+ (BOOL)isReservedGlobalShortcut:(NSString*)shortcut;
 + (void)selectDevice:(int)chooserId index:(int)index;
 + (void)cancelDeviceChooser:(int)chooserId;
 + (void)refreshDeviceChooser:(int)chooserId;
@@ -89,11 +94,19 @@ RAYCORE_EXPORT
                      origin:(nullable NSString*)origin
                       audio:(nullable NSString*)audio;
 @property(class, readonly) NSDictionary<NSString*, NSNumber*>* desktopCaptureAudio;
+@property(class) BOOL pagesPickDisplayMedia;
 - (void)offTheRecordProfileFor:(RayCoreProfile*)profile
                     completion:(void (^)(RayCoreProfile* _Nullable offTheRecord,
                                          NSString* _Nullable error))completion;
 @property(readonly) NSString* chromiumVersion;
 @property(readonly) NSString* keepAliveState;
+@property(readonly) NSString* pictureInPictureCloses;
+@end
+
+@interface RayCoreEngine (IdleProfiles)
+- (nullable NSString*)sleepIdleProfile:(RayCoreProfile*)profile
+                           hostedTabs:(NSArray<RayCoreTab*>*)tabs;
+- (NSString*)unloadIdleProfile:(RayCoreProfile*)profile;
 @end
 
 @interface RayCoreEngine (Tracing)
@@ -115,9 +128,10 @@ RAYCORE_EXPORT
 - (void)releaseNavigationHold:(NSString*)reason;
 - (void)releaseNavigationHoldReady;
 - (void)watchCastRoutes;
-@property(readonly) NSArray<NSDictionary<NSString*, id>*>* extensions;
-- (nullable NSNumber*)boolPreference:(NSString*)name;
-- (void)setBoolPreference:(NSString*)name value:(BOOL)value;
+@property BOOL passwordsOffered;
+@property BOOL addressesAutofilled;
+@property BOOL cardsAutofilled;
+@property BOOL preloadPages;
 - (void)clearBrowsingData:(NSArray<NSString*>*)types
                     since:(nullable NSDate*)since
                completion:(nullable void (^)(void))completion;
@@ -128,6 +142,12 @@ RAYCORE_EXPORT
          maxBytes:(NSUInteger)maxBytes
        completion:(void (^)(NSData* _Nullable body))completion;
 @end
+
+typedef NS_ENUM(NSInteger, RayCoreAdoption) {
+  RayCoreAdoptionRefused,
+  RayCoreAdoptionAdopted,
+  RayCoreAdoptionBusy,
+};
 
 @protocol RayCoreWindowDelegate <NSObject>
 @optional
@@ -149,13 +169,10 @@ RAYCORE_EXPORT
 - (void)window:(RayCoreWindow*)window
     autofillPrompt:(NSDictionary<NSString*, id>*)prompt
             forTab:(RayCoreTab*)tab;
-- (void)window:(RayCoreWindow*)window
-    passwordSavePromptForTab:(RayCoreTab*)tab
-                    username:(NSString*)username
-                      origin:(NSString*)origin;
 - (void)window:(RayCoreWindow*)window showRequestedActive:(BOOL)active;
 - (BOOL)windowShouldClose:(RayCoreWindow*)window;
 - (void)windowDidCancelClose:(RayCoreWindow*)window;
+- (void)windowCanTakeTabs:(RayCoreWindow*)window;
 - (void)window:(RayCoreWindow*)window
     confirmCloseWithDownloads:(int)count
                    completion:(void (^)(BOOL closeAnyway))completion;
@@ -165,6 +182,9 @@ RAYCORE_EXPORT
 
 RAYCORE_EXPORT
 @interface RayCoreWindow : NSObject
++ (nullable NSView*)embeddedRootOfWindow:(NSWindow*)window;
++ (Class)contentViewClass;
++ (BOOL)isChromeFramelessWindow:(NSWindow*)window;
 - (instancetype)initWithContentRect:(NSRect)rect;
 @property(readonly) NSWindow* window;
 @property(readonly) NSView* hostView;
@@ -186,7 +206,8 @@ RAYCORE_EXPORT
 - (void)close;
 
 - (void)prepareProfile:(RayCoreProfile*)profile;
-- (void)adoptTab:(RayCoreTab*)tab;
+- (RayCoreAdoption)adoptTab:(RayCoreTab*)tab;
+- (RayCoreAdoption)canAdoptTab:(RayCoreTab*)tab;
 - (nullable RayCoreTab*)restoreTab:(nullable NSString*)state
                           profile:(RayCoreProfile*)profile
                        foreground:(BOOL)foreground;
@@ -195,6 +216,12 @@ RAYCORE_EXPORT
                          foreground:(BOOL)foreground;
 - (void)placeTab:(RayCoreTab*)tab index:(int)index pinned:(BOOL)pinned;
 @property(nonatomic) BOOL internal;
+@property(nonatomic) BOOL automation;
+@end
+
+@interface RayCoreWindow (Picture)
++ (void)copyPictureOfChromeWindow:(NSWindow*)window
+                       completion:(void (^)(CGImageRef _Nullable picture))completion;
 @end
 
 @protocol RayCoreTabDelegate <NSObject>
@@ -236,6 +263,7 @@ RAYCORE_EXPORT
     contextMenuCommand:(NSString*)itemId
                   text:(NSString*)selection
              modifiers:(NSDictionary<NSString*, NSNumber*>*)modifiers;
+- (void)tab:(RayCoreTab*)tab shareFromContextMenu:(NSDictionary<NSString*, id>*)share;
 - (void)tab:(RayCoreTab*)tab didShowContextMenu:(NSArray<NSDictionary*>*)items;
 - (nullable NSDictionary<NSString*, id>*)tab:(RayCoreTab*)tab
                               runContextMenu:(NSDictionary<NSString*, id>*)menu;
@@ -288,7 +316,10 @@ RAYCORE_EXPORT
 - (void)deliverHeldPageMessages;
 @property(readonly) NSDictionary<NSString*, id>* securityInfo;
 - (BOOL)discard;
+- (NSArray<NSNumber*>*)sleepIfHiddenFor:(NSTimeInterval)seconds;
 @property(readonly) BOOL discarded;
+- (BOOL)unloadKeepingHistory;
+@property(readonly, nullable) NSString* discardReason;
 @property(nonatomic) BOOL frozen;
 - (void)resolveUnresponsive:(BOOL)terminate;
 - (BOOL)showAutofillSuggestions:(BOOL)passwords;
@@ -306,6 +337,8 @@ RAYCORE_EXPORT
 - (void)reloadIgnoringCache;
 - (void)loadIfNeeded;
 @property(readonly) NSArray<NSDictionary<NSString*, id>*>* navigationEntries;
+@property(readonly) int committedHTTPStatus;
+@property(readonly) int committedDocumentCount;
 @end
 
 @interface RayCoreTab (Page)
@@ -314,6 +347,7 @@ RAYCORE_EXPORT
 - (BOOL)hasLiveFrame:(NSString*)frameId;
 - (void)callPage:(NSString*)kind json:(NSString*)json;
 - (void)callFrame:(NSString*)frameId kind:(NSString*)kind json:(NSString*)json;
+- (void)grantUserActivationToFrame:(NSString*)frameId;
 @property(nonatomic, nullable) NSColor* pageBackgroundColor;
 @property(nonatomic, copy, nullable) NSString* pageColor;
 @property(nonatomic, nullable) NSColor* contentsBackgroundColor;
@@ -326,6 +360,7 @@ RAYCORE_EXPORT
 - (BOOL)executeChromeCommand:(int)command;
 - (void)openBlockedPopup:(NSString*)popupId always:(BOOL)always;
 - (void)showDevTools;
+- (void)showDevToolsPanel:(NSString*)panel;
 - (void)closeDevTools;
 @property(readonly, nullable) NSView* devToolsView;
 - (void)devToolsLayoutForSize:(NSSize)size
@@ -342,14 +377,15 @@ RAYCORE_EXPORT
 @property(readonly, nullable) NSString* mediaCaptureSourceId;
 - (void)copyPicture:(NSTimeInterval)timeout completion:(void (^)(CGImageRef _Nullable picture))completion;
 - (BOOL)stopCapture;
-@property(readonly) BOOL autoPictureInPictureIsChromes;
 - (void)noteShownByHost:(BOOL)shown;
+- (void)noteInShownSlot;
 - (void)exitFullscreen;
 - (void)exitExclusiveAccess;
 - (void)tracePictureInPicture:(NSString*)line withInputs:(BOOL)withInputs;
 - (void)exitPictureInPicture;
 - (void)enterPictureInPictureForClickAt:(NSTimeInterval)clickTime
                              completion:(void (^)(NSString* route, BOOL opened))completion;
+// Ray: whether Share This Tab Instead would work now, so Ray offers it only then.
 - (BOOL)canShareThisTabInsteadFor:(RayCoreTab*)capturer;
 - (BOOL)shareThisTabInsteadFor:(RayCoreTab*)capturer;
 - (BOOL)showCastDialog;
@@ -360,6 +396,27 @@ RAYCORE_EXPORT
 - (NSString*)executeExtensionAction:(NSString*)extensionId;
 - (NSDictionary<NSString*, NSDictionary*>*)actionStatesForExtensions:(NSArray<NSString*>*)extensionIds;
 - (nullable NSString*)sidePanelURLForExtension:(NSString*)extensionId;
+@end
+
+typedef NS_ENUM(NSInteger, RayCorePageScrollAck) {
+  RayCorePageScrollAckBegin,
+  RayCorePageScrollAckUpdate,
+};
+
+@protocol RayCorePageScrollObserver <NSObject>
+- (void)pageView:(NSView*)view
+     ackedScroll:(RayCorePageScrollAck)ack
+        consumed:(BOOL)consumed;
+- (void)pageView:(NSView*)view overscrolledAllowingHorizontal:(BOOL)allowed;
+@end
+
+RAYCORE_EXPORT
+@interface RayCorePageView : NSObject
++ (BOOL)isPageView:(NSView*)view;
++ (void)setScrollObserver:(nullable id<RayCorePageScrollObserver>)observer;
++ (BOOL)takeSwipes:(NSView*)view;
++ (BOOL)takesSwipes:(NSView*)view;
++ (BOOL)isEditingText:(NSView*)view;
 @end
 
 NS_ASSUME_NONNULL_END

@@ -1,0 +1,80 @@
+--- a/chrome/browser/ui/startup/BUILD.gn
++++ b/chrome/browser/ui/startup/BUILD.gn
+@@ -302,6 +302,10 @@
+       deps += [ "//chrome/browser/ui/views/session_restore_infobar" ]
+     }
+ 
++    if (is_linux) {
++      deps += [ "//ray/linux:open_urls" ]
++    }
++
+     if (is_win) {
+       sources += [
+         "startup_launch_infobar_delegate.cc",
+--- a/chrome/browser/ui/startup/startup_browser_creator.cc
++++ b/chrome/browser/ui/startup/startup_browser_creator.cc
+@@ -152,11 +152,33 @@
+ #include "chrome/browser/ui/startup/focus/focus_handler.h"
+ #endif
+ 
++#if BUILDFLAG(IS_LINUX)
++#include <vector>
++
++#include "ray/linux/ac_linux_launch_urls.h"
++#include "chrome/browser/ui/startup/startup_tab.h"
++#include "url/gurl.h"
++#endif
++
+ using content::BrowserThread;
+ using content::ChildProcessSecurityPolicy;
+ 
+ namespace {
+ 
++#if BUILDFLAG(IS_LINUX)
++bool RayShellTakesLaunchUrls(const base::CommandLine& command_line,
++                               const base::FilePath& cur_dir,
++                               Profile* profile,
++                               bool process_startup) {
++  std::vector<GURL> urls;
++  for (const StartupTab& tab : StartupTabProviderImpl().GetCommandLineTabs(
++           command_line, cur_dir, profile)) {
++    urls.push_back(tab.url);
++  }
++  return ray::TakeLinuxLaunchUrls(command_line, urls, process_startup);
++}
++#endif
++
+ // Dumps the current set of the browser process's histograms to |output_file|.
+ // The file is overwritten if it exists. This function should only be called in
+ // the blocking pool.
+@@ -729,6 +751,16 @@
+                                   StartupProfileInfo profile_info,
+                                   const Profiles& last_opened_profiles) {
+   TRACE_EVENT0("startup", "StartupBrowserCreator::Start");
++#if BUILDFLAG(IS_LINUX)
++  if (profile_info.profile &&
++      profile_info.mode == StartupProfileMode::kBrowserWindow &&
++      RayShellTakesLaunchUrls(cmd_line, cur_dir, profile_info.profile,
++                                true)) {
++    return ProcessCmdLineImpl(ray::LinuxLaunchWithoutUrls(cmd_line), cur_dir,
++                              chrome::startup::IsProcessStartup::kYes,
++                              profile_info, last_opened_profiles);
++  }
++#endif
+   return ProcessCmdLineImpl(cmd_line, cur_dir,
+                             chrome::startup::IsProcessStartup::kYes,
+                             profile_info, last_opened_profiles);
+@@ -1562,6 +1594,13 @@
+     return;
+   }
+ 
++#if BUILDFLAG(IS_LINUX)
++  if (profile && mode == StartupProfileMode::kBrowserWindow &&
++      RayShellTakesLaunchUrls(command_line, cur_dir, profile, false)) {
++    return;
++  }
++#endif
++
+   Profiles last_opened_profiles;
+ #if !BUILDFLAG(IS_CHROMEOS)
+   // On ChromeOS multiple profiles doesn't apply.

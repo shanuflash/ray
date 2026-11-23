@@ -265,7 +265,7 @@ export const areas = {
   "Host/Bookmarks.swift": ["bookmarks"],
   "Host/BookmarksPanel.swift": ["bookmarks"],
   "Host/BrowserWindowController.swift#Bookmarks": ["bookmarks"],
-  "Host/Extensions.swift": ["extensions", "extension-prompt", "site-controls", "panels"],
+  "Host/Extensions.swift": ["extensions", "extension-prompt", "extension-crx-drop", "site-controls", "panels"],
   "Host/FindBar.swift": ["find-in-page", "notes"],
   // Which page the engine is told the user sees (`noteShown(byHost:)`): automatic picture in picture and the
   // permission prompts follow it.
@@ -315,7 +315,7 @@ export const areas = {
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
   "Host/TestCommands.swift#Bookmarks": ["bookmarks"],
-  "Host/TestCommands.swift": ["screen-share", "site-search", "search-engine", "folder-rename", "tile-hover", "icons-on-pixels", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
+  "Host/TestCommands.swift": ["extension-crx-drop", "memory-saver-default", "screen-share", "site-search", "search-engine", "folder-rename", "tile-hover", "icons-on-pixels", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
     "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes",
     "row-menus", "multi-select", "folders", "password-prompt", "autofill-prompt", "link-preview", "tab-sound", "back-forward-list",

@@ -240,6 +240,12 @@ Iframes only reach the first check; `main`'s body compiles only in top frames.
   `chromium-devtools-control-token` (Ardia CLI; the harness doesn't use it) and `chromium-neterror-game`. Still
   in: the content-blocker navigation hold (idle: Ray loads no blocker). Kept the hosting, de-Googling, Web Store
   and power patches. Decide the rest one by one.
+- Engine moves (follow Ardia's tags): 0.10.0 (2026-11-23) moves from v0.2.42 (Chromium 156.0.8078.47) to
+  v0.2.48 (158.0.8127.36, Helium 0.22.1), two milestones in one rebuild (M157's and M158's security fixes; a
+  0.7.1 on 156.0.8078.79 was prepared and dropped as stale), taking Helium's Memory Saver default (Ray has no tab
+  sleeping of its own) and Ardia's M158 safe-storage, crash and glic fixes. Ardia made every engine delegate method required; `engine-ray/fixups/0005` keeps the six Ray doesn't
+  answer (Cast dialog and routes, device chooser, extension side panel and shortcut, reserved key) optional, so
+  Chrome's own Cast dialog and device pickers still show.
 - Keychain: the real app leaves the mock keychain. On its first launch, `Host/SafeStorage.swift` makes
   "Ray Safe Storage", re-encrypts the profile's databases from the mock key to it (originals kept a week in
   `Safe Storage Migration/backup`) and only then starts the engine. Test builds stay on the mock keychain; the

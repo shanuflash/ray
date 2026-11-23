@@ -39,9 +39,7 @@ final class PasswordPrompts {
   static func followSetting() {
     guard observation == nil else { return }
     AutofillPrompts.followSettings()
-    let apply = { (on: Bool) in
-      RayCoreEngine.shared?.defaultProfile.setBoolPreference("credentials_enable_service", value: on)
-    }
+    let apply = { (on: Bool) in RayCoreEngine.shared?.defaultProfile.passwordsOffered = on }
     apply(RaySettings.shared[.offerToSavePasswords])
     observation = RaySettings.shared.observe(.offerToSavePasswords) { apply($0) }
   }

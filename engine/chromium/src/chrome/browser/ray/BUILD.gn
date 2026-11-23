@@ -1,74 +1,111 @@
 # Copyright 2026 Ray. Apache-2.0.
 
-assert(is_mac)
+assert(is_mac || is_linux)
 
-source_set("ray") {
-  sources = [
-    "ac_autofill.cc",
-    "ac_autofill.h",
-    "ac_autofill_edit.cc",
-    "ac_autofill_import.cc",
-    "ac_autofill_internal.h",
-    "ac_bookmarks.cc",
-    "ac_browsing_data.cc",
-    "ac_browsing_data.h",
-    "ac_cookies.cc",
-    "ac_cookies.h",
-    "ac_downloads.cc",
-    "ac_downloads.h",
-    "ac_engine.cc",
-    "ac_engine.h",
-    "ac_extension_actions.cc",
-    "ac_extension_actions.h",
-    "ac_extensions.cc",
-    "ac_extensions.h",
-    "ac_extensions_sync.cc",
-    "ac_extensions_sync.h",
-    "ac_extensions_sync_apply.cc",
-    "ac_extensions_sync_approval.cc",
-    "ac_extensions_sync_installers.cc",
-    "ac_extensions_sync_internal.h",
+ray_sources = [
+  "ac_autofill.cc",
+  "ac_autofill_edit.cc",
+  "ac_autofill_import.cc",
+  "ac_autofill_internal.h",
+  "ac_bookmarks.cc",
+  "ac_browsing_data.cc",
+  "ac_cookies.cc",
+  "ac_downloads.cc",
+  "ac_engine.cc",
+  "ac_engine.h",
+  "ac_extension_actions.cc",
+  "ac_extensions.cc",
+  "ac_extensions_load_health.cc",
+  "ac_extensions_sync.cc",
+  "ac_extensions_sync_apply.cc",
+  "ac_extensions_sync_approval.cc",
+  "ac_extensions_sync_installers.cc",
+  "ac_extensions_sync_internal.h",
+  "ac_favicons.cc",
+  "ac_history.cc",
+  "ac_memory.cc",
+  "ac_memory_saver.cc",
+  "ac_passwords.cc",
+  "ac_passwords_entries.cc",
+  "ac_passwords_internal.h",
+  "ac_passwords_logins.cc",
+  "ac_passwords_replace.cc",
+  "ac_preconnect.cc",
+  "ac_process.cc",
+  "ac_reauth.h",
+  "ac_scripts_policy.cc",
+  "ac_scripts_policy.h",
+  "ac_search_engines.cc",
+  "ac_search_suggest.cc",
+  "ac_sensitive_args.cc",
+  "ac_sensitive_args.h",
+  "ac_site_settings.cc",
+  "ac_tab_restore.cc",
+  "ac_tab_restore.h",
+  "ac_tab_restore_history.cc",
+  "ac_tab_restore_internal.h",
+  "ac_tabs.cc",
+  "ac_zoom.cc",
+  "pip/ac_pip_controls.cc",
+  "pip/ac_pip_controls.h",
+  "pip/ac_pip_mac.h",
+  "pip/ac_pip_window.cc",
+  "pip/ac_pip_window.h",
+  "public/ac_engine.h",
+]
+
+if (is_mac) {
+  ray_sources += [
     "ac_external_apps.h",
     "ac_external_apps.mm",
-    "ac_favicons.cc",
-    "ac_history.cc",
-    "ac_input_frame_rate.h",
-    "ac_input_frame_rate.mm",
-    "ac_memory.cc",
-    "ac_omnibox.cc",
-    "ac_omnibox.h",
-    "ac_passwords.cc",
-    "ac_passwords.h",
-    "ac_process.cc",
-    "ac_process.h",
     "ac_reauth.cc",
-    "ac_reauth.h",
-    "ac_scripts_policy.cc",
-    "ac_scripts_policy.h",
-    "ac_search_engines.cc",
-    "ac_search_engines.h",
-    "ac_sensitive_args.cc",
-    "ac_sensitive_args.h",
-    "ac_site_settings.cc",
-    "ac_site_settings.h",
-    "ac_tab_restore.cc",
-    "ac_tab_restore.h",
-    "ac_tab_restore_history.cc",
-    "ac_tab_restore_internal.h",
-    "ac_tabs.cc",
-    "ac_tabs.h",
-    "ac_zoom.cc",
-    "ac_zoom.h",
-    "pip/ac_pip_controls.cc",
-    "pip/ac_pip_controls.h",
-    "pip/ac_pip_mac.h",
     "pip/ac_pip_mac.mm",
-    "pip/ac_pip_window.cc",
-    "pip/ac_pip_window.h",
-    "public/ac_engine.h",
+  ]
+}
+
+if (!is_win) {
+  ray_sources += [
+    "ac_extension_alarms.cc",
+    "ac_extension_dnr.cc",
+    "ac_extension_grants.cc",
+    "ac_extension_mirror.cc",
+    "ac_extension_mirror_internal.h",
+    "ac_extension_storage.cc",
+    "ac_local_storage.cc",
+    "ac_passwords_page.cc",
+  ]
+}
+
+if (is_linux) {
+  ray_sources += [
+    "ac_engine_dispatch.cc",
+    "ac_external_apps_linux.cc",
+    "ac_host_visibility_linux.cc",
+    "ac_reauth_linux.cc",
+    "ac_reauth_linux.h",
+    "ac_reauth_linux_policy.h",
+    "ac_windowless_page_linux.cc",
+    "pip/ac_pip_hyprland.cc",
+    "pip/ac_pip_hyprland.h",
+    "pip/ac_pip_linux.cc",
   ]
 
+  action("engine_dispatch_registry") {
+    script = "gen_engine_dispatch.py"
+    inputs = filter_include(ray_sources, [ "*.cc" ])
+    outputs = [ "$target_gen_dir/ac_engine_dispatch.inc" ]
+    args = [
+             "--output",
+             rebase_path(outputs[0], root_build_dir),
+           ] + rebase_path(inputs, root_build_dir)
+  }
+}
+
+source_set("ray") {
+  sources = ray_sources
+
   deps = [
+    "//ray/core:hooks",
     "//ray/core:launch_switches",
     "//base",
     "//cc/paint",
@@ -82,13 +119,15 @@ source_set("ray") {
     "//chrome/browser/extensions",
     "//chrome/browser/extensions/api/passwords_private",
     "//chrome/browser/lifetime",
+    "//chrome/browser/password_manager/factories",
     "//chrome/browser/performance_manager/public/user_tuning",
     "//chrome/browser/picture_in_picture",
+    "//chrome/browser/predictors",
+    "//chrome/browser/predictors:config",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/search_engines",
     "//chrome/browser/sessions",
     "//chrome/browser/task_manager",
-    "//chrome/browser/ui",
     "//chrome/browser/ui/color:color_headers",
     "//chrome/browser/ui/views/overlay",
     "//chrome/common",
@@ -111,6 +150,7 @@ source_set("ray") {
     "//components/keyed_service/core",
     "//components/os_crypt/common:switches",
     "//components/password_manager/core/browser",
+    "//components/password_manager/core/browser/features:password_features",
     "//components/password_manager/core/common",
     "//components/performance_manager",
     "//components/prefs",
@@ -118,6 +158,7 @@ source_set("ray") {
     "//components/sessions",
     "//components/strings",
     "//components/update_client",
+    "//components/url_matcher",
     "//components/tab_groups",
     "//components/tabs:public",
     "//content/public/browser",
@@ -127,6 +168,7 @@ source_set("ray") {
     "//extensions/common",
     "//net",
     "//services/media_session/public/cpp",
+    "//services/network/public/cpp",
     "//services/network/public/mojom",
     "//skia",
     "//third_party/blink/public/common",
@@ -137,17 +179,46 @@ source_set("ray") {
     "//url",
   ]
 
-  frameworks = [ "QuartzCore.framework" ]
+  if (!is_win) {
+    deps += [
+      "//components/password_manager/core/browser/password_store:password_store_interface",
+      "//components/services/storage/public/mojom",
+      "//extensions/browser/api/alarms",
+      "//extensions/browser/api/permissions",
+      "//extensions/browser/api/storage",
+      "//extensions/common/api",
+    ]
+  }
 
-  frameworks += [
-    "AppKit.framework",
-    "Security.framework",
-  ]
+  if (is_mac) {
+    frameworks = [ "QuartzCore.framework" ]
+
+    frameworks += [
+      "AppKit.framework",
+      "Security.framework",
+    ]
+  }
+
+  if (is_linux) {
+    sources += get_target_outputs(":engine_dispatch_registry")
+    deps += [
+      ":engine_dispatch_registry",
+      "//chrome/browser:shell_integration",
+      "//components/dbus",
+      "//dbus",
+      "//ui/aura",
+      "//ui/compositor",
+      "//ui/events",
+      "//ui/ozone",
+    ]
+  }
 }
 
 config("exports_config") {
-  ldflags = [ "-Wl,-exported_symbols_list," +
-              rebase_path("ac_engine.exports", root_build_dir) ]
+  if (is_mac) {
+    ldflags = [ "-Wl,-exported_symbols_list," +
+                rebase_path("ac_engine.exports", root_build_dir) ]
+  }
 }
 
 group("exports") {

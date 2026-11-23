@@ -1,17 +1,39 @@
 --- a/chromium/src/chrome/browser/ray/BUILD.gn
 +++ b/chromium/src/chrome/browser/ray/BUILD.gn
-@@ -12,14 +12,6 @@
-     "ac_bookmarks.cc",
-     "ac_browsing_data.cc",
-     "ac_browsing_data.h",
--    "ac_cli_control.cc",
--    "ac_cli_token_policy.cc",
--    "ac_cli_token_policy.h",
--    "ac_cli_token_policy_contexts.cc",
--    "ac_cli_token_policy_events.cc",
--    "ac_cli_token_policy_internal.h",
--    "ac_cli_token_policy_methods.cc",
--    "ac_cli_token_policy_web_targets.cc",
-     "ac_cookies.cc",
-     "ac_cookies.h",
-     "ac_downloads.cc",
+@@ -9,18 +9,6 @@
+   "ac_autofill_internal.h",
+   "ac_bookmarks.cc",
+   "ac_browsing_data.cc",
+-  "ac_cli_control.cc",
+-  "ac_cli_owned_tabs.cc",
+-  "ac_cli_owned_tabs.h",
+-  "ac_cli_token_policy.cc",
+-  "ac_cli_token_policy.h",
+-  "ac_cli_token_policy_contexts.cc",
+-  "ac_cli_token_policy_events.cc",
+-  "ac_cli_token_policy_internal.h",
+-  "ac_cli_token_policy_methods.cc",
+-  "ac_cli_token_policy_web_targets.cc",
+-  "ac_cli_visible_tabs.cc",
+-  "ac_cli_visible_tabs.h",
+   "ac_cookies.cc",
+   "ac_downloads.cc",
+   "ac_engine.cc",
+--- a/raycore/src/ray/core/ac_seams.mm
++++ b/raycore/src/ray/core/ac_seams.mm
+@@ -5,7 +5,6 @@
+ #include <memory>
+ 
+ #include "base/functional/callback.h"
+-#include "chrome/browser/ray/ac_cli_visible_tabs.h"
+ #include "chrome/browser/lifetime/browser_shutdown.h"
+ #include "chrome/browser/ui/browser.h"
+ #include "chrome/browser/ui/browser_window.h"
+@@ -186,7 +185,6 @@
+   g_ray_omits_from_session_service = &OmitsFromSessionService;
+   g_ray_viewless_browsers = true;
+   InstallWindowlessPageGeometry();
+-  ray::InstallCliVisibleTabs();
+   if (TestFlag("nativeDragRefused")) {
+     ui::RayRefuseDragSessionInitiation();
+   }

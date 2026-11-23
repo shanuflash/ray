@@ -23,6 +23,8 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#import "components/remote_cocoa/app_shim/bridged_content_view.h"
+#import "components/remote_cocoa/app_shim/native_widget_mac_frameless_nswindow.h"
 #include "components/sessions/core/serialized_navigation_entry.h"
 #include "components/sessions/core/serialized_user_agent_override.h"
 #include "content/public/browser/web_contents.h"
@@ -34,8 +36,27 @@
 #include "ray/core/ac_extension_view.h"
 #import "ray/core/raycore_internal.h"
 
+@interface BridgedContentView (RayEmbedded)
+- (NSView*)rayEmbeddedSubview;
+@end
+
 @implementation RayCoreWindow {
   std::unique_ptr<raycore::WindowHost> _host;
+}
+
++ (NSView*)embeddedRootOfWindow:(NSWindow*)window {
+  NSView* content = window.contentView;
+  return [content isKindOfClass:[BridgedContentView class]]
+             ? [static_cast<BridgedContentView*>(content) rayEmbeddedSubview]
+             : nil;
+}
+
++ (Class)contentViewClass {
+  return [BridgedContentView class];
+}
+
++ (BOOL)isChromeFramelessWindow:(NSWindow*)window {
+  return [window isKindOfClass:[NativeWidgetMacFramelessNSWindow class]];
 }
 
 @synthesize delegate = _delegate;
@@ -70,11 +91,10 @@
   const bool ahead = !url.length;
   NavigateParams params(browser, GURL(ahead ? "about:blank" : base::SysNSStringToUTF8(url)),
                         ui::PAGE_TRANSITION_TYPED);
-  params.disposition = foreground ? WindowOpenDisposition::NEW_FOREGROUND_TAB
-                                  : WindowOpenDisposition::NEW_BACKGROUND_TAB;
+  params.disposition = foreground ? WindowOpenDisposition::kNewForegroundTab
+                                  : WindowOpenDisposition::kNewBackgroundTab;
   params.window_action = NavigateParams::WindowAction::kNoAction;
-  base::AutoReset<raycore::WindowHost::PendingOpen> pending(
-      &_host->pending_open(), raycore::WindowHost::PendingOpen{params.disposition, nullptr});
+  auto pending = _host->ScopedPendingOpen({params.disposition, nullptr});
   Navigate(&params);
   content::WebContents* contents = params.navigated_or_inserted_contents;
   if (!contents) {
@@ -111,10 +131,9 @@
 }
 
 - (void)activateTab:(RayCoreTab*)tab {
-  if (raycore::IsNotifyingTabStrip()) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self activateTab:tab];
-    });
+  if (raycore::DeferWhileTabStripNotifies(^{
+        [self activateTab:tab];
+      })) {
     return;
   }
   content::WebContents* contents = tab.contents;
@@ -167,6 +186,14 @@
   _host->set_internal(internal);
 }
 
+- (BOOL)automation {
+  return _host->automation();
+}
+
+- (void)setAutomation:(BOOL)automation {
+  _host->set_automation(automation);
+}
+
 - (void)showInactive {
   _host->ShowInactive();
 }
@@ -179,43 +206,70 @@
   _host->set_acted_fullscreen(acted);
 }
 
-- (void)adoptTab:(RayCoreTab*)tab {
-  if (raycore::IsNotifyingTabStrip()) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self adoptTab:tab];
-    });
-    return;
-  }
+- (RayCoreAdoption)canAdoptTab:(RayCoreTab*)tab {
   content::WebContents* contents = tab.contents;
   if (!contents) {
-    return;
+    return RayCoreAdoptionRefused;
   }
   BrowserWindowInterface* from =
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);
+  if (!from) {
+    return RayCoreAdoptionAdopted;
+  }
+  Profile* profile = Profile::FromBrowserContext(contents->GetBrowserContext());
+  if (_host->ExistingBrowserFor(profile) == from) {
+    return RayCoreAdoptionAdopted;
+  }
+  raycore::WindowHost* holder = raycore::WindowHost::ForBrowser(from);
+  if (holder && holder->automation()) {
+    return RayCoreAdoptionRefused;
+  }
+  if (!_host->AdmitsTabsFor(profile) ||
+      !raycore::WindowHost::LetsTabsGo(from, contents)) {
+    return RayCoreAdoptionRefused;
+  }
+  return raycore::IsNotifyingTabStrip() ? RayCoreAdoptionBusy
+                                          : RayCoreAdoptionAdopted;
+}
+
+- (RayCoreAdoption)adoptTab:(RayCoreTab*)tab {
+  const RayCoreAdoption adoption = [self canAdoptTab:tab];
+  if (adoption != RayCoreAdoptionAdopted) {
+    return adoption;
+  }
+  content::WebContents* contents = tab.contents;
+  BrowserWindowInterface* from =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);
+  if (!from) {
+    return RayCoreAdoptionAdopted;
+  }
   Browser* to = _host->BrowserFor(
       Profile::FromBrowserContext(contents->GetBrowserContext()));
-  if (!from || !to || from == to) {
-    return;
+  if (from == to) {
+    return RayCoreAdoptionAdopted;
+  }
+  if (!to) {
+    return RayCoreAdoptionRefused;
   }
   TabStripModel* source = from->GetTabStripModel();
   const int index = source->GetIndexOfWebContents(contents);
   if (index == TabStripModel::kNoTab) {
-    return;
+    return RayCoreAdoptionRefused;
   }
   std::unique_ptr<tabs::TabModel> moved = source->DetachTabAtForInsertion(index);
   if (!moved) {
-    return;
+    return RayCoreAdoptionRefused;
   }
   TabStripModel* target = to->GetTabStripModel();
   target->InsertDetachedTabAt(target->count(), std::move(moved),
                               AddTabTypes::ADD_NONE);
+  return RayCoreAdoptionAdopted;
 }
 
 - (void)placeTab:(RayCoreTab*)tab index:(int)index pinned:(BOOL)pinned {
-  if (raycore::IsNotifyingTabStrip()) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self placeTab:tab index:index pinned:pinned];
-    });
+  if (raycore::DeferWhileTabStripNotifies(^{
+        [self placeTab:tab index:index pinned:pinned];
+      })) {
     return;
   }
   content::WebContents* contents = tab.contents;
@@ -271,12 +325,10 @@
     navigations.push_back(std::move(entry));
   }
   selected = std::clamp(selected, 0, count - 1);
-  base::AutoReset<raycore::WindowHost::PendingOpen> pending(
-      &_host->pending_open(),
-      raycore::WindowHost::PendingOpen{
-          foreground ? WindowOpenDisposition::NEW_FOREGROUND_TAB
-                     : WindowOpenDisposition::NEW_BACKGROUND_TAB,
-          nullptr});
+  auto pending = _host->ScopedPendingOpen(
+      {foreground ? WindowOpenDisposition::kNewForegroundTab
+                  : WindowOpenDisposition::kNewBackgroundTab,
+       nullptr});
   content::WebContents* contents = chrome::AddRestoredTab(
       browser, navigations, browser->GetTabStripModel()->count(), selected,
       std::string(), std::nullopt, foreground,
@@ -305,12 +357,10 @@
   }
   std::unique_ptr<content::WebContents> copy = contents->Clone();
   content::WebContents* raw = copy.get();
-  base::AutoReset<raycore::WindowHost::PendingOpen> pending(
-      &_host->pending_open(),
-      raycore::WindowHost::PendingOpen{
-          foreground ? WindowOpenDisposition::NEW_FOREGROUND_TAB
-                     : WindowOpenDisposition::NEW_BACKGROUND_TAB,
-          contents->GetWeakPtr()});
+  auto pending = _host->ScopedPendingOpen(
+      {foreground ? WindowOpenDisposition::kNewForegroundTab
+                  : WindowOpenDisposition::kNewBackgroundTab,
+       contents->GetWeakPtr()});
   TabStripModel* model = browser->GetTabStripModel();
   model->InsertWebContentsAt(model->count(), std::move(copy),
                              foreground ? AddTabTypes::ADD_ACTIVE : AddTabTypes::ADD_NONE);

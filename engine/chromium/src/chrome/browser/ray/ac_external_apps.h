@@ -3,9 +3,17 @@
 #ifndef CHROME_BROWSER_RAY_AC_EXTERNAL_APPS_H_
 #define CHROME_BROWSER_RAY_AC_EXTERNAL_APPS_H_
 
-#include "chrome/browser/ray/ac_engine.h"
+#import <Foundation/Foundation.h>
 
-AC_ENGINE_CALL(ac_external_apps_allowances);
-AC_ENGINE_CALL(ac_external_apps_remove);
+namespace ray {
+
+struct ExternalApp {
+  NSString* name;
+  NSString* icon;
+};
+
+ExternalApp DescribeExternalApp(NSURL* app);
+
+}
 
 #endif

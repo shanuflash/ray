@@ -5,17 +5,17 @@ installs). No Chrome Web Store hosted app and no in-app payments app among the d
 
 --- a/chrome/browser/extensions/component_extensions_allowlist/allowlist.cc
 +++ b/chrome/browser/extensions/component_extensions_allowlist/allowlist.cc
-@@ -41,7 +41,6 @@
+@@ -46,7 +46,6 @@
        extension_misc::kAimEligibilityExtensionId,
        extension_misc::kContextualTasksExtensionId,
        extension_misc::kGlicExtensionId,
 -      extension_misc::kInAppPaymentsSupportAppId,
-       extension_misc::kPdfExtensionId,
-       helium::kUBlockOriginComponentId,
-       helium::kExtstoreFixupsExtensionId,
+ #if BUILDFLAG(ENABLE_WEBUI_NTP)
+       extension_misc::kNewTabPageExtensionId,
+ #endif  // BUILDFLAG(ENABLE_WEBUI_NTP)
 --- a/chrome/browser/extensions/component_loader.cc
 +++ b/chrome/browser/extensions/component_loader.cc
-@@ -601,13 +601,6 @@
+@@ -633,13 +633,6 @@
      return;
    }
  #endif
@@ -31,7 +31,7 @@ installs). No Chrome Web Store hosted app and no in-app payments app among the d
  void ComponentLoader::AddExtstoreFixups() {
 --- a/chrome/browser/extensions/external_component_loader.cc
 +++ b/chrome/browser/extensions/external_component_loader.cc
-@@ -42,9 +42,6 @@
+@@ -41,9 +41,6 @@
  void ExternalComponentLoader::StartLoading() {
    auto prefs = base::DictValue();
    // Skip in-app payments app on Android. crbug.com/409396604

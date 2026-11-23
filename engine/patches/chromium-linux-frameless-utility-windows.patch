@@ -1,0 +1,99 @@
+The Ray Linux host draws its own window controls in every window it hosts. Its Settings and Import windows are
+legacy app windows (TYPE_APP with an app name and no web app controller), so on X11 Chromium asked the window manager
+for its frame and the window showed both the manager's title bar and Ray's controls, and with a custom frame it
+drew a title bar of its own, its window icon (the product logo) over the window's top-left corner, and the 3 dip
+extra top border Linux adds to windows without a tab strip as a band of frame colour above the page. The host names
+such windows through g_ray_linux_frameless_app; they get Chromium's custom frame with no window title bar, no window
+icon and no extra top border, so the page meets the frame's edge on all four sides. The window manager's icon for the
+window is unchanged. The hook is null outside the Linux host.
+--- a/chrome/browser/ui/views/frame/browser_native_widget_aura_linux.cc
++++ b/chrome/browser/ui/views/frame/browser_native_widget_aura_linux.cc
+@@ -20,6 +20,8 @@
+ #include "ui/platform_window/platform_window.h"
+ #include "ui/views/widget/widget.h"
+ 
++bool RayLinuxFramelessApp(const BrowserWindowInterface* browser);
++
+ BrowserNativeWidgetAuraLinux::BrowserNativeWidgetAuraLinux(
+     BrowserWidget* browser_widget,
+     BrowserView* browser_view)
+@@ -130,6 +132,10 @@
+     return false;
+   }
+ 
++  if (RayLinuxFramelessApp(browser_view()->browser())) {
++    return true;
++  }
++
+   // If the platform does not support server side decorations, ignore the user
+   // preference and return true.
+   if (!ui::OzonePlatform::GetInstance()
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -448,6 +448,18 @@
+                                          const gfx::Point& location) = nullptr;
+ void (*g_ray_linux_minimum_size)(const BrowserWindowInterface*,
+                                    gfx::Size* minimum) = nullptr;
++bool (*g_ray_linux_frameless_app)(const std::string& app_name) = nullptr;
++
++bool RayLinuxFramelessApp(const BrowserWindowInterface* browser);
++
++bool RayLinuxFramelessApp(const BrowserWindowInterface* browser) {
++  if (!g_ray_linux_frameless_app || !browser ||
++      browser->GetType() != BrowserWindowInterface::Type::TYPE_APP) {
++    return false;
++  }
++  const BrowserInitState* init = BrowserInitState::From(browser);
++  return init && g_ray_linux_frameless_app(init->create_params().app_name);
++}
+ 
+ namespace {
+ 
+@@ -4727,11 +4739,17 @@
+ }
+ 
+ bool BrowserView::ShouldShowWindowTitle() const {
++  if (RayLinuxFramelessApp(browser_.get())) {
++    return false;
++  }
+   return WindowFeatureController::From(browser_)->SupportsWindowFeature(
+       WindowFeatureController::WindowFeature::kFeatureTitleBar);
+ }
+ 
+ bool BrowserView::ShouldShowWindowIcon() const {
++  if (RayLinuxFramelessApp(browser_.get())) {
++    return false;
++  }
+ #if !BUILDFLAG(IS_CHROMEOS)
+   if (GetIsWebAppType() && !GetSupportsTabStrip()) {
+     return true;
+--- a/chrome/browser/ui/views/frame/browser_frame_view_layout_linux.cc
++++ b/chrome/browser/ui/views/frame/browser_frame_view_layout_linux.cc
+@@ -5,7 +5,9 @@
+ #include "chrome/browser/ui/views/frame/browser_frame_view_layout_linux.h"
+ 
+ #include "base/i18n/rtl.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/views/frame/browser_frame_view_linux.h"
++#include "chrome/browser/ui/views/frame/browser_view.h"
+ #include "chrome/browser/ui/views/frame/opaque_browser_frame_view_layout.h"
+ #include "ui/gfx/geometry/insets.h"
+ #include "ui/views/window/frame_view_utils_linux.h"
+@@ -23,6 +25,8 @@ constexpr unsigned int kExtraTopBorder =
+ 
+ }  // namespace
+ 
++bool RayLinuxFramelessApp(const BrowserWindowInterface* browser);
++
+ BrowserFrameViewLayoutLinux::BrowserFrameViewLayoutLinux() = default;
+ BrowserFrameViewLayoutLinux::~BrowserFrameViewLayoutLinux() = default;
+ 
+@@ -72,5 +76,8 @@ gfx::Insets BrowserFrameViewLayoutLinux:
+ }
+ 
+ int BrowserFrameViewLayoutLinux::NonClientExtraTopThickness() const {
++  if (view_ && RayLinuxFramelessApp(view_->GetBrowserView()->browser())) {
++    return 0;
++  }
+   return delegate_->IsTabStripVisible() ? 0 : kExtraTopBorder;
+ }

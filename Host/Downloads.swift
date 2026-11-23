@@ -101,10 +101,10 @@ final class DownloadsController {
     return fromPrivate == offTheRecord
   }
 
-  func keep(_ id: String) { answer("keep", id, call: "ac_downloads_keep") }
-  func discard(_ id: String) { answer("discard", id, call: "ac_downloads_cancel") }
+  func keep(_ id: String) { answer("keep", id, command: "keep") }
+  func discard(_ id: String) { answer("discard", id, command: "cancel") }
 
-  private func answer(_ verb: String, _ id: String, call name: String) {
+  private func answer(_ verb: String, _ id: String, command name: String) {
     lastAnswer = verb
     guard !debugHeld.contains(id) else {
       debugHeld.remove(id)
@@ -112,7 +112,7 @@ final class DownloadsController {
       onChange?(false)
       return
     }
-    call(name, id)
+    command(name, id)
   }
 
   /// For the state log: the last answer to a held download ("keep", "discard"), never which file.
@@ -129,14 +129,14 @@ final class DownloadsController {
     items.insert(item, at: 0)
     onChange?(true)
   }
-  func cancel(_ id: String) { call("ac_downloads_cancel", id) }
-  func pause(_ id: String) { call("ac_downloads_pause", id) }
-  func resume(_ id: String) { call("ac_downloads_resume", id) }
+  func cancel(_ id: String) { command("cancel", id) }
+  func pause(_ id: String) { command("pause", id) }
+  func resume(_ id: String) { command("resume", id) }
 
   /// Takes a finished, failed or cancelled download off the list (the file stays where it is).
   func remove(_ id: String) {
     items.removeAll { $0.id == id }
-    call("ac_downloads_remove", id)
+    command("remove", id)
     onChange?(false)
   }
 
@@ -160,8 +160,8 @@ final class DownloadsController {
     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
   }
 
-  private func call(_ name: String, _ id: String) {
-    EngineCalls.call(name, profile: profile, args: ["id": id]) { _ in }
+  private func command(_ command: String, _ id: String) {
+    EngineCalls.call("ac_downloads_command", profile: profile, args: ["id": id, "command": command]) { _ in }
   }
 }
 

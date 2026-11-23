@@ -49,9 +49,10 @@ final class AutofillPrompts {
   /// filling. From the first window on; later calls do nothing.
   static func followSettings() {
     guard observations.isEmpty else { return }
-    for (key, preference) in [(AnySettingKey.autofillAddresses, "autofill.profile_enabled"),
-                              (AnySettingKey.autofillCards, "autofill.credit_card_enabled")] {
-      let apply = { (on: Bool) in RayCoreEngine.shared?.defaultProfile.setBoolPreference(preference, value: on) }
+    let switches: [(SettingKey<Bool>, ReferenceWritableKeyPath<RayCoreProfile, Bool>)] =
+      [(.autofillAddresses, \.addressesAutofilled), (.autofillCards, \.cardsAutofilled)]
+    for (key, preference) in switches {
+      let apply = { (on: Bool) in RayCoreEngine.shared?.defaultProfile[keyPath: preference] = on }
       apply(RaySettings.shared[key])
       observations.append(RaySettings.shared.observe(key) { apply($0) })
     }

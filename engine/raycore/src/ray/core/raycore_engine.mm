@@ -14,7 +14,7 @@
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "chrome/browser/apps/platform_apps/shortcut_manager.h"
-#include "chrome/browser/ray/ac_tab_restore.h"  // nogncheck
+#include "chrome/browser/ray/ac_tab_restore.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
@@ -48,7 +48,7 @@
 #include "ray/core/ac_installed_bubble.h"
 #include "ray/core/ac_lifetime.h"
 #include "ray/core/ac_main_delegate.h"
-#include "ray/core/ac_page_channel.h"
+#include "ray/core/ac_page_script.h"
 #include "ray/core/ac_permissions.h"
 #include "ray/core/ac_picture_in_picture.h"
 #include "ray/core/ac_video_upscaling.h"
@@ -78,13 +78,10 @@ using raycore::NS;
 
 namespace {
 
-bool g_auto_picture_in_picture = true;
-
 void ApplyAutoPictureInPicture(Profile* profile) {
-  g_ray_auto_picture_in_picture_off = !g_auto_picture_in_picture;
   HostContentSettingsMapFactory::GetForProfile(profile)->SetDefaultContentSetting(
       ContentSettingsType::AUTO_PICTURE_IN_PICTURE,
-      g_auto_picture_in_picture ? CONTENT_SETTING_ALLOW : CONTENT_SETTING_BLOCK);
+      g_ray_auto_picture_in_picture_off ? CONTENT_SETTING_BLOCK : CONTENT_SETTING_ALLOW);
 }
 
 void PrepareProfilePrefs(Profile* profile) {
@@ -121,34 +118,26 @@ void StartApplyingProfilePrefs() {
   static base::NoDestructor<ProfilePrefsApplier> applier(manager);
 }
 
-const char* BrowserTypeName(BrowserWindowInterface::Type type) {
-  switch (type) {
-    case BrowserWindowInterface::TYPE_NORMAL:
-      return "normal";
-    case BrowserWindowInterface::TYPE_POPUP:
-      return "popup";
-    case BrowserWindowInterface::TYPE_DEVTOOLS:
-      return "devtools";
-    case BrowserWindowInterface::TYPE_PICTURE_IN_PICTURE:
-      return "picture_in_picture";
-    default:
-      return "app";
-  }
+
 }
 
-BrowserWindow* WindowForChromeBrowser(Browser* browser) {
-  if (raycore::ACBrowserWindow::IsOurs(browser) ||
-      browser->GetType() == BrowserWindowInterface::TYPE_PICTURE_IN_PICTURE ||
-      ![g_delegate respondsToSelector:@selector
-                   (engineWindowForNewBrowserOfProfile:type:)]) {
-    return nullptr;
-  }
-  RayCoreWindow* window = [g_delegate
-      engineWindowForNewBrowserOfProfile:[RayCoreProfile
-                                             wrapperFor:browser->GetProfile()]
-                                    type:@(BrowserTypeName(browser->GetType()))];
-  raycore::WindowHost* host = window.host;
-  return host ? host->HostChromeBrowser(browser) : nullptr;
+namespace raycore {
+
+void OnEngineStarted() {
+  StartApplyingProfilePrefs();
+  ray::StartTabHistoryCleaner();
+  InstallPermissionPrompts();
+  StartMediaCaptureObserver();
+  InstallExternalAppPrompts();
+  StartPictureInPictureObserver();
+  StartHostVisibility();
+  StartVideoUpscaling();
+  [g_delegate engineDidStart];
+}
+
+void OnEngineShuttingDown() {
+  CloseAllExtensionViews();
+  [g_delegate engineWillShutDown];
 }
 
 }
@@ -176,67 +165,9 @@ extern "C" __attribute__((visibility("default"))) int RayCoreMain(
 
   g_delegate = delegate;
   g_engine = [[RayCoreEngine alloc] init];
-  g_ray_browser_window_factory = &WindowForChromeBrowser;
-  raycore::InstallRuleMatchedHook();
-  raycore::InstallExtensionInstalledHook();
-  raycore::InstallActionPopupHook();
-  g_ray_reserved_accelerator = [](const ui::Accelerator& accelerator) {
-    NSEvent* event = NSApp.currentEvent;
-    return event.type == NSEventTypeKeyDown &&
-           raycore::ExtensionShortcuts::AcceleratorFor(event) == accelerator &&
-           [g_delegate respondsToSelector:@selector(engineIsReservedKeyEvent:)] &&
-           [g_delegate engineIsReservedKeyEvent:event];
-  };
-  g_ray_reserved_global_accelerator = &raycore::IsReservedGlobalAccelerator;
-  g_ray_global_shortcuts_resumed = &raycore::GlobalShortcutsResumed;
-  g_ray_history_eligible = [](content::WebContents* contents) {
-    BrowserWindowInterface* browser =
-        GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents);
-    raycore::WindowHost* host = browser ? raycore::WindowHost::ForBrowser(browser) : nullptr;
-    return !host || !host->internal();
-  };
   AppShortcutManager::SuppressShortcutsForTesting();
-  raycore::SetLifetimeCallbacks({
-      .quit_cancelled = base::BindRepeating([] {
-        if ([g_delegate respondsToSelector:@selector(engineQuitCancelled)]) {
-          [g_delegate engineQuitCancelled];
-        }
-      }),
-  });
-  raycore::SetEngineCallbacks({
-      .started = base::BindOnce([] {
-        StartApplyingProfilePrefs();
-        ray::StartTabHistoryCleaner();
-        raycore::InstallPermissionPrompts();
-        raycore::StartMediaCaptureObserver();
-        raycore::InstallExternalAppPrompts();
-        raycore::StartPictureInPictureObserver();
-        raycore::StartHostVisibility();
-        raycore::StartVideoUpscaling();
-        [g_delegate engineDidStart];
-      }),
-      .shutting_down = base::BindOnce([] {
-        raycore::CloseAllExtensionViews();
-        if ([g_delegate respondsToSelector:@selector(engineWillShutDown)]) {
-          [g_delegate engineWillShutDown];
-        }
-      }),
-  });
 
-  std::vector<const char*> args(argv, argv + argc);
-  static std::string features = "--enable-features=WebContentsDiscard";
-  bool merged = false;
-  for (const char*& arg : args) {
-    if (strncmp(arg, "--enable-features=", 18) == 0 && !merged) {
-      features = std::string(arg) + ",WebContentsDiscard";
-      arg = features.c_str();
-      merged = true;
-    }
-  }
-  if (!merged) {
-    args.push_back(features.c_str());
-  }
-  int rv = ChromeMain(static_cast<int>(args.size()), args.data());
+  int rv = ChromeMain(argc, argv);
   g_delegate = nil;
   return rv;
 }
@@ -255,6 +186,12 @@ extern "C" __attribute__((visibility("default"))) int RayCoreMain(
   ProfileManager* manager = g_browser_process->profile_manager();
   base::FilePath path =
       manager->user_data_dir().Append(base::SysNSStringToUTF8(directoryName));
+  if (Profile* dying = raycore::DyingProfileAt(path)) {
+    raycore::WhenProfileGone(dying, base::BindOnce(^{
+                              [self loadProfile:directoryName completion:completion];
+                            }));
+    return;
+  }
   Profile* loaded = manager->GetProfileByPath(path);
   if (IsProfileDirectoryMarkedForDeletion(path) ||
       (loaded && raycore::IsProfileDeleting(loaded))) {
@@ -304,10 +241,6 @@ extern "C" __attribute__((visibility("default"))) int RayCoreMain(
   raycore::ReservedShortcutsChanged();
 }
 
-+ (BOOL)isReservedGlobalShortcut:(NSString*)shortcut {
-  return raycore::IsReservedGlobalShortcut(shortcut);
-}
-
 + (void)setVideoUpscaling:(BOOL)enabled {
   raycore::SetVideoUpscalingEnabled(enabled);
 }
@@ -315,9 +248,11 @@ extern "C" __attribute__((visibility("default"))) int RayCoreMain(
 + (void)setVideoUpscalingTestConditions:(NSDictionary<NSString*, NSNumber*>*)conditions {
   NSNumber* low_power = conditions[@"lowPower"];
   NSNumber* thermal = conditions[@"thermalPressure"];
+  NSNumber* capturing = conditions[@"capturing"];
   raycore::SetVideoUpscalingTestConditions(
       low_power ? std::optional<bool>(low_power.boolValue) : std::nullopt,
-      thermal ? std::optional<bool>(thermal.boolValue) : std::nullopt);
+      thermal ? std::optional<bool>(thermal.boolValue) : std::nullopt,
+      capturing ? std::optional<bool>(capturing.boolValue) : std::nullopt);
 }
 
 + (NSDictionary<NSString*, id>*)videoUpscalingState {
@@ -325,7 +260,6 @@ extern "C" __attribute__((visibility("default"))) int RayCoreMain(
 }
 
 + (void)setAutoPictureInPicture:(BOOL)enabled {
-  g_auto_picture_in_picture = enabled;
   g_ray_auto_picture_in_picture_off = !enabled;
   for (Profile* profile : g_browser_process->profile_manager()->GetLoadedProfiles()) {
     if (!profile->IsOffTheRecord()) {
@@ -429,6 +363,14 @@ extern "C" __attribute__((visibility("default"))) int RayCoreMain(
                               base::SysNSStringToUTF8(audio ?: @""));
 }
 
++ (BOOL)pagesPickDisplayMedia {
+  return raycore::PagesPickDisplayMedia();
+}
+
++ (void)setPagesPickDisplayMedia:(BOOL)pagesPick {
+  raycore::SetPagesPickDisplayMedia(pagesPick);
+}
+
 + (NSDictionary<NSString*, NSNumber*>*)desktopCaptureAudio {
   return @{
     @"system" : @(raycore::IsDesktopCaptureSystemAudioSupported()),
@@ -472,6 +414,10 @@ extern "C" __attribute__((visibility("default"))) int RayCoreMain(
   out << *KeepAliveRegistry::GetInstance()
       << " trying_to_quit=" << browser_shutdown::IsTryingToQuit();
   return NS(out.str());
+}
+
+- (NSString*)pictureInPictureCloses {
+  return NS(raycore::PictureInPictureCloseRecord());
 }
 
 - (NSString*)chromiumVersion {

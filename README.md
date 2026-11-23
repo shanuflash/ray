@@ -79,10 +79,12 @@ Full list: [docs/MISSING.md](docs/MISSING.md).
 
 ## Privacy and security
 
-Pages run in Chromium's sandbox with site isolation; Ray's own code never parses web content. No Safe Browsing
+The engine is Chromium 158 (from 0.10.0). Pages run in Chromium's sandbox with site isolation; Ray's own code never parses web content. No Safe Browsing
 (Helium compiles it out). Passwords and cookies are encrypted with Ray's own key in your login keychain. Imports read
 another browser only when you ask, and send nothing anywhere. Updates are signed and checked before they install, and download only what changed when they can.
 A site that asks to share your screen gets only the tab, window or screen you pick in Ray's picker.
+Preloading is on, as in Chrome: Ray may connect to a site you're about to open before you press Enter (turn it
+off in chrome://settings/performance, Preload pages).
 
 ## Build from source
 

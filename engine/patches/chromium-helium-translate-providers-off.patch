@@ -1,0 +1,21 @@
+SPDX-License-Identifier: GPL-3.0-only
+Changes code from Helium's helium/core/translate/provider-api.patch (GPL-3.0, The Helium Authors).
+
+Helium 0.22 adds an API for translation providers (the HeliumTranslate feature, off by default): a registered
+provider is sent the text of the page to translate, on the device or over the network. No provider is registered in
+this tree. Ray has no translation feature in the base browser, so HasTranslationProvider is false whatever the
+feature says or a later Helium registers: Chrome's Translate menu items, bubble and settings section stay hidden and
+no page text leaves the renderer. The provider code stays and compiles.
+
+--- a/components/translate/core/browser/translation_provider.cc
++++ b/components/translate/core/browser/translation_provider.cc
+@@ -109,8 +109,7 @@
+ }
+ 
+ bool HasTranslationProvider() {
+-  return base::FeatureList::IsEnabled(kHeliumTranslate) &&
+-         !GetProviders().empty();
++  return false;
+ }
+ 
+ TranslationProvider* GetTranslationProvider() {

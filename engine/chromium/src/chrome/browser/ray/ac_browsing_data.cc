@@ -1,6 +1,6 @@
 // Copyright 2026 Ray. Apache-2.0.
 
-#include "chrome/browser/ray/ac_browsing_data.h"
+#include "chrome/browser/ray/ac_engine.h"
 
 #include <cmath>
 #include <string_view>
@@ -66,11 +66,7 @@ class Done : public content::BrowsingDataRemover::Observer {
 }
 }
 
-AC_ENGINE_CALL(ac_browsing_data_clear) {
-  ray::Call call(profile_dir, args_json, reply, context);
-  if (!call) {
-    return;
-  }
+AC_PROFILE_CALL(ac_browsing_data_clear) {
   uint64_t mask = 0;
   if (const base::ListValue* types = call.args().FindList("types")) {
     for (const base::Value& type : *types) {

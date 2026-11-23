@@ -1,5 +1,5 @@
 # Engine files that only served a dropped patch.
-# chromium-devtools-control-token.patch: the control server and its token policy.
+# chromium-devtools-control-token.patch: the control server, its token policy and the tabs it owns or shows.
 chromium/src/chrome/browser/ray/ac_cli_control.cc
 chromium/src/chrome/browser/ray/ac_cli_token_policy.cc
 chromium/src/chrome/browser/ray/ac_cli_token_policy.h
@@ -8,5 +8,9 @@ chromium/src/chrome/browser/ray/ac_cli_token_policy_events.cc
 chromium/src/chrome/browser/ray/ac_cli_token_policy_internal.h
 chromium/src/chrome/browser/ray/ac_cli_token_policy_methods.cc
 chromium/src/chrome/browser/ray/ac_cli_token_policy_web_targets.cc
+chromium/src/chrome/browser/ray/ac_cli_owned_tabs.cc
+chromium/src/chrome/browser/ray/ac_cli_owned_tabs.h
+chromium/src/chrome/browser/ray/ac_cli_visible_tabs.cc
+chromium/src/chrome/browser/ray/ac_cli_visible_tabs.h
 # chromium-neterror-game.patch: the script that packs the game.
 patches/build/game-resource.sh

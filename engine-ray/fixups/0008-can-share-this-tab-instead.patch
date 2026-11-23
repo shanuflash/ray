@@ -1,0 +1,31 @@
+Ray: keeps RayCoreTab's canShareThisTabInsteadFor:, which Ardia dropped; Ray's screen share indicator offers
+Share This Tab only when Chrome's infobar would.
+
+--- a/raycore/src/ray/core/public/RayCore.h
++++ b/raycore/src/ray/core/public/RayCore.h
+@@ -385,6 +385,8 @@
+ - (void)exitPictureInPicture;
+ - (void)enterPictureInPictureForClickAt:(NSTimeInterval)clickTime
+                              completion:(void (^)(NSString* route, BOOL opened))completion;
++// Ray: whether Share This Tab Instead would work now, so Ray offers it only then.
++- (BOOL)canShareThisTabInsteadFor:(RayCoreTab*)capturer;
+ - (BOOL)shareThisTabInsteadFor:(RayCoreTab*)capturer;
+ - (BOOL)showCastDialog;
+ - (BOOL)devShowBluetoothChooser:(BOOL)unauthorized;
+--- a/raycore/src/ray/core/raycore_tab_media.mm
++++ b/raycore/src/ray/core/raycore_tab_media.mm
+@@ -215,6 +215,14 @@
+ 
+ - (BOOL)devShowBluetoothChooser:(BOOL)unauthorized {
+   return raycore::ShowTestBluetoothChooser(_contents, unauthorized);
++}
++
++- (BOOL)canShareThisTabInsteadFor:(RayCoreTab*)capturer {
++  TabSharingInfoBarDelegate* sharing =
++      TabSharingDelegateFor(_contents, capturer.contents);
++  return sharing &&
++         (sharing->GetButtons() & TabSharingInfoBarDelegate::kShareThisTabInstead) &&
++         sharing->IsButtonEnabled(TabSharingInfoBarDelegate::kShareThisTabInstead);
+ }
+ 
+ - (BOOL)shareThisTabInsteadFor:(RayCoreTab*)capturer {

@@ -1,0 +1,46 @@
+SPDX-License-Identifier: GPL-3.0-only
+Changes code from Helium's helium/core/web-push-service.patch (GPL-3.0, The Helium Authors).
+
+Helium 0.22 adds web push through its own autopush server: a WebSocket kept open to push.helium.computer for sites
+with a push subscription, behind the HeliumWebPush feature (off by default) and Helium's services consent. Ray
+never turns Helium's services on, so it stays off for good here: ShouldAccessPushService is false whatever the prefs
+say, the default push server is the unresolvable services placeholder, and the GCM profile service never builds the
+autopush driver, whatever the feature says. The driver's code stays and compiles.
+
+--- a/components/helium_services/helium_services_helpers.cc
++++ b/components/helium_services/helium_services_helpers.cc
+@@ -113,8 +113,7 @@
+ }
+ 
+ bool ShouldAccessPushService(const PrefService& prefs) {
+-  return ShouldAccessServices(prefs) &&
+-         prefs.GetBoolean(prefs::kHeliumWebPushEnabled);
++  return false;
+ }
+ 
+ GURL GetExtensionUpdateURL(const PrefService& prefs) {
+--- a/components/helium_services/helium_services_helpers.h
++++ b/components/helium_services/helium_services_helpers.h
+@@ -18,7 +18,7 @@
+ const char kHeliumDummyOrigin[] =
+     "https://services-disabled.qjz9zk";
+ 
+-const char kHeliumDefaultPushServer[] = "wss://push.helium.computer/";
++const char kHeliumDefaultPushServer[] = "wss://services-disabled.qjz9zk/";
+ 
+ bool ShouldAccessServices(const PrefService& prefs);
+ 
+--- a/chrome/browser/gcm/gcm_profile_service_factory.cc
++++ b/chrome/browser/gcm/gcm_profile_service_factory.cc
+@@ -170,11 +170,6 @@
+   service = std::make_unique<GCMProfileService>(profile->GetPath(),
+                                                 blocking_task_runner);
+ #else
+-  if (base::FeatureList::IsEnabled(features::kHeliumWebPush)) {
+-    return std::make_unique<GCMProfileService>(
+-        std::make_unique<AutopushDriver>(profile, blocking_task_runner));
+-  }
+-
+   service = std::make_unique<GCMProfileService>(
+       profile->GetPrefs(), profile->GetPath(),
+       base::BindRepeating(&RequestProxyResolvingSocketFactory,

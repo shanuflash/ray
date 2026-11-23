@@ -149,13 +149,22 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     windows.forEach { $0.permissions.dismissed(requestId) }
   }
 
-  func engine(_ engine: RayCoreEngine, extensionInstallPrompt prompt: [String: Any], tab: RayCoreTab?) {
-    let controller = tab.flatMap { tab in windows.first { $0.owns(tab) } } ?? current
+  func engine(_ engine: RayCoreEngine, extensionInstallPrompt prompt: [String: Any], profile: RayCoreProfile,
+              tab: RayCoreTab?) {
+    let controller = tab.flatMap { tab in windows.first { $0.owns(tab) } }
+      ?? [current].compactMap { $0 }.first { $0.profile === profile } ?? windows.first { $0.profile === profile } ?? current
     guard let controller else {
       if let id = prompt["requestId"] as? String { RayCoreEngine.resolveExtensionInstallPrompt(id, accepted: false) }
       return
     }
     controller.extensions.showInstallPrompt(prompt, in: controller)
+  }
+
+  /// A .crx dropped on a page that couldn't be installed (the engine's `ac_extension_drop.mm`; a cancelled prompt
+  /// says nothing).
+  func engine(_ engine: RayCoreEngine, extensionInstallFailed message: String, tab: RayCoreTab?) {
+    guard let controller = tab.flatMap({ tab in windows.first { $0.owns(tab) } }) ?? current else { return }
+    controller.extensions.installFailed(message, in: controller)
   }
 
   func engine(_ engine: RayCoreEngine, extensionActionPopup popup: [String: Any], tab: RayCoreTab) -> Bool {

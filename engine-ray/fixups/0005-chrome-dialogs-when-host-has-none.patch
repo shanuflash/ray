@@ -1,0 +1,156 @@
+--- a/raycore/src/ray/core/public/RayCore.h
++++ b/raycore/src/ray/core/public/RayCore.h
+@@ -19,19 +19,10 @@
+     permissionRequest:(NSDictionary<NSString*, id>*)request
+                   tab:(RayCoreTab*)tab;
+ - (void)engine:(RayCoreEngine*)engine permissionRequestDismissed:(NSString*)requestId;
+-- (void)engine:(RayCoreEngine*)engine
+-    extensionSidePanel:(NSDictionary<NSString*, id>*)panel
+-                   tab:(RayCoreTab*)tab;
+ - (BOOL)engine:(RayCoreEngine*)engine
+     extensionActionPopup:(NSDictionary<NSString*, id>*)popup
+                      tab:(RayCoreTab*)tab;
+-- (BOOL)engine:(RayCoreEngine*)engine
+-    extensionActionShortcut:(NSDictionary<NSString*, id>*)shortcut
+-                        tab:(RayCoreTab*)tab;
+ - (BOOL)engineIsReservedKeyEvent:(NSEvent*)event;
+-- (BOOL)engineIsReservedKey:(NSString*)key
+-               unshiftedKey:(NSString*)unshiftedKey
+-                  modifiers:(NSEventModifierFlags)modifiers;
+ - (void)engine:(RayCoreEngine*)engine
+     extensionInstallPrompt:(NSDictionary<NSString*, id>*)prompt
+                    profile:(RayCoreProfile*)profile
+@@ -39,6 +30,18 @@
+ - (void)engine:(RayCoreEngine*)engine
+     extensionInstallFailed:(NSString*)message
+                        tab:(nullable RayCoreTab*)tab;
++// Ray leaves these to Chrome: without them Chrome's own Cast dialog and device chooser show, and side panels,
++// extension shortcuts and reserved keys work as Chrome's.
++@optional
++- (void)engine:(RayCoreEngine*)engine
++    extensionSidePanel:(NSDictionary<NSString*, id>*)panel
++                   tab:(RayCoreTab*)tab;
++- (BOOL)engine:(RayCoreEngine*)engine
++    extensionActionShortcut:(NSDictionary<NSString*, id>*)shortcut
++                        tab:(RayCoreTab*)tab;
++- (BOOL)engineIsReservedKey:(NSString*)key
++               unshiftedKey:(NSString*)unshiftedKey
++                  modifiers:(NSEventModifierFlags)modifiers;
+ - (void)engine:(RayCoreEngine*)engine
+     deviceChooser:(NSDictionary<NSString*, id>*)chooser
+               tab:(RayCoreTab*)tab;
+--- a/raycore/src/ray/core/raycore_hooks.mm
++++ b/raycore/src/ray/core/raycore_hooks.mm
+@@ -136,22 +136,39 @@
+ }
+ 
+ void HostCastRoutes(Profile* profile, NSArray* routes) {
+-  [g_delegate engine:g_engine castRoutes:routes profile:[RayCoreProfile wrapperFor:profile]];
++  if ([g_delegate respondsToSelector:@selector(engine:castRoutes:profile:)]) {
++    [g_delegate engine:g_engine castRoutes:routes profile:[RayCoreProfile wrapperFor:profile]];
++  }
+ }
+ 
++bool HostWantsCastDialogs() {
++  return [g_delegate respondsToSelector:@selector(engine:castDialog:tab:)];
++}
++
+ void HostCastDialog(content::WebContents* contents, NSDictionary* state) {
+-  [g_delegate engine:g_engine castDialog:state tab:TabBridge::GetOrCreate(contents)->tab()];
++  if (HostWantsCastDialogs()) {
++    [g_delegate engine:g_engine castDialog:state tab:TabBridge::GetOrCreate(contents)->tab()];
++  }
+ }
+ 
++bool HostWantsDeviceChoosers() {
++  return [g_delegate respondsToSelector:@selector(engine:deviceChooser:tab:)];
++}
++
+ void HostDeviceChooser(content::WebContents* contents, NSDictionary* state) {
+-  [g_delegate engine:g_engine
+-       deviceChooser:state
+-                 tab:TabBridge::GetOrCreate(contents)->tab()];
++  if (HostWantsDeviceChoosers()) {
++    [g_delegate engine:g_engine
++         deviceChooser:state
++                   tab:TabBridge::GetOrCreate(contents)->tab()];
++  }
+ }
+ 
+ bool HostExtensionSidePanel(content::WebContents* contents,
+                             const std::string& extension_id,
+                             bool open) {
++  if (![g_delegate respondsToSelector:@selector(engine:extensionSidePanel:tab:)]) {
++    return false;
++  }
+   [g_delegate engine:g_engine
+       extensionSidePanel:@{@"extensionId" : NS(extension_id), @"open" : @(open)}
+                      tab:TabBridge::GetOrCreate(contents)->tab()];
+@@ -166,11 +183,15 @@
+ }
+ 
+ bool HostReservesKey(NSString* key, NSString* unshifted_key, unsigned long modifiers) {
+-  return [g_delegate engineIsReservedKey:key unshiftedKey:unshifted_key modifiers:modifiers];
++  return [g_delegate respondsToSelector:@selector(engineIsReservedKey:unshiftedKey:modifiers:)] &&
++         [g_delegate engineIsReservedKey:key unshiftedKey:unshifted_key modifiers:modifiers];
+ }
+ 
+ bool HostExtensionActionShortcut(content::WebContents* contents,
+                                  const std::string& extension_id) {
++  if (![g_delegate respondsToSelector:@selector(engine:extensionActionShortcut:tab:)]) {
++    return false;
++  }
+   return [g_delegate engine:g_engine
+       extensionActionShortcut:@{@"extensionId" : NS(extension_id)}
+                           tab:TabBridge::GetOrCreate(contents)->tab()];
+--- a/raycore/src/ray/core/ac_cast_dialog.h
++++ b/raycore/src/ray/core/ac_cast_dialog.h
+@@ -32,6 +32,7 @@
+ void TerminateCastRoute(const std::string& route_id);
+ 
+ void HostCastRoutes(Profile* profile, NSArray* routes);
++bool HostWantsCastDialogs();
+ void HostCastDialog(content::WebContents* contents, NSDictionary* state);
+ 
+ }
+--- a/raycore/src/ray/core/ac_cast_dialog.mm
++++ b/raycore/src/ray/core/ac_cast_dialog.mm
+@@ -263,7 +263,7 @@
+ }
+ 
+ bool WantsCastDialog(content::WebContents* initiator) {
+-  return WindowHost::ForContents(initiator);
++  return HostWantsCastDialogs() && WindowHost::ForContents(initiator);
+ }
+ 
+ bool HandleCastDialog(content::WebContents* initiator,
+--- a/raycore/src/ray/core/ac_device_chooser.h
++++ b/raycore/src/ray/core/ac_device_chooser.h
+@@ -30,6 +30,7 @@
+ bool ShowTestBluetoothChooser(content::WebContents* contents, bool unauthorized);
+ NSArray<NSDictionary*>* TestChooserEvents();
+ 
++bool HostWantsDeviceChoosers();
+ void HostDeviceChooser(content::WebContents* contents, NSDictionary* state);
+ 
+ }
+--- a/raycore/src/ray/core/ac_device_chooser.mm
++++ b/raycore/src/ray/core/ac_device_chooser.mm
+@@ -275,7 +275,7 @@
+                          base::ScopedClosureRunner* fullscreen_blocker,
+                          base::OnceClosure* close_closure) {
+   if (!WindowHost::ForContents(contents) || !controller || !*controller ||
+-      !fullscreen_blocker || !close_closure) {
++      !fullscreen_blocker || !close_closure || !HostWantsDeviceChoosers()) {
+     return false;
+   }
+   DeviceChooser* raw =
+@@ -292,7 +292,7 @@
+ 
+ bool ShowTestBluetoothChooser(content::WebContents* contents, bool unauthorized) {
+   if (!contents || !contents->GetPrimaryMainFrame() ||
+-      !TestFlag("bluetoothChooser")) {
++      !TestFlag("bluetoothChooser") || !HostWantsDeviceChoosers()) {
+     return false;
+   }
+   auto chooser_id = std::make_shared<int>(0);

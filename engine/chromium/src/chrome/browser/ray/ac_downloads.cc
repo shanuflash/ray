@@ -1,12 +1,14 @@
 // Copyright 2026 Ray. Apache-2.0.
 
-#include "chrome/browser/ray/ac_downloads.h"
+#include "chrome/browser/ray/ac_engine.h"
 
 #include <algorithm>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -17,8 +19,11 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
+#include "build/build_config.h"
 #include "chrome/browser/download/download_crx_util.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/profiles/profile.h"
@@ -70,6 +75,16 @@ bool IsOffTheRecord(DownloadItem* item) {
   return context && context->IsOffTheRecord();
 }
 
+base::DictValue Removal(DownloadItem* item) {
+  base::DictValue removal = base::DictValue().Set("id", item->GetGuid());
+#if BUILDFLAG(IS_LINUX)
+  if (IsOffTheRecord(item)) {
+    removal.Set("offTheRecord", true);
+  }
+#endif
+  return removal;
+}
+
 void UseTestDownloadsDir(Profile* profile) {
   const std::optional<std::string> dir =
       raycore::InstanceValue("downloads-dir");
@@ -109,7 +124,12 @@ base::DictValue Describe(DownloadItem* item) {
                         : base::Value(download::DownloadInterruptReasonToString(
                               item->GetLastReason())))
       .Set("offTheRecord", IsOffTheRecord(item))
-      .Set("startTime", item->GetStartTime().InMillisecondsFSinceUnixEpoch());
+      .Set("startTime", item->GetStartTime().InMillisecondsFSinceUnixEpoch())
+      .Set("sha256", item->GetState() == DownloadItem::COMPLETE &&
+                             !item->GetHash().empty()
+                         ? base::Value(base::ToLowerASCII(
+                               base::HexEncode(item->GetHash())))
+                         : base::Value());
 }
 
 class DownloadsState;
@@ -184,7 +204,7 @@ class DownloadsState : public ProfileState {
         const bool emitted = it->second.emitted;
         entries_.erase(it);
         if (emitted) {
-          Post("downloads.removed", base::DictValue().Set("id", item->GetGuid()));
+          Post("downloads.removed", Removal(item));
         }
       }
       return;
@@ -217,7 +237,7 @@ class DownloadsState : public ProfileState {
       return;
     }
     entries_.erase(item->GetGuid());
-    Post("downloads.removed", base::DictValue().Set("id", item->GetGuid()));
+    Post("downloads.removed", Removal(item));
   }
 
   void Drop(Profile* profile) {
@@ -316,6 +336,47 @@ DownloadItem* DownloadFor(Call& call) {
   return item;
 }
 
+using CommandEntry =
+    std::pair<std::string_view, void (*)(DownloadItem*, Reply)>;
+
+constexpr CommandEntry kCommands[] = {
+    {"cancel",
+     [](DownloadItem* item, Reply reply) {
+       item->Cancel(true);
+       reply.Ok();
+     }},
+    {"pause",
+     [](DownloadItem* item, Reply reply) {
+       item->Pause();
+       reply.Ok();
+     }},
+    {"resume",
+     [](DownloadItem* item, Reply reply) {
+       if (!item->CanResume()) {
+         return reply.Error("can't resume");
+       }
+       item->Resume(true);
+       reply.Ok();
+     }},
+    {"keep",
+     [](DownloadItem* item, Reply reply) {
+       if (item->IsInsecure()) {
+         item->ValidateInsecureDownload();
+       } else if (item->IsDangerous()) {
+         item->ValidateDangerousDownload();
+       }
+       reply.Ok();
+     }},
+    {"remove",
+     [](DownloadItem* item, Reply reply) {
+       if (!item->IsDone()) {
+         return reply.Error("download in progress");
+       }
+       item->Remove();
+       reply.Ok();
+     }},
+};
+
 base::DictValue DownloadSettings(Profile* profile) {
   DownloadPrefs* prefs = DownloadPrefs::FromBrowserContext(profile);
   return base::DictValue()
@@ -327,19 +388,11 @@ base::DictValue DownloadSettings(Profile* profile) {
 }
 }
 
-AC_ENGINE_CALL(ac_downloads_settings) {
-  ray::Call call(profile_dir, args_json, reply, context);
-  if (!call) {
-    return;
-  }
+AC_PROFILE_CALL(ac_downloads_settings) {
   call.TakeReply().Send(ray::DownloadSettings(call.profile()));
 }
 
-AC_ENGINE_CALL(ac_downloads_set_settings) {
-  ray::Call call(profile_dir, args_json, reply, context);
-  if (!call) {
-    return;
-  }
+AC_PROFILE_CALL(ac_downloads_set_settings) {
   DownloadPrefs* download_prefs =
       DownloadPrefs::FromBrowserContext(call.profile());
   if (download_prefs->IsDownloadPathManaged()) {
@@ -358,11 +411,7 @@ AC_ENGINE_CALL(ac_downloads_set_settings) {
   call.TakeReply().Send(ray::DownloadSettings(call.profile()));
 }
 
-AC_ENGINE_CALL(ac_downloads_list) {
-  ray::Call call(profile_dir, args_json, reply, context);
-  if (!call) {
-    return;
-  }
+AC_PROFILE_CALL(ac_downloads_list) {
   base::ListValue downloads;
   for (download::DownloadItem* item :
        ray::StateFor<ray::DownloadsState>(call.profile()).All()) {
@@ -372,67 +421,14 @@ AC_ENGINE_CALL(ac_downloads_list) {
       base::DictValue().Set("downloads", std::move(downloads)));
 }
 
-AC_ENGINE_CALL(ac_downloads_cancel) {
-  ray::Call call(profile_dir, args_json, reply, context);
-  if (!call) {
-    return;
+AC_PROFILE_CALL(ac_downloads_command) {
+  const std::string command = call.String("command");
+  const auto* entry = std::ranges::find(ray::kCommands, command,
+                                        &ray::CommandEntry::first);
+  if (entry == std::end(ray::kCommands)) {
+    return call.TakeReply().Error("unknown command");
   }
   if (download::DownloadItem* item = ray::DownloadFor(call)) {
-    item->Cancel(true);
-    call.TakeReply().Ok();
-  }
-}
-
-AC_ENGINE_CALL(ac_downloads_pause) {
-  ray::Call call(profile_dir, args_json, reply, context);
-  if (!call) {
-    return;
-  }
-  if (download::DownloadItem* item = ray::DownloadFor(call)) {
-    item->Pause();
-    call.TakeReply().Ok();
-  }
-}
-
-AC_ENGINE_CALL(ac_downloads_resume) {
-  ray::Call call(profile_dir, args_json, reply, context);
-  if (!call) {
-    return;
-  }
-  if (download::DownloadItem* item = ray::DownloadFor(call)) {
-    if (!item->CanResume()) {
-      return call.TakeReply().Error("can't resume");
-    }
-    item->Resume(true);
-    call.TakeReply().Ok();
-  }
-}
-
-AC_ENGINE_CALL(ac_downloads_keep) {
-  ray::Call call(profile_dir, args_json, reply, context);
-  if (!call) {
-    return;
-  }
-  if (download::DownloadItem* item = ray::DownloadFor(call)) {
-    if (item->IsInsecure()) {
-      item->ValidateInsecureDownload();
-    } else if (item->IsDangerous()) {
-      item->ValidateDangerousDownload();
-    }
-    call.TakeReply().Ok();
-  }
-}
-
-AC_ENGINE_CALL(ac_downloads_remove) {
-  ray::Call call(profile_dir, args_json, reply, context);
-  if (!call) {
-    return;
-  }
-  if (download::DownloadItem* item = ray::DownloadFor(call)) {
-    if (!item->IsDone()) {
-      return call.TakeReply().Error("download in progress");
-    }
-    item->Remove();
-    call.TakeReply().Ok();
+    entry->second(item, call.TakeReply());
   }
 }

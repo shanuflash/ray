@@ -193,23 +193,21 @@ hook(["  // Ray: RayCore's Browsers have no BrowserView, so no pinned tab toast.
 PY
 
 hook "$src/chrome/browser/ui/webui/settings/settings_clear_browsing_data_handler.cc" "ClearBrowsingDataHandler" <<'PY'
-old = """    CHECK(browser_element);
+old = """  CHECK(browser_element);
+  ui::ElementTracker::GetFrameworkDelegate()->NotifyCustomEvent(browser_element,
+                                                                event_type);
+}"""
+new = """  // Ray: RayCore's Browsers have no BrowserView element.
+  CHECK(browser_element || g_ray_viewless_browsers);
+  if (browser_element) {
     ui::ElementTracker::GetFrameworkDelegate()->NotifyCustomEvent(
-        browser_element,
-        browsing_data_important_sites_util::kClearBrowsingDataHistoryEventId);
-  }"""
-new = """    // Ray: RayCore's Browsers have no BrowserView element.
-    CHECK(browser_element || g_ray_viewless_browsers);
-    if (browser_element) {
-      ui::ElementTracker::GetFrameworkDelegate()->NotifyCustomEvent(
-          browser_element,
-          browsing_data_important_sites_util::kClearBrowsingDataHistoryEventId);
-    }
-  }"""
+        browser_element, event_type);
+  }
+}"""
 def edit(s):
     assert s.count(old) == 1
     return s.replace(old, new)
-hook(["    // Ray: RayCore's Browsers have no BrowserView element.\n"], edit, HOOKS)
+hook(["  // Ray: RayCore's Browsers have no BrowserView element.\n"], edit, HOOKS)
 PY
 
 hook "$src/chrome/browser/ui/browser.cc" "Browser window creation" <<'PY'
@@ -263,7 +261,7 @@ def gate(s, start, end, why):
 decl_at = """#if BUILDFLAG(IS_ANDROID)
 ChromeMainDelegate::ChromeMainDelegate()
     : ChromeMainDelegate(StartupTimestamps{}) {}
-#endif
+#else
 """
 decl = """// Ray: RayCore (engine/raycore) embeds Chrome: it does some of Chrome's startup itself.
 bool g_ray_embedder = false;
@@ -299,23 +297,27 @@ reps = [
 #endif
 """),
 ]
-start1 = "  crash_reporter::InitializeCrashKeys();\n"
-end1 = "#endif  // !defined(BUILDING_CHROME_RENDERER)\n"
+crash_keys = "  crash_reporter::InitializeCrashKeys();\n"
+crash_keys_gated = "  if (!g_ray_embedder) {\n    crash_reporter::InitializeCrashKeys();\n  }\n"
+start1 = "#if BUILDFLAG(IS_POSIX)\n  ChromeCrashReporterClient::Create();\n"
+end1 = "  InitMacCrashReporter(command_line, process_type);\n  SetUpInstallerPreferences(command_line);\n#endif\n"
 start2 = "#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)\n  // Zygote needs to call InitCrashReporter() in RunZygote().\n"
 end2 = "  crash_keys::SetCrashKeysFromCommandLine(command_line);\n"
 def edit(s):
-    assert s.count(decl_at) == 1 and s.count(start1) == 1 and s.count(start2) == 1 and s.count(end2) == 1
-    s = s.replace(decl_at, decl + decl_at)
+    assert s.count(decl_at) == 1 and s.count(crash_keys) == 1 and s.count(start1) == 1
+    assert s.count(start2) == 1 and s.count(end2) == 1 and s.count(end1) == 1
+    s = s.replace(decl_at, decl + decl_at).replace(crash_keys, crash_keys_gated)
     for old, new in reps:
         assert s.count(old) == 1, old
         s = s.replace(old, new)
-    s = gate(s, start1, end1, "has no crash reporter, and sets up its data dir itself.")
+    s = gate(s, start1, end1, "has no crash reporter (nor the Mac's Crashpad), and sets up its data dir itself.")
     return gate(s, start2, end2, "has no crash reporter.")
 hook(["bool g_ray_embedder = false;\n",
+      "    crash_reporter::InitializeCrashKeys();\n",
       "      g_ray_resource_bundle_delegate,  // Ray: RayCore\n",
       "            locale, g_ray_resource_bundle_delegate,  // Ray: RayCore\n",
       "  bool record = !g_ray_embedder;\n",
-      "  // Ray: RayCore has no crash reporter, and sets up its data dir itself.\n",
+      "  // Ray: RayCore has no crash reporter (nor the Mac's Crashpad), and sets up its data dir itself.\n",
       "  // Ray: RayCore has no crash reporter.\n"], edit, HOOKS)
 PY
 
@@ -428,7 +430,7 @@ PY
 
 hook "$src/chrome/browser/ui/sad_tab_controller.cc" "SadTabController" <<'PY'
 old = """  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
-  DCHECK(browser_view);
+  CHECK(browser_view, base::NotFatalUntil::M162);
 """
 new = """  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
   // Ray: RayCore's Browsers have no BrowserView (engine/raycore).
@@ -523,10 +525,10 @@ bool (*g_ray_external_protocol_dialog)(
     content::WeakDocumentPtr initiator_document,
     const std::u16string& program_name) = nullptr;
 """
-old = """  DCHECK(web_contents);
+old = """  CHECK(web_contents, base::NotFatalUntil::M161);
   if (delegate) {
     delegate->RunExternalProtocolDialog(url, web_contents, page_transition,"""
-new = """  DCHECK(web_contents);
+new = """  CHECK(web_contents, base::NotFatalUntil::M161);
   // Ray: RayCore
   if (!delegate && g_ray_external_protocol_dialog &&
       g_ray_external_protocol_dialog(url, web_contents, initiating_origin,
@@ -1104,24 +1106,19 @@ hook(["bool g_ray_skip_cpu_health_sampling = false;\n",
       "      g_ray_skip_cpu_health_sampling ? nullptr\n"], edit, HOOKS)
 PY
 
-hook "$src/components/memory_pressure/system_memory_pressure_evaluator_mac.cc" "the disk space check's relaxed period" <<'PY'
+hook "$src/components/memory_pressure/disk_space_memory_pressure_evaluator_mac.cc" "the disk space check's relaxed period" <<'PY'
 at = "namespace memory_pressure::mac {\n"
 decl = """int g_ray_disk_space_check_seconds = 0;
 
-namespace {
-constexpr base::ByteSize kRayRelaxedDiskSpace = base::GiB(20);
+"""
+relaxed_at = """constexpr base::TimeDelta kDiskSpaceCheckPeriod = base::Seconds(5);
+"""
+relaxed = """constexpr base::ByteSize kRayRelaxedDiskSpace = base::GiB(20);
+"""
+old = """  UpdatePressureAndManageNotifications(new_disk_vote);
 }
-
 """
-old = """  if (disk_pressure_vote_ != new_disk_vote) {
-    disk_pressure_vote_ = new_disk_vote;
-    UpdatePressureAndManageNotifications();
-  }
-"""
-new = """  if (disk_pressure_vote_ != new_disk_vote) {
-    disk_pressure_vote_ = new_disk_vote;
-    UpdatePressureAndManageNotifications();
-  }
+new = """  UpdatePressureAndManageNotifications(new_disk_vote);
 
   if (g_ray_disk_space_check_seconds > 0) {
     const base::TimeDelta period =
@@ -1132,15 +1129,16 @@ new = """  if (disk_pressure_vote_ != new_disk_vote) {
     if (disk_space_check_timer_.GetCurrentDelay() != period) {
       disk_space_check_timer_.Start(
           FROM_HERE, period,
-          base::BindRepeating(&SystemMemoryPressureEvaluator::CheckDiskSpace,
+          base::BindRepeating(&DiskSpaceMemoryPressureEvaluator::CheckDiskSpace,
                               weak_ptr_factory_.GetWeakPtr()));
     }
   }
+}
 """
 def edit(s):
-    assert s.count(at) == 1 and s.count(old) == 1
+    assert s.count(at) == 1 and s.count(old) == 1 and s.count(relaxed_at) == 1
     i = s.index(at)
-    return s[:i] + decl + s[i:].replace(old, new)
+    return s[:i] + decl + s[i:].replace(relaxed_at, relaxed_at + relaxed).replace(old, new)
 hook(["int g_ray_disk_space_check_seconds = 0;\n",
       "  if (g_ray_disk_space_check_seconds > 0) {\n"], edit, CONTENT_HOOKS)
 PY
@@ -1551,23 +1549,6 @@ hook(["bool g_ray_bluetooth_poll_on_demand = false;\n",
       "void BluetoothAdapterMac::OnLowEnergyCentralManagerStateUpdated() {\n",
       "    poll_dirty_ = true;\n",
       "  if (g_ray_bluetooth_poll_on_demand) {\n    PollAdapterOnDemand();\n  }\n  DCHECK(callback);\n"], edit)
-PY
-
-hook "$src/chrome/browser/extensions/extension_action_storage_manager.cc" "restored browser action defaults notify" <<'PY'
-old = """  SetDefaultsFromValue(value->GetDict(), action);
-}
-"""
-new = """  SetDefaultsFromValue(value->GetDict(), action);
-  if (g_ray_embedder) {
-    ExtensionActionDispatcher::Get(browser_context_)
-        ->NotifyChange(action, nullptr, browser_context_);
-  }
-}
-"""
-def edit(s):
-    assert s.count(old) == 1
-    return s.replace(old, new)
-hook(["  if (g_ray_embedder) {\n    ExtensionActionDispatcher::Get(browser_context_)\n"], edit, HOOKS)
 PY
 
 hook "$src/extensions/browser/extension_user_script_loader.cc" "a script loader made once extensions are ready starts at once" <<'PY'

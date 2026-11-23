@@ -10,7 +10,7 @@ import { tmpdir, homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateSync, crc32 } from "node:zlib";
-import { createDecipheriv, pbkdf2Sync } from "node:crypto";
+import { createDecipheriv, createHash, generateKeyPairSync, pbkdf2Sync, sign } from "node:crypto";
 
 /** A square PNG of one colour, for fixture icons. */
 function solidPNG(size) {
@@ -31,6 +31,44 @@ function solidPNG(size) {
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header),
     chunk("IDAT", deflateSync(Buffer.concat(Array(size).fill(row)))), chunk("IEND", Buffer.alloc(0)),
   ]);
+}
+
+/** A signed CRX3 package of `files` ({ name: Buffer|string }), as the Web Store serves one: a stored zip under a
+ * CrxFileHeader whose one RSA proof signs it. A .crx file Chrome's CrxInstaller verifies and installs. */
+function crx3(files) {
+  const entries = Object.entries(files).map(([name, data]) => [Buffer.from(name), Buffer.from(data)]);
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const [name, data] of entries) {
+    const head = Buffer.alloc(30);
+    head.writeUInt32LE(0x04034b50, 0); head.writeUInt16LE(20, 4);
+    head.writeUInt32LE(crc32(data) >>> 0, 14); head.writeUInt32LE(data.length, 18); head.writeUInt32LE(data.length, 22);
+    head.writeUInt16LE(name.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(crc32(data) >>> 0, 16); central.writeUInt32LE(data.length, 20); central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(name.length, 28); central.writeUInt32LE(offset, 42);
+    locals.push(head, name, data);
+    centrals.push(central, name);
+    offset += 30 + name.length + data.length;
+  }
+  const directory = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(directory.length, 12); end.writeUInt32LE(offset, 16);
+  const archive = Buffer.concat([...locals, directory, end]);
+  const varint = (n) => { const out = []; do { out.push((n & 0x7f) | (n > 0x7f ? 0x80 : 0)); n >>>= 7; } while (n); return Buffer.from(out); };
+  const field = (number, bytes) => Buffer.concat([varint(number * 8 + 2), varint(bytes.length), bytes]);
+  const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const spki = publicKey.export({ type: "spki", format: "der" });
+  const signedData = field(1, createHash("sha256").update(spki).digest().subarray(0, 16));
+  const length = Buffer.alloc(4);
+  length.writeUInt32LE(signedData.length);
+  const signature = sign("sha256", Buffer.concat([Buffer.from("CRX3 SignedData\0", "latin1"), length, signedData, archive]), privateKey);
+  const header = Buffer.concat([field(2, Buffer.concat([field(1, spki), field(2, signature)])), field(10000, signedData)]);
+  const prefix = Buffer.alloc(12);
+  prefix.write("Cr24", 0, "latin1"); prefix.writeUInt32LE(3, 4); prefix.writeUInt32LE(header.length, 8);
+  return Buffer.concat([prefix, header, archive]);
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -2061,6 +2099,41 @@ const checks = {
     assert(state().installPrompt && state().panels.open?.name === "extensionInstall", "Return answered the install prompt");
     await command("extprompt cancel");
     await until("prompt gone", () => state().installPrompt === null);
+  },
+  async "engine-version"() {
+    // The engine Ray runs is the one engine.lock names (a rebuild that didn't land shows here first).
+    const lock = Object.fromEntries(readFileSync(join(root, "engine.lock"), "utf8").trim().split("\n").map((l) => l.split("=")));
+    await command("state");
+    assert(state().engine?.chromium === lock.chromium, `engine reports Chromium ${state().engine?.chromium}, engine.lock says ${lock.chromium}`);
+    const version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
+    assert(version.Browser?.endsWith(`/${lock.chromium}`), `DevTools reports ${version.Browser}`);
+  },
+  async "memory-saver-default"() {
+    // Helium's memory-saving-by-default: Memory Saver is on in a new profile (Ray has no tab sleeping of its own).
+    const saver = JSON.parse(await commandResult("memorysaver"));
+    assert(saver.state === "on", `Memory Saver is ${JSON.stringify(saver)}`);
+  },
+  async "extension-crx-drop"() {
+    // A .crx dropped on a page installs through Ray's install prompt: Cancel by default, nothing installed unasked.
+    const name = "Ray Drop Test";
+    const file = join(dataDir, "drop-test.crx");
+    writeFileSync(file, crx3({ "manifest.json": JSON.stringify({ manifest_version: 3, name, version: "1.2" }) }));
+    await command("state");
+    const before = state().extensions.length;
+    assert(await commandResult(`crxdrop ${file}`) === "ok", "no page to drop on");
+    await until("install prompt", async () => { await command("state"); return state().installPrompt; }, 15000);
+    assert(state().installPrompt.name === name, `the prompt names ${state().installPrompt.name}`);
+    assert(state().installPrompt.addEnabled === false, "Add was clickable straight away");
+    assert(state().panels.open?.name === "extensionInstall" && state().panels.open.asks, `prompt panel: ${JSON.stringify(state().panels.open)}`);
+    await command("key return");
+    await until("Return cancelled it", async () => { await command("state"); return state().installPrompt === null; });
+    await sleep(500);
+    await command("state");
+    assert(state().extensions.length === before && !state().extensions.some((e) => e.name === name), "the dropped extension installed");
+    // A failed install says why on the page.
+    await command("extfailed Package is invalid: 'CRX_HEADER_INVALID'.");
+    await until("failure note", async () => { await command("state"); return state().noteText?.includes("Couldn't add the extension"); });
+    await command("note dismiss top");
   },
   async downloads() {
     const { sessionId } = await session(state().tabs.find((t) => t.active)?.url ?? "/a");

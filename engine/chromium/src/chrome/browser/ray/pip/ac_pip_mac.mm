@@ -4,11 +4,17 @@
 
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
 
 #include "base/apple/foundation_util.h"
 #include "base/files/file_path.h"
 #include "base/path_service.h"
 #include "chrome/common/chrome_paths.h"
+
+@protocol RayPictureInPictureControlsPresenter <NSObject>
+- (void)presentRayPictureInPictureControls:
+    (NSArray<NSDictionary<NSString*, id>*>*)controls;
+@end
 
 namespace {
 
@@ -94,4 +100,29 @@ void ResetRayPictureInPictureFade(gfx::NativeWindow window) {
   layer.opacity = 1;
   [CATransaction commit];
   ns_window.hasShadow = YES;
+}
+
+bool PresentRayPictureInPictureControls(
+    gfx::NativeWindow window,
+    const std::vector<RayPipNativeControl>& controls) {
+  SEL present = @selector(presentRayPictureInPictureControls:);
+  id<RayPictureInPictureControlsPresenter> presenter =
+      objc_getAssociatedObject(window.GetNativeNSWindow(), present);
+  if (![presenter respondsToSelector:present]) {
+    return false;
+  }
+  NSMutableArray* list = [NSMutableArray arrayWithCapacity:controls.size()];
+  for (const RayPipNativeControl& control : controls) {
+    const gfx::Rect& b = control.bounds;
+    [list addObject:@{
+      @"name" : @(control.name),
+      @"frame" : [NSValue
+          valueWithRect:NSMakeRect(b.x(), b.y(), b.width(), b.height())],
+      @"hovered" : @(control.hovered),
+      @"pressed" : @(control.pressed),
+      @"opacity" : @(control.opacity),
+    }];
+  }
+  [presenter presentRayPictureInPictureControls:list];
+  return true;
 }

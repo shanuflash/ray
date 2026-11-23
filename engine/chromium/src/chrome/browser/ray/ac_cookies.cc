@@ -1,7 +1,8 @@
 // Copyright 2026 Ray. Apache-2.0.
 
-#include "chrome/browser/ray/ac_cookies.h"
+#include "chrome/browser/ray/ac_engine.h"
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -89,6 +90,7 @@ int PortArg(const base::DictValue& dict) {
 struct Imported {
   std::unique_ptr<net::CanonicalCookie> cookie;
   GURL source_url;
+  bool dated = false;
 };
 
 std::optional<Imported> ToCookie(const base::Value& entry, base::Time now) {
@@ -123,7 +125,8 @@ std::optional<Imported> ToCookie(const base::Value& entry, base::Time now) {
     return std::nullopt;
   }
 
-  base::Time creation = TimeArg(*dict, "created").value_or(now);
+  const std::optional<base::Time> created = TimeArg(*dict, "created");
+  base::Time creation = created.value_or(now);
   if (creation > now) {
     creation = now;
   }
@@ -164,26 +167,60 @@ std::optional<Imported> ToCookie(const base::Value& entry, base::Time now) {
       cookie->Path() != *path) {
     return std::nullopt;
   }
-  return Imported{std::move(cookie), std::move(source_url)};
+  return Imported{std::move(cookie), std::move(source_url),
+                  created.has_value()};
 }
 
 struct Counts {
   int imported = 0;
   int rejected = 0;
   int existing = 0;
+  int replaced = 0;
 };
+
+enum class Existing { kKeep, kReplaceOlder };
+
+bool Changed(const net::CanonicalCookie& from, const net::CanonicalCookie& to) {
+  return from.Value() != to.Value() || from.ExpiryDate() != to.ExpiryDate() ||
+         from.SecureAttribute() != to.SecureAttribute() ||
+         from.IsHttpOnly() != to.IsHttpOnly() ||
+         from.SameSite() != to.SameSite();
+}
+
+bool Supersedes(const Imported& imported, const net::CanonicalCookie& present) {
+  return imported.dated && Changed(present, *imported.cookie) &&
+         imported.cookie->CreationDate() >
+             std::max(present.CreationDate(), present.LastUpdateDate());
+}
 
 network::mojom::CookieManager* CookieManagerOf(Profile* profile) {
   return profile->GetDefaultStoragePartition()
       ->GetCookieManagerForBrowserProcess();
 }
 
+struct Write {
+  const Imported* imported;
+  bool replaces;
+};
+
+enum class Outcome { kRejected, kImported, kReplaced };
+
 void Written(base::WeakPtr<Profile> profile,
              Counts counts,
              Reply reply,
-             const std::vector<bool>& results) {
-  for (bool included : results) {
-    ++(included ? counts.imported : counts.rejected);
+             const std::vector<Outcome>& results) {
+  for (Outcome outcome : results) {
+    switch (outcome) {
+      case Outcome::kRejected:
+        ++counts.rejected;
+        break;
+      case Outcome::kImported:
+        ++counts.imported;
+        break;
+      case Outcome::kReplaced:
+        ++counts.replaced;
+        break;
+    }
   }
   if (!profile) {
     return reply.Error("profile closed");
@@ -194,13 +231,15 @@ void Written(base::WeakPtr<Profile> profile,
             reply.Send(base::DictValue()
                            .Set("imported", counts.imported)
                            .Set("rejected", counts.rejected)
-                           .Set("existing", counts.existing));
+                           .Set("existing", counts.existing)
+                           .Set("replaced", counts.replaced));
           },
           std::move(reply), counts));
 }
 
 void WriteNew(base::WeakPtr<Profile> profile,
               std::vector<Imported> cookies,
+              Existing existing,
               Counts counts,
               Reply reply,
               const std::vector<net::CanonicalCookie>& present) {
@@ -212,84 +251,68 @@ void WriteNew(base::WeakPtr<Profile> profile,
   for (const net::CanonicalCookie& cookie : present) {
     by_domain[cookie.Domain()].push_back(&cookie);
   }
-  std::vector<const Imported*> fresh;
+  std::vector<Write> writes;
   for (const Imported& imported : cookies) {
-    bool exists = false;
-    auto it = by_domain.find(imported.cookie->Domain());
-    if (it != by_domain.end()) {
-      for (const net::CanonicalCookie* other : it->second) {
-        if (imported.cookie->IsEquivalent(*other)) {
-          exists = true;
-          break;
-        }
-      }
-    }
-    if (exists) {
-      ++counts.existing;
+    std::vector<const net::CanonicalCookie*>& same_domain =
+        by_domain[imported.cookie->Domain()];
+    auto equivalent = std::ranges::find_if(
+        same_domain, [&](const net::CanonicalCookie* other) {
+          return imported.cookie->IsEquivalent(*other);
+        });
+    if (equivalent == same_domain.end()) {
+      writes.push_back({&imported, false});
+      same_domain.push_back(imported.cookie.get());
+    } else if (existing == Existing::kReplaceOlder &&
+               Supersedes(imported, **equivalent)) {
+      writes.push_back({&imported, true});
+      *equivalent = imported.cookie.get();
     } else {
-      fresh.push_back(&imported);
-      by_domain[imported.cookie->Domain()].push_back(imported.cookie.get());
+      ++counts.existing;
     }
   }
 
-  base::RepeatingCallback<void(bool)> barrier = base::BarrierCallback<bool>(
-      fresh.size(),
-      base::BindOnce(&Written, profile, counts, std::move(reply)));
+  base::RepeatingCallback<void(Outcome)> barrier =
+      base::BarrierCallback<Outcome>(
+          writes.size(),
+          base::BindOnce(&Written, profile, counts, std::move(reply)));
   network::mojom::CookieManager* manager = CookieManagerOf(profile.get());
-  for (const Imported* imported : fresh) {
-    manager->SetCanonicalCookie(*imported->cookie, imported->source_url,
-                                net::CookieOptions::MakeAllInclusive(),
-                                base::BindOnce(
-                                    [](base::RepeatingCallback<void(bool)> done,
-                                       net::CookieAccessResult result) {
-                                      done.Run(result.status.IsInclude());
-                                    },
-                                    barrier));
+  for (const Write& write : writes) {
+    manager->SetCanonicalCookie(
+        *write.imported->cookie, write.imported->source_url,
+        net::CookieOptions::MakeAllInclusive(),
+        base::BindOnce(
+            [](base::RepeatingCallback<void(Outcome)> done, bool replaces,
+               net::CookieAccessResult result) {
+              done.Run(!result.status.IsInclude() ? Outcome::kRejected
+                       : replaces                 ? Outcome::kReplaced
+                                                  : Outcome::kImported);
+            },
+            barrier, write.replaces));
   }
 }
 
 }
 }
 
-AC_ENGINE_CALL(ac_cookies_import) {
-  ray::Call call(profile_dir, nullptr, reply, context);
-  if (!call) {
-    return;
-  }
-  if (call.profile()->IsOffTheRecord()) {
-    return call.TakeReply().Error("private profile");
-  }
-
+AC_PROFILE_CALL(ac_cookies_import, ray::Sensitive{ray::kMaxArgsBytes}) {
   std::vector<ray::Imported> cookies;
   ray::Counts counts;
-  {
-    ray::SensitiveArgs args(args_json, ray::kMaxArgsBytes);
-    if (args.too_large()) {
-      return call.TakeReply().Error("arguments too large");
-    }
-    if (!args.dict()) {
-      return call.TakeReply().Error("arguments are not a JSON object");
-    }
-    if (args.dict()->FindBool("offTheRecord").value_or(false)) {
-      return call.TakeReply().Error("not for a private session");
-    }
-    const base::ListValue* list = args.dict()->FindList("cookies");
-    if (!list) {
-      return call.TakeReply().Error("cookies must be a list");
-    }
-    if (list->size() > ray::kMaxCookies) {
-      return call.TakeReply().Error("too many cookies in one call");
-    }
-    const base::Time now = base::Time::Now();
-    cookies.reserve(list->size());
-    for (const base::Value& entry : *list) {
-      std::optional<ray::Imported> cookie =
-          ray::ToCookie(entry, now);
-      if (cookie) {
-        cookies.push_back(std::move(*cookie));
-      } else {
-        ++counts.rejected;
-      }
+  const base::ListValue* list = call.args().FindList("cookies");
+  if (!list) {
+    return call.TakeReply().Error("cookies must be a list");
+  }
+  if (list->size() > ray::kMaxCookies) {
+    return call.TakeReply().Error("too many cookies in one call");
+  }
+  const base::Time now = base::Time::Now();
+  cookies.reserve(list->size());
+  for (const base::Value& entry : *list) {
+    std::optional<ray::Imported> cookie =
+        ray::ToCookie(entry, now);
+    if (cookie) {
+      cookies.push_back(std::move(*cookie));
+    } else {
+      ++counts.rejected;
     }
   }
 
@@ -297,10 +320,15 @@ AC_ENGINE_CALL(ac_cookies_import) {
     return call.TakeReply().Send(base::DictValue()
                                      .Set("imported", 0)
                                      .Set("rejected", counts.rejected)
-                                     .Set("existing", 0));
+                                     .Set("existing", 0)
+                                     .Set("replaced", 0));
   }
+  const ray::Existing existing = call.Bool("replaceOlder")
+                                       ? ray::Existing::kReplaceOlder
+                                       : ray::Existing::kKeep;
   ray::CookieManagerOf(call.profile())
-      ->GetAllCookies(
-          base::BindOnce(&ray::WriteNew, call.profile()->GetWeakPtr(),
-                         std::move(cookies), counts, call.TakeReply()));
+      ->GetAllCookies(base::BindOnce(&ray::WriteNew,
+                                     call.profile()->GetWeakPtr(),
+                                     std::move(cookies), existing, counts,
+                                     call.TakeReply()));
 }

@@ -1,12 +1,14 @@
 // Copyright 2026 Ray. Apache-2.0.
 
-#include "chrome/browser/ray/ac_extensions.h"
+#include "chrome/browser/ray/ac_engine.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "base/files/file_path.h"
 #include "base/functional/callback_helpers.h"
@@ -41,6 +43,7 @@
 #include "extensions/browser/requirements_checker.h"
 #include "extensions/browser/uninstall_reason.h"
 #include "extensions/browser/unpacked_installer.h"
+#include "extensions/browser/user_script_manager.h"
 #include "extensions/browser/disable_reason.h"
 #include "extensions/common/extension.h"
 
@@ -107,6 +110,8 @@ base::DictValue Entry(const developer::ExtensionInfo& info) {
                               : base::Value(info.home_page.url))
       .Set("incognito", info.incognito_access.is_active)
       .Set("fileAccess", info.file_access.is_active)
+      .Set("userScriptsAvailable", info.user_scripts_access.is_enabled)
+      .Set("userScripts", info.user_scripts_access.is_active)
       .Set("pinned", info.pinned_to_toolbar.value_or(false))
       .Set("mayModify", info.user_may_modify)
       .Set("blockedByPolicy", info.disable_reasons.blocked_by_policy)
@@ -189,9 +194,32 @@ class ExtensionsState : public ProfileState {
               extensions::ExtensionInfoGenerator::ExtensionInfoList infos) {
     Drop(key);
     base::ListValue list;
+    ToolbarActionsModel* toolbar = ToolbarActionsModel::Get(profile());
+    const bool toolbar_ready = toolbar && toolbar->actions_initialized();
+    std::vector<ToolbarActionsModel::ActionId> toolbar_order;
+    if (toolbar_ready) {
+      toolbar_order = toolbar->pinned_action_ids();
+    } else {
+      for (const auto& id :
+           extensions::ExtensionPrefs::Get(profile())->GetPinnedExtensions()) {
+        const bool enabled = std::ranges::any_of(infos, [&id](const auto& info) {
+          return info.id == id &&
+                 info.state == developer::ExtensionState::kEnabled;
+        });
+        if (enabled) {
+          toolbar_order.push_back(id);
+        }
+      }
+    }
     for (const auto& info : infos) {
       if (info.type == developer::ExtensionType::kExtension) {
         base::DictValue entry = Entry(info);
+        auto on_toolbar = std::ranges::find(toolbar_order, info.id);
+        entry.Set("pinned", on_toolbar != toolbar_order.end());
+        if (on_toolbar != toolbar_order.end()) {
+          entry.Set("pinnedIndex",
+                    static_cast<int>(on_toolbar - toolbar_order.begin()));
+        }
         const Extension* extension = Find(profile(), info.id);
         if (extension && !info.disable_reasons.blocked_by_policy &&
             info.state != developer::ExtensionState::kEnabled &&
@@ -306,20 +334,12 @@ void LiftPolicyBlockIfAllowed(Profile* profile, const std::string& id) {
 using ray::Call;
 using ray::Reply;
 
-#define AC_EXTENSIONS_CALL()                         \
-  Call call(profile_dir, args_json, reply, context); \
-  if (!call) {                                       \
-    return;                                          \
-  }
-
-AC_ENGINE_CALL(ac_extensions_list) {
-  AC_EXTENSIONS_CALL();
+AC_PROFILE_CALL(ac_extensions_list) {
   ray::StateFor<ray::ExtensionsState>(call.profile())
       .List(call.TakeReply());
 }
 
-AC_ENGINE_CALL(ac_extensions_install) {
-  AC_EXTENSIONS_CALL();
+AC_PROFILE_CALL(ac_extensions_install) {
   const std::string path = call.String("path");
   if (path.empty() || path[0] != '/') {
     return call.TakeReply().Error("an absolute path required");
@@ -378,8 +398,7 @@ AC_ENGINE_CALL(ac_extensions_install) {
   installer->Load(load_path);
 }
 
-AC_ENGINE_CALL(ac_extensions_install_crx) {
-  AC_EXTENSIONS_CALL();
+AC_PROFILE_CALL(ac_extensions_install_crx) {
   const std::string path = call.String("path");
   if (path.empty() || path[0] != '/') {
     return call.TakeReply().Error("an absolute path required");
@@ -412,8 +431,7 @@ AC_ENGINE_CALL(ac_extensions_install_crx) {
   installer->InstallCrx(base::FilePath(path));
 }
 
-AC_ENGINE_CALL(ac_extensions_set_enabled) {
-  AC_EXTENSIONS_CALL();
+AC_PROFILE_CALL(ac_extensions_set_enabled) {
   Profile* profile = call.profile();
   const std::string id = call.String("id");
   const bool enable = call.Bool("enabled");
@@ -446,8 +464,7 @@ AC_ENGINE_CALL(ac_extensions_set_enabled) {
       extension, call.TakeReply());
 }
 
-AC_ENGINE_CALL(ac_extensions_uninstall) {
-  AC_EXTENSIONS_CALL();
+AC_PROFILE_CALL(ac_extensions_uninstall) {
   Profile* profile = call.profile();
   const std::string id = call.String("id");
   const extensions::Extension* extension = ray::Find(profile, id);
@@ -469,8 +486,7 @@ AC_ENGINE_CALL(ac_extensions_uninstall) {
   call.TakeReply().Ok();
 }
 
-AC_ENGINE_CALL(ac_extensions_reload) {
-  AC_EXTENSIONS_CALL();
+AC_PROFILE_CALL(ac_extensions_reload) {
   const std::string id = call.String("id");
   if (!ray::Find(call.profile(), id)) {
     return call.TakeReply().Error("No such extension");
@@ -480,8 +496,7 @@ AC_ENGINE_CALL(ac_extensions_reload) {
   call.TakeReply().Ok();
 }
 
-AC_ENGINE_CALL(ac_extensions_configure) {
-  AC_EXTENSIONS_CALL();
+AC_PROFILE_CALL(ac_extensions_configure) {
   Profile* profile = call.profile();
   const std::string id = call.String("id");
   if (!ray::Find(profile, id)) {
@@ -497,11 +512,35 @@ AC_ENGINE_CALL(ac_extensions_configure) {
       model->SetActionVisibility(id, *pinned);
     }
   }
+  if (std::optional<int> index = call.args().FindInt("pinnedIndex")) {
+    ToolbarActionsModel* model = ToolbarActionsModel::Get(profile);
+    if (profile->IsOffTheRecord()) {
+      return call.TakeReply().Error(
+          "Toolbar order can't change in a private window");
+    }
+    if (!model->IsActionPinned(id)) {
+      return call.TakeReply().Error("The extension isn't pinned");
+    }
+    const int last = static_cast<int>(model->pinned_action_ids().size()) - 1;
+    model->MovePinnedAction(id, static_cast<size_t>(std::clamp(*index, 0, last)));
+  }
   if (std::optional<bool> allow = call.args().FindBool("fileAccess")) {
     extensions::util::SetAllowFileAccess(id, profile, *allow);
   }
   if (std::optional<bool> allow = call.args().FindBool("incognito")) {
     extensions::util::SetIsIncognitoEnabled(id, profile, *allow);
+  }
+  if (std::optional<bool> allow = call.args().FindBool("userScripts")) {
+    const extensions::Extension* extension = ray::Find(profile, id);
+    extensions::UserScriptManager* manager =
+        extensions::ExtensionSystem::Get(profile)->user_script_manager();
+    if (!extension || !manager ||
+        !extensions::UserScriptManager::IsUserScriptsAPIPermissionAvailable(
+            *extension)) {
+      return call.TakeReply().Error(
+          "This extension doesn't ask to run user scripts");
+    }
+    manager->SetUserScriptPrefEnabled(id, *allow);
   }
   if (const std::string* access = call.args().FindString("siteAccess")) {
     const extensions::Extension* extension = ray::Find(profile, id);

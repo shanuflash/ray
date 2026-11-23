@@ -1,0 +1,16 @@
+Ray: network prediction on by default (Chrome's standard preloading), undoing Helium's default, so the command
+bar's preconnect (ac_preconnect) and pages' DNS prefetch work. Owner decision, 2026-11-04.
+
+--- a/patches/build/03-helium.py
++++ b/patches/build/03-helium.py
+@@ -90,6 +90,10 @@
+      '      kAutofillProfileEnabled, false,', '      kAutofillProfileEnabled, true,'),
+     ('components/autofill/core/common/autofill_prefs.cc',
+      '      kAutofillCreditCardEnabled, false,', '      kAutofillCreditCardEnabled, true,'),
++    # Ray: network prediction (Preload pages) back to Chrome's standard, which the command bar's preconnect and
++    # pages' DNS prefetch need (owner, 2026-11-04). Helium's modify-default-prefs.patch turns it off.
++    ('chrome/browser/preloading/preloading_prefs.h',
++     '  kDefault = kDisabled,', '  kDefault = kWifiOnlyDeprecated,'),
+ ]
+ 
+ OMITTED = ('third_party/ublock/', 'components/helium_onboarding/', 'third_party/search_engines_data/resources_internal/')

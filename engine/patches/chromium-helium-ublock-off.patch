@@ -6,13 +6,13 @@ Helium's uBlock Origin component (blockjmkbacgjkknlgpkjjiijinjdanf) is neither b
 uBlock Origin (fajbdaomknpkicfjcpipdmcpoamdmilh, packages/raycore/scripts/ubo.sh), loaded per profile with the
 navigation hold, which keeps every user's filters and settings; with both, two engines would filter every request.
 The build doesn't fetch Helium's uBO, so nothing depends on //third_party/ublock or its grit headers any more:
-ComponentLoader has no AddUBlock, and the component allowlist and the resource manager no longer list its
-resources. Its id is no longer pinned by default either, so no profile pins (and syncs) an extension it doesn't have.
-(The branding patch drops its pak.)
+ComponentLoader has no AddUBlock, chrome_paks.gni packs no ublock_resources.pak, and the component allowlist and the
+resource manager no longer list its resources. Its id is no longer pinned by default either, so no profile pins (and
+syncs) an extension it doesn't have.
 
 --- a/chrome/browser/extensions/BUILD.gn
 +++ b/chrome/browser/extensions/BUILD.gn
-@@ -641,7 +641,6 @@
+@@ -649,7 +649,6 @@
      "//net:extras",
      "//services/metrics/public/cpp:ukm_builders",
      "//storage/browser",
@@ -27,10 +27,10 @@ resources. Its id is no longer pinned by default either, so no profile pins (and
  #include "pdf/buildflags.h"
  #include "ui/base/resource/resource_bundle.h"
 -#include "third_party/ublock/resources/grit/ublock_resources_map.h"
+ #include "ui/webui/buildflags.h"
  
- #if BUILDFLAG(IS_CHROMEOS)
- #include "ash/keyboard/ui/resources/keyboard_resource_util.h"
-@@ -128,7 +127,6 @@
+ #if BUILDFLAG(ENABLE_WEBUI_NTP)
+@@ -140,7 +139,6 @@
            extensions_features::kApiContextualTasksPrivate)) {
      AddComponentResourceEntries(kContextualTasksExtensionResources);
    }
@@ -45,12 +45,12 @@ resources. Its id is no longer pinned by default either, so no profile pins (and
  #include "extensions/common/constants.h"
  #include "printing/buildflags/buildflags.h"
 -#include "third_party/ublock/resources/grit/ublock_resources.h"
+ #include "ui/webui/buildflags.h"
  
- #if BUILDFLAG(IS_CHROMEOS)
- #include "ash/constants/ash_extension_constants.h"
-@@ -106,7 +105,6 @@
+ #if BUILDFLAG(ENABLE_WEBUI_NTP)
+@@ -115,7 +114,6 @@
+     case IDR_NETWORK_SPEECH_SYNTHESIS_MANIFEST:
      case IDR_NETWORK_SPEECH_SYNTHESIS_MANIFEST_MV3:
-     case IDR_READING_MODE_GDOCS_HELPER_MANIFEST:
      case IDR_WEBSTORE_MANIFEST:
 -    case IDR_UBLOCK_MANIFEST_JSON:
      case IDR_EXTSTORE_FIXUPS_MANIFEST_JSON:
@@ -63,10 +63,10 @@ resources. Its id is no longer pinned by default either, so no profile pins (and
  #include "ui/base/l10n/l10n_util.h"
  #include "ui/base/resource/resource_bundle.h"
 -#include "third_party/ublock/resources/grit/ublock_resources.h"
+ #include "ui/webui/buildflags.h"
  
  #if BUILDFLAG(IS_CHROMEOS)
- #include "ash/constants/ash_extension_constants.h"
-@@ -610,22 +609,7 @@
+@@ -642,22 +641,7 @@
          l10n_util::GetStringUTF8(IDS_WEBSTORE_APP_DESCRIPTION));
    }
  }
@@ -89,7 +89,7 @@ resources. Its id is no longer pinned by default either, so no profile pins (and
  void ComponentLoader::AddExtstoreFixups() {
    Add(IDR_EXTSTORE_FIXUPS_MANIFEST_JSON,
        base::FilePath(FILE_PATH_LITERAL("extstore_fixups")));
-@@ -708,7 +692,6 @@
+@@ -740,7 +724,6 @@
  
    if (!skip_session_components) {
      AddWebStoreApp();
@@ -99,7 +99,7 @@ resources. Its id is no longer pinned by default either, so no profile pins (and
      AddChromeApp();
 --- a/chrome/browser/extensions/component_loader.h
 +++ b/chrome/browser/extensions/component_loader.h
-@@ -244,7 +244,6 @@
+@@ -248,7 +248,6 @@
                                   const std::string& name_string,
                                   const std::string& description_string);
    void AddWebStoreApp();
@@ -109,7 +109,15 @@ resources. Its id is no longer pinned by default either, so no profile pins (and
  #if BUILDFLAG(IS_CHROMEOS)
 --- a/chrome/chrome_paks.gni
 +++ b/chrome/chrome_paks.gni
-@@ -178,7 +178,6 @@
+@@ -162,7 +162,6 @@
+       "$root_gen_dir/third_party/blink/public/resources/blink_resources.pak",
+       "$root_gen_dir/third_party/blink/public/resources/inspector_overlay_resources.pak",
+       "$root_gen_dir/third_party/blink/public/strings/permission_element_generated_strings.pak",
+-      "$root_gen_dir/third_party/ublock/resources/ublock_resources.pak",
+       "$root_gen_dir/ui/resources/ui_lottie_resources.pak",
+       "$root_gen_dir/ui/webui/resources/webui_resources.pak",
+     ]
+@@ -200,7 +199,6 @@
        "//third_party/blink/public:devtools_inspector_resources",
        "//third_party/blink/public:resources",
        "//third_party/blink/public/strings:permission_element_generated_strings",
@@ -119,7 +127,7 @@ resources. Its id is no longer pinned by default either, so no profile pins (and
      ]
 --- a/extensions/browser/extension_prefs.cc
 +++ b/extensions/browser/extension_prefs.cc
-@@ -2254,7 +2254,6 @@
+@@ -2271,7 +2271,6 @@
      user_prefs::PrefRegistrySyncable* registry) {
    registry->RegisterDictionaryPref(pref_names::kExtensions);
    registry->RegisterListPref(pref_names::kPinnedExtensions,

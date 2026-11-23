@@ -5,6 +5,10 @@
 
 class Profile;
 
+namespace base {
+class FilePath;
+}
+
 namespace content {
 class WebContents;
 }
@@ -14,6 +18,7 @@ class WindowHost;
 
 void NoteProfileDying(Profile* profile);
 bool IsProfileDying(const Profile* profile);
+Profile* DyingProfileAt(const base::FilePath& path);
 void NoteProfileDeleting(Profile* profile);
 bool IsProfileDeleting(const Profile* profile);
 }

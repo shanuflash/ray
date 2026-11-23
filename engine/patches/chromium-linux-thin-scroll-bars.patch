@@ -1,0 +1,41 @@
+--- a/ui/native_theme/native_theme.cc
++++ b/ui/native_theme/native_theme.cc
+@@ -172,6 +172,19 @@
+ // static
+ size_t NativeTheme::UpdateNotificationDelayScoper::num_instances_ = 0;
+ 
++namespace {
++bool g_ray_linux_thin_scroll_bars = false;
++}
++
++// static
++void NativeTheme::SetRayLinuxThinScrollBars(bool thin) {
++  if (g_ray_linux_thin_scroll_bars == thin) {
++    return;
++  }
++  g_ray_linux_thin_scroll_bars = thin;
++  GetInstanceForNativeUi()->OnToolkitSettingsChanged(false);
++}
++
+ // static
+ NativeTheme* NativeTheme::GetInstanceForNativeUi() {
+   static base::NoDestructor<NativeUiTheme> s_native_theme;
+@@ -634,6 +647,7 @@
+ bool NativeTheme::CalculateUseOverlayScrollbar() const {
+   if (OsSettingsProviderSuppliesOverlayScrollbarPreference()) {
+     return ShouldUseOverlayScrollbar(
++        g_ray_linux_thin_scroll_bars ||
+         OsSettingsProvider::Get().PrefersOverlayScrollbars());
+   }
+   return use_overlay_scrollbar_;
+--- a/ui/native_theme/native_theme.h
++++ b/ui/native_theme/native_theme.h
+@@ -456,6 +456,8 @@
+   // `NativeThemeObserver` with a `CallbackList`.
+   void NotifyOnCaptionStyleUpdated();
+ 
++  static void SetRayLinuxThinScrollBars(bool thin);
++
+   // Paints the provided `part`/`state`. This is largely a wrapper around
+   // `PaintImpl()`.
+   void Paint(

@@ -9,7 +9,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/uuid.h"
-#include "chrome/browser/ray/ac_autofill.h"
+#include "chrome/browser/ray/ac_engine.h"
 #include "chrome/browser/ray/ac_autofill_internal.h"
 #include "chrome/browser/ray/ac_sensitive_args.h"
 #include "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
@@ -23,8 +23,7 @@ using ray::Call;
 using ray::Reply;
 using autofill::PersonalDataManager;
 
-AC_ENGINE_CALL(ac_autofill_save_address) {
-  AC_AUTOFILL_CALL();
+AC_PROFILE_CALL(ac_autofill_save_address) {
   const base::DictValue* address = call.args().FindDict("address");
   if (!address) {
     return call.TakeReply().Error("address required");
@@ -92,26 +91,13 @@ AC_ENGINE_CALL(ac_autofill_save_address) {
       call.TakeReply());
 }
 
-AC_ENGINE_CALL(ac_autofill_save_card) {
-  Call call(profile_dir, nullptr, reply, context);
-  if (!call) {
-    return;
-  }
-  ray::SensitiveArgs args(args_json,
-                            ray::autofill_internal::kMaxImportBytes);
-  if (!args.dict()) {
-    return call.TakeReply().Error(args.too_large()
-                                      ? "arguments too large"
-                                      : "arguments are not a JSON object");
-  }
-  if (args.dict()->FindBool("offTheRecord").value_or(false)) {
-    return call.TakeReply().Error("not for a private session");
-  }
-  const base::DictValue* card = args.dict()->FindDict("card");
+AC_PROFILE_CALL(ac_autofill_save_card,
+                ray::Sensitive{ray::autofill_internal::kMaxImportBytes}) {
+  const base::DictValue* card = call.args().FindDict("card");
   if (!card) {
     return call.TakeReply().Error("card required");
   }
-  std::optional<ray::Secret> number = args.SecretAt("number");
+  std::optional<ray::Secret> number = call.SecretAt("number");
   if (!number) {
     return call.TakeReply().Error("bad arguments");
   }
@@ -190,8 +176,7 @@ AC_ENGINE_CALL(ac_autofill_save_card) {
       call.TakeReply());
 }
 
-AC_ENGINE_CALL(ac_autofill_remove) {
-  AC_AUTOFILL_CALL();
+AC_PROFILE_CALL(ac_autofill_remove) {
   ray::autofill_internal::Load(
       call,
       base::BindOnce(

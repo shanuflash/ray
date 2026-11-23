@@ -6,9 +6,9 @@
  #include "chrome/browser/ui/dialogs/browser_dialogs.h"
 +#include "ray/core/ac_hooks.h"  // nogncheck
  #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
+ #include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
  #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
- #include "chrome/browser/ui/views/chrome_widget_sublevel.h"
-@@ -222,6 +223,13 @@
+@@ -255,6 +256,13 @@
  
  BEGIN_METADATA(ChooserBubbleUiViewDelegate)
  END_METADATA
@@ -22,7 +22,7 @@
  
  namespace chrome {
  
-@@ -280,6 +288,15 @@
+@@ -313,6 +321,15 @@
    return ChooserDialogHost{browser, contents, std::move(*fullscreen_blocker)};
  }
  
@@ -38,7 +38,7 @@
  #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
  base::OnceClosure ShowDeviceChooserDialogForExtension(
      content::RenderFrameHost* owner,
-@@ -292,6 +309,10 @@
+@@ -325,6 +342,10 @@
    if (!host) {
      return base::DoNothing();
    }
@@ -49,7 +49,7 @@
  
    auto* browser_view = BrowserView::GetBrowserViewForBrowser(host->browser);
    if (!browser_view) {
-@@ -353,6 +374,10 @@
+@@ -386,6 +407,10 @@
    if (!host) {
      return base::DoNothing();
    }

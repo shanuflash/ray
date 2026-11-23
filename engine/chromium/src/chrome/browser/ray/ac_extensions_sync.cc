@@ -1,6 +1,6 @@
 // Copyright 2026 Ray. Apache-2.0.
 
-#include "chrome/browser/ray/ac_extensions_sync.h"
+#include "chrome/browser/ray/ac_engine.h"
 
 #include <algorithm>
 #include <string>
@@ -328,22 +328,14 @@ void CrxInstalling(content::BrowserContext* context,
 
 using ray::Call;
 
-AC_ENGINE_CALL(ac_extensions_sync_state) {
-  Call call(profile_dir, args_json, reply, context);
-  if (!call) {
-    return;
-  }
+AC_PROFILE_CALL(ac_extensions_sync_state) {
   call.TakeReply().Send(
       ray::StateFor<ray::extensions_sync_internal::ExtensionSync>(
           call.profile())
           .State());
 }
 
-AC_ENGINE_CALL(ac_extensions_sync_apply) {
-  Call call(profile_dir, args_json, reply, context);
-  if (!call) {
-    return;
-  }
+AC_PROFILE_CALL(ac_extensions_sync_apply) {
   const std::string id = call.String("id");
   if (!crx_file::id_util::IdIsValid(id)) {
     return call.TakeReply().Error("not an extension id");

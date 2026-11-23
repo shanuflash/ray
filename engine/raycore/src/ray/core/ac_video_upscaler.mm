@@ -20,7 +20,10 @@ constexpr float kStartRatio = 1.15f;
 constexpr float kStopRatio = 1.0f;
 constexpr int kMaxTargetDimension = 6144;
 constexpr int kMinSourceDimension = 64;
+constexpr int kMaxSourceLongSide = 1280;
+constexpr int kMaxSourceShortSide = 720;
 constexpr base::TimeDelta kIdleTeardown = base::Seconds(3);
+constexpr base::TimeDelta kJobStall = base::Seconds(1);
 
 int AlignUp16(int value) {
   return (value + 15) & ~15;
@@ -83,6 +86,9 @@ void Upscaler::Process(bool allowed, std::vector<VideoUpscaleCandidate>& candida
       TRACE_EVENT_INSTANT0("gpu", "RayVSR.CacheHit", TRACE_EVENT_SCOPE_THREAD);
       return;
     }
+    if (job_in_flight_ && base::TimeTicks::Now() - job_in_flight_started_ > kJobStall) {
+      AbandonStalledJob();
+    }
     if (job_in_flight_) {
       best->pending = job_in_flight_source_ == best->source;
       return;
@@ -117,6 +123,12 @@ std::optional<VideoKey> Upscaler::Eligible(const VideoUpscaleCandidate& candidat
   crop.Scale(width, height);
   if (!gfx::RectF(width, height).Contains(crop) || crop.width() < kMinSourceDimension ||
       crop.height() < kMinSourceDimension) {
+    return std::nullopt;
+  }
+  const int crop_width = static_cast<int>(std::lround(crop.width()));
+  const int crop_height = static_cast<int>(std::lround(crop.height()));
+  if (std::max(crop_width, crop_height) > kMaxSourceLongSide ||
+      std::min(crop_width, crop_height) > kMaxSourceShortSide) {
     return std::nullopt;
   }
   gfx::Size target(static_cast<int>(std::lround(candidate.target_size.width())),
@@ -168,7 +180,7 @@ std::optional<Plan> Upscaler::MakePlan(const VideoUpscaleCandidate& candidate, c
   }
   const float ratio = std::min(key.target.width() / key.crop.width(),
                                key.target.height() / key.crop.height());
-  if (VTLowLatencySuperResolutionScalerConfiguration.isSupported &&
+  if (!VideoToolboxQuarantined() && VTLowLatencySuperResolutionScalerConfiguration.isSupported &&
       key.format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) {
     const gfx::Size aligned(AlignUp16(plan.region.width()), AlignUp16(plan.region.height()));
     const CMVideoDimensions max =

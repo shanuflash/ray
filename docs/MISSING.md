@@ -82,7 +82,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 13. Extension side panels and extension keyboard shortcuts (`extensionSidePanel`, `extensionActionShortcut`).
 14. Installing imported extensions: the engine's `ac_extensions_install` takes a folder or a .crx, not a Web Store id.
 15. Web notifications: from the engine's alerts helper, not checked (?).
-16. Install an extension by dropping a .crx on the window, "Allow User Scripts" per extension (Tampermonkey and
+16. ~~Install an extension by dropping a .crx on the page~~ (Done in 0.10.0, engine not built yet). Left: "Allow User Scripts" per extension (Tampermonkey and
     other userscript managers), and Export Bookmarks as HTML. The engine calls come with Ardia's
     engine-2f172eb50b89 (`ac_extension_drop.mm` and the `engine:extensionInstallFailed:tab:` delegate,
     `ac_extensions_configure` `userScripts`, `ac_bookmarks_export_html`); Ray needs the sync and the UI.
@@ -121,8 +121,8 @@ items above. The revamp that gives these a home is PLAN.md section 13.
    the File menu and the command bar). Its Settings row exists, unbuilt.
 14. Battery saver.
 15. Memory Saver rows: on/off, Moderate / Balanced / Maximum, "Always keep these sites active" (Ardia's Settings ›
-    Advanced › Performance, through the engine's `ac_memory_saver` from engine-2f172eb50b89). Today only on
-    chrome://settings/performance, and off by default (see Known limitations).
+    Advanced › Performance, through the engine's `ac_memory_saver`, in since 0.10.0). On by default since 0.10.0
+    (Helium's default); today changed only on chrome://settings/performance.
 16. Compact toolbar: the address bar above the page at 28 pt instead of 41, so a 16:9 video in web full screen
     fills a maximized window (Ardia 0.2.43-nightly.1).
 17. Reading mode (⌥⌘R, a button in the address field; five sizes, serif or sans; closing it keeps the scroll, no
@@ -165,13 +165,11 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 9. **Accent contrast elsewhere.** `ProfileColor.visible(on:)` keeps a black or white profile colour visible in the
    onboarding only; the sidebar selection and hover, loading glow, downloads ring, Settings' switches, command bar
    selection and site controls' "on" states would benefit too (owner to decide).
-10. **Engine behind Chrome stable.** Chromium 156.0.8078.47; Chrome stable for Mac is 156.0.8078.75 and 157
-    (chromiumdash, 2026-10-29), and Ardia hasn't bumped. Fix: the next engine rebuild bumps 156's patch level and
-    takes Ardia's engine-2f172eb50b89 together (`docs/ARDIA-WATCH.md`, `docs/CHROMIUM-WATCH.md`). Found 2026-10-29.
-11. **No tab sleeping at all.** Ray's engine skips Helium's `memory-saving-by-default.patch` "because it would fight
-    Ray's own tab sleeping", but Ray has none (that was Ardia's app), so background tabs never sleep unless the user
-    turns Memory Saver on in chrome://settings/performance. Fix: take Ardia's engine-2f172eb50b89 (drops the skip,
-    Memory Saver on by default, as Helium and now Ardia). Found 2026-10-29.
+10. **Resolved in 0.10.0 (2026-11-23, not built yet): engine behind Chrome stable.** Was Chromium 156.0.8078.47;
+    0.10.0 takes Ardia v0.2.48 on 158.0.8127.36 (Helium 0.22.1). Chrome stable is 158.0.8127.37
+    (`docs/CHROMIUM-WATCH.md` tracks what's left).
+11. **Resolved in 0.10.0 (2026-11-23, not built yet): no tab sleeping at all.** Ray's engine skipped Helium's
+    `memory-saving-by-default.patch`; 0.10.0's engine applies it, so Memory Saver is on by default.
 12. **Engine and extensions likely always in English.** Chrome takes its UI locale from the app bundle's
     localizations, and Ray's Info.plist (`scripts/build-app.sh`) declares none, so chrome:// pages and every
     extension's `chrome.i18n` probably run in en-US whatever the Mac's language (Ardia found and fixed this in
@@ -329,7 +327,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     fallback, a click or with the window key and on screen), so whether they show in Ray is untried by hand. The
     prompt can't show the password (the engine gives only its length) and there's no key icon to bring a dismissed
     prompt back (Chrome's omnibox has one). No "Passwords" manual fallback (Ardia's `autofill passwords` command).
-41. **Any page can open Chrome's screen-share picker without a click** (security, not tried). Ray has no picker of
+41. **In 0.10.0's engine (not built yet; the click gate comes with v0.2.48 (pagesPickDisplayMedia)): Any page can open Chrome's screen-share picker without a click** (security, not tried). Ray has no picker of
     its own (Chrome 6) and no `getDisplayMedia` shim, so a page calling it while loading, or from an about:blank
     iframe, gets Chrome's picker, whose live ScreenCaptureKit thumbnails can flood replayd/tccd with permission
     checks (it froze input on the owner's Mac in Ardia's test). Ardia's engine now refuses native display capture
@@ -337,7 +335,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     `engine-ray` fixup, then a picker behind a click; add a check. Found 2026-11-10.
 42. ~~**Command bar: arrowing moves only the highlight.**~~ (Done 2026-11-10: ↑ ↓ and Tab put the row in the field,
     Escape restores what you typed.)
-43. **Engine leaves Gemini in Chrome (glic) on.** Helium keeps `kGlic`, so every tab carries glic's tab features
+43. **In 0.10.0's engine (not built yet; v0.2.48 turns glic off): Engine leaves Gemini in Chrome (glic) on.** Helium keeps `kGlic`, so every tab carries glic's tab features
     (an Ardia crash, #954, was in one's destructor). Fix: disable the glic features in `ac_main_delegate.cc`
     (Ardia `0365b06a`). Found 2026-11-10.
 44. **Same-site link clicks may flash blank for ~60 ms** (not tried): the RenderViewHost swap hides the old page view,
@@ -388,7 +386,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     tests (no permission there), check on a real Mac. Extensions' `chrome.desktopCapture` still gets Chrome's
     picker. Shares started without Ray's picker show as "Sharing your screen" (Ray can't tell the kind). The note
     shows only in windows of the sharing tab's profile; Chrome's tab-sharing infobar stays undrawn.
-52. **Closing a window frees its tabs 4 s late** (engine, not tried; from Ardia `cba28a9c`, 2026-11-11). Ray's
+52. **In 0.10.0's engine (not built yet; v0.2.48 has the CloseContents fix): Closing a window frees its tabs 4 s late** (engine, not tried; from Ardia `cba28a9c`, 2026-11-11). Ray's
     `ac_web_contents_delegate.mm` `CloseContents` drops a page's unload-done reply while Chrome closes the window,
     so the close waits on two 2 s fallback timers: the tabs are saved as lone closed tabs (reopening right after
     loses Back/Forward) and a private window's session outlives it by 4 s. Fix: an `engine-ray` fixup calling
@@ -399,7 +397,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 54. **Extensions allowed in Incognito may not show in private windows** (not tried; from Ardia `df9b9c0e`,
     2026-11-12). Ardia listed only `"incognito": "split"` extensions there. Check that Ray's private window shows a
     spanning extension allowed in Incognito (tile and popup) and that its Options opens in the normal window.
-55. **Web Store install fails when its icon can't be fetched** (engine; from Ardia `246e5e77`, 2026-11-12). Chrome's
+55. **In 0.10.0's engine (not built yet; v0.2.48 has the Web Store icon fix): Web Store install fails when its icon can't be fetched** (engine; from Ardia `246e5e77`, 2026-11-12). Chrome's
     `WebstoreInstallHelper` ends the install with "Image decode failed" if lh3.googleusercontent.com is blocked or the
     icon won't decode. Fix: Ardia's `chromium-webstore-icon-optional.patch` (install with the default icon) at the
     next engine rebuild.
@@ -419,7 +417,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     per-tab data, not Ray's UI; Chrome also keeps a 10,000-object zombie treadmill in the browser process). Not
     chased further: it needs Chromium-side tools (memory-infra traces) and an engine rebuild to change. Ray's own
     leaks (closed tabs' ⌃Tab pictures, per-tab bookkeeping) are fixed; `heap`/`leaks` can't see Ray's objects.
-59. **Extensions may vanish when the Safe Storage key changes** (engine, not tried; from Ardia `004fcffc`,
+59. **In 0.10.0's engine (not built yet; v0.2.48 has the pref-hash key-change patch): Extensions may vanish when the Safe Storage key changes** (engine, not tried; from Ardia `004fcffc`,
     2026-11-13). Chrome checks each installed extension's `extensions.settings` entry and developer mode against a
     tracked-pref hash encrypted with the Safe Storage key; once encrypted hashes exist, a profile hashed under an
     earlier key fails every check at its next load and Chrome removes all its extensions with no message. Ray's own
@@ -486,6 +484,7 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 
 | What | When |
 |---|---|
+| Engine on Ardia v0.2.48: Chromium 158.0.8127.36 (Helium 0.22.1), M157 and M158 security fixes, Memory Saver and preloading on by default, install by dropping a .crx on a page (Ray's prompt; a failure says why in a note), `ac_preconnect`, glic off, the 4 s window close fixed, Ardia's M158 safe-storage fix | 2026-11-23, 0.10.0 (not built yet) |
 | Delta updates: a release whose engine is unchanged downloads a few hundred KB instead of the 146 MB zip (Sparkle deltas from the last 3 releases, each checked before release) | 2026-11-12, `feat: sparkle delta updates` |
 | Resizable sidebar: drag its edge (240–480 pt, a rubber band at the limits as Ardia's, nothing drawn as Arc's), double-click for the standard width; one width for every window, remembered | 2026-11-12, `feat: resizable sidebar` |
 | A peeking sidebar's edge drags too, and ⌘S on a peeking sidebar docks it in place (no slide out and in again) | 2026-11-12, `fix: peeking sidebar resizes and docks in place` |

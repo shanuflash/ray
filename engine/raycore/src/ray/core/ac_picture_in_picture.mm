@@ -5,6 +5,10 @@
 #import <AppKit/AppKit.h>
 #import <objc/runtime.h>
 
+#include <deque>
+#include <optional>
+#include <string>
+
 #include "base/functional/bind.h"
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
@@ -22,6 +26,7 @@
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/views/overlay/video_overlay_window_views.h"
 #include "content/public/browser/picture_in_picture_window_controller.h"
@@ -30,6 +35,7 @@
 #include "ui/base/base_window.h"
 #include "ui/gfx/native_ui_types.h"
 #include "ray/core/ac_browser.h"
+#include "ray/core/ac_host_visibility.h"
 #include "ray/core/ac_launch_switches.h"
 #import "ray/core/raycore_internal.h"
 
@@ -37,11 +43,15 @@ namespace raycore {
 
 namespace {
 
-void Report(base::WeakPtr<content::WebContents> contents, bool active, NSString* kind) {
+void Report(base::WeakPtr<content::WebContents> contents,
+            bool active,
+            NSString* kind,
+            NSString* closed_by = nil,
+            bool auto_pip = false) {
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(
                      [](base::WeakPtr<content::WebContents> contents, bool active,
-                        NSString* kind) {
+                        NSString* kind, NSString* closed_by, bool auto_pip) {
                        if (!contents) {
                          return;
                        }
@@ -49,18 +59,82 @@ void Report(base::WeakPtr<content::WebContents> contents, bool active, NSString*
                        id<RayCoreTabDelegate> delegate = tab.delegate;
                        if ([delegate respondsToSelector:@selector
                                      (tab:didChangePictureInPicture:)]) {
-                         [delegate tab:tab
-                             didChangePictureInPicture:@{
-                               @"active" : @(active),
-                               @"kind" : kind,
-                             }];
+                         NSMutableDictionary* state = [@{
+                           @"active" : @(active),
+                           @"kind" : kind,
+                         } mutableCopy];
+                         if (closed_by) {
+                           state[@"closedBy"] = closed_by;
+                           state[@"auto"] = @(auto_pip);
+                         }
+                         [delegate tab:tab didChangePictureInPicture:state];
                        }
                      },
-                     contents, active, kind));
+                     contents, active, kind, closed_by, auto_pip));
 }
 
 bool Background() {
   return BackgroundInstance();
+}
+
+constexpr size_t kActivationNoteLimit = 4;
+constexpr size_t kCloseRecordLimit = 8;
+constexpr base::TimeDelta kExitRequestWindow = base::Seconds(2);
+
+struct ActivationNote {
+  std::string change;
+  long window = 0;
+  base::TimeTicks at;
+};
+
+struct CloseRecordState {
+  std::deque<ActivationNote> activations;
+  std::deque<std::string> records;
+  base::TimeTicks exit_requested_at;
+  int closes = 0;
+};
+
+CloseRecordState& CloseState() {
+  static base::NoDestructor<CloseRecordState> state;
+  return *state;
+}
+
+bool TakeExitRequest() {
+  CloseRecordState& state = CloseState();
+  const bool requested = !state.exit_requested_at.is_null() &&
+                         base::TimeTicks::Now() - state.exit_requested_at < kExitRequestWindow;
+  state.exit_requested_at = base::TimeTicks();
+  return requested;
+}
+
+std::string RecentActivations(base::TimeTicks now) {
+  const CloseRecordState& state = CloseState();
+  std::string out;
+  for (auto it = state.activations.rbegin(); it != state.activations.rend(); ++it) {
+    if (!out.empty()) {
+      out += ", ";
+    }
+    out += base::StringPrintf("%s window=%ld ageMs=%ld", it->change.c_str(), it->window,
+                              static_cast<long>((now - it->at).InMilliseconds()));
+  }
+  return out.empty() ? "none" : out;
+}
+
+void RecordClose(content::WebContents* opener, NSString* kind, bool entered_auto, bool by_app) {
+  CloseRecordState& state = CloseState();
+  AutoPictureInPictureTabHelper* helper =
+      opener ? AutoPictureInPictureTabHelper::FromWebContents(opener) : nullptr;
+  const int chrome_auto = helper ? (helper->IsInAutoPictureInPicture() ? 1 : 0) : -1;
+  const std::optional<bool> shown = ShownByHost(opener);
+  state.closes++;
+  state.records.push_back(base::StringPrintf(
+      "#%d by=%s kind=%s opener=%d enteredAuto=%d chromeAuto=%d hostShown=%d activations=[%s]",
+      state.closes, by_app ? "app" : "chrome", kind.UTF8String, opener != nullptr, entered_auto,
+      chrome_auto, shown ? (*shown ? 1 : 0) : -1,
+      RecentActivations(base::TimeTicks::Now()).c_str()));
+  while (state.records.size() > kCloseRecordLimit) {
+    state.records.pop_front();
+  }
 }
 
 }
@@ -113,7 +187,7 @@ class DocumentPipBrowsers : public BrowserCollectionObserver {
   DocumentPipBrowsers() { observation_.Observe(GlobalBrowserCollection::GetInstance()); }
 
   void OnBrowserCreated(BrowserWindowInterface* browser) override {
-    if (browser->GetType() != BrowserWindowInterface::TYPE_PICTURE_IN_PICTURE ||
+    if (!DesktopBrowserWindowCapabilities::IsDocumentPictureInPicture(browser) ||
         WindowHost::ForBrowser(browser) || !browser->GetWindow()) {
       return;
     }
@@ -141,8 +215,9 @@ class PictureInPictureObserver : public PictureInPictureWindowManager::Observer 
       return;
     }
     kind_ = manager->GetChildWebContents() ? @"document" : @"video";
+    auto* helper = AutoPictureInPictureTabHelper::FromWebContents(opener);
+    entered_auto_ = helper && helper->IsInAutoPictureInPicture();
     if (PictureInPictureTracing()) {
-      auto* helper = AutoPictureInPictureTabHelper::FromWebContents(opener);
       TracePictureInPicture(base::StringPrintf(
           "engine: PiP window opened (%s) for %s; Chrome's auto PiP: %d",
           kind_.UTF8String, std::string(opener->GetLastCommittedURL().host()).c_str(),
@@ -162,16 +237,19 @@ class PictureInPictureObserver : public PictureInPictureWindowManager::Observer 
       }
       TracePictureInPicture("engine: PiP window closed, by" + base::SysNSStringToUTF8(frames));
     }
+    const bool by_app = TakeExitRequest();
+    RecordClose(opener_.get(), kind_, entered_auto_, by_app);
     if (!opener_) {
       return;
     }
-    Report(opener_, false, kind_);
+    Report(opener_, false, kind_, by_app ? @"app" : @"chrome", entered_auto_);
     opener_ = nullptr;
   }
 
  private:
   base::WeakPtr<content::WebContents> opener_;
   NSString* __strong kind_ = @"video";
+  bool entered_auto_ = false;
 };
 
 }
@@ -230,6 +308,33 @@ void TraceAutoPictureInPictureInputs(content::WebContents* contents, const char*
     TracePictureInPicture(std::string("engine: ") + when + ": " +
                           AutoPictureInPictureInputs(contents));
   }
+}
+
+void NoteWindowActivation(const char* change, long window_number) {
+  CloseRecordState& state = CloseState();
+  state.activations.push_back({change, window_number, base::TimeTicks::Now()});
+  while (state.activations.size() > kActivationNoteLimit) {
+    state.activations.pop_front();
+  }
+}
+
+void NotePictureInPictureExitRequested() {
+  CloseState().exit_requested_at = base::TimeTicks::Now();
+}
+
+std::string PictureInPictureCloseRecord() {
+  const CloseRecordState& state = CloseState();
+  if (state.records.empty()) {
+    return "none";
+  }
+  std::string out;
+  for (const std::string& record : state.records) {
+    if (!out.empty()) {
+      out += " | ";
+    }
+    out += record;
+  }
+  return out;
 }
 
 void StartPictureInPictureObserver() {

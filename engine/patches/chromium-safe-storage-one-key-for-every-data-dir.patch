@@ -1,0 +1,20 @@
+Chromium 158 gives a browser on a non-default user data directory its own Safe Storage key: with
+KeychainKeyProviderUserDataDirProtection (on by default) the "v10" key is reported unavailable and new data is
+encrypted as "v11" with another salt. RayCore always passes --user-data-dir, so every Ray profile counts as
+non-default: the saved passwords and cookies of every user, all encrypted with the "v10" key from "Ray Safe
+Storage", would stop decrypting. Ray keeps the one provider and the one key for every data directory, whatever the
+feature says.
+
+--- a/chrome/browser/browser_process_impl.cc
++++ b/chrome/browser/browser_process_impl.cc
+@@ -1723,9 +1723,7 @@
+ 
+ #if BUILDFLAG(IS_MAC)
+   if (base::FeatureList::IsEnabled(features::kUseKeychainKeyProvider)) {
+-    if (!base::FeatureList::IsEnabled(
+-            features::kKeychainKeyProviderUserDataDirProtection) ||
+-        chrome::IsUsingDefaultDataDirectory().value_or(false)) {
++    if ((true)) {
+       providers.emplace_back(
+           /*precedence=*/10u,
+           std::make_unique<os_crypt_async::KeychainKeyProvider>(

@@ -1,16 +1,16 @@
 --- a/patches/build/05-build.sh
 +++ b/patches/build/05-build.sh
-@@ -4,7 +4,6 @@
- set -euo pipefail
- source "$(dirname "$0")/step-guard.sh" "$@"
- source "$(dirname "$0")/env.sh"
--CHROMIUM_SRC="$CB/chromium_git/chromium/src" "$(dirname "$0")/game-resource.sh" --apply
- cd "$CB/chromium_git/chromium/src"
- # RayCore is Chrome's own framework (the app stages it from out/Release_GN_arm64).
- TARGETS="${TARGETS:-chrome_framework}"
+@@ -10,7 +10,6 @@
+   *) echo "05-build.sh: run on the target operating system ($AC_TARGET_OS)" >&2; exit 64 ;;
+ esac
+ python3 "$AC_REPO/engine/patches/build/pathguard.py" output "$PWD" "$GN_OUT_CONFIGS"
+-CHROMIUM_SRC="$PWD" "$AC_REPO/engine/patches/build/game-resource.sh" --apply
+ read -r -a build_targets <<< "${TARGETS:-$AC_CHROMIUM_TARGET}"
+ build_flags=()
+ if [[ -n "${JOBS:-}" ]]; then build_flags+=(-j "$JOBS"); fi
 --- a/patches/series.py
 +++ b/patches/series.py
-@@ -213,7 +213,6 @@
+@@ -256,7 +256,6 @@
          if error:
              sys.exit(f"error: {step} does not apply:\n{error}")
          print(f"applied {step}")

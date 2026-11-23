@@ -438,6 +438,34 @@ enum TestCommands {
 
   private static var importSession: ImportSession?
 
+  /// `crxdrop <absolute path>`: drops that file on the active tab's page as Finder would (the engine's
+  /// `ac_extension_drop.mm` installs a .crx through the normal install prompt).
+  private static func dropFiles(_ path: String) -> String {
+    guard path.hasPrefix("/"), FileManager.default.fileExists(atPath: path) else { return "usage: crxdrop <absolute path>" }
+    guard let controller = AppController.shared.current, let tab = controller.activeTab else { return "no tab" }
+    let window = controller.window
+    func target(in view: NSView) -> NSView? {
+      if NSStringFromClass(type(of: view)) == "WebContentsViewCocoa" { return view }
+      return view.subviews.lazy.compactMap(target(in:)).first
+    }
+    guard let view = target(in: tab.view) ?? tab.view.superview.flatMap(target(in:)) else { return "no page view" }
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("ray-test-drop-\(UUID().uuidString)"))
+    pasteboard.clearContents()
+    pasteboard.writeObjects([URL(fileURLWithPath: path) as NSURL])
+    let bounds = view.convert(view.bounds, to: nil)
+    let drop = TestDrop(pasteboard: pasteboard, window: window, at: NSPoint(x: bounds.midX, y: bounds.midY))
+    let destination = view as AnyObject
+    _ = destination.draggingEntered?(drop)
+    _ = destination.draggingUpdated?(drop)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+      let accepted = destination.performDragOperation?(drop) ?? false
+      destination.concludeDragOperation?(drop)
+      respond("crxdrop dropped", accepted ? "accepted" : "refused")
+      pasteboard.releaseGlobally()
+    }
+    return "ok"
+  }
+
   private static func respond(_ line: String, _ result: String) {
     FileHandle.standardError.write("[ray-test] \(line) -> \(result)\n".data(using: .utf8)!)
   }
@@ -639,6 +667,16 @@ enum TestCommands {
       result = extensionPrompt(argument)
     case "extclose":
       AppController.shared.current?.extensions.closePopup()
+    case "crxdrop":
+      result = dropFiles(argument)
+    case "extfailed":
+      guard let engine = RayCoreEngine.shared else { result = "no engine"; break }
+      AppController.shared.engine(engine, extensionInstallFailed: argument, tab: AppController.shared.current?.activeTab)
+    case "memorysaver":
+      // Answered later, on the engine's reply: Memory Saver's state as the engine has it.
+      guard let profile = AppController.shared.current?.profile else { result = "no window"; break }
+      EngineCalls.call("ac_memory_saver", profile: profile) { reply in respond(line, json(reply ?? NSNull())) }
+      return
     case "onboarding":
       result = onboarding(argument)
     case "winsize":
@@ -937,4 +975,30 @@ enum TestCommands {
     }
     return "ok"
   }
+}
+
+/// A file drag from outside Ray, for `crxdrop`: what AppKit hands a drag destination.
+private final class TestDrop: NSObject, NSDraggingInfo {
+  let draggingPasteboard: NSPasteboard
+  let draggingDestinationWindow: NSWindow?
+  let draggingLocation: NSPoint
+  init(pasteboard: NSPasteboard, window: NSWindow, at point: NSPoint) {
+    draggingPasteboard = pasteboard
+    draggingDestinationWindow = window
+    draggingLocation = point
+  }
+  var draggingSourceOperationMask: NSDragOperation { .copy }
+  var draggedImageLocation: NSPoint { draggingLocation }
+  var draggedImage: NSImage? { nil }
+  var draggingSource: Any? { nil }
+  var draggingSequenceNumber: Int { 1 }
+  var draggingFormation: NSDraggingFormation = .default
+  var animatesToDestination = false
+  var numberOfValidItemsForDrop = 1
+  var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+  func slideDraggedImage(to screenPoint: NSPoint) {}
+  func resetSpringLoading() {}
+  func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?,
+                              classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+                              using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
 }

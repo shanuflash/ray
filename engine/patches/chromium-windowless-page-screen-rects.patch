@@ -1,0 +1,87 @@
+diff --git a/content/browser/renderer_host/render_widget_host_impl.cc b/content/browser/renderer_host/render_widget_host_impl.cc
+--- a/content/browser/renderer_host/render_widget_host_impl.cc
++++ b/content/browser/renderer_host/render_widget_host_impl.cc
+@@ -192,6 +192,9 @@ using blink::WebKeyboardEvent;
+ using blink::WebMouseEvent;
+ using blink::WebMouseWheelEvent;
+ 
++bool (*g_ray_hidden_widget_takes_screen_rects)(
++    content::RenderWidgetHost* widget) = nullptr;
++
+ namespace content {
+ namespace {
+ 
+@@ -720,7 +723,9 @@ void RenderWidgetHostImpl::SendScreenRects() {
+   if (waiting_for_screen_rects_ack_) {
+     return;
+   }
+-  if (is_hidden_) {
++  if (is_hidden_ && !(g_ray_hidden_widget_takes_screen_rects &&
++                      last_window_screen_rect_.IsEmpty() &&
++                      g_ray_hidden_widget_takes_screen_rects(this))) {
+     // On GTK, this comes in for backgrounded tabs. Ignore, to match what
+     // happens on Win & Mac, and when the view is shown it'll call this again.
+     return;
+diff --git a/content/browser/renderer_host/render_widget_host_view_mac.mm b/content/browser/renderer_host/render_widget_host_view_mac.mm
+--- a/content/browser/renderer_host/render_widget_host_view_mac.mm
++++ b/content/browser/renderer_host/render_widget_host_view_mac.mm
+@@ -93,6 +93,13 @@
+ #include "ui/gfx/mac/coordinate_conversion.h"
+ #include "ui/gfx/native_ui_types.h"
+ #include "ui/menus/cocoa/text_services_context_menu.h"
++#include "ray/core/ac_content_hooks.h"  // nogncheck
++
++bool (*g_ray_windowless_page_screen_rects)(
++    content::RenderWidgetHost* host,
++    const gfx::Size& view_size,
++    gfx::Rect* window_frame_in_screen,
++    gfx::Point* view_origin_in_window) = nullptr;
+ 
+ using blink::WebGestureEvent;
+ using blink::WebInputEvent;
+@@ -104,6 +111,16 @@
+ 
+ namespace {
+ 
++bool RayWindowlessScreenRects(RenderWidgetHost* host,
++                                bool windowless,
++                                const gfx::Size& view_size,
++                                gfx::Rect* window_frame,
++                                gfx::Point* view_origin) {
++  return windowless && g_ray_windowless_page_screen_rects &&
++         g_ray_windowless_page_screen_rects(host, view_size, window_frame,
++                                              view_origin);
++}
++
+ // If enabled, when the text input state changes `[NSApp updateWindows]` is
+ // called after a delay. This is done as `updateWindows` can be quite
+ // costly, and if the text input state is changing rapidly there is no need to
+@@ -719,6 +736,14 @@ void SendVisibleTimeRequestToDelegatedFrameHost(
+ }
+ 
+ gfx::Rect RenderWidgetHostViewMac::GetViewBounds() {
++  gfx::Rect window_frame;
++  gfx::Point view_origin;
++  if (RayWindowlessScreenRects(
++          host(), IsHeadless() || window_frame_in_screen_dip_.IsEmpty(),
++          view_bounds_in_window_dip_.size(), &window_frame, &view_origin)) {
++    return gfx::Rect(window_frame.origin() + view_origin.OffsetFromOrigin(),
++                     view_bounds_in_window_dip_.size());
++  }
+   return view_bounds_in_window_dip_ +
+          window_frame_in_screen_dip_.OffsetFromOrigin();
+ }
+@@ -1567,6 +1592,13 @@ void CombineTextNodesAndMakeCallback(SpeechCallback callback,
+ }
+ 
+ gfx::Rect RenderWidgetHostViewMac::GetBoundsInScreen() {
++  gfx::Rect window_frame;
++  gfx::Point view_origin;
++  if (RayWindowlessScreenRects(
++          host(), IsHeadless() || window_frame_in_screen_dip_.IsEmpty(),
++          view_bounds_in_window_dip_.size(), &window_frame, &view_origin)) {
++    return window_frame;
++  }
+   return window_frame_in_screen_dip_;
+ }
+ 

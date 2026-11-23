@@ -3,14 +3,20 @@
 #ifndef CHROME_BROWSER_RAY_AC_ENGINE_H_
 #define CHROME_BROWSER_RAY_AC_ENGINE_H_
 
+#include <cstddef>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "base/supports_user_data.h"
+#include "base/time/time.h"
 #include "base/values.h"
+#include "build/build_config.h"
+#include "chrome/browser/ray/ac_sensitive_args.h"
 #include "chrome/browser/ray/public/ac_engine.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_observer.h"
@@ -19,6 +25,31 @@
   extern "C" AC_ENGINE_EXPORT void name(                                \
       const char* profile_dir, const char* args_json,                   \
       ac_engine_reply_t reply, void* context)
+
+#define AC_PROFILE_CALL(name, ...)                                      \
+  static void name##_Run(ray::Call& call);                            \
+  AC_ENGINE_CALL(name) {                                                \
+    ray::Call call(profile_dir, args_json, reply,                     \
+                     context __VA_OPT__(, ) __VA_ARGS__);               \
+    if (call) {                                                         \
+      name##_Run(call);                                                 \
+    }                                                                   \
+  }                                                                     \
+  static void name##_Run(ray::Call& call)
+
+#define AC_ARGS_CALL(name)                                              \
+  static void name##_Run(ray::ArgsCall& call);                        \
+  AC_ENGINE_CALL(name) {                                                \
+    ray::ArgsCall call(args_json, reply, context);                    \
+    if (call) {                                                         \
+      name##_Run(call);                                                 \
+    }                                                                   \
+  }                                                                     \
+  static void name##_Run(ray::ArgsCall& call)
+
+namespace content {
+class WebContents;
+}
 
 namespace ray {
 
@@ -32,6 +63,8 @@ class Reply {
   ~Reply();
 
   void Send(base::DictValue result);
+  void SendSecretJSON(std::string& json);
+  void SendSecret(base::DictValue result);
   void Ok();
   void Error(std::string_view message);
 
@@ -42,33 +75,74 @@ class Reply {
 
 enum class OffTheRecord { kRefuse, kAllow };
 
-class Call {
+struct Sensitive {
+  size_t max_bytes;
+};
+
+inline constexpr size_t kNoArgsLimit = std::numeric_limits<size_t>::max();
+
+inline constexpr int kSettleChecks = 20;
+inline constexpr base::TimeDelta kSettleStep = base::Milliseconds(50);
+
+class ArgsCall {
+ public:
+  ArgsCall(const char* args_json,
+           ac_engine_reply_t reply,
+           void* context,
+           size_t max_bytes = kNoArgsLimit,
+           OffTheRecord off_the_record = OffTheRecord::kRefuse);
+  ArgsCall(const ArgsCall&) = delete;
+  ArgsCall& operator=(const ArgsCall&) = delete;
+  ~ArgsCall();
+
+  explicit operator bool() const { return parsed_; }
+  bool off_the_record() const { return off_the_record_; }
+  const base::DictValue& args() const { return args_; }
+  std::string String(std::string_view key) const;
+  bool Bool(std::string_view key, bool fallback = false) const;
+  double Double(std::string_view key, double fallback = 0) const;
+  std::optional<Secret> SecretAt(std::string_view key) const;
+
+  Reply TakeReply() { return std::move(reply_); }
+
+ private:
+  base::DictValue args_;
+  Reply reply_;
+  bool parsed_ = false;
+  bool off_the_record_ = false;
+};
+
+class Call : public ArgsCall {
  public:
   Call(const char* profile_dir,
        const char* args_json,
        ac_engine_reply_t reply,
        void* context,
        OffTheRecord off_the_record = OffTheRecord::kRefuse);
-  Call(const Call&) = delete;
-  Call& operator=(const Call&) = delete;
+  Call(const char* profile_dir,
+       const char* args_json,
+       ac_engine_reply_t reply,
+       void* context,
+       Sensitive sensitive);
   ~Call();
 
   explicit operator bool() const { return profile_ != nullptr; }
   Profile* profile() const { return profile_; }
-  const base::DictValue& args() const { return args_; }
-  std::string String(std::string_view key) const;
-  bool Bool(std::string_view key, bool fallback = false) const;
-  double Double(std::string_view key, double fallback = 0) const;
-
-  Reply TakeReply() { return std::move(reply_); }
 
  private:
+  Call(const char* profile_dir,
+       const char* args_json,
+       ac_engine_reply_t reply,
+       void* context,
+       size_t max_bytes,
+       OffTheRecord off_the_record);
+
   Profile* profile_ = nullptr;
-  base::DictValue args_;
-  Reply reply_;
 };
 
 Profile* ProfileAt(std::string_view dir);
+
+content::WebContents* TabWithId(int id);
 
 class ProfileState : public base::SupportsUserData::Data,
                      public ProfileObserver {
@@ -89,13 +163,23 @@ class ProfileState : public base::SupportsUserData::Data,
 };
 
 template <typename T>
-T& StateFor(Profile* profile) {
+const void* StateKey() {
   static const int kKey = 0;
-  auto* state = static_cast<T*>(profile->GetUserData(&kKey));
+  return &kKey;
+}
+
+template <typename T>
+T* ExistingStateFor(Profile* profile) {
+  return static_cast<T*>(profile->GetUserData(StateKey<T>()));
+}
+
+template <typename T>
+T& StateFor(Profile* profile) {
+  T* state = ExistingStateFor<T>(profile);
   if (!state) {
     auto owned = std::make_unique<T>(profile);
     state = owned.get();
-    profile->SetUserData(&kKey, std::move(owned));
+    profile->SetUserData(StateKey<T>(), std::move(owned));
   }
   return *state;
 }

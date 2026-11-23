@@ -4,7 +4,10 @@
 #define CHROME_BROWSER_RAY_PIP_AC_PIP_WINDOW_H_
 
 #include <memory>
+#include <optional>
+#include <vector>
 
+#include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
@@ -42,11 +45,16 @@ class RayVideoOverlayWindow : public VideoOverlayWindowViews {
   void OnCloseButtonPressed();
   void HideIdleControlsUnlessPointerOnControl();
   void MaybeSaveBounds();
+  void SavePendingBounds();
   void FinishHide();
+  void PresentNativeControls();
 
   raw_ptr<RayProgressBar> ac_progress_bar_ = nullptr;
   base::TimeDelta ac_hide_fade_;
   base::OneShotTimer ac_hide_timer_;
+  std::optional<gfx::Rect> ac_pending_bounds_;
+  base::OneShotTimer ac_save_bounds_timer_;
+  std::vector<base::CallbackListSubscription> ac_button_state_subscriptions_;
 };
 
 std::unique_ptr<VideoOverlayWindowViews> NewRayVideoOverlayWindow(

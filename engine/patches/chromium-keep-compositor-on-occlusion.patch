@@ -1,0 +1,196 @@
+An occluded window keeps its page's compositor and last frame (#662), for a while. A window whose Space goes out of
+view is occluded, and after Chrome's occlusion delay `RenderWidgetHostViewMac::WasOccluded` hides the host, so
+`BrowserCompositorMac::UpdateState` put the page's own compositor up for recycling: the NSView lost its layer
+contents, and on return the page stayed blank until the renderer drew again (2-3 s in reports). Chrome's own pages
+use their parent layer's compositor and keep their frame when only occluded; RayCore's page views own theirs. Now
+while the host is hidden but the view's root layer is still visible (occluded, not hidden), the compositor stays
+(`BrowserCompositorMac::HoldForOcclusion`), and showing the host again re-shows the DelegatedFrameHost
+(`BrowserCompositorMac::ShowHeld`). A real hide (the view made invisible) still retires the compositor as before.
+
+The hold is bounded, because each held compositor keeps one frame's IOSurface in the GPU process (measured 10-30 MB
+a window: 11.8 -> 24.4 MB for a static page, 13.1 -> 42.3 MB for a 720p video). After 10 minutes occluded
+(`hold_for` of the `HoldCompositorWhileOccluded` feature) the compositor is retired as before the hold
+(`BrowserCompositorMac::ReleaseHeld`), so a window left on another Space costs nothing after that and returns blank
+until the renderer draws, as without the hold. 10 minutes covers going to another Space and back in the same task,
+which is what the hold is for, while a window left behind for longer stops costing memory. Under memory pressure no
+compositor is held and every held one is released (a `base::MemoryConsumer`, which the browser's
+`MemoryPressureListenerPolicy` drives from the system's pressure level and back when it ends). The timer stops when the host is shown again, on any real state change and on destruction.
+`--enable-features=HoldCompositorWhileOccluded:hold_for/5s` shortens the hold for tests;
+`--disable-features=HoldCompositorWhileOccluded` turns it off.
+
+--- a/content/browser/renderer_host/browser_compositor_view_mac.h
++++ b/content/browser/renderer_host/browser_compositor_view_mac.h
+@@ -8,6 +8,7 @@
+ #include <memory>
+ 
+ #include "base/memory/raw_ptr.h"
++#include "base/memory_coordinator/memory_consumer.h"
+ #include "base/time/time.h"
+ #include "base/timer/timer.h"
+ #include "components/viz/client/frame_evictor.h"
+@@ -52,8 +53,10 @@ class BrowserCompositorMacClient {
+ //   is visible.
+ // - The RenderWidgetHostViewMac that is used to display these frames is
+ //   attached to the NSView hierarchy of an NSWindow.
+-class CONTENT_EXPORT BrowserCompositorMac : public DelegatedFrameHostClient,
+-                                            public ui::LayerObserver {
++class CONTENT_EXPORT BrowserCompositorMac
++    : public DelegatedFrameHostClient,
++      public ui::LayerObserver,
++      public base::MemoryConsumer {
+  public:
+   BrowserCompositorMac(
+       ui::AcceleratedWidgetMacNSView* accelerated_widget_mac_ns_view,
+@@ -181,6 +184,11 @@ class CONTENT_EXPORT BrowserCompositorMac : public DelegatedFrameHostClient,
+   State state_ = HasNoCompositor;
+   void UpdateState();
+   void TransitionToState(State new_state);
++  void HoldForOcclusion();
++  void ReleaseHeldCompositor();
++
++  void OnReleaseMemory() override;
++  void OnUpdateMemoryLimit() override;
+ 
+   // Weak pointer to the layer supplied and reset via SetParentUiLayer. |this|
+   // is an observer of |parent_ui_layer_|, to ensure that |parent_ui_layer_|
+@@ -196,6 +204,8 @@ class CONTENT_EXPORT BrowserCompositorMac : public DelegatedFrameHostClient,
+   std::unique_ptr<ui::RecyclableCompositorMac> retired_compositor_;
+   gfx::CALayerParams retired_ca_layer_params_;
+   base::OneShotTimer retired_compositor_timer_;
++  base::OneShotTimer held_compositor_timer_;
++  base::MemoryConsumerRegistration memory_consumer_registration_;
+ 
+   std::unique_ptr<DelegatedFrameHost> delegated_frame_host_;
+   std::unique_ptr<ui::LayerSurface> root_layer_;
+--- a/content/browser/renderer_host/browser_compositor_view_mac.mm
++++ b/content/browser/renderer_host/browser_compositor_view_mac.mm
+@@ -12,6 +12,8 @@
+ 
+ #include "base/command_line.h"
+ #include "base/containers/circular_deque.h"
++#include "base/feature_list.h"
++#include "base/metrics/field_trial_params.h"
+ #include "base/no_destructor.h"
+ #include "base/trace_event/trace_event.h"
+ #include "components/viz/common/features.h"
+@@ -34,6 +36,18 @@
+ constexpr base::TimeDelta kRetiredCompositorLifetime = base::Seconds(4);
+ constexpr base::TimeDelta kRetiredCompositorOverlap = base::Milliseconds(50);
+ 
++BASE_FEATURE(kHoldCompositorWhileOccluded, base::FEATURE_ENABLED_BY_DEFAULT);
++const base::FeatureParam<base::TimeDelta> kHoldCompositorWhileOccludedFor{
++    &kHoldCompositorWhileOccluded, "hold_for", base::Minutes(10)};
++
++constexpr base::MemoryConsumerTraits kHeldCompositorTraits(
++    base::MemoryConsumerTraits::EstimatedMemoryUsage::kMedium,
++    base::MemoryConsumerTraits::ReleaseMemoryDataAccess::kNone,
++    base::MemoryConsumerTraits::InformationRetention::kLossless,
++    base::MemoryConsumerTraits::ExecutionType::kSynchronous,
++    base::MemoryConsumerTraits::InProcess::kNo,
++    base::MemoryConsumerTraits::RecreateMemoryCost::kCheap);
++
+ // Weak pointers to all BrowserCompositorMac instances, used to
+ // - Determine if a spare RecyclableCompositorMac should be kept around (one
+ //   should be only if there exists at least one BrowserCompositorMac).
+@@ -58,6 +72,11 @@
+     const viz::FrameSinkId& frame_sink_id)
+     : client_(client),
+       accelerated_widget_mac_ns_view_(accelerated_widget_mac_ns_view),
++      memory_consumer_registration_(
++          "BrowserCompositorMac",
++          kHeldCompositorTraits,
++          this,
++          base::MemoryConsumerRegistration::CheckUnregister::kDisabled),
+       weak_factory_(this) {
+   GetBrowserCompositors().insert(this);
+ 
+@@ -77,6 +96,7 @@
+   // Ensure that copy callbacks completed or cancelled during further tear-down
+   // do not call back into this.
+   weak_factory_.InvalidateWeakPtrs();
++  held_compositor_timer_.Stop();
+ 
+   TransitionToState(HasNoCompositor);
+   ReleaseRetiredCompositor();
+@@ -200,8 +220,18 @@
+ }
+ 
+ void BrowserCompositorMac::SetRenderWidgetHostIsHidden(bool hidden) {
++  const bool was_held =
++      state_ == HasOwnCompositor && render_widget_host_is_hidden_;
+   render_widget_host_is_hidden_ = hidden;
++  if (!hidden) {
++    held_compositor_timer_.Stop();
++  }
+   UpdateState();
++  if (was_held && !hidden && state_ == HasOwnCompositor) {
++    TRACE_EVENT_INSTANT("content", "BrowserCompositorMac::ShowHeld");
++    delegated_frame_host_->WasShown(GetRendererLocalSurfaceId(), dfh_size_dip_,
++                                    {});
++  }
+   if (state_ == UseParentLayerCompositor) {
+     if (!hidden) {
+       // UpdateState might not call WasShown when showing a frame using the same
+@@ -233,6 +263,10 @@
+ 
+ void BrowserCompositorMac::SetViewVisible(bool visible) {
+   root_layer_->SetVisible(visible);
++  if (!visible && render_widget_host_is_hidden_ &&
++      state_ == HasOwnCompositor) {
++    UpdateState();
++  }
+ }
+ 
+ void BrowserCompositorMac::UpdateState() {
+@@ -248,10 +282,43 @@
+     return;
+   }
+ 
++  if (state_ == HasOwnCompositor && root_layer_->visible() &&
++      memory_limit() >= base::MemoryLimit::NoPressureThreshold() &&
++      base::FeatureList::IsEnabled(kHoldCompositorWhileOccluded)) {
++    HoldForOcclusion();
++    return;
++  }
++
+   // Otherwise put the compositor up for recycling.
+   TransitionToState(HasNoCompositor);
+ }
+ 
++void BrowserCompositorMac::HoldForOcclusion() {
++  if (held_compositor_timer_.IsRunning()) {
++    return;
++  }
++  TRACE_EVENT_INSTANT("content", "BrowserCompositorMac::HoldForOcclusion");
++  held_compositor_timer_.Start(FROM_HERE,
++                               kHoldCompositorWhileOccludedFor.Get(), this,
++                               &BrowserCompositorMac::ReleaseHeldCompositor);
++}
++
++void BrowserCompositorMac::ReleaseHeldCompositor() {
++  if (state_ != HasOwnCompositor || !render_widget_host_is_hidden_) {
++    return;
++  }
++  TRACE_EVENT_INSTANT("content", "BrowserCompositorMac::ReleaseHeld");
++  TransitionToState(HasNoCompositor);
++}
++
++void BrowserCompositorMac::OnReleaseMemory() {
++  if (memory_limit() < base::MemoryLimit::NoPressureThreshold()) {
++    ReleaseHeldCompositor();
++  }
++}
++
++void BrowserCompositorMac::OnUpdateMemoryLimit() {}
++
+ void BrowserCompositorMac::TransitionToState(State new_state) {
+   // Skip if there is no change to make.
+   bool is_no_op = false;
+@@ -263,6 +330,7 @@
+   }
+   if (is_no_op)
+     return;
++  held_compositor_timer_.Stop();
+ 
+   // First, detach from the current compositor, if there is one.
+   delegated_frame_host_->DetachFromCompositor();
