@@ -87,6 +87,11 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
   /// only; nothing global.
   private func installReservedKeyRouting() {
     NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+      // Escape leaves a page's full screen whatever has focus, as in Chrome (the page view may not be first responder).
+      if let self, let window = event.window, let controller = self.windows.first(where: { $0.window === window }),
+         controller.exitPageFullscreen(on: event) {
+        return nil
+      }
       guard let self, Shortcuts.isReserved(event), let window = event.window,
             self.windows.contains(where: { $0.window === window }),
             NSApp.mainMenu?.performKeyEquivalent(with: event) == true else { return event }

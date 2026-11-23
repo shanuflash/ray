@@ -8075,6 +8075,10 @@ const checks = {
     await until("page back in its card", async () => (await evaluate(sessionId, "innerWidth")) === width && !(await evaluate(sessionId, "!!document.fullscreenElement")));
     assert((await enter()) === "in", "the page couldn't go full screen again");
     await until("full screen again", async () => { await command("state"); return state().pageFullscreen.fillsWindow; });
+    if (!state().sidebar.today.some((e) => e.live && e.tab !== state().active)) {
+      await send("Target.createTarget", { url: `${origin}/b?fullscreen-other`, background: true });
+      await until("another tab", async () => { await command("state"); return state().sidebar.today.some((e) => e.live && e.tab !== state().active); });
+    }
     const other = state().sidebar.today.find((e) => e.live && e.tab !== state().active);
     await command(`row ${other.id}`);
     await until("a switch left it", async () => { await command("state"); return state().pageFullscreen.tab === null; });

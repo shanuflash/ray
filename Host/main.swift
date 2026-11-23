@@ -84,6 +84,13 @@ if !engineTests.isEmpty, let base = TestEnvironment["RAY_DATA_DIR"] {
 if TestEnvironment["RAY_ENGINE_FEATURES"] == "none" {
   engineArguments.removeAll { $0.hasPrefix("--enable-features=") }
 }
+if TestEnvironment.isTestBuild {
+  // Test-only: Chrome 158 refuses a page's full screen unless its view has keyboard focus
+  // (SuppressFullscreenFromUnfocusedView), and test windows never take focus.
+  engineArguments = engineArguments.map {
+    $0.hasPrefix("--disable-features=") ? $0 + ",SuppressFullscreenFromUnfocusedView" : $0
+  }
+}
 if TestEnvironment["RAY_IGNORE_CERT_ERRORS"] == "1" {
   // Test-only: the fixture's HTTPS server uses a throwaway self-signed certificate.
   engineArguments.append("--ignore-certificate-errors")

@@ -939,6 +939,9 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
 - A tab switch the engine reports (`window(_:didActivate:)`) is never sent back to it (`select(_:fromEngine:)`): two
   tabs opened in front at once (Open on two blocked pop-ups) leave a stale activation of each in flight, and echoing
   them flipped the two forever, each flip copying a page picture for ⌃Tab until the app ran out of memory.
+- Chrome 158 grants a page's full screen only while its view has keyboard focus (`SuppressFullscreenFromUnfocusedView`):
+  hidden test windows never do, so test builds turn that off (`main.swift`). Escape leaves a page's full screen from
+  `AppController`'s key monitor too, whatever has focus (`exitPageFullscreen(on:)`).
 - Shifted menu key equivalents must be uppercase ("C" for ⇧⌘C); real and synthetic ⇧-keys arrive uppercase.
 - Chrome's window swallows reserved shortcuts (⌘W with no tab) before the menu sees them: `AppController` routes
   `Shortcuts.isReserved` keys to the main menu from an app-local keyDown monitor. A menu item that

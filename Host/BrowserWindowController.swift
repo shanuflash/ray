@@ -311,7 +311,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   /// Escape leaves a page's full screen before the page sees the key, as Chrome's does.
-  private func exitPageFullscreen(on event: NSEvent) -> Bool {
+  func exitPageFullscreen(on event: NSEvent) -> Bool {
     guard event.type == .keyDown, event.keyCode == 53, let tab = pageFullscreenTab else { return false }
     tab.exitFullscreen()
     return true
