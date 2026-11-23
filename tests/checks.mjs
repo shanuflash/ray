@@ -3498,25 +3498,21 @@ const checks = {
   async "keep-old-history"() {
     // History older than 90 days imports and stays (--keep-old-history, Ardia's). Without it Chromium refuses such a
     // visit at import (`IsExpiredVisitTime`) and its expiry pass, 30 s after the history database opens, deletes the
-    // rest: a second instance that drops the switch shows the first.
+    // rest. Since 0.10.0's engine (Ardia v0.2.47+) the engine adds the switch itself, so no instance runs without it:
+    // the check is that a 200-day-old visit imports and outlives the first expiry pass.
     const kept = ownInstance("keep-history", {});
-    const expiring = ownInstance("expire-history", { RAY_HISTORY_EXPIRES: "1" });
     const url = "https://old-visit.example/";
     const has = async (it) => JSON.parse(await it.cmd(`importcheck history ${url}`)).has;
     try {
-      for (const it of [kept, expiring]) {
-        await until("instance up", async () => (await it.cmd("state").catch(() => null)) === "ok", 30000, 500);
-        const added = JSON.parse(await it.cmd(`importcheck oldvisit ${url} 200`));
-        assert(!added?.error, `import: ${JSON.stringify(added)}`);
-      }
+      await until("instance up", async () => (await kept.cmd("state").catch(() => null)) === "ok", 30000, 500);
+      const added = JSON.parse(await kept.cmd(`importcheck oldvisit ${url} 200`));
+      assert(!added?.error, `import: ${JSON.stringify(added)}`);
       await until("old visit imported", () => has(kept), 10000, 500);
-      assert(!(await has(expiring)), "Chromium took a 200-day-old visit without the switch: the check can't tell");
       // Past the first expiry pass.
       await sleep(40000);
       assert(await has(kept), "the old visit was deleted with --keep-old-history");
     } finally {
       await kept.stop().catch(() => {});
-      await expiring.stop().catch(() => {});
     }
   },
   async "import-browser"() {
@@ -8070,7 +8066,7 @@ const checks = {
     await until("/a active", () => state().active === tabFor("/a")?.id);
     const width = await evaluate(sessionId, "innerWidth");
     const enter = () => evaluate(sessionId, "document.documentElement.requestFullscreen().then(() => 'in', (e) => e.message)");
-    assert((await enter()) === "in", "the page couldn't go full screen");
+    { const r = await enter(); assert(r === "in", `the page couldn't go full screen: ${r}`); }
     await until("fills the window", async () => { await command("state"); return state().pageFullscreen.fillsWindow && state().pageFullscreen.sidebarHidden; });
     const rootWidth = Number(state().pageFullscreen.root.match(/\{\{[^}]*\}, \{([\d.]+)/)[1]);
     await until("page as wide as the window", async () => (await evaluate(sessionId, "innerWidth")) === rootWidth && rootWidth > width);
