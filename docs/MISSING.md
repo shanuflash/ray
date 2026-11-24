@@ -503,6 +503,15 @@ Smaller gaps found while building the items above. Each says where the fix goes.
       one-language Accept-Language; no Web Speech (no Google API key); no Reporting API; Shift + right-click skips the
       page's menu; weaker autofill form detection; Battery API answers defaults; translate offers, search suggestions
       in Chrome's omnibox, alternate error pages, hyperlink auditing and `canMakePayment` off.
+76. **Link from another app into a full-screen Ray: blank window, dead tabs** (2026-11-13, a colleague's recording,
+    Ray 0.9.6). Clicking a link in Slack's full-screen app swiped to Ray's full-screen Space. Ray showed no active tab
+    (the "no page" grey, no row highlighted), and the new Today tabs kept their bare URLs and globe icons; clicking them
+    did nothing; ⌘T worked. Lead, not confirmed: `BrowserWindowController.load` ignores `openTab` returning nil, which
+    RayCore does when the window's Browser won't admit tabs (`AdmitsTabsFor`: closing, close allowed, quitting) or
+    `Navigate` gives no contents; `select` then returns early, so nothing shows. Ruled out in hidden instances: window
+    sight/occlusion, a closed window, all tabs closed. Not reproducible without real full screen and Spaces. Next: a
+    count-only log line for a refused `openTab` (needs `openTab` declared nullable in RayCore.h, an engine change),
+    the `[ray]` stderr from a repro, and, if confirmed, opening the links in a fresh window when the engine refuses.
 
 ## Done
 
