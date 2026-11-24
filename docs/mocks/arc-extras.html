@@ -307,12 +307,7 @@
     opacity: 0; transition: opacity .1s; }
   #v8.open .in8 { opacity: 1; transition: opacity .2s .12s; }
   #v8 .hd8 { flex: none; }
-  #v8 .pills8 { position: relative; display: flex; gap: 6px; margin: 2px 0 10px; cursor: pointer; }
-  #v8 .pills8 span { position: relative; z-index: 1; height: 26px; padding: 0 12px; border-radius: 13px; display: grid; place-items: center;
-    font-size: 12px; font-weight: 600; color: var(--sec); background: var(--fill); transition: color .2s, background-color .2s; }
-  #v8 .pills8 span.on { color: #111; background: transparent; } /* ProfileColor.foreground: black has the higher contrast on Dia's lavender */
-  #v8 .pills8 .pk8 { position: absolute; top: 0; height: 26px; border-radius: 13px; background: var(--accent); z-index: 0;
-    transition: left .34s cubic-bezier(.22,1,.36,1), width .34s cubic-bezier(.22,1,.36,1); }
+  #v8 .hd8 .seg2 { margin: 0 0 8px; }
   #v8 .in8 .view { flex: 1; }
   #v8 .foot8 { position: absolute; left: 8px; right: 8px; bottom: 0; z-index: 3; }
   #v8 .btn.lib { transition: background .2s; }
@@ -1075,7 +1070,7 @@
         <div class="list" data-fill="tabs"></div>
       </div>
       <div class="grow8"><div class="in8">
-        <div class="hd8"><div class="pills8" data-seg="v8"><i class="pk8"></i><span class="on" data-v="dl">Downloads</span><span data-v="bm">Bookmarks</span></div></div>
+        <div class="hd8"><div class="seg2" data-seg="v8"><span class="on" data-v="dl">Downloads</span><span data-v="bm">Bookmarks</span></div></div>
         <div class="view dl stag" data-fill="dl"></div><div class="view bm stag" data-fill="bm"></div>
       </div></div>
       <div class="foot foot8" data-fill="foot" data-for="v8"></div>
@@ -1149,11 +1144,6 @@
     tb.addEventListener("click", e => { const b = e.target.closest("span[data-v]"); if (!b) return;
       tb.querySelectorAll("span").forEach(x => x.classList.toggle("on", x === b)); place(b);
       const sb = document.getElementById(tb.dataset.tabs); sb.classList.toggle("bm", b.dataset.v === "bm"); stagger(sb); });
-  });
-  document.querySelectorAll(".pills8").forEach(pl => {
-    const k = pl.querySelector(".pk8");
-    const place = () => { const b = pl.querySelector("span.on"); k.style.left = b.offsetLeft + "px"; k.style.width = b.offsetWidth + "px"; };
-    place(); pl.addEventListener("click", () => requestAnimationFrame(place));
   });
   const fly = document.getElementById("flyDemo");
   const replay = () => { fly.classList.remove("go"); void fly.offsetWidth; fly.classList.add("go"); };
