@@ -113,7 +113,8 @@ items above. The revamp that gives these a home is PLAN.md section 13.
 
 **Smaller**
 5. New tabs at the bottom of Today (Ray offers the top or below the current tab) and where the New Tab button sits.
-7. Alternate app icons: a few need designing first.
+7. Alternate app icons: designed as mocks (`docs/mocks/app-icons.html`, layers in `Branding/alternates/`), waiting
+   for the owner's pick; then the Dock tile plug-in and the `appIcon` row.
 8. Hide the address bar above the page (View › Show Address Bar on Page) while scrolling down: it tucks into a
    thin strip with the site's name; scrolling up or clicking the strip brings it back.
 9. Arc's "Clear" button between pinned tabs and Today (Ray has no such button yet; Clear Today's Tabs is only in
