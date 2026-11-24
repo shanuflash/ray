@@ -211,17 +211,86 @@
   .peekarrow { position: absolute; top: 50%; font-size: 22px; color: var(--accent); z-index: 6; }
   .floating { position: absolute; top: 6px; bottom: 6px; width: 236px; border-radius: 10px; background: var(--side); z-index: 4; padding: 8px 8px 0;
     box-shadow: 0 0 0 0.5px var(--surface-edge), 0 10px 30px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+
+  /* ---------- 8: library ---------- */
+  .btn.lib { position: relative; }
+  .btn.lib.big { width: 44px; height: 44px; border-radius: 10px; background: var(--fill); }
+  .btn.lib.big svg.sym { width: 18px; height: 18px; }
+  .btn.lib .ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 2; }
+  .ring .trk { stroke: var(--fill2); }
+  .ring .val { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 72.3; stroke-dashoffset: 72.3; }
+  .btn.lib .tick { position: absolute; opacity: 0; color: var(--accent); }
+  .cbadge { position: absolute; right: -3px; top: -3px; min-width: 14px; height: 14px; border-radius: 7px; padding: 0 3px; background: var(--accent);
+    color: var(--accent-ink); font: 700 9px/14px -apple-system, sans-serif; text-align: center; box-shadow: 0 0 0 1.5px var(--side); }
+  .states { display: flex; gap: 22px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .states > div { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 92px; text-align: center; }
+  .flyer { position: absolute; width: 22px; height: 22px; z-index: 8; opacity: 0; pointer-events: none; filter: drop-shadow(0 3px 6px rgba(0,0,0,.25)); }
+  .flyer svg { width: 100%; height: 100%; }
+  #flyDemo.go .flyer { animation: fly .55s cubic-bezier(.4,0,.6,1) 2.1s both; }
+  #flyDemo.go #flyRing { animation: fill 2s linear forwards; }
+  #flyDemo.go .arrow { animation: drop .6s ease-out; }
+  #flyDemo.go #flyBtn { animation: bump .42s cubic-bezier(.3,1.6,.5,1) 2.62s; }
+  #flyDemo.go #flyBtn .tick { animation: tick 1.9s ease 2.62s; }
+  #flyDemo.go #flyBtn .tray { animation: hidetray 1.9s ease 2.62s; }
+  #flyDemo.go .ring { animation: ringout .3s ease 2.62s forwards; }
+  @keyframes fill { to { stroke-dashoffset: 0; } }
+  @keyframes drop { from { transform: translateY(-5px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes fly { 0% { left: 330px; top: 196px; opacity: 0; transform: scale(1.3); } 10% { opacity: 1; }
+    45% { left: 170px; top: 120px; transform: scale(1.1) rotate(-12deg); } 92% { left: 15px; top: 263px; opacity: 1; transform: scale(.45); } 100% { left: 15px; top: 263px; opacity: 0; transform: scale(.3); } }
+  @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.15); } 100% { transform: scale(1); } }
+  @keyframes tick { 0%,100% { opacity: 0; } 10%,80% { opacity: 1; } }
+  @keyframes hidetray { 0%,100% { opacity: 1; } 10%,80% { opacity: 0; } }
+  @keyframes ringout { to { opacity: 0; } }
+  .slide { flex: 1; min-height: 0; overflow: hidden; position: relative; }
+  .slide .track { display: flex; width: 200%; height: 100%; transition: transform .38s cubic-bezier(.22,1,.36,1); }
+  .slide .pane { width: 50%; display: flex; flex-direction: column; flex: none; min-height: 0; overflow: hidden; }
+  .sb.open .slide .track { transform: translateX(-50%); }
+  .lhd { height: 30px; display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; padding: 0 4px; flex: none; }
+  .lhd .back { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 17px; color: var(--sec); cursor: pointer; }
+  .lhd .back:hover { background: var(--fill); }
+  .seg2 { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; margin: 6px 2px 8px; flex: none; cursor: pointer; }
+  .seg2 span { flex: 1; text-align: center; font-size: 12px; padding: 3px 0; border-radius: 6px; color: var(--sec); }
+  .seg2 span.on { background: var(--sel); color: var(--label); font-weight: 600; box-shadow: 0 0.5px 1.5px rgba(0,0,0,.12); }
+  .view { display: none; flex-direction: column; min-height: 0; flex: 1; overflow: hidden; }
+  .view.dl { display: flex; }
+  .sb.bm .view.dl { display: none; } .sb.bm .view.bm { display: flex; }
+  .search { margin: 0 2px 6px; height: 28px; border-radius: 7px; background: var(--fill); color: var(--sec); font-size: 12.5px; flex: none;
+    display: flex; align-items: center; gap: 6px; padding: 0 9px; }
+  .grp { font-size: 11px; font-weight: 600; color: var(--sec); margin: 8px 6px 2px; }
+  .dlr { display: flex; gap: 9px; align-items: flex-start; padding: 7px 6px; border-radius: 8px; flex: none; color: var(--label); }
+  .dlr:hover { background: var(--fill); }
+  .dlr.warn { background: color-mix(in srgb, #ff9f0a 12%, transparent); }
+  .fi { width: 26px; height: 30px; border-radius: 4px; background: #8e8e93; color: #fff; font: 700 7.5px/30px -apple-system, sans-serif; text-align: center; flex: none; }
+  .dt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .dt b { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dt .m { font-size: 11px; color: var(--sec); }
+  .dt .bar { height: 3px; border-radius: 2px; background: var(--fill2); position: relative; overflow: hidden; }
+  .dt .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 2px; }
+  .dt .acts { display: flex; gap: 6px; margin-top: 4px; }
+  .pb.sm { height: 22px; padding: 0 9px; font-size: 11.5px; }
+  .lft { margin-top: auto; padding: 8px 6px 4px; font-size: 12px; color: var(--accent); flex: none; }
+  .sheet { position: absolute; left: 4px; right: 4px; bottom: 40px; height: 66%; z-index: 2; border-radius: 12px 12px 8px 8px; padding: 6px 8px 8px;
+    background: var(--surface); box-shadow: 0 0 0 0.5px var(--surface-edge), 0 -8px 24px rgba(0,0,0,.12); display: flex; flex-direction: column;
+    transform: translateY(105%) scale(.96); transform-origin: 14px 100%; opacity: 0; transition: transform .38s cubic-bezier(.22,1,.36,1), opacity .16s; }
+  .sb.open .sheet { transform: none; opacity: 1; }
+  .sb { overflow: hidden; }
+  .sheet .grab { width: 34px; height: 4px; border-radius: 2px; background: var(--fill2); margin: 0 auto 4px; flex: none; }
+  .dimmable { transition: opacity .2s; }
+  .sb.open .dimmable { opacity: .45; }
+  [data-toggle] { cursor: pointer; }
 </style>
 </head>
 <body>
 <main>
   <h1>Arc extras for Ray</h1>
-  <p class="muted">Seven of Arc's smaller pieces that Ray still lacks (docs/MISSING.md, Arc's list items 8, 13, 15, 17, 18; Ardia's list item 9; and Collapse/Expand All Folders). Each section has 2–3 looks to pick from; the first is the recommended one unless marked otherwise. Sizes are Ray's (267 pt sidebar drawn at 236 here, 41 pt rows at 34, as in the other mocks) and Ardia's <code>theme.ts</code>. Flip Light/Dark to see both.</p>
+  <p class="muted">Seven of Arc's smaller pieces, plus downloads and bookmarks moved into the sidebar (section 8) that Ray still lacks (docs/MISSING.md, Arc's list items 8, 13, 15, 17, 18; Ardia's list item 9; and Collapse/Expand All Folders). Each section has 2–3 looks to pick from; the first is the recommended one unless marked otherwise. Sizes are Ray's (267 pt sidebar drawn at 236 here, 41 pt rows at 34, as in the other mocks) and Ardia's <code>theme.ts</code>. Flip Light/Dark to see both.</p>
   <div class="seg" id="theme"><button data-t="auto" class="on">Auto</button><button data-t="light">Light</button><button data-t="dark">Dark</button></div>
   <nav class="toc">
     <a href="#media">1. Media controls</a><a href="#pinned">2. Collapse Pinned</a><a href="#clear">3. Clear button</a>
     <a href="#unread">4. Unread counts</a><a href="#right">5. Sidebar on the right</a><a href="#capture">6. Capture</a>
     <a href="#folders">7. Collapse/Expand All Folders</a>
+    <a href="#library">8. Downloads and bookmarks in the sidebar</a>
   </nav>
 
   <!-- ================================================================ 1 -->
@@ -912,6 +981,177 @@
     <li class="plus">Where the pointer already is; also a home for 2's Collapse Pinned.</li>
     <li class="minus">Ray's sidebar has no background menu yet (Ardia's does): a new menu to build and keep in sync.</li>
   </ul>
+  <!-- ================================================================ 8 -->
+  <h2 id="library">8. Downloads and bookmarks inside the sidebar</h2>
+  <p>A redo of two things already built: Downloads (⌥⌘L) and Bookmarks (⌥⌘B) open today as <code>Panels</code> popups above their footer buttons. Here they open <em>inside the sidebar</em>, and the footer gets one button that moves: a download flies into it, a ring fills around it, it bounces when the file lands. Nothing changes in the engine: the same <code>ac_downloads_*</code> and <code>ac_bookmarks_*</code> calls, the same rows, menus and search as today's panels, in a new place.</p>
+  <table class="cmp">
+    <tr><th>Arc</th><td>Library button at the footer's left. Clicking it slides the whole sidebar sideways to a Library page (Downloads, Media, Easels, Archive), with a back arrow; the tabs come back the same way. A finished download flies into the button. No bookmarks.</td></tr>
+    <tr><th>Ardia</th><td>Downloads as a 300 pt popover with an arrow from its footer button (<code>DownloadsButton</code>, <code>downloadsPlacement</code>); bookmarks on a page of their own.</td></tr>
+    <tr><th>Chrome</th><td>The download bubble from a toolbar icon with a progress ring; bookmarks in the menu, the bar and a side panel.</td></tr>
+    <tr><th>Ray today</th><td>A downloads ring on the footer button (<code>downloadsRing</code>), Downloads and Bookmarks as two buttons and two panels over the sidebar (owner's pick B of <code>bookmarks.html</code>).</td></tr>
+  </table>
+
+  <h3>The moving button <span class="tag">shared by A, B and C</span></h3>
+  <p>One footer button, "Library", replaces the two. It shows what's happening: at rest, a tray; starting a download, an arrow drops into the tray; while files come in, a ring fills in the profile colour (the ring Ray already has) with a count when there are two or more; when one finishes, a file flies from the page into the button along a curve, the button bounces once on the sidebar's spring, and a tick shows for 1.5 s. A download waiting on Keep/Discard turns the ring orange. Reduce Motion: no flight, no bounce, the ring and tick only. Press <b>Replay</b> to watch it.</p>
+  <div class="stage">
+    <div class="win" style="width:560px;height:300px" id="flyDemo">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+        <div class="list"><div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Releases · ray</span></div><div class="row"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div></div>
+        <div class="foot"><span class="btn lib" id="flyBtn">
+          <svg class="ring" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11.5" class="trk"/><circle cx="14" cy="14" r="11.5" class="val" id="flyRing"/></svg>
+          <svg class="sym tray" viewBox="0 0 14 14"><path d="M2 8.5v2.5a1 1 0 001 1h8a1 1 0 001-1V8.5"/><path d="M2 8.5h2.8l.8 1.4h2.8l.8-1.4H12"/><path class="arrow" d="M7 1.8v4.6M5.2 4.8L7 6.6l1.8-1.8"/></svg>
+          <svg class="sym tick" viewBox="0 0 14 14"><path d="M3.5 7.3l2.3 2.3 4.7-5"/></svg>
+        </span><span class="sp"></span><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2.5v9M2.5 7h9"/></svg></span></div>
+      </div>
+      <div class="pg"><div class="sk" style="top:30px;height:22px;width:40%"></div><div class="sk" style="top:70px;height:100px"></div>
+        <div class="sk" style="top:190px;height:28px;width:160px;left:40px;right:auto;background:var(--accent);opacity:.85"></div></div>
+      <span class="flyer" id="flyer"><svg viewBox="0 0 14 14"><path d="M3.5 1.5h4.5l3 3v8h-7.5z" fill="var(--card)" stroke="var(--sec)" stroke-width="1"/><path d="M8 1.5v3h3" fill="none" stroke="var(--sec)" stroke-width="1"/></svg></span>
+    </div>
+    <div>
+      <div class="pb primary" id="flyPlay" style="cursor:pointer">Replay</div>
+      <div class="cap" style="margin-top:12px">The ring fills over ~2 s here; the flight is 0.55 s on a curve from the click (or the page's centre) to the button, the bounce is the sidebar's spring (0.26 s, 0.86) with a 1.15 scale peak.</div>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="states">
+      <div><span class="btn lib big"><svg class="sym tray" viewBox="0 0 14 14"><path d="M2 8.5v2.5a1 1 0 001 1h8a1 1 0 001-1V8.5"/><path d="M2 8.5h2.8l.8 1.4h2.8l.8-1.4H12"/></svg></span>At rest</div>
+      <div><span class="btn lib big"><svg class="sym tray" viewBox="0 0 14 14"><path d="M2 8.5v2.5a1 1 0 001 1h8a1 1 0 001-1V8.5"/><path d="M2 8.5h2.8l.8 1.4h2.8l.8-1.4H12"/><path d="M7 1.8v4.6M5.2 4.8L7 6.6l1.8-1.8" style="color:var(--accent)"/></svg></span>Started</div>
+      <div><span class="btn lib big"><svg class="ring" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11.5" class="trk"/><circle cx="14" cy="14" r="11.5" class="val" style="stroke-dashoffset:40"/></svg><svg class="sym tray" viewBox="0 0 14 14"><path d="M2 8.5v2.5a1 1 0 001 1h8a1 1 0 001-1V8.5"/><path d="M2 8.5h2.8l.8 1.4h2.8l.8-1.4H12"/></svg></span>45%</div>
+      <div><span class="btn lib big"><svg class="ring" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11.5" class="trk"/><circle cx="14" cy="14" r="11.5" class="val" style="stroke-dashoffset:22"/></svg><svg class="sym tray" viewBox="0 0 14 14"><path d="M2 8.5v2.5a1 1 0 001 1h8a1 1 0 001-1V8.5"/><path d="M2 8.5h2.8l.8 1.4h2.8l.8-1.4H12"/></svg><span class="cbadge">3</span></span>3 at once</div>
+      <div><span class="btn lib big"><svg class="sym" viewBox="0 0 14 14" style="color:var(--accent)"><path d="M3.5 7.3l2.3 2.3 4.7-5"/></svg></span>Done (1.5 s)</div>
+      <div><span class="btn lib big"><svg class="ring" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11.5" class="trk"/><circle cx="14" cy="14" r="11.5" class="val" style="stroke:#ff9f0a;stroke-dashoffset:30"/></svg><svg class="sym tray" viewBox="0 0 14 14"><path d="M2 8.5v2.5a1 1 0 001 1h8a1 1 0 001-1V8.5"/><path d="M2 8.5h2.8l.8 1.4h2.8l.8-1.4H12"/></svg><span class="cbadge" style="background:#ff9f0a">!</span></span>Needs Keep/Discard</div>
+    </div>
+  </div>
+
+  <h3>A. Arc's Library: the sidebar slides to a page <span class="tag">recommended</span></h3>
+  <p>Click the button (or ⌥⌘L / ⌥⌘B): the favorites, pinned and Today slide out to the left and the Library page slides in from the right, on the sidebar's spring, inside the sidebar's own frame; the address field and the window buttons stay. The page has "‹ Library" (back), a two-way switch Downloads | Bookmarks, and the same lists as today's panels, at the sidebar's full height. Back, Escape, the button again or a tab switch slide the tabs back. ⌥⌘L opens at Downloads, ⌥⌘B at Bookmarks. <b>Click the footer button or "‹ Library" to try it; the switch works too.</b></p>
+  <div class="stage">
+    <div class="win" style="width:600px;height:500px">
+      <div class="sb" id="libA">
+        <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+        <div class="slide"><div class="track">
+          <div class="pane">
+            <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+            <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+            <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+            <div class="dv"><span class="line"></span></div>
+            <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Releases · ray</span></div>
+            <div class="row"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+            <div class="row"><span class="bg"></span><span class="ic fav f-re">r</span><span class="t">r/MacOS</span></div>
+          </div>
+          <div class="pane lib">
+            <div class="lhd"><span class="back" data-toggle="libA">‹</span>Library</div>
+            <div class="seg2" data-seg="libA"><span class="on" data-v="dl">Downloads</span><span data-v="bm">Bookmarks</span></div>
+            <div class="view dl">
+              <div class="search"><svg class="sym" viewBox="0 0 14 14" style="width:12px;height:12px"><circle cx="6" cy="6" r="4"/><path d="M9 9l3.5 3.5"/></svg>Search Downloads</div>
+              <div class="grp">Now</div>
+              <div class="dlr"><span class="fi">DMG</span><span class="dt"><b>Ray-0.12.0.dmg</b><span class="bar"><i style="right:55%"></i></span><span class="m">64 of 146 MB · 20 s left</span></span><span class="x"><svg class="sym" viewBox="0 0 14 14" style="width:10px;height:10px"><rect x="4" y="3" width="2" height="8" rx=".6" fill="currentColor"/><rect x="8" y="3" width="2" height="8" rx=".6" fill="currentColor"/></svg></span></div>
+              <div class="dlr warn"><span class="fi" style="background:#ff9f0a">PKG</span><span class="dt"><b>installer.pkg</b><span class="m">This file may be harmful</span><span class="acts"><span class="pb sm">Discard</span><span class="pb sm">Keep</span></span></span></div>
+              <div class="grp">Today</div>
+              <div class="dlr"><span class="fi" style="background:#e5484d">PDF</span><span class="dt"><b>Q4 roadmap.pdf</b><span class="m">2.1 MB · github.com</span></span></div>
+              <div class="dlr"><span class="fi" style="background:#30a46c">CSV</span><span class="dt"><b>export-2026-11-24.csv</b><span class="m">48 KB · linear.app</span></span></div>
+              <div class="grp">Yesterday</div>
+              <div class="dlr"><span class="fi" style="background:#0a7cff">PNG</span><span class="dt"><b>Screenshot 2026-11-23.png</b><span class="m">880 KB</span></span></div>
+              <div class="lft">Show in Finder</div>
+            </div>
+            <div class="view bm">
+              <div class="search"><svg class="sym" viewBox="0 0 14 14" style="width:12px;height:12px"><circle cx="6" cy="6" r="4"/><path d="M9 9l3.5 3.5"/></svg>Search Bookmarks</div>
+              <div class="row"><span class="bg"></span><span class="ic fold blue open"></span><span class="t">Imported from Chrome</span><span class="end" style="font-size:11.5px">24</span></div>
+              <div class="row in1"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+              <div class="row in1 hov"><span class="bg"></span><span class="ic fav f-fi">F</span><span class="t">Design System</span></div>
+              <div class="row in1"><span class="bg"></span><span class="ic fold"></span><span class="t">Reading</span></div>
+              <div class="row"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">GitHub</span></div>
+              <div class="row"><span class="bg"></span><span class="ic fav f-ny">N</span><span class="t">The New York Times</span></div>
+              <div class="row"><span class="bg"></span><span class="ic fold"></span><span class="t">Other Bookmarks</span></div>
+              <div class="lft">Bookmark Manager</div>
+            </div>
+          </div>
+        </div></div>
+        <div class="foot"><span class="btn lib" data-toggle="libA"><svg class="ring" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11.5" class="trk"/><circle cx="14" cy="14" r="11.5" class="val" style="stroke-dashoffset:40"/></svg><svg class="sym tray" viewBox="0 0 14 14"><path d="M2 8.5v2.5a1 1 0 001 1h8a1 1 0 001-1V8.5"/><path d="M2 8.5h2.8l.8 1.4h2.8l.8-1.4H12"/></svg></span><span class="sp"></span><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2.5v9M2.5 7h9"/></svg></span></div>
+      </div>
+      <div class="pg"><div class="sk" style="top:40px;height:22px;width:40%"></div><div class="sk" style="top:80px;height:140px"></div><div class="sk" style="top:240px;height:12px"></div></div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Arc's own move, and what you asked for: no popup, the sidebar becomes the view. Full height for long lists, never covers the page.</li>
+    <li class="plus">One spring on one layer (the list's container slides); the rows are today's panels' rows, so most of the build is moving them.</li>
+    <li class="minus">While it's open your tabs are out of sight (one click back); a peeking sidebar would have to stay out while it's open, as today's downloads panel does.</li>
+  </ul>
+
+  <h3>B. A sheet that rises from the footer</h3>
+  <p>The button grows into a sheet inside the sidebar: it rises from the footer to about two thirds of the sidebar's height on the spring, rounded at the top, with a grabber; the tabs stay visible above, dimmed a little, and clicking them closes it. Same Downloads | Bookmarks switch. <b>Click the footer button to try it.</b></p>
+  <div class="stage">
+    <div class="win" style="width:600px;height:500px">
+      <div class="sb" id="libB">
+        <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+        <div class="list dimmable">
+          <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+          <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+          <div class="dv"><span class="line"></span></div>
+          <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Releases · ray</span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+        </div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <div class="seg2" data-seg="libB"><span class="on" data-v="dl">Downloads</span><span data-v="bm">Bookmarks</span></div>
+          <div class="view dl">
+            <div class="dlr"><span class="fi">DMG</span><span class="dt"><b>Ray-0.12.0.dmg</b><span class="bar"><i style="right:55%"></i></span><span class="m">64 of 146 MB · 20 s left</span></span></div>
+            <div class="dlr"><span class="fi" style="background:#e5484d">PDF</span><span class="dt"><b>Q4 roadmap.pdf</b><span class="m">2.1 MB · github.com</span></span></div>
+            <div class="dlr"><span class="fi" style="background:#30a46c">CSV</span><span class="dt"><b>export-2026-11-24.csv</b><span class="m">48 KB · linear.app</span></span></div>
+            <div class="lft">Show in Finder</div>
+          </div>
+          <div class="view bm">
+            <div class="search"><svg class="sym" viewBox="0 0 14 14" style="width:12px;height:12px"><circle cx="6" cy="6" r="4"/><path d="M9 9l3.5 3.5"/></svg>Search Bookmarks</div>
+            <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Imported from Chrome</span></div>
+            <div class="row"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">GitHub</span></div>
+            <div class="row"><span class="bg"></span><span class="ic fold"></span><span class="t">Other Bookmarks</span></div>
+          </div>
+        </div>
+        <div class="foot" style="position:relative;z-index:3"><span class="btn lib" data-toggle="libB"><svg class="ring" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11.5" class="trk"/><circle cx="14" cy="14" r="11.5" class="val" style="stroke-dashoffset:40"/></svg><svg class="sym tray" viewBox="0 0 14 14"><path d="M2 8.5v2.5a1 1 0 001 1h8a1 1 0 001-1V8.5"/><path d="M2 8.5h2.8l.8 1.4h2.8l.8-1.4H12"/></svg></span><span class="sp"></span><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2.5v9M2.5 7h9"/></svg></span></div>
+      </div>
+      <div class="pg"><div class="sk" style="top:40px;height:22px;width:40%"></div><div class="sk" style="top:80px;height:140px"></div></div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Tabs stay in view; reads as "out of the button", so the button and the view feel like one thing.</li>
+    <li class="minus">Two thirds of a sidebar is short for a long bookmark tree; a sheet over rows is close to the popup you want gone.</li>
+  </ul>
+
+  <h3>C. In the list, under Today</h3>
+  <p>No new view: Downloads shows as a section at the end of the sidebar list while anything is downloading or finished in the last hour (like a Today folder that clears itself), and the button scrolls to it and opens it. Bookmarks open as a section the same way, folded by default.</p>
+  <div class="stage">
+    <div class="win" style="width:600px;height:460px">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+        <div class="list">
+          <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+          <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+          <div class="dv"><span class="line"></span></div>
+          <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Releases · ray</span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+          <div class="hdr" style="margin-top:6px"><svg class="sym" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3"/></svg>Downloads<span class="sp"></span><span class="cnt">Clear</span></div>
+          <div class="dlr"><span class="fi">DMG</span><span class="dt"><b>Ray-0.12.0.dmg</b><span class="bar"><i style="right:55%"></i></span><span class="m">20 s left</span></span></div>
+          <div class="dlr"><span class="fi" style="background:#e5484d">PDF</span><span class="dt"><b>Q4 roadmap.pdf</b><span class="m">2.1 MB</span></span></div>
+          <div class="hdr"><svg class="sym" viewBox="0 0 10 10"><path d="M3.5 2l3 3-3 3"/></svg>Bookmarks</div>
+        </div>
+        <div class="foot"><span class="btn lib on"><svg class="ring" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11.5" class="trk"/><circle cx="14" cy="14" r="11.5" class="val" style="stroke-dashoffset:40"/></svg><svg class="sym tray" viewBox="0 0 14 14"><path d="M2 8.5v2.5a1 1 0 001 1h8a1 1 0 001-1V8.5"/><path d="M2 8.5h2.8l.8 1.4h2.8l.8-1.4H12"/></svg></span><span class="sp"></span><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2.5v9M2.5 7h9"/></svg></span></div>
+      </div>
+      <div class="pg"><div class="sk" style="top:40px;height:22px;width:40%"></div><div class="sk" style="top:80px;height:140px"></div></div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Downloads sit with the tabs, where you're already looking; drag a file row onto a page.</li>
+    <li class="minus">The tab list gets non-tabs in it; a long bookmark tree in the list is worse than a page; drag and drop and the folder rules get new cases.</li>
+  </ul>
+
+  <h3>In every option <span class="tag">shared</span></h3>
+  <ul class="pc">
+    <li>Downloads: the rows, row menus, pause/resume/cancel and the held download's Keep/Discard stay as today (Discard leading, Keep dead for 0.5 s, Return does nothing), and the bottom-left download note stays for when the sidebar is hidden. A file row drags out to Finder or onto a page.</li>
+    <li>Bookmarks: today's panel as it is (search with ↑ ↓ ⏎ → ←, folders open in place, Rename in the row, Delete with Undo, Open All asks past 15), with the extra height.</li>
+    <li>With the sidebar hidden, ⌥⌘L / ⌥⌘B bring it out as a peek already on the Library, which stays out until you close it.</li>
+    <li>Sidebar on the right (section 5): A slides the other way.</li>
+  </ul>
 </main>
 <script>
   const root = document.documentElement, seg = document.getElementById("theme");
@@ -923,6 +1163,16 @@
     mode = b.dataset.t; seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); apply();
   });
   media.addEventListener("change", apply); apply();
+  document.querySelectorAll("[data-toggle]").forEach(el => el.addEventListener("click", () => document.getElementById(el.dataset.toggle).classList.toggle("open")));
+  document.querySelectorAll("[data-seg]").forEach(seg => seg.addEventListener("click", e => {
+    const b = e.target.closest("span[data-v]"); if (!b) return;
+    seg.querySelectorAll("span").forEach(x => x.classList.toggle("on", x === b));
+    document.getElementById(seg.dataset.seg).classList.toggle("bm", b.dataset.v === "bm");
+  }));
+  const fly = document.getElementById("flyDemo");
+  const replay = () => { fly.classList.remove("go"); void fly.offsetWidth; fly.classList.add("go"); };
+  document.getElementById("flyPlay").addEventListener("click", replay);
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) setTimeout(replay, 600);
 </script>
 </body>
 </html>

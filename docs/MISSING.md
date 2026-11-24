@@ -55,8 +55,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 18. Unread counts on tabs: a web app's count on its pinned tab, favorite or row, from the page title, the Badging
     API or a favicon dot (Ardia 0.2.45; Arc showed favicons' own dots only).
 
-Mocks for 8, 13, 15, 17, 18, Arc's Clear button (Ardia settings 9) and Collapse/Expand All Folders, waiting on the
-owner's picks: `docs/mocks/arc-extras.html` (2026-11-24).
+Mocks for 8, 13, 15, 17, 18, Arc's Clear button (Ardia settings 9) and Collapse/Expand All Folders, and Downloads and Bookmarks moved
+into the sidebar behind one animated Library button (section 8), waiting on the owner's picks: `docs/mocks/arc-extras.html` (2026-11-24).
 
 **Left out on purpose:** Arc Max's AI features.
 
