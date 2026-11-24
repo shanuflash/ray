@@ -7,6 +7,9 @@ import AppKit
 // page a card 6 pt in), placement 1 (Ardia's: 900×640 the first time, then the last size you gave one, never past
 // 80 % of the screen, centred on the screen the pointer is on, each further one 24 pt down and right). No back or
 // forward buttons, address field, command bar, site controls or ⌥⌘N. Always the normal profile, never private.
+// It opens on the Space you're on, over another app's full screen too, as Arc's does: the page lives in a
+// non-activating `LittleRayPanel` (an ordinary window went to Ray's full-screen Space or the desktop, and macOS swiped
+// there); the engine's own window for the tab is never shown.
 // Open in Ray (⌘O) moves the live page (history kept) into Today in Ray's window, as `PopupWindow`'s Open as Tab does
 // (`adoptFromPopup`); ⌘W, Escape the page didn't use, or the close light close it and put it in Recently Closed, so
 // ⇧⌘T brings it back as a Today tab with its history. Tabs its page opens go to Ray's window; its pop-ups get windows.
@@ -26,7 +29,11 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   private(set) static var steps: [String] = []
 
   let tab: RayCoreTab
+  /// The engine's window for the tab. Never shown: macOS keeps an ordinary window off another app's full-screen Space
+  /// (a link from full-screen Slack swiped to Ray's Space or to the desktop), so the page lives in `panel`, a
+  /// non-activating panel that opens on the Space you're on, as an extension popup's page lives in its own window.
   private let coreWindow: RayCoreWindow
+  private let panel: LittleRayPanel
   private let profile: RayCoreProfile
   private let root = LittleRayRootView()
   private let lights = WindowLights()
@@ -37,11 +44,11 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   private var closeObserver: NSObjectProtocol?
   private var resizeObserver: NSObjectProtocol?
   private var closed = false
-  /// Put in Recently Closed already (the close light asks, then the window closes: once).
+  /// Put in Recently Closed already (once).
   private var remembered = false
   private var copiedReset: DispatchWorkItem?
 
-  var window: NSWindow { coreWindow.window }
+  var window: NSWindow { panel }
 
   /// The Little Ray that's key, if one is (⌘W, ⇧⌘C and ⌘O act on it, not on a tab behind).
   static var key: LittleRay? { all.first { $0.window.isKeyWindow } }
@@ -54,13 +61,16 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     let little = LittleRay(url: url, profile: engine.defaultProfile)
     all.append(little)
     steps.append("opened")
-    if launchedInBackground { little.coreWindow.showInactive() } else {
-      // Before the activation: AppKit may run it (and its notifications) inside `activate()`.
-      LinkActivationOrder.shared.opening(little.window)
-      little.window.makeKeyAndOrderFront(nil)
-      NSApp.activate()
+    if launchedInBackground {
+      // Test instances: behind whatever the user has in front, never on every Space.
+      little.panel.collectionBehavior = [.fullScreenAuxiliary]
+      little.panel.orderFront(nil)
+    } else {
+      LinkActivationOrder.shared.opening(little.panel)
+      little.panel.makeKeyAndOrderFront(nil)
       LinkActivationOrder.shared.shown()
     }
+    little.tab.noteShown(byHost: true)
     little.tab.focus()
     little.log()
     return little
@@ -71,42 +81,44 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     let size = Self.size(on: Self.screenForNewWindow())
     coreWindow = RayCoreWindow(contentRect: NSRect(origin: .zero, size: size))
     coreWindow.activeProfile = profile
-    // A placeholder until the engine hands the tab over (assigned right below).
     tab = coreWindow.openTab(url, profile: profile, foreground: true)
+    panel = LittleRayPanel(
+      contentRect: NSRect(origin: .zero, size: size),
+      styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView, .nonactivatingPanel],
+      backing: .buffered, defer: false)
     super.init()
     coreWindow.delegate = self
     tab.delegate = self
-    let window = coreWindow.window
-    window.styleMask.formUnion([.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
-    window.titlebarAppearsTransparent = true
-    window.titleVisibility = .hidden
-    window.isReleasedWhenClosed = false
-    window.isRestorable = false
-    window.tabbingMode = .disallowed
-    window.animationBehavior = .documentWindow
-    // Over another app's full-screen Space too: the link came from there.
-    window.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
-    window.minSize = NSSize(width: Self.minimumSize.width + Self.inset * 2,
-                            height: Self.minimumSize.height + Self.rowHeight + Self.inset)
-    window.backgroundColor = SidebarColors.background
+    panel.isFloatingPanel = false
+    panel.hidesOnDeactivate = false
+    panel.becomesKeyOnlyIfNeeded = false
+    panel.titlebarAppearsTransparent = true
+    panel.titleVisibility = .hidden
+    panel.isReleasedWhenClosed = false
+    panel.isRestorable = false
+    panel.tabbingMode = .disallowed
+    panel.animationBehavior = .documentWindow
+    // Shown on the Space you're on (another app's full screen included), and stays there.
+    panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+    panel.minSize = NSSize(width: Self.minimumSize.width + Self.inset * 2,
+                           height: Self.minimumSize.height + Self.rowHeight + Self.inset)
+    panel.backgroundColor = SidebarColors.background
     for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
-      window.standardWindowButton(kind)?.isHidden = true
+      panel.standardWindowButton(kind)?.isHidden = true
     }
-    window.setContentSize(size)
     place()
     closeObserver = NotificationCenter.default.addObserver(
-      forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in self?.windowWillClose() }
+      forName: NSWindow.willCloseNotification, object: panel, queue: .main) { [weak self] _ in self?.windowWillClose() }
     resizeObserver = NotificationCenter.default.addObserver(
-      forName: NSWindow.didEndLiveResizeNotification, object: window, queue: .main) { [weak self] _ in
+      forName: NSWindow.didEndLiveResizeNotification, object: panel, queue: .main) { [weak self] _ in
         guard let self else { return }
-        RaySettings.shared.rememberLittleRaySize(self.window.contentRect(forFrameRect: self.window.frame).size)
+        RaySettings.shared.rememberLittleRaySize(self.panel.contentRect(forFrameRect: self.panel.frame).size)
       }
 
-    let host = coreWindow.hostView
-    root.frame = host.bounds
+    root.frame = NSRect(origin: .zero, size: size)
     root.autoresizingMask = [.width, .height]
     root.onLayout = { [weak self] in self?.layout() }
-    host.addSubview(root)
+    panel.contentView = root
     card.wantsLayer = true
     card.layer?.cornerRadius = Self.cornerRadius
     card.layer?.cornerCurve = .continuous
@@ -210,9 +222,8 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     owner.adoptFromPopup(tab, after: nil, foreground: true)
     Self.all.removeAll { $0 === self }
     Self.steps.append("openedInRay")
-    window.orderOut(nil)
-    // The engine window is empty now: closing it closes nothing else.
-    DispatchQueue.main.async { [coreWindow] in coreWindow.close() }
+    // The engine window is empty now: closing it (with the panel) closes nothing else.
+    panel.close()
     if !launchedInBackground {
       owner.window.makeKeyAndOrderFront(nil)
       NSApp.activate()
@@ -224,10 +235,7 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   /// history), then the window closes.
   func close() {
     guard !closed else { return }
-    remember()
-    closed = true
-    Self.steps.append("closed")
-    coreWindow.close()
+    panel.close()
   }
 
   /// Puts the page in Recently Closed, its back/forward list tagged for Chrome's tab restore (as a closed Today tab's).
@@ -243,8 +251,16 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
       customTitle: nil, favicon: tab.favicon, restoreKey: tag))
   }
 
+  /// The panel is closing: by ⌘W, Escape or the close light (the page goes to Recently Closed first), or after Open in
+  /// Ray or the page closing itself (already `closed`). The engine's window and its tab go with it.
   private func windowWillClose() {
+    if !closed {
+      remember()
+      Self.steps.append("closed")
+    }
     closed = true
+    tab.noteShown(byHost: false)
+    DispatchQueue.main.async { [coreWindow] in coreWindow.close() }
     copiedReset?.cancel()
     for observer in [closeObserver, resizeObserver].compactMap({ $0 }) { NotificationCenter.default.removeObserver(observer) }
     closeObserver = nil
@@ -282,14 +298,6 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
 
   // MARK: RayCoreWindowDelegate
 
-  /// The close light (performClose): Recently Closed first, while the tab is whole.
-  func windowShouldClose(_ window: RayCoreWindow) -> Bool {
-    remember()
-    if !closed { Self.steps.append("closed") }
-    closed = true
-    return true
-  }
-
   func window(_ window: RayCoreWindow, didInsert tab: RayCoreTab, opener: RayCoreTab?, disposition: String) {
     guard tab !== self.tab else { return }
     guard let owner = AppController.shared.openMainWindow() else { return }
@@ -310,7 +318,7 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     DispatchQueue.main.async { [weak self] in
       guard let self, !self.closed else { return }
       self.closed = true
-      self.coreWindow.close()
+      self.panel.close()
     }
   }
 
@@ -348,7 +356,7 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     address.show(url: tab.url, security: ConnectionLook.level(tab.securityInfo))
   }
   func tab(_ tab: RayCoreTab, requestsActivation reason: String) {
-    if !launchedInBackground { window.makeKeyAndOrderFront(nil) }
+    if !launchedInBackground { panel.makeKeyAndOrderFront(nil) }
   }
   func tab(_ tab: RayCoreTab, externalAppRequest request: [String: Any]) {
     AppController.shared.current?.tab(tab, externalAppRequest: request)
@@ -363,6 +371,13 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
      "copied": copyButton.image?.accessibilityDescription == "Copied",
      "fullScreenAuxiliary": window.collectionBehavior.contains(.fullScreenAuxiliary)]
   }
+}
+
+/// Little Ray's window: a panel that never makes Ray the active app, so macOS shows it on the Space you're on, over
+/// another app's full screen too; key, so the page takes typing, and main, so it reads as the front window.
+final class LittleRayPanel: NSPanel {
+  override var canBecomeKey: Bool { true }
+  override var canBecomeMain: Bool { true }
 }
 
 /// Little Ray's root: flipped, the row free to drag the window by.

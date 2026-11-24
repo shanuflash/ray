@@ -657,7 +657,9 @@ publicly or create accounts.
   address centred in `PopupAddressView`, Copy Link, `OpenInRayButton` "Open in Ray ⌘O" with the menu item's live key;
   the page a card 6 pt in), 900×640 then the last size you gave one (Settings.json state `littleRaySize`), at most
   80 % of the screen (Ardia's `FitSide`), centred on the pointer's screen, 24 pt cascade. Its own `RayCoreWindow` opens
-  the tab on the normal profile (never private). `LinksFromApps.receive` sends links (not files, not the launch's
+  the tab on the normal profile (never private) and is never shown: the page sits in `LittleRayPanel`, a
+  non-activating `NSPanel` (`.moveToActiveSpace`, `.fullScreenAuxiliary`; `noteShown(byHost:)` tells Chrome it shows),
+  so it opens on the Space you're on, over another app's full screen too, as Arc's does. `LinksFromApps.receive` sends links (not files, not the launch's
   queued ones) there while `littleRayLinks` (Settings › General › Links, on) is on. File › Open in Ray (⌘O,
   `openLittleRayInRay`, enabled only while one is key) moves the live page through `adoptFromPopup` to the top of
   Today; ⌘W, Escape the page didn't use (`handleKeyEvent`) or the close light (`windowShouldClose`) put it in
@@ -965,6 +967,11 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   clears its content, possibly before Ray's own commit lands) and makes a new one on show, so the page shows only
   its background colour until a new CALayerHost arrives. Never hide the page on screen before its replacement has
   drawn, and never move a page view out of the tree to reorder it (Chrome sees hide + show): use `sortSubviews`.
+- A window that should open where the user is (Little Ray) can't be an ordinary `NSWindow`: macOS keeps it off another
+  app's full-screen Space (`.canJoinAllSpaces` or not) and swipes to Ray's own full-screen Space or to the desktop to
+  show it. A non-activating `NSPanel` with `.moveToActiveSpace` + `.fullScreenAuxiliary` shows on the Space in front;
+  the engine's window can stay hidden and lend its tab's view (as extension popups do). Activation for a link from
+  another app comes before the GetURL event and doesn't swipe by itself.
 - A test window on another app's full-screen Space isn't on screen: Chrome draws nothing and display links don't
   tick. Checks of frames use `onscreen on` (only an accessory app's window can join that Space); `isOnActiveSpace`
   stays false for a window on all Spaces, so go by `occlusionState`.

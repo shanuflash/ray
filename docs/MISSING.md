@@ -514,7 +514,8 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 77. **Little Ray leftovers** (2026-11-24). A link that launches Ray still opens as a Today tab (the launch path is
     #76's; only links to a running Ray go to Little Ray). Files from Finder stay Today tabs. Escape closes it only when
     the page didn't use the key. No Arc archive of closed ones (Recently Closed instead), no "Open in ‹Space›" until
-    Spaces, no profile choice until Profiles. Its ⌘O, ⇧⌘C and ⌘W go through the menu only while it is key, which
+    Spaces, no profile choice until Profiles. Whether it opens over another app's full screen without a swipe is
+    checked by hand (hidden instances never activate or change Spaces). Its ⌘O, ⇧⌘C and ⌘W go through the menu only while it is key, which
     hidden test windows never are: `little-ray` drives its controls directly, so the key routing is checked by hand.
 
 ## Done
