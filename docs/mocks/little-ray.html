@@ -119,11 +119,10 @@ kbd { font: 500 10.5px -apple-system, system-ui; color: var(--ink2); background:
 .chromeA .top { height: 38px; padding: 0 8px 0 13px; }
 .chromeA .navs { display: flex; gap: 2px; margin-left: 6px; }
 .chromeA .mid { flex: 1; display: flex; justify-content: center; min-width: 0; padding: 0 8px; }
-.chromeA .mid .addr { height: 26px; padding: 0 10px; border-radius: 7px; cursor: text; } .chromeA .mid .addr:hover { background: var(--field); }
+.chromeA .mid .addr { height: 26px; padding: 0 10px; }
 /* Chrome B: Arc's strip, a full-width field and a labelled button */
 .chromeB .top { height: 46px; padding: 0 7px 0 13px; gap: 10px; }
 .chromeB .pill { flex: 1; height: 30px; border-radius: 8px; background: var(--field); display: flex; align-items: center; padding: 0 3px 0 10px; gap: 6px; min-width: 0; margin-left: 10px; }
-.chromeB .pill:hover { background: var(--fieldHot); }
 .chromeB .pill .addr { flex: 1; justify-content: center; }
 .chromeB .pill .iconbtn { width: 24px; height: 24px; }
 /* Chrome C: quiet: lights and the address; the buttons come in under the pointer */
@@ -176,21 +175,20 @@ kbd { font: 500 10.5px -apple-system, system-ui; color: var(--ink2); background:
     <button class="t" data-set="place:1">1 · Centred</button><button class="t" data-set="place:2">2 · Grows from the link</button><button class="t" data-set="place:3">3 · Small, by the link</button></div>
   <div class="row"><span class="lab">Open in Ray</span>
     <button class="t" data-set="open:1">1 · Icon</button><button class="t" data-set="open:2">2 · Labelled</button><button class="t" data-set="open:3">3 · Labelled + where</button></div>
-  <div class="row"><span class="lab">Empty ⌥⌘N</span>
-    <button class="t" data-set="empty:1">E1 · Bar in the window</button><button class="t" data-set="empty:2">E2 · Field in the row</button><button class="t" data-set="empty:3">E3 · Bar alone first</button></div>
   <div class="row"><span class="lab">Try it</span>
-    <button class="play" id="playLink">Click a link in Slack</button><button class="play" id="playNew">⌥⌘N</button><button class="play" id="playOpen">Open in Ray</button><button class="play" id="playClose">⌘W</button>
+    <button class="play" id="playLink">Click a link in Slack</button><button class="play" id="playOpen">Open in Ray</button><button class="play" id="playClose">⌘W / Escape</button>
     <span style="flex:1"></span><span class="lab" style="min-width:0">Theme</span>
     <button class="t" data-theme-set="light">Light</button><button class="t" data-theme-set="dark">Dark</button></div>
 </div></div>
 
 <div class="wrap">
   <h1>Little Ray</h1>
-  <p class="sub">Ray's Little Arc: a small window of its own for a link from another app (with the setting on) or for ⌥⌘N.
-    One page, no sidebar, always a normal (not private) tab. Open in Ray moves the live page, history and all, into
-    the top of Today in Ray's window; closing it throws the page away (its visits stay in History). Several can be
-    open at once. Pick one option per row; the scene combines them. Windows are drawn at about two-thirds size, the
-    bars at full size.</p>
+  <p class="sub">A quick look at a link from another app, not a mini browser: a small window with the page, its
+    address, Copy Link and Open in Ray. No back or forward buttons, no address field to type in, no command bar, no
+    site controls, no ⌥⌘N (New Folder keeps it). Links the page opens in a new tab go to Ray's window. Open in Ray
+    moves the live page, history and all, to the top of Today; ⌘W or Escape closes it (its visit stays in History).
+    Always a normal (not private) tab; several can be open at once. Pick one option per row; the scene combines them.
+    Windows are drawn at about two-thirds size, the bars at full size.</p>
 
   <div class="screen" id="screen">
     <div class="menubar"><b></b><b id="appname">Slack</b><span>File</span><span>Edit</span><span>View</span><span>Window</span></div>
@@ -216,19 +214,15 @@ kbd { font: 500 10.5px -apple-system, system-ui; color: var(--ink2); background:
 
   <h2>Window chrome</h2>
   <div class="opts">
-    <div class="opt" data-set="chrome:A"><h3>A · Ray's row <span class="rec">Ray / Ardia</span></h3>
-      <p>The pop-up window you picked (B) with what a page needs: one 38 pt row in Ray's sidebar colour, the traffic
-        lights, back and forward, the address centred (click it for the command bar, ⌘L), Copy Link, site controls
-        (extensions, permissions) and Open in Ray. The page is a card 6 pt in. Ardia's Little Ardia has the same
-        pieces.</p></div>
+    <div class="opt" data-set="chrome:A"><h3>A · Ray's row <span class="rec">pop-up's look</span></h3>
+      <p>The pop-up window you picked (B): one 38 pt row in Ray's sidebar colour, the traffic lights, the address
+        centred (read only), Copy Link and Open in Ray at the right. The page is a card 6 pt in.</p></div>
     <div class="opt" data-set="chrome:B"><h3>B · Arc's strip <span class="rec">Arc</span></h3>
-      <p>Arc's measured layout (Cra's notes): a 46 pt strip, one field across it with the address centred and Copy
-        Link and site controls inside its right end, then Open in Ray. No back or forward buttons (swipe, ⌘[ ⌘]).
-        Taller; the most Arc.</p></div>
+      <p>Arc's measured layout (Cra's notes): a 46 pt strip, the address on a pill across it with Copy Link inside
+        its right end, then Open in Ray. Taller; the most Arc.</p></div>
     <div class="opt" data-set="chrome:C"><h3>C · Quiet</h3>
-      <p>The 38 pt row with only the lights and the address. Copy Link, site controls and Open in Ray fade in while
-        the pointer is over the row (the keys always work). The least chrome; the button you need is hidden until you
-        reach for it.</p></div>
+      <p>The 38 pt row with only the lights and the address. Copy Link and Open in Ray fade in while the pointer is
+        over the row (⇧⌘C and ⌘O always work). The least chrome.</p></div>
   </div>
 
   <h2>Size and placement</h2>
@@ -239,7 +233,7 @@ kbd { font: 500 10.5px -apple-system, system-ui; color: var(--ink2); background:
         animation.</p></div>
     <div class="opt" data-set="place:2"><h3>2 · Grows from the link <span class="rec">Arc</span></h3>
       <p>Same size rule and spot as 1, but the window grows out of a small box under the pointer to its frame in
-        0.12 s (Arc's, measured by Cra), so you see where it came from. ⌥⌘N grows from the screen's centre.</p></div>
+        0.12 s (Arc's, measured by Cra), so you see where it came from.</p></div>
     <div class="opt" data-set="place:3"><h3>3 · Small, by the link</h3>
       <p>A narrower 560×700 window whose top left sits at the pointer, kept on screen: a quick look beside what you
         were doing rather than over it. Remembers its size too.</p></div>
@@ -260,26 +254,13 @@ kbd { font: 500 10.5px -apple-system, system-ui; color: var(--ink2); background:
     tab, Ray's window comes forward and the little window goes. Copy Link copies and shows "Copied Current URL", as
     ⇧⌘C does in Ray's window.</p>
 
-  <h2>Empty Little Ray (⌥⌘N)</h2>
-  <div class="opts">
-    <div class="opt" data-set="empty:1"><h3>E1 · Bar in the window <span class="rec">Arc</span></h3>
-      <p>The window opens on a blank page with Ray's command bar inside it, a third of the way down (Arc's). Type,
-        Return loads it there. Escape closes the bar and, with nothing loaded, the window.</p></div>
-    <div class="opt" data-set="empty:2"><h3>E2 · Field in the row</h3>
-      <p>The window opens with its own address field editable in the row, suggestions hanging under it, like
-        Chrome's address bar. Nothing floats over the page.</p></div>
-    <div class="opt" data-set="empty:3"><h3>E3 · Bar alone first</h3>
-      <p>⌥⌘N shows only the command bar, centred on the screen like Spotlight, with no window; Return grows a Little
-        Ray out of it with the page. Escape leaves nothing behind.</p></div>
-  </div>
-
   <h2>Questions for you</h2>
   <ol class="q">
     <li><b>Default for "Open links from other apps in Little Ray":</b> on (Arc's and Ardia's default) or off (today's
       behaviour: a Today tab)? And Settings › General (next to the default browser row) or › Tabs?</li>
-    <li><b>⌥⌘N:</b> Ray gives it to New Folder today. Arc gives it to Little Arc and New Folder has no key. Move it
-      to Little Ray and leave New Folder without one?</li>
     <li><b>Open in Ray's key:</b> ⌘O (Arc's and Ardia's; free in Ray) or ⌥⌘O?</li>
+    <li><b>Escape:</b> closes it (a quick look you dismiss), or only ⌘W does (Escape stays the page's, e.g. a video or
+      a dialog on it)?</li>
     <li><b>Closing:</b> throw the page away (only History keeps it), or also put it in Recently Closed so ⇧⌘T brings it
       back as a Today tab (Arc keeps closed Little Arcs in its archive)?</li>
   </ol>
@@ -307,11 +288,10 @@ function openControl() {
     <div>📁 Work</div><div>📁 Reading</div></div></div>`;
 }
 function topRow(p, editing) {
-  const tools = btn(I.link, "Copy Link <kbd>⇧⌘C</kbd>", "copy") + btn(I.sliders, "Site Controls");
+  const tools = btn(I.link, "Copy Link <kbd>⇧⌘C</kbd>", "copy");
   const field = editing ? `<div class="fieldEdit">${I.search.replace("<svg", '<svg style="width:13px;height:13px"')}<span>Search or Enter URL…</span></div>`
     : p ? `<div class="addr">${addr(p)}</div>` : `<div class="addr"><span class="path">Search or Enter URL…</span></div>`;
   if (S.chrome === "A") return `<div class="lights"><i></i><i></i><i></i></div>
-    <div class="navs">${btn(I.back, "Back", p ? "" : "dim")}${btn(I.fwd, "Forward", "dim")}</div>
     <div class="mid">${field}</div>${tools}${openControl()}`;
   if (S.chrome === "B") return `<div class="lights"><i></i><i></i><i></i></div>
     <div class="pill">${editing ? field.replace('class="fieldEdit"', 'class="fieldEdit" style="width:100%;margin-left:-7px"') : field}${editing ? "" : tools}</div>${openControl()}`;
@@ -412,16 +392,6 @@ document.getElementById("playLink").addEventListener("click", () => {
   movePointer(p); a.classList.add("hot");
   setTimeout(() => { a.classList.remove("hot"); makeLittle(PAGE, p, false); hint(littles.length > 1 ? "A second one opens beside the first" : "A link from Slack opens in Little Ray"); }, 520);
 });
-document.getElementById("playNew").addEventListener("click", () => {
-  const W = scr().width, H = scr().height, c = { x: W / 2, y: H / 2 };
-  if (S.empty === "3") {
-    const spot = document.getElementById("spot");
-    spot.innerHTML = cbarRows(""); spot.style.display = "block"; focusApp("Ray");
-    spot.querySelectorAll(".r").forEach((r) => r.addEventListener("click", () => { spot.style.display = "none"; makeLittle(PAGE, c, false); hint("Return grew a Little Ray out of the bar"); }));
-    return hint("⌥⌘N: the bar alone. Click a row to open it");
-  }
-  makeLittle(null, c, true); hint("⌥⌘N: an empty Little Ray. Click a row to load it");
-});
 document.getElementById("playOpen").addEventListener("click", () => {
   const l = [...littles].reverse().find((x) => x.page);
   if (!l) return hint("Open a link first");
@@ -442,7 +412,6 @@ function setOpt(key, val) {
   const had = littles.map((l) => l.page);
   const hadSpot = document.getElementById("spot").style.display === "block";
   reset(); movePointer(linkPoint());
-  if (key === "empty") return document.getElementById("playNew").click();
   had.forEach((p) => p ? makeLittle(p, linkPoint(), false) : makeLittle(null, { x: scr().width / 2, y: scr().height / 2 }, true));
   if (!had.length && !hadSpot) makeLittle(PAGE, linkPoint(), false);
 }
@@ -457,6 +426,8 @@ drawToday(false);
 // Wait for a laid-out screen (a hidden pane reports width 0), and redraw when the page is resized.
 const start = () => scr().width > 300 ? setOpt("chrome", S.chrome) : setTimeout(start, 100);
 start();
+addEventListener("load", () => { if (!littles.length) start(); });
+document.addEventListener("visibilitychange", () => { if (!littles.length) start(); });
 let resizeTimer;
 addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => setOpt("chrome", S.chrome), 150); });
 </script>
