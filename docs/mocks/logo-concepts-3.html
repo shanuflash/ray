@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Logo Concepts 3</title>
+<style>
+:root { --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --panel: #fff; --hair: rgba(0,0,0,.08); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --panel: #1C1C1F; --hair: rgba(255,255,255,.09); } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--desk); color: var(--ink); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; }
+.wrap { max-width: 1000px; margin: 0 auto; padding: 8px 16px 48px; }
+h1 { font-size: 22px; font-weight: 600; margin: 18px 0 4px; }
+.sub { color: var(--ink2); margin: 0 0 14px; max-width: 760px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.c { background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; overflow: hidden; }
+.stage { display: grid; grid-template-columns: 1fr 1fr; }
+.stage > div { height: 170px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+.l { background: radial-gradient(500px 260px at 0% 0%, #CFE4FF, transparent 60%), radial-gradient(400px 300px at 100% 100%, #FFD9C7, transparent 60%), #F3F1EE; }
+.d { background: radial-gradient(500px 260px at 0% 100%, #2B3F8C, transparent 60%), radial-gradient(400px 260px at 100% 0%, #5B2A6E, transparent 60%), #0A0B14; }
+.ic { position: relative; flex: none; }
+.ic .tile { position: absolute; left: 9.77%; top: 9.77%; width: 80.47%; height: 80.47%; border-radius: 22.45%; overflow: hidden;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.08), 0 1.5% 3% rgba(0,0,0,.18), 0 4% 9% rgba(0,0,0,.16); }
+.ic .tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 max(.5px,.6%) rgba(255,255,255,.28), inset 0 1.2% 1.5% rgba(255,255,255,.22); }
+.ic svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.smalls { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.t { padding: 10px 14px 14px; }
+.n { font-weight: 600; font-size: 14px; }
+.n small { color: var(--ink2); font-weight: 500; margin-left: 6px; }
+.b { color: var(--ink2); margin-top: 2px; }
+.hero { display: grid; grid-template-columns: 1fr 1fr; border-radius: 14px; overflow: hidden; border: 1px solid var(--hair); margin-bottom: 14px; }
+.hero > div { height: 150px; display: flex; align-items: center; justify-content: center; }
+.hero svg { height: 64px; }
+.word svg { height: 26px; }
+.word { display: flex; align-items: center; gap: 10px; padding: 0 14px 14px; font: 600 22px/1 -apple-system, system-ui, sans-serif; letter-spacing: -.02em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Ray logo concepts, round 3</h1>
+<p class="sub">New marks for a possible rebrand, each as an app icon at 128, 32 and 16 px on light and dark desktops, with the wordmark beside a small one. Your brief: built from the letters and today's sun; bold, sharp, minimal. Five lettermark icons and the sharpened sun, each beside a custom RAY wordmark whose A carries the sunrise.</p>
+<div class="hero" id="hero"></div><p class="sub" style="margin-top:6px">The wordmark: sharp geometric caps, the A's crossbar a horizon with the sun on it.</p>
+<div class="grid" id="grid"></div>
+</div>
+<script>
+const SUN = `<linearGradient id="sun" gradientUnits="userSpaceOnUse" x1="0" y1="200" x2="0" y2="820"><stop offset="0" stop-color="#FFB13C"/><stop offset=".55" stop-color="#FF5A5F"/><stop offset="1" stop-color="#E23A8A"/></linearGradient>`;
+const pol = (cx, cy, r, a) => [cx + r * Math.cos(a * Math.PI / 180), cy + r * Math.sin(a * Math.PI / 180)];
+const wedge = (cx, cy, r1, r2, a, half) => { const [x1,y1]=pol(cx,cy,r1,a-half),[x2,y2]=pol(cx,cy,r1,a+half),[x3,y3]=pol(cx,cy,r2,a); return `M${x1} ${y1} L${x3} ${y3} L${x2} ${y2} Z`; };
+// R pieces (stem, D bowl with counter, leg), sharp corners.
+const R_STEM = "M300 230 H424 V794 H300 Z";
+const R_BOWL = "M300 230 H548 A182 182 0 0 1 548 594 H300 Z M424 346 H540 A66 66 0 0 1 540 478 H424 Z";
+const R_LEG = "M496 560 H630 L770 794 H636 Z";
+const C = [
+  { id: "rsun", name: "R-Sun", tag: "lettermark",
+    blurb: "An R whose bowl is the sun rising beside the stem, with today's rays fanning out from it. Read one way it's the letter, the other way it's Ray's sunrise.",
+    svg: `<defs>${SUN}</defs><rect width="1024" height="1024" fill="#0B0B10"/>
+      <rect x="282" y="232" width="118" height="560" fill="#fff"/>
+      <path d="M400 232 A180 180 0 0 1 400 592 Z" fill="url(#sun)"/>
+      <g fill="url(#sun)">${[-62,-32,-2].map(a => `<path d="${wedge(400,412,212,330,a,7)}"/>`).join("")}</g>
+      <path d="M420 600 H548 L760 792 H632 Z" fill="#fff"/>` },
+  { id: "sunroom", name: "Sunroom", tag: "lettermark",
+    blurb: "A heavy, sharp R in white, and through the hole in its bowl you see the sunrise. Quiet and premium at a glance, warm when you look closer.",
+    svg: `<defs>${SUN}</defs><rect width="1024" height="1024" fill="#0E0E13"/>
+      <path d="M424 346 H540 A66 66 0 0 1 540 478 H424 Z" fill="url(#sun)"/>
+      <circle cx="500" cy="478" r="44" fill="#FFF2D6" clip-path="url(#cnt)"/>
+      <clipPath id="cnt"><path d="M424 346 H540 A66 66 0 0 1 540 478 H424 Z"/></clipPath>
+      <g fill="#fff"><path d="${R_STEM}"/><path fill-rule="evenodd" d="${R_BOWL}"/><path d="${R_LEG}"/></g>` },
+  { id: "sharpsun", name: "Sharp Sun", tag: "today's sun, sharpened",
+    blurb: "Today's glyph redrawn with precise geometry: knife-edge rays instead of rounded pills, a thinner horizon, a sunrise gradient on black. Same mark friends know, a lot more edge.",
+    svg: `<defs>${SUN}</defs><rect width="1024" height="1024" fill="#0B0B10"/>
+      <g fill="url(#sun)"><path d="M332 640 A180 180 0 0 1 692 640 Z"/>
+      ${[-90,-63,-36,-9,-117,-144,-171].map(a => `<path d="${wedge(512,640,214,350,a,6.5)}"/>`).join("")}
+      <rect x="196" y="676" width="632" height="18"/></g>` },
+  { id: "scan", name: "Scanline R", tag: "techy",
+    blurb: "The R cut into horizontal lines, like light through blinds or a display's scanlines, coloured top to bottom as a sunrise. Sharp, techy, and the stripes are rays.",
+    svg: `<defs>${SUN}<mask id="st" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">${Array.from({length: 17}, (_, i) => `<rect x="0" y="${230 + i * 34}" width="1024" height="${i < 3 ? 26 : 24 - i}" fill="#fff"/>`).join("")}</mask></defs>
+      <rect width="1024" height="1024" fill="#0B0B10"/>
+      <g fill="url(#sun)" mask="url(#st)"><path d="${R_STEM}"/><path fill-rule="evenodd" d="${R_BOWL}"/><path d="${R_LEG}"/></g>` },
+  { id: "mono", name: "Monoline", tag: "one stroke",
+    blurb: "One bold white line draws the R, and three short rays spring off its bowl, so the bowl becomes the sun. Minimal and loud on the sunrise gradient.",
+    svg: `<defs>${SUN}<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF9A3C"/><stop offset="1" stop-color="#F03E7A"/></linearGradient></defs>
+      <rect width="1024" height="1024" fill="url(#bg)"/>
+      <path d="M360 800 V290 H520 A150 150 0 0 1 520 590 H360 M520 590 L700 800" fill="none" stroke="#fff" stroke-width="74" stroke-linejoin="miter" stroke-miterlimit="10"/>
+      <g stroke="#fff" stroke-width="40" stroke-linecap="butt">${[-55,-20,15].map(a => { const [x1,y1]=pol(520,440,232,a),[x2,y2]=pol(520,440,322,a); return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`; }).join("")}</g>` },
+  { id: "asun", name: "A-Sun", tag: "from the wordmark",
+    blurb: "The A of the RAY wordmark below: a sharp peak whose crossbar is the horizon, with the sun rising on it. The wordmark's signature, used alone as the icon.",
+    svg: `<defs>${SUN}<clipPath id="ac"><path d="M512 200 L800 820 H224 Z"/></clipPath></defs><rect width="1024" height="1024" fill="#0B0B10"/>
+      <path fill="#fff" fill-rule="evenodd" d="M450 200 H574 L830 820 H700 L512 380 L324 820 H194 Z"/>
+      <path d="M412 640 A100 100 0 0 1 612 640 Z" fill="url(#sun)"/>
+      <rect x="330" y="640" width="364" height="36" fill="#fff"/>` },
+];
+// The RAY logotype: sharp geometric caps, the A's crossbar a horizon with the sun on it.
+const WORD = (ink) => `<svg viewBox="0 0 640 200" height="100%"><defs><linearGradient id="wsun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFB13C"/><stop offset="1" stop-color="#F0436A"/></linearGradient></defs><g fill="${ink}">
+  <path d="M0 20 H34 V180 H0 Z"/><path fill-rule="evenodd" d="M0 20 H82 A50 50 0 0 1 82 120 H0 Z M34 52 H80 A18 18 0 0 1 80 88 H34 Z"/><path d="M64 110 H102 L148 180 H110 Z"/>
+  <path fill-rule="evenodd" d="M246 20 H280 L344 180 H308 L263 64 L218 180 H182 Z"/><rect x="214" y="140" width="98" height="12"/>
+  <path transform="translate(24 0)" d="M356 20 H396 L432 90 L468 20 H508 L450 118 V180 H414 V118 Z"/></g>
+  <path d="M243 140 A20 20 0 0 1 283 140 Z" fill="url(#wsun)"/></svg>`;
+
+const icon = (c, s) => `<span class="ic" style="width:${s}px;height:${s}px"><span class="tile"><svg viewBox="0 0 1024 1024">${c.svg.replace(/id="/g, `id="s${s}-`).replace(/url\(#/g, `url(#s${s}-`)}</svg></span></span>`;
+document.getElementById("hero").innerHTML = `<div class="l">${WORD("#111")}</div><div class="d">${WORD("#fff")}</div>`;
+document.getElementById("grid").innerHTML = C.map(c => `<div class="c">
+  <div class="stage"><div class="l">${icon(c,128)}<div class="smalls">${icon(c,32)}${icon(c,16)}</div></div>
+  <div class="d">${icon(c,128)}<div class="smalls">${icon(c,32)}${icon(c,16)}</div></div></div>
+  <div class="t"><div class="n">${c.name}<small>${c.tag}</small></div><div class="b">${c.blurb}</div></div>
+  <div class="word">${icon(c,40)}${WORD(getComputedStyle(document.body).color)}</div></div>`).join("");
+</script>
+</body>
+</html>
