@@ -284,6 +284,34 @@ publicly or create accounts.
   panel too); state log `sidebar.tabGroups` (Chrome's groups as last seen), `sidebar.folderIcons`,
   `sidebar.iconPicker`, `sidebar.iconPickerAnimations`, `sidebar.changesAnimated`, and `color`/`icon`/`group` per entry.
   Checks `folders` (an unpacked extension's service worker drives `chrome.tabGroups`), `folders-relaunch`.
+- Spaces (`Host/Spaces.swift`, `Host/SpaceSlide.swift`, `Host/SpaceEditor.swift`, `BrowserWindowController`
+  `// MARK: Spaces` and the sections after it, `SidebarView` `// MARK: Spaces`; owner's picks 1A, 2C, 4A, 5A of
+  `docs/mocks/spaces.html`, 2026-11-24). `SidebarState.spaces` (never empty, Sidebar.json `spaces`; a file from before
+  Spaces loads as one "Personal") with `currentSpaceID`; `state.pinned`/`today`/`activeEntryID` are the shown Space's,
+  so code that edits "the sidebar" edits the Space on screen, and `allEntries`, `todayFolders`, `allToday`,
+  `space(of:)` span them. Favorites belong to a profile (`defaultFavorites`, `profileFavorites` by directory; `state.favorites` is the shown
+  Space's profile's). `Space`: name, icon (emoji or "sf:"), `color` (the Window colour: `SpaceLook` washes it over
+  Ray's sidebar colour, the window's `ThemeBackdropView` cross-fades to it), `accent` (`ProfileColor.override`, over
+  the setting's colour while it shows; app-wide: one normal window), `profile` (an engine profile directory "Space
+  <uuid>", loaded with `loadProfile`; the controller's `profile` is the shown Space's and `coreProfile(for:)` opens each
+  entry in its own). `select` of a tab in another Space enters that Space first (`enterSpace`); Chrome's own
+  activation of another Space's tab is ignored; a close's successor stays in the Space. Sidebar: the Space's name heads
+  its list (`SpaceHeaderView`), its icons sit in the footer (`SpaceDockView`, Arc's 26 pt cells, dots past what fits,
+  hidden with one Space) with a + (New Space); a switch or a two-finger swipe (`SpaceSwipeScrollView` hands a
+  sideways gesture to `spaceSwipe`, decided at its start) slides pictures of both lists cut per row (`SpaceSlide`, the
+  rows trailing 7 pt each, the name at 0.55 speed) on the sidebar's spring, the window colour following. New Space
+  makes the Space and goes there with the sidebar as the form (`SpaceEditorView`: name, icons, Window and Accent
+  swatches with any colour via macOS's colour panel, Profile: Default, another Space's or New Profile; live preview;
+  Cancel removes a new one). Menus: the footer icon's and the name's (Edit Space…, Move Left/Right, New Space…,
+  Delete Space…, which asks, `PanelQuestion`, Delete dead 0.5 s, its tabs to Recently Closed in one batch), Move to ›
+  a Space in row menus, the Spaces menu (⌃1–9, ⌥⌘→/←). Today folders are Chrome groups only on the default profile
+  (`TabGroupSync.today(of:)`). `ClosedTab.spaceID` reopens into its Space. The command bar's tab rows of another
+  Space say "Switch to Tab · ‹Space›" (`Suggestions.spaceName`). The import makes each Arc/Zen Space a Space
+  (`ImportedSpace`: Arc's first gradient colour (else its mid tone) the Window, the Accent left to the profile colour, its named icons through
+  `ArcIconNames`, Open Arc's table; one of the same name is joined; a fresh Ray's empty Personal takes the first). Little Ray's ▾:
+  Open in ‹Space›. Test commands `space switch|click|next|previous|new|edit|delete|deletenow|menu|swipe <dx> [steps]
+  [hold]|release|editor name|icon|window|accent|custom|profile|confirm|cancel|question|move|state`, `littleray
+  openinspace <n>`; state log `sidebar.spaces`, `littleRays[].openInSpaces`; checks `spaces`, `spaces-migrate`.
 - `TileSelection` (`Host/TileSelection.swift`, from Ardia's `DockSelection`, Apache-2.0): Arc's selected favorite, a
   3 pt ring and a 22 % wash, both the tile's favicon blurred (`BlurredIcon`, cached per image); none for the globe.
   Favorite icons are 16 pt. State log `sidebarFrames.tileRing`; check `tile-hover`. Sidebar icons (rows, tiles, folder

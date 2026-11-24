@@ -11,10 +11,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private static let logsState = TestEnvironment["RAY_LOG_STATE"] == "1"
 
   let coreWindow: RayCoreWindow
-  let profile: RayCoreProfile
+  /// The profile of the Space on screen (`// MARK: Spaces`): the default one, another Space's own, or a private
+  /// window's off-the-record side.
+  private(set) var profile: RayCoreProfile
   var onClose: (() -> Void)?
 
   private let root = WindowDragArea()
+  /// The window's colour under everything: the Space's Window colour, cross-fading on a switch.
+  private let themeBackdrop = ThemeBackdropView()
   private let sidebar = SidebarView()
   private let floating = FloatingSidebarFrame()
   private let pages = PageContainerView()
@@ -98,7 +102,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     coreWindow = RayCoreWindow(contentRect: NSRect(x: 0, y: 0, width: 1360, height: 860))
     super.init()
     groups = TabGroupSync(
-      profile: profile, windowID: { [weak self] in self.map { $0.coreWindow.chromeWindowId(for: $0.profile) } ?? -1 },
+      profile: profile, windowID: { [weak self] in self.map { $0.coreWindow.chromeWindowId(for: $0.isPrivate ? $0.profile : $0.mainProfile) } ?? -1 },
       state: { [weak self] in self?.state ?? SidebarState() })
     groups.onAdopt = { [weak self] event in self?.changed(event) }
     coreWindow.delegate = self
@@ -110,6 +114,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     root.frame = host.bounds
     root.autoresizingMask = [.width, .height]
     root.wantsLayer = true
+    themeBackdrop.frame = root.bounds
+    themeBackdrop.autoresizingMask = [.width, .height]
+    themeBackdrop.wantsLayer = true
+    themeBackdrop.onAppearance = { [weak self] in self?.refreshBackdrop() }
+    root.addSubview(themeBackdrop)
     root.addSubview(pages)
     toolbar.delegate = self
     root.addSubview(toolbar)
@@ -130,6 +139,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let center = NotificationCenter.default
     observeSettings()
     center.addObserver(self, selector: #selector(profileColorChanged), name: ProfileColor.didChange, object: nil)
+    center.addObserver(self, selector: #selector(spaceLookChanged), name: SpaceLook.didChange, object: nil)
+    startSpaces()
     center.addObserver(self, selector: #selector(windowResignedKey), name: NSWindow.didResignKeyNotification, object: window)
     // Zoom levels the engine already holds are the user's own; the default zoom only touches the rest.
     RaySettings.shared.adoptExistingZoom(profile: mainProfile) { [weak self] in self?.settleZoomOfAllTabs() }
@@ -863,7 +874,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// counted).
   @discardableResult
   func addImported(
-    favorites: [ArcImport.Node], pinned: [ArcImport.Node], today: [ArcImport.Node], event: String = "import"
+    favorites: [ArcImport.Node], pinned: [ArcImport.Node], today: [ArcImport.Node], spaces imported: [ImportedSpace] = [],
+    event: String = "import"
   ) -> SidebarImportCounts {
     var known = Set(state.allEntries.filter { !$0.isFolder }.map { $0.pinnedURL ?? $0.url })
     var counts = SidebarImportCounts()
@@ -909,12 +921,47 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     add(pinned, in: nil)
     state.pinned += added
-    state.normalizePinned()
-    for tab in tabs(today) {
-      guard known.insert(tab.url).inserted else { counts.alreadyToday += 1; continue }
-      state.today.append(entry(.today, tab.url, tab.title, tab.name))
-      counts.today += 1
+    func addToday(_ nodes: [ArcImport.Node], to space: Space) {
+      for tab in tabs(nodes) {
+        guard known.insert(tab.url).inserted else { counts.alreadyToday += 1; continue }
+        space.today.append(entry(.today, tab.url, tab.title, tab.name))
+        counts.today += 1
+      }
     }
+    addToday(today, to: state.current)
+    // Each of the other browser's Spaces a Space here: the one of that name if there is one, else a new one (a
+    // private window has none, so its Spaces' tabs join its lists).
+    for space in imported {
+      let target: Space
+      if isPrivate {
+        target = state.current
+      } else if let same = state.spaces.first(where: { $0.name.lowercased() == space.name.lowercased() }) {
+        target = same
+      } else if state.spaces.count == 1, state.current.pinned.isEmpty, state.current.today.isEmpty, state.current.icon == nil,
+                state.current.color == nil {
+        // A first import into a new Ray: its first Space takes the empty one's place.
+        target = state.current
+        target.name = Space.name(from: space.name) ?? target.name
+      } else {
+        target = Space(name: Space.name(from: space.name) ?? "Imported")
+        state.spaces.append(target)
+      }
+      // Each Space keeps its own pins: a page pinned in two of the other browser's Spaces is pinned in both here.
+      known = Set((state.allFavorites + target.pinned + target.today).filter { !$0.isFolder }.map { $0.pinnedURL ?? $0.url })
+      if target.icon == nil { target.icon = space.rayIcon }
+      // Arc's theme as Ray's Window colour (its first gradient colour, else its mid tone). The accent stays the
+      // profile colour, so the colour picked in the welcome after an import still shows; Edit Space… sets one.
+      if target.color == nil,
+         let hex = space.colors.lazy.compactMap(Space.validHex).first ?? space.color.flatMap(Space.validHex) {
+        target.color = hex
+      }
+      added = []
+      add(space.pinned, in: nil)
+      target.pinned += added
+      addToday(space.today, to: target)
+    }
+    state.normalizePinned()
+    if !isPrivate { SpaceLook.apply(state.current) }
     changed(event)
     return counts
   }
@@ -1453,6 +1500,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   /// `fresh`: Settings › When Ray quits › Start fresh, so a new tab (or the start page) rather than a pinned one.
   func restore(startURL: String?, fresh: Bool = false) {
+    // A Space on a profile of its own: its tabs open once the engine has that profile.
+    if !isPrivate, let directory = state.current.profile, spaceProfiles[directory] == nil {
+      withProfile(directory) { [weak self] _ in self?.restore(startURL: startURL, fresh: fresh) }
+      return
+    }
     if !fresh, let entry = activeEntry ?? state.today.first ?? state.pinned.first(where: { !$0.isFolder }) {
       select(entry)
     } else if let startURL {
@@ -1483,7 +1535,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   // MARK: Entries
 
   private func reloadSidebar() {
-    sidebar.show(favorites: state.favorites, pinned: state.pinned, today: state.today, active: activeEntry)
+    sidebar.show(favorites: state.favorites, pinned: state.pinned, today: state.today, active: activeEntry,
+                 space: isPrivate ? nil : sidebarSpace(state.current), spaces: isPrivate ? [] : state.spaces.map(sidebarSpace),
+                 spaceIndex: currentSpaceIndex)
     sidebar.showAddress(activeEntry)
     sidebar.setNavigation(canGoBack: canGoBack, canGoForward: canGoForward, backToolTip: backToolTip)
     updateToolbar()
@@ -1522,27 +1576,29 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     return entry
   }
 
-  private func insertToday(_ entry: SidebarEntry, after opener: SidebarEntry?) {
+  private func insertToday(_ entry: SidebarEntry, after opener: SidebarEntry?, in chosen: Space? = nil) {
+    // A tab a page opened goes into its opener's Space (a tab left playing in another Space can open one there).
+    let space = chosen ?? opener.flatMap(state.space(of:)) ?? state.current
     // A tab opened from a tab in a Today folder joins that folder, as Chrome's tab groups do. New Tab in Folder's tab
     // joins its folder.
     if let opener, opener.kind == .today, let parent = opener.parentID {
       entry.parentID = parent
-    } else if opener == nil, let folder = newTabFolder.flatMap({ id in state.todayFolders.first { $0.id == id } }) {
+    } else if opener == nil, let folder = newTabFolder.flatMap({ id in space.today.first { $0.isFolder && $0.id == id } }) {
       newTabFolder = nil
       entry.parentID = folder.id
-      state.today.insert(entry, at: (state.today.firstIndex { $0 === folder } ?? 0) + state.block(of: folder).count)
+      space.today.insert(entry, at: (space.today.firstIndex { $0 === folder } ?? 0) + state.block(of: folder).count)
       return
     }
     var opener = opener
     // Settings › Open new tabs next to the active tab: one with no opener goes right after the active one (when
     // that is in Today; otherwise at the top as usual). Not into its folder: past the folder's tabs instead.
     if opener == nil, RaySettings.shared[.newTabNextToActive], let active = activeEntry, active.kind == .today {
-      opener = active.parentID.flatMap { id in state.today.filter { $0.parentID == id }.last } ?? active
+      opener = active.parentID.flatMap { id in space.today.filter { $0.parentID == id }.last } ?? active
     }
-    if let opener, opener.kind == .today, let index = state.today.firstIndex(where: { $0 === opener }) {
-      state.today.insert(entry, at: index + 1)
+    if let opener, opener.kind == .today, let index = space.today.firstIndex(where: { $0 === opener }) {
+      space.today.insert(entry, at: index + 1)
     } else {
-      state.today.insert(entry, at: 0)
+      space.today.insert(entry, at: 0)
     }
   }
 
@@ -1550,7 +1606,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard !entry.isLive else { return }
     if entry.kind != .today { closedTabs.forget(entry: entry.id) }
     loadingEntry = entry
-    let tab = coreWindow.openTab(entry.url, profile: profile, foreground: foreground)
+    let tab = coreWindow.openTab(entry.url, profile: coreProfile(for: entry), foreground: foreground)
     loadingEntry = nil
     if entry.tab !== tab { bind(entry, tab) }
   }
@@ -1567,6 +1623,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if entry.isFolder {
       perform(.toggleFolder, on: entry)
       return
+    }
+    // A tab in another Space (Switch to Tab, ⌃Tab, Recently Closed): its Space comes first, as Arc's.
+    if let space = state.space(of: entry), space !== state.current {
+      guard enterSpace(space, then: { [weak self, weak entry] in
+        if let self, let entry { self.select(entry) }
+      }) else { return }
+      // Its Space may remember this very tab: it's still a switch.
+      state.activeEntryID = nil
     }
     load(entry, foreground: true)
     guard let tab = entry.tab, !tab.closed else { return }
@@ -1616,7 +1680,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     let preferred = closingTo
     closingTo = nil
     if let preferred, state.entry(id: preferred.id) === preferred, !preferred.isFolder, preferred !== entry { return preferred }
-    let list = state.allEntries
+    // Only tabs of the Space on screen (and its favorites): closing never takes you to another Space.
+    let list = state.shownEntries.contains(where: { $0 === entry }) ? state.shownEntries : state.allEntries
     let index = list.firstIndex { $0 === entry } ?? 0
     let excluded = closingTogether.union([entry.id])
     let open = list.indices.sorted { abs($0 - index) < abs($1 - index) }.map { list[$0] }
@@ -1694,6 +1759,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       return
     case .moveToToday:
       move(entry, to: .today(0, parent: nil))
+      return
+    case .moveToSpace(let id):
+      move(entry, toSpace: id)
       return
     case .replacePinnedURL, .editPinnedURL, .setPinnedURL:
       editPinnedPage(entry, action)
@@ -2035,7 +2103,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     var key: String?
     if !isPrivate, Self.isReopenable(entry.currentURL) {
       let tag = "ray-closed-" + UUID().uuidString
-      EngineCalls.call("ac_tab_restore_tag", profile: profile, args: ["tab": Int(tab.tabId), "key": tag]) { _ in }
+      EngineCalls.call("ac_tab_restore_tag", profile: coreProfile(for: entry), args: ["tab": Int(tab.tabId), "key": tag]) { _ in }
       key = tag
     }
     userClosing[entry.id] = (key, tab.favicon, batch)
@@ -2052,25 +2120,27 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// pinned address (pinned and favorites).
   private func rememberClosed(_ entry: SidebarEntry, key: String?, favicon: NSImage?, batch: UUID? = nil) {
     let url = entry.currentURL
-    let section = entry.kind == .today ? state.today : entry.kind == .favorite ? state.favorites : state.pinned
+    let space = state.space(of: entry) ?? state.current
+    let section = entry.kind == .today ? space.today
+      : entry.kind == .favorite ? state.favorites(profile: state.profileDirectory(of: entry)) : space.pinned
     guard Self.isReopenable(url), !entry.isFolder, let index = section.firstIndex(where: { $0 === entry }) else { return }
     closedTabs.add(ClosedTab(
       entryID: entry.id, kind: entry.kind, index: index, parentID: entry.parentID, pinnedURL: entry.pinnedURL,
       url: url, title: entry.title, customTitle: entry.customTitle, favicon: favicon ?? favicons.image(for: url),
-      restoreKey: key, batch: batch))
+      restoreKey: key, batch: batch, spaceID: entry.kind == .favorite ? nil : space.id))
   }
 
   /// Settings › General › When Ray quits › Start fresh, as the launch's first window opens: last time's Today tabs
   /// close as if closed by hand (⇧⌘T and History › Recently Closed bring them back, on their last page), pinned tabs
   /// and favorites stay, and nothing is active. Ardia's "Start fresh" keeps them in Recently Closed too.
   func startFresh() {
-    let closing = state.today.filter { !$0.isFolder }
-    guard !closing.isEmpty || state.activeEntryID != nil else { return }
-    // The last Today tab first, so ⇧⌘T brings back the top one first, each to its old place.
+    let closing = state.allToday.filter { !$0.isFolder }
+    guard !closing.isEmpty || state.spaces.contains(where: { $0.activeEntryID != nil }) else { return }
+    // The last Today tab first, so ⇧⌘T brings back the top one first, each to its old place (every Space's).
     for entry in closing.reversed() { rememberClosed(entry, key: nil, favicon: nil) }
     for entry in closing { state.remove(entry) }
     state.normalizeToday()
-    state.activeEntryID = nil
+    for space in state.spaces { space.activeEntryID = nil }
     store.saveNow(state)
   }
 
@@ -2101,16 +2171,18 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       // A Today tab, or a row deleted since: a new entry in the same place.
       entry = SidebarEntry(kind: closed.kind, url: closed.url, title: closed.title)
       entry.customTitle = closed.customTitle
+      // Back into the Space it closed in, while that Space is still there.
+      let space = closed.spaceID.flatMap(state.space(id:)) ?? state.current
       switch closed.kind {
       case .today:
-        state.today.insert(entry, at: min(closed.index, state.today.count))
+        space.today.insert(entry, at: min(closed.index, space.today.count))
       case .favorite:
         entry.pinnedURL = closed.pinnedURL ?? closed.url
         state.favorites.insert(entry, at: min(closed.index, state.favorites.count))
       case .pinned:
         entry.pinnedURL = closed.pinnedURL ?? closed.url
         entry.parentID = closed.parentID
-        state.pinned.insert(entry, at: min(closed.index, state.pinned.count))
+        space.pinned.insert(entry, at: min(closed.index, space.pinned.count))
         state.normalizePinned()
       case .folder:
         return false
@@ -2124,11 +2196,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       return true
     }
     changed("reopen")
-    EngineCalls.call("ac_tab_restore_take", profile: profile, args: ["key": key]) { [weak self] reply in
+    EngineCalls.call("ac_tab_restore_take", profile: coreProfile(for: entry), args: ["key": key]) { [weak self] reply in
       guard let self, !self.closing, self.state.entry(id: entry.id) === entry, !entry.isLive else { return }
       if let saved = reply?["state"] as? String, !saved.isEmpty {
         self.loadingEntry = entry
-        let tab = self.coreWindow.restoreTab(saved, profile: self.profile, foreground: shows)
+        let tab = self.coreWindow.restoreTab(saved, profile: self.coreProfile(for: entry), foreground: shows)
         self.loadingEntry = nil
         if let tab, entry.tab !== tab { self.bind(entry, tab) }
       }
@@ -2189,7 +2261,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     if let tab = entry.tab, entry.isLive {
       loadingEntry = copy
-      let made = coreWindow.duplicate(tab, profile: profile, foreground: select)
+      let made = coreWindow.duplicate(tab, profile: coreProfile(for: entry), foreground: select)
       loadingEntry = nil
       if let made, copy.tab !== made { bind(copy, made) }
       if select { self.select(copy) }
@@ -3000,6 +3072,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     let wantsSearches = Suggestions.wantsSearchSuggestions(for: query)
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    Suggestions.spaceName = { [weak self] tab in
+      guard let self, let entry = self.state.entry(for: tab), let space = self.state.space(of: entry),
+            space !== self.state.current else { return nil }
+      return space.name
+    }
     let rows = Suggestions.build(
       query: query, tabs: tabs, active: activeTab, history: history.entries,
       searches: wantsSearches ? searches.current(for: trimmed) : [], bookmarks: Bookmarks.shared.barItems,
@@ -3222,11 +3299,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private var popupAdoptions: [ObjectIdentifier: SidebarEntry] = [:]
 
   /// A pop-up window's page as a Today tab (its Open as Tab, or a tab it opened), right after `openerID`'s tab.
-  func adoptFromPopup(_ tab: RayCoreTab, after openerID: UUID?, foreground: Bool) {
+  func adoptFromPopup(_ tab: RayCoreTab, after openerID: UUID?, foreground: Bool, in space: Space? = nil) {
     guard !tab.closed, !closing else { return }
     let entry = SidebarEntry(kind: .today, url: tab.url, title: tab.title)
     entry.openerID = openerID
-    insertToday(entry, after: openerID.flatMap { state.entry(id: $0) })
+    insertToday(entry, after: openerID.flatMap { state.entry(id: $0) }, in: space)
     popupAdoptions[ObjectIdentifier(tab)] = entry
     coreWindow.adoptTab(tab)
     // The engine may insert it later (adopting from inside a tab strip notification is put off).
@@ -3519,7 +3596,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func window(_ window: RayCoreWindow, didActivate tab: RayCoreTab) {
-    if let entry = state.entry(for: tab), entry.id != state.activeEntryID { select(entry, fromEngine: true) }
+    // Chrome's own pick after a close can be a tab of another Space: never a reason to change Space.
+    if let entry = state.entry(for: tab), entry.id != state.activeEntryID,
+       state.space(of: entry).map({ $0 === state.current }) ?? true {
+      select(entry, fromEngine: true)
+    }
   }
 
   func window(_ window: RayCoreWindow, devToolsDidChangeFor tab: RayCoreTab, view devToolsView: NSView?) {
@@ -3866,6 +3947,541 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
   }
 
+  // MARK: Spaces
+
+  /// Profiles other Spaces load in, by directory, once the engine has them.
+  private var spaceProfiles: [String: RayCoreProfile] = [:]
+  private var loadingProfiles: [String: [(RayCoreProfile?) -> Void]] = [:]
+  /// The form New Space and Edit Space… show over the sidebar, and what Cancel puts back.
+  private var spaceEditor: SpaceEditorView?
+  private var spaceEditing: (space: Space, original: SpaceDraft, previous: UUID?)?
+  /// For the state log: Space switches, and the last Space question.
+  private var spaceSwitches = 0
+  private var spaceQuestion: PanelQuestion?
+  private var lastSpaceQuestion: [String: Any]?
+
+  var currentSpaceIndex: Int { state.spaces.firstIndex { $0 === state.current } ?? 0 }
+
+  private func startSpaces() {
+    guard !isPrivate else { return }
+    themeBackdrop.layer?.backgroundColor = nil
+    SpaceLook.apply(state.current)
+    // The profiles of other Spaces load now, so going there is instant; the shown Space's before its tab opens.
+    for directory in Set(state.spaces.compactMap(\.profile)) { withProfile(directory) { _ in } }
+    if let directory = state.current.profile {
+      withProfile(directory) { [weak self] loaded in
+        guard let self, let loaded, self.state.current.profile == directory else { return }
+        self.profile = loaded
+        self.coreWindow.activeProfile = loaded
+      }
+    }
+  }
+
+  @objc private func spaceLookChanged() {
+    guard !isPrivate else { return }
+    let color = SpaceLook.background
+    themeBackdrop.layer.map { layer in
+      var resolved = color.cgColor
+      themeBackdrop.effectiveAppearance.performAsCurrentDrawingAppearance { resolved = color.cgColor }
+      let old = layer.presentation()?.backgroundColor ?? layer.backgroundColor
+      if spaceLookAnimates, let old, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        let fade = CABasicAnimation(keyPath: "backgroundColor")
+        fade.fromValue = old
+        fade.toValue = resolved
+        fade.duration = 0.3
+        fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.add(fade, forKey: "spaceColor")
+      }
+      layer.backgroundColor = resolved
+    }
+    spaceLookAnimates = false
+    window.backgroundColor = color
+    floating.needsDisplay = true
+    spaceEditor?.needsDisplay = true
+    logState("spaceLook")
+  }
+
+  private var spaceLookAnimates = false
+
+  /// The window's colour under everything, refreshed when the appearance changes (it's resolved, a layer colour).
+  private func refreshBackdrop() {
+    guard !isPrivate else { return }
+    spaceLookChanged()
+  }
+
+  private func sidebarSpace(_ space: Space) -> SidebarSpace {
+    SidebarSpace(id: space.id, name: space.name, icon: SpaceIcon.image(for: space, size: 15),
+                 template: space.icon?.hasPrefix("sf:") == true)
+  }
+
+  /// The engine profile an entry's page loads in: its Space's (or its favorites' profile).
+  func coreProfile(for entry: SidebarEntry) -> RayCoreProfile {
+    guard !isPrivate, let directory = state.profileDirectory(of: entry) else { return isPrivate ? profile : mainProfile }
+    return spaceProfiles[directory] ?? mainProfile
+  }
+
+  private func coreProfile(of space: Space) -> RayCoreProfile? {
+    guard let directory = space.profile else { return mainProfile }
+    return spaceProfiles[directory]
+  }
+
+  /// A Space's own profile, loaded (made, the first time) by the engine; nil if it couldn't be.
+  private func withProfile(_ directory: String, _ done: @escaping (RayCoreProfile?) -> Void) {
+    if let loaded = spaceProfiles[directory] { return done(loaded) }
+    if loadingProfiles[directory] != nil {
+      loadingProfiles[directory]?.append(done)
+      return
+    }
+    loadingProfiles[directory] = [done]
+    guard let engine = RayCoreEngine.shared else {
+      loadingProfiles[directory] = nil
+      return done(nil)
+    }
+    engine.loadProfile(directory) { [weak self] loaded in
+      DispatchQueue.main.async {
+        guard let self else { return }
+        if let loaded { self.spaceProfiles[directory] = loaded }
+        let waiting = self.loadingProfiles.removeValue(forKey: directory) ?? []
+        waiting.forEach { $0(loaded) }
+        self.logState("spaceProfile")
+      }
+    }
+  }
+
+  /// Makes a Space the one on screen without choosing its tab; with its profile not loaded yet, does it once it is
+  /// and calls `then` (false: not switched yet).
+  @discardableResult
+  private func enterSpace(_ space: Space, then: @escaping () -> Void) -> Bool {
+    guard !isPrivate, state.spaces.contains(where: { $0 === space }) else { return false }
+    if let directory = space.profile, spaceProfiles[directory] == nil {
+      withProfile(directory) { [weak self, weak space] loaded in
+        guard let self, let space, loaded != nil, self.state.spaces.contains(where: { $0 === space }) else { return }
+        self.enterSpace(space, then: then)
+        then()
+      }
+      return false
+    }
+    guard space !== state.current else { return true }
+    if let left = activeEntry { tabPictures.capture(left) }
+    state.currentSpaceID = space.id
+    profile = coreProfile(of: space) ?? mainProfile
+    coreWindow.activeProfile = profile
+    closeCommandBar(focus: false)
+    panels.close()
+    tabSwitcher.cancel("space")
+    spaceSwitches += 1
+    spaceLookAnimates = true
+    SpaceLook.apply(space)
+    return true
+  }
+
+  /// Goes to a Space and shows the tab it was on (none: nothing, as an empty Space in Arc).
+  func switchSpace(to space: Space) {
+    guard !isPrivate, space !== state.current else { return }
+    if enterSpace(space, then: { [weak self] in self?.showSpaceTab() }) { showSpaceTab() }
+  }
+
+  private func showSpaceTab() {
+    let space = state.current
+    let shown = state.shownEntries
+    let remembered = space.activeEntryID.flatMap { id in shown.first { $0.id == id && !$0.isFolder } }
+    space.activeEntryID = nil
+    if let entry = remembered ?? space.today.first(where: { !$0.isFolder }) {
+      select(entry)
+    } else {
+      pages.showNothing()
+      changed("space")
+    }
+  }
+
+  func switchSpace(number: Int) {
+    guard !isPrivate, !state.spaces.isEmpty else { return }
+    let index = number >= 9 ? state.spaces.count - 1 : number - 1
+    guard state.spaces.indices.contains(index) else { return }
+    switchSpace(to: state.spaces[index])
+  }
+
+  /// ⌥⌘→ / ⌥⌘←: the next or previous Space, stopping at the ends (Arc's).
+  func cycleSpace(by step: Int) {
+    let index = currentSpaceIndex + step
+    guard state.spaces.indices.contains(index) else { return }
+    switchSpace(to: state.spaces[index])
+  }
+
+  var hasSpaces: Bool { !isPrivate }
+  var spaceCount: Int { state.spaces.count }
+
+  func sidebar(_ sidebar: SidebarView, selectSpace index: Int) {
+    guard state.spaces.indices.contains(index) else { return }
+    switchSpace(to: state.spaces[index])
+  }
+
+  func sidebarNewSpace(_ sidebar: SidebarView) { newSpace() }
+
+  func sidebarSpaceLists(_ sidebar: SidebarView, index: Int) -> SidebarSpaceLists? {
+    guard state.spaces.indices.contains(index) else { return nil }
+    let space = state.spaces[index]
+    let favorites = state.favorites(profile: space.profile)
+    let active = space.activeEntryID.flatMap { id in (favorites + space.pinned + space.today).first { $0.id == id } }
+    return SidebarSpaceLists(space: sidebarSpace(space), favorites: favorites, pinned: space.pinned, today: space.today,
+                             active: active)
+  }
+
+  /// A swipe on its way: the window's colour follows the fingers from one Space's to the other's.
+  func sidebar(_ sidebar: SidebarView, slideFrom from: Int, to: Int, progress: CGFloat) {
+    guard state.spaces.indices.contains(from), state.spaces.indices.contains(to), let layer = themeBackdrop.layer else { return }
+    var a: CGColor?, b: CGColor?
+    themeBackdrop.effectiveAppearance.performAsCurrentDrawingAppearance {
+      a = SpaceLook.windowColor(state.spaces[from].color).cgColor
+      b = SpaceLook.windowColor(state.spaces[to].color).cgColor
+    }
+    guard let a, let b, let mixed = SpaceLook.blend(a, b, progress) else { return }
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    layer.removeAnimation(forKey: "spaceColor")
+    layer.backgroundColor = mixed
+    CATransaction.commit()
+  }
+
+  // Menus: the footer's icons and the Space's name.
+  func sidebarSpaceMenu(_ sidebar: SidebarView, index: Int) -> NSMenu? {
+    guard state.spaces.indices.contains(index) else { return nil }
+    let space = state.spaces[index]
+    let menu = NSMenu()
+    menu.autoenablesItems = false
+    func add(_ title: String, _ action: String, enabled: Bool = true) {
+      let item = NSMenuItem(title: title, action: #selector(spaceMenuAction(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = [action, space.id.uuidString]
+      item.isEnabled = enabled
+      menu.addItem(item)
+    }
+    add("Edit Space…", "edit")
+    menu.addItem(.separator())
+    add("Move Left", "left", enabled: index > 0)
+    add("Move Right", "right", enabled: index < state.spaces.count - 1)
+    menu.addItem(.separator())
+    add("New Space…", "new")
+    add("Delete Space…", "delete", enabled: state.spaces.count > 1)
+    return menu
+  }
+
+  @objc private func spaceMenuAction(_ item: NSMenuItem) {
+    guard let parts = item.representedObject as? [String], parts.count == 2, let id = UUID(uuidString: parts[1]),
+          let space = state.space(id: id) else { return }
+    spaceAction(parts[0], space)
+  }
+
+  @discardableResult
+  func spaceAction(_ action: String, _ space: Space) -> Bool {
+    switch action {
+    case "edit": editSpace(space)
+    case "left", "right":
+      guard let index = state.spaces.firstIndex(where: { $0 === space }) else { return false }
+      let to = index + (action == "left" ? -1 : 1)
+      guard state.spaces.indices.contains(to) else { return false }
+      state.spaces.swapAt(index, to)
+      changed("spaceMoved")
+    case "new": newSpace()
+    case "delete": askDeleteSpace(space)
+    default: return false
+    }
+    return true
+  }
+
+  // MARK: Space editor
+
+  /// New Space (Arc's): a Space made at once and gone to, its sidebar the form; Cancel takes it away again.
+  func newSpace() {
+    guard !isPrivate, spaceEditor == nil else { return }
+    let previous = state.current.id
+    let used = Set(state.spaces.compactMap(\.color))
+    let pick = SpaceTheme.windows.indices.first { !used.contains(SpaceTheme.windows[$0]) } ?? state.spaces.count % SpaceTheme.windows.count
+    let space = Space(name: "New Space")
+    space.color = SpaceTheme.windows[pick]
+    space.accent = SpaceTheme.accents[pick]
+    space.profile = state.current.profile
+    state.spaces.append(space)
+    switchSpace(to: space)
+    let draft = SpaceDraft(name: "", icon: nil, color: space.color, accent: space.accent, profile: space.profile)
+    showSpaceEditor(space, draft: draft, original: draft, isNew: true, previous: previous)
+  }
+
+  func editSpace(_ space: Space) {
+    guard !isPrivate, spaceEditor == nil else { return }
+    if space !== state.current { switchSpace(to: space) }
+    let draft = SpaceDraft(name: space.name, icon: space.icon, color: space.color, accent: space.accent, profile: space.profile)
+    showSpaceEditor(space, draft: draft, original: draft, isNew: false, previous: nil)
+  }
+
+  /// Every profile a Space uses, Default first, each named by its Spaces.
+  private func profileChoices() -> [SpaceProfileChoice] {
+    var choices = [SpaceProfileChoice(directory: nil, title: "Default")]
+    var seen = Set<String>()
+    for space in state.spaces {
+      guard let directory = space.profile, seen.insert(directory).inserted else { continue }
+      let names = state.spaces.filter { $0.profile == directory }.map(\.name).joined(separator: ", ")
+      choices.append(SpaceProfileChoice(directory: directory, title: "Same as \(names)"))
+    }
+    return choices
+  }
+
+  private func showSpaceEditor(_ space: Space, draft: SpaceDraft, original: SpaceDraft, isNew: Bool, previous: UUID?) {
+    if state.sidebarHidden { toggleSidebar() }
+    let editor = SpaceEditorView(draft: draft, isNew: isNew, profiles: profileChoices())
+    spaceEditor = editor
+    spaceEditing = (space, original, previous)
+    editor.onChange = { [weak self, weak space] draft in
+      guard let self, let space else { return }
+      self.preview(draft, on: space)
+    }
+    editor.onFinish = { [weak self] keep in self?.finishSpaceEditor(keep: keep) }
+    sidebar.showEditor(editor)
+    editor.focusName()
+    logState("spaceEditor")
+  }
+
+  /// The draft on the window at once: name, icon and both colours (its profile changes only on Create).
+  private func preview(_ draft: SpaceDraft, on space: Space) {
+    space.name = Space.name(from: draft.name) ?? (spaceEditing?.original.name.isEmpty == false ? spaceEditing!.original.name : "New Space")
+    space.icon = draft.icon
+    space.color = draft.color
+    space.accent = draft.accent
+    if space === state.current { SpaceLook.apply(space) }
+    reloadSidebar()
+    logState("spaceEditor")
+  }
+
+  private func finishSpaceEditor(keep: Bool) {
+    guard let editor = spaceEditor, let editing = spaceEditing else { return }
+    spaceEditor = nil
+    spaceEditing = nil
+    sidebar.showEditor(nil)
+    let space = editing.space
+    if keep {
+      let draft = editor.draft
+      preview(draft, on: space)
+      if draft.profile != editing.original.profile {
+        changeProfile(of: space, to: draft.profile == SpaceEditorView.newProfile ? Space.newProfileDirectory() : draft.profile)
+      }
+    } else if editor.isNew {
+      // A new Space cancelled is gone, with nothing in it yet; back to the Space you were on.
+      let back = editing.previous.flatMap(state.space(id:)) ?? state.spaces.first { $0 !== space }
+      if let back { switchSpace(to: back) }
+      state.spaces.removeAll { $0 === space }
+    } else {
+      preview(editing.original, on: space)
+    }
+    changed(keep ? "spaceSaved" : "spaceCancelled")
+    if let tab = activeTab { focusPage(tab) }
+  }
+
+  /// A Space onto another profile: its open tabs close (a tab can't change profile) and reopen there when used;
+  /// favorites become that profile's.
+  private func changeProfile(of space: Space, to directory: String?) {
+    for entry in space.pinned + space.today where entry.isLive {
+      entry.remember()
+      entry.tab?.close()
+    }
+    space.profile = directory
+    guard let directory else {
+      if space === state.current {
+        profile = mainProfile
+        coreWindow.activeProfile = mainProfile
+      }
+      return
+    }
+    withProfile(directory) { [weak self, weak space] loaded in
+      guard let self, let space, let loaded, space === self.state.current else { return }
+      self.profile = loaded
+      self.coreWindow.activeProfile = loaded
+      self.changed("spaceProfile")
+    }
+  }
+
+  // MARK: Deleting a Space
+
+  private func askDeleteSpace(_ space: Space) {
+    guard !isPrivate, state.spaces.count > 1, spaceQuestion == nil else { return }
+    let tabs = (space.pinned + space.today).filter { !$0.isFolder }.count
+    let title = "Delete “\(space.name)”?"
+    let message = tabs == 0 ? "" : "Its \(tabs == 1 ? "tab closes" : "\(tabs) tabs close"). ⇧⌘T brings them back."
+    var close: (() -> Void)?
+    let question = PanelQuestion(title: title, message: message, answers: [("Cancel", false, false), ("Delete", false, true)],
+                                 wait: 0.5) { [weak self, weak space] index in
+      close?()
+      guard let self else { return }
+      self.spaceQuestion = nil
+      self.lastSpaceQuestion?["answer"] = index == 1 ? "delete" : "cancel"
+      if index == 1, let space { self.deleteSpace(space) }
+      self.logState("spaceQuestion")
+    }
+    spaceQuestion = question
+    lastSpaceQuestion = ["title": title, "message": message, "answer": NSNull()]
+    let handle = panels.open(PanelSpec(
+      name: "deleteSpace", content: question, anchor: questionAnchor, closesOn: [.escape, .windowInactive], asks: true,
+      onClose: { [weak self] in
+        self?.spaceQuestion = nil
+        self?.logState("spaceQuestion")
+      }))
+    close = { handle.close() }
+    logState("spaceQuestion")
+  }
+
+  /// Gone, with its tabs in Recently Closed (one batch: ⇧⌘T brings them all back, into the Space you're on).
+  func deleteSpace(_ space: Space) {
+    guard state.spaces.count > 1, let index = state.spaces.firstIndex(where: { $0 === space }) else { return }
+    if space === state.current {
+      switchSpace(to: state.spaces[index > 0 ? index - 1 : index + 1])
+    }
+    let batch = UUID()
+    let entries = (space.pinned + space.today).filter { !$0.isFolder }
+    for entry in entries.reversed() { rememberClosed(entry, key: nil, favicon: nil, batch: batch) }
+    state.spaces.removeAll { $0 === space }
+    for entry in entries where entry.isLive {
+      guard let tab = entry.tab else { continue }
+      pages.detach(tab)
+      if tab.delegate === self { tab.delegate = nil }
+      entry.tab = nil
+      tab.close()
+    }
+    changed("spaceDeleted")
+  }
+
+  // MARK: Move to Space
+
+  /// Move to › a Space: a tab or Today folder to the top of its Today, a pinned tab or folder to the end of its pinned.
+  /// Across profiles an open tab closes first (it can't change profile) and opens there on its next use.
+  func move(_ entry: SidebarEntry, toSpace id: UUID) {
+    guard let target = state.space(id: id), let from = state.space(of: entry), from !== target else { return }
+    let block = state.block(of: entry)
+    let wasToday = from.today.contains { $0 === entry }
+    let wasActive = block.contains { $0.id == from.activeEntryID }
+    let next = wasActive && from === state.current ? successor(closing: entry) : nil
+    if target.profile != from.profile {
+      for item in block where item.isLive {
+        item.remember()
+        item.tab?.close()
+      }
+    }
+    from.pinned.removeAll { item in block.contains { $0 === item } }
+    from.today.removeAll { item in block.contains { $0 === item } }
+    entry.parentID = nil
+    if wasToday {
+      target.today.insert(contentsOf: block, at: 0)
+    } else {
+      target.pinned.append(contentsOf: block)
+    }
+    state.normalizePinned()
+    if wasActive {
+      from.activeEntryID = nil
+      if from === state.current {
+        if let next, !block.contains(where: { $0 === next }) { select(next) } else { pages.showNothing() }
+      }
+    }
+    sidebar.animateNextChange()
+    changed("movedToSpace")
+  }
+
+  /// Open in ‹Space› for a page that can't move there (another profile): a new tab at the top of its Today, shown.
+  func openInSpace(_ url: String, _ space: Space) {
+    let entry = SidebarEntry(kind: .today, url: url)
+    space.today.insert(entry, at: 0)
+    select(entry)
+    if state.entry(id: entry.id) == nil { return }
+    changed("insert")
+  }
+
+  // MARK: Space tests
+
+  private func spacesDebug(_ describe: (SidebarEntry) -> [String: Any]) -> [String: Any] {
+    [
+      "current": currentSpaceIndex,
+      "list": state.spaces.map { space -> [String: Any] in
+        ["id": space.id.uuidString, "name": space.name, "icon": space.icon ?? NSNull(), "color": space.color ?? NSNull(),
+         "accent": space.accent ?? NSNull(), "profile": space.profile ?? NSNull(),
+         "pinned": space.pinned.map(describe), "today": space.today.map(describe),
+         "active": space.activeEntryID?.uuidString ?? NSNull()]
+      },
+      "profileFavorites": state.profileFavorites.mapValues { $0.map(describe) },
+      "loadedProfiles": spaceProfiles.keys.sorted(),
+      "windowProfile": profile === mainProfile ? NSNull() : profile.name as Any,
+      "switches": spaceSwitches,
+      "header": sidebar.spaceHeaderTitle,
+      "dockShown": sidebar.spaceDockShown,
+      "slides": sidebar.slideCount, "slideSteps": sidebar.slideSteps, "sliding": sidebar.isSliding,
+      "swipeCommits": sidebar.swipeCommits, "swipeCancels": sidebar.swipeCancels,
+      "look": ["window": SpaceLook.windowHex as Any? ?? NSNull(), "accent": ProfileColor.spaceAccentHex as Any? ?? NSNull()],
+      "editor": spaceEditor?.debug ?? NSNull(),
+      "question": lastSpaceQuestion ?? NSNull(),
+    ]
+  }
+
+  /// Test command `space …` (see TestCommands).
+  func spaceCommand(_ words: [String]) -> String {
+    let rest = words.dropFirst()
+    switch words.first {
+    case "switch":
+      guard let n = rest.first.flatMap(Int.init) else { return "usage: space switch <n>" }
+      switchSpace(number: n)
+    case "click":
+      guard let n = rest.first.flatMap(Int.init), sidebar.pressSpaceCell(n - 1) else { return "no such space" }
+    case "next": cycleSpace(by: 1)
+    case "previous": cycleSpace(by: -1)
+    case "new": newSpace()
+    case "edit": editSpace(state.current)
+    case "delete": askDeleteSpace(state.current)
+    case "deletenow": deleteSpace(state.current)
+    case "menu":
+      guard let n = rest.first.flatMap(Int.init), let menu = sidebarSpaceMenu(sidebar, index: n - 1) else { return "no such space" }
+      if rest.count > 1 {
+        let title = rest.dropFirst().joined(separator: " ")
+        guard let item = menu.items.first(where: { $0.title == title }), item.isEnabled else { return "no item \(title)" }
+        spaceMenuAction(item)
+      } else {
+        return menu.items.map { $0.isSeparatorItem ? "-" : ($0.isEnabled ? "" : "~") + $0.title }.joined(separator: "|")
+      }
+    case "swipe":
+      guard let distance = rest.first.flatMap(Double.init) else { return "usage: space swipe <dx> [steps] [hold]" }
+      let steps = rest.dropFirst().first.flatMap(Int.init) ?? 8
+      sidebar.debugSwipe(by: CGFloat(distance), steps: steps, release: !rest.contains("hold"))
+    case "release":
+      sidebar.debugSwipe(by: 0, steps: 1, release: true)
+    case "editor":
+      guard let editor = spaceEditor else { return "no editor" }
+      switch rest.first {
+      case "name": editor.setName(rest.dropFirst().joined(separator: " "))
+      case "icon":
+        guard let n = rest.dropFirst().first.flatMap(Int.init), editor.choose(iconAt: n) else { return "no icon" }
+      case "window": editor.choose(window: rest.dropFirst().first.flatMap(Int.init), accent: nil)
+      case "accent": editor.choose(window: nil, accent: rest.dropFirst().first.flatMap(Int.init))
+      case "custom":
+        guard rest.count == 3, editor.pickCustom(String(rest[rest.startIndex + 1]), hex: String(rest[rest.startIndex + 2]))
+        else { return "usage: space editor custom window|accent #RRGGBB" }
+      case "profile":
+        guard let n = rest.dropFirst().first.flatMap(Int.init), editor.chooseProfile(n) else { return "no profile" }
+      case "confirm": editor.confirmButton.onClick?()
+      case "cancel": editor.cancelButton.onClick?()
+      default: return "usage: space editor name|icon|window|accent|custom|profile|confirm|cancel"
+      }
+    case "question":
+      guard let question = spaceQuestion else { return "no question" }
+      let index = rest.first == "delete" ? 1 : 0
+      guard question.buttons.indices.contains(index), question.buttons[index].isEnabled else { return "not ready" }
+      question.buttons[index].onClick?()
+    case "move":
+      guard rest.count == 2, let id = UUID(uuidString: String(rest[rest.startIndex])),
+            let n = Int(rest[rest.startIndex + 1]), state.spaces.indices.contains(n - 1),
+            let entry = state.entry(id: id) else { return "usage: space move <entry> <n>" }
+      perform(.moveToSpace(state.spaces[n - 1].id), on: entry)
+    case "state": break
+    default:
+      return "usage: space switch|click|next|previous|new|edit|delete|deletenow|menu|swipe|release|editor|question|move|state"
+    }
+    logState("space")
+    return "ok"
+  }
+
   // MARK: State log
 
   func logState(_ event: String) {
@@ -3964,6 +4580,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         "favorites": self.state.favorites.map(describe),
         "pinned": self.state.pinned.map(describe),
         "today": self.state.today.map(describe),
+        "spaces": spacesDebug(describe),
         "selection": sidebar.selection.map(\.id.uuidString),
         "tabGroups": groups.debug,
         "folderIcons": sidebar.debugFolderIcons,
@@ -4108,7 +4725,7 @@ final class FloatingSidebarFrame: NSView {
 
   override func updateLayer() {
     let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    layer?.backgroundColor = (isPrivate ? SidebarColors.privateBackground : SidebarColors.background).cgColor
+    layer?.backgroundColor = (isPrivate ? SidebarColors.privateBackground : SpaceLook.background).cgColor
     layer?.borderColor = (dark ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.1)).cgColor
     layer?.shadowOpacity = (dark ? 0.18 : 0.12) * Float(1 - flatten)
   }

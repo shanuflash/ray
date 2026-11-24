@@ -22,6 +22,8 @@ struct ClosedTab {
   let restoreKey: String?
   /// The tabs one Clear Today closed share this: ⇧⌘T (and ⌘Z) brings them all back at once, as Arc's ⌘Z undoes a clear.
   var batch: UUID? = nil
+  /// The Space it closed in (none for a favorite, every Space's): it reopens there while that Space exists.
+  var spaceID: UUID? = nil
 
   var host: String {
     let host = URLComponents(string: url)?.host ?? ""

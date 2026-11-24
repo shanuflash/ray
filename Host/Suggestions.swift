@@ -22,6 +22,8 @@ struct Suggestion {
   /// The leading row's host, which the field completes inline after what was typed (Chrome's and Arc's inline
   /// autocomplete): "shanu" shows "shanu.surveysparrow.com" with the rest selected.
   var completion: String?
+  /// An open tab of another Space: that Space's name, shown with "Switch to Tab" (Arc shows the Space).
+  var space: String?
 
   var key: String {
     switch kind {
@@ -783,8 +785,13 @@ enum Suggestions {
   }
 
   private static func tabSuggestion(_ tab: RayCoreTab, name: String?) -> Suggestion {
-    pageSuggestion(kind: .tab(tab), url: tab.url, title: name ?? tab.title, icon: tab.favicon ?? globe)
+    var row = pageSuggestion(kind: .tab(tab), url: tab.url, title: name ?? tab.title, icon: tab.favicon ?? globe)
+    row.space = spaceName(tab)
+    return row
   }
+
+  /// The Space of an open tab when it isn't the one on screen (the window sets it before each build).
+  static var spaceName: (RayCoreTab) -> String? = { _ in nil }
 
   private static func historySuggestion(_ entry: HistoryItem, favicon: (String) -> NSImage?) -> Suggestion {
     pageSuggestion(kind: .history(entry.url), url: entry.url, title: entry.title, icon: favicon(entry.url) ?? clock)

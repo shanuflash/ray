@@ -16,11 +16,10 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 ## Arc features Ray doesn't have
 
 **Big**
-1. **Spaces**: separate sidebars per context, two-finger swipe between them, a colour or gradient per Space.
-   Roadmap item 2. Cra (`third_party/cra`) has a model worth copying; its views are SwiftUI, so Ray's are rebuilt in
-   AppKit.
-2. **Profiles**: several logins (Arc ties a profile to a Space). Ray has one profile; the engine has
-   `loadProfile`/`offTheRecordProfileFor`.
+1. ~~**Spaces**~~ (Done 2026-11-24). Leftovers: Known limitations 78.
+2. **Profiles**: a Space can have a profile of its own since 2026-11-24 (Edit Space… › Profile: Default, another
+   Space's, or New Profile). Left: a Profiles pane (rename, delete a profile and its data), Arc's profiles imported as
+   profiles (they land on the default one), extensions, passwords and settings panes per profile.
 3. **Split View**: two or more pages side by side in one window.
 4. ~~**Little Arc**~~ (Done: Little Ray, a quick look at links from other apps; owner 2026-11-24: not a mini browser,
    so no ⌥⌘N). Leftovers: Known limitations 77.
@@ -108,8 +107,8 @@ items above. The revamp that gives these a home is PLAN.md section 13.
    submenu; Ardia 0.2.44-nightly.6).
 2. **Live Calendar** (Arc's calendar preview): hover a pinned calendar tab to see the day, a badge counting down to
    the next meeting, an alert with a Join button.
-3. **Theme as a gradient** (Arc's Space themes): several colours, intensity, grain, direction. Ray has one accent
-   colour. Belongs with Spaces.
+3. **Theme as a gradient** (Arc's Space themes): several colours, intensity, grain, direction. A Space has a Window
+   colour and an Accent since 2026-11-24; gradients, intensity and grain are still Arc-only.
 
 **Smaller**
 5. New tabs at the bottom of Today (Ray offers the top or below the current tab) and where the New Tab button sits.
@@ -513,15 +512,26 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     the `[ray]` stderr from a repro, and, if confirmed, opening the links in a fresh window when the engine refuses.
 77. **Little Ray leftovers** (2026-11-24). A link that launches Ray still opens as a Today tab (the launch path is
     #76's; only links to a running Ray go to Little Ray). Files from Finder stay Today tabs. Escape closes it only when
-    the page didn't use the key. No Arc archive of closed ones (Recently Closed instead), no "Open in ‹Space›" until
-    Spaces, no profile choice until Profiles. Whether it opens over another app's full screen without a swipe is
+    the page didn't use the key. No Arc archive of closed ones (Recently Closed instead). Open in ‹Space› on a Space
+    with its own profile opens the page there afresh (a tab can't change profile), without its history. Whether it opens over another app's full screen without a swipe is
     checked by hand (hidden instances never activate or change Spaces). Its ⌘O, ⇧⌘C and ⌘W go through the menu only while it is key, which
     hidden test windows never are: `little-ray` drives its controls directly, so the key routing is checked by hand.
+78. **Spaces leftovers** (2026-11-24). Spaces are reordered by their menu's Move Left/Right only, not by dragging
+    footer icons; clicking a Space's name doesn't collapse Pinned (Arc's); no per-Space light or dark (the theme is
+    a Window colour and an Accent). The accent is app-wide while a Space shows (one normal window), so a private
+    window takes it too. Today folders in a Space on a profile of its own stay plain folders, not Chrome tab groups
+    (a group lives in one profile's window). Delete Space's tabs reopen from Recently Closed without their history,
+    into the Space you're on; a deleted Space's profile keeps its data on disk. Moving a tab to a Space on another
+    profile closes it and it reopens there on its next use. ⌃Tab walks tabs of every Space, and picking one changes
+    Space. Arc's profiles import into the default profile; Air Traffic Control (#12) and "Turn into Space" (#10)
+    wait. Hidden test instances can't swipe with a trackpad: `spaces` drives the swipe through its code path
+    (`space swipe`), so the feel of a real two-finger swipe is checked by hand.
 
 ## Done
 
 | What | When |
 |---|---|
+| Spaces (Arc's): each with its own name, icon, theme (a Window colour for the browser and an Accent), profile, pinned tabs, folders and Today; favorites shared per profile. Icons in the sidebar's footer, the Space's name over its list, two-finger swipe across the sidebar (the rows trail a little, owner's pick 2C), ⌃1–9 and ⌥⌘←/→ (Spaces menu), New/Edit/Delete Space (the sidebar becomes the form, 4A), Move to › a Space, the command bar's tabs from every Space, Recently Closed back into its Space, Arc's and Zen's Spaces imported as Spaces, Little Ray's Open in ‹Space› | 2026-11-24, `feat: spaces` |
 | Little Ray: a link from another app opens in a small window for a quick look (the pop-up window's look: its address, Copy Link, Open in Ray ⌘O), centred, remembering its size; Open in Ray moves the live page into Today; ⌘W, Escape or the close light put it in Recently Closed. Settings › General › Open links from other apps in Little Ray, on by default | 2026-11-24, `feat: little ray` |
 | No crash when an extension closes a tab showing a sign-in dialog: the engine's dialog host closes its dialogs while the tab is whole (`engine-ray/fixups/0010`); the engine's own third-party cookie default is Chrome's (`0011`) | 2026-11-24, `fix: tab dialogs close before teardown, cookie default` |
 | Third-party cookies allowed as in Chrome and Arc (Helium blocked them, so Teams' app tabs said "This app may have issues in the web version of Teams"); a choice in chrome://settings/cookies still wins | 2026-11-23, `fix: allow third party cookies like chrome` |

@@ -21,6 +21,8 @@ const drag = ["sidebar-drops", "drag-click-selects", "drag-reorder", "drag-to-pi
 // Folders in Pinned and Today (Today's are Chrome tab groups), their icon and Change Icon.
 const folders = ["folders", "folders-relaunch", "multi-select", "folder-create", "folder-toggle", "folder-rename", "folder-animation",
   "folder-drag-in", "folder-drag-folder", "folder-out-and-delete"];
+// Spaces (Spaces.swift, SpaceSlide.swift, SpaceEditor.swift, `// MARK: Spaces` and the sections after it).
+const spaceChecks = ["spaces", "spaces-migrate"];
 const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still", "sidebar-resize", "peek-dock",
   "sidebar-motion-cheap"];
 const tabSwitchCost = ["tab-switch-cheap", "tab-switcher"];
@@ -75,7 +77,17 @@ export const areas = {
   // Duplicate's copy of an entry.
   "Host/SidebarModel.swift#Duplicate": ["row-menus"],
   // Today folders as Chrome tab groups (the engine's tab strip events, `ac_tabs_group`).
-  "Host/TabGroups.swift": [...folders, "extensions", "clear", "reopen-closed-tab"],
+  "Host/Spaces.swift": [...spaceChecks, "settings-theme", "settings-colours", "import-browser"],
+  "Host/SpaceSlide.swift": [...spaceChecks, "sidebar-follows-active", "icons-on-pixels"],
+  "Host/SpaceEditor.swift": spaceChecks,
+  "Host/ArcIconNames.swift": ["import-browser", "onboarding"],
+  "Host/BrowserWindowController.swift#Spaces": [...spaceChecks, "little-ray"],
+  "Host/BrowserWindowController.swift#Space editor": spaceChecks,
+  "Host/BrowserWindowController.swift#Deleting a Space": [...spaceChecks, "reopen-closed-tab"],
+  "Host/BrowserWindowController.swift#Move to Space": [...spaceChecks, "row-menus"],
+  "Host/BrowserWindowController.swift#Space tests": spaceChecks,
+  "Host/SidebarView.swift#Spaces": [...spaceChecks, "row-menus", "sidebar-follows-active", "sidebar-resize"],
+  "Host/TabGroups.swift": [...spaceChecks, ...folders, "extensions", "clear", "reopen-closed-tab"],
   // The folder icon's layers and Change Icon's panel.
   "Host/FolderIcon.swift": [...folders, ...drag, "row-menus"],
   "Host/TileSelection.swift": ["tile-hover", "favorites"],
@@ -228,7 +240,7 @@ export const areas = {
   "Host/AddressInput.swift#Search templates": ["site-search", "search-engine", "bar-search-suggestions", "bar-search-google"],
   // Links and files from other apps (and the one that launched Ray), and where they open.
   "Host/LinksFromApps.swift": [...otherApps, "little-ray"],
-  "Host/LittleRay.swift": ["little-ray"],
+  "Host/LittleRay.swift": ["little-ray", "spaces"],
   "Host/BrowserWindowController.swift#Links from other apps": otherApps,
   // The settings: storage and observers, and the catalog of what they are (each entry's window row and test command).
   "Host/RaySettings.swift": settingReaders,

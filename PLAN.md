@@ -27,11 +27,12 @@ window. Every decision serves three things:
    mock-keychain data (decrypt with the known mock key, re-encrypt under the real one). Keep our own patches few,
    small and in separate files from Ardia's, so following Ardia's Chromium bumps stays cheap. **Done 2026-10-28,
    shipped in 0.2.0.**
-2. **Spaces.**
+2. **Spaces.** **Done 2026-11-24:** Arc's model (owner's picks 1A, 2C, 4A, 5A of `docs/mocks/spaces.html`), a
+   full theme per Space (Window colour and Accent) and a profile per Space (Default, shared or new, as Arc).
 3. **Full Arc import:** Spaces, pinned tabs, folders, cookies. **Mostly done 2026-10-29:** `Importer/` (Ardia's
    import core) and the first-run onboarding bring pinned tabs and folders, favorites, open tabs, history,
-   bookmarks, passwords, cookies and autofill from Arc and eight other browsers. Left: Arc's Spaces as Spaces (they
-   land as pinned folders until Spaces exist), installing imported extensions (the engine installs only from a
+   bookmarks, passwords, cookies and autofill from Arc and eight other browsers. Arc's Spaces come in as Spaces
+   (2026-11-24). Left: Arc's profiles as profiles, installing imported extensions (the engine installs only from a
    file), Arc's archive and link routes (Cra's importer reads both).
 4. **Distribution:** Sparkle + GitHub Releases, self-signed (Apple Development, free Personal Team), no
    notarization: a DMG with first-open instructions and the owner's own Homebrew tap, shanuflash/homebrew-tap (owner,
@@ -63,7 +64,7 @@ Recorded for the owner to decide. Don't act on them until they do.
 | Topic | Decision |
 |---|---|
 | Platform | macOS 14 Sonoma or later, Apple Silicon only |
-| Spaces | Arc-style: many Spaces per Profile |
+| Spaces | Arc-style: many Spaces per Profile; a Space picks its profile (Default, another Space's or a new one). Favorites belong to the profile. Theme: a Window colour and an Accent (owner, 2026-11-24) |
 | Distribution | Sparkle + GitHub Releases, self-signed (Apple Development, free Personal Team), no notarization: a DMG with first-open instructions and the owner's own Homebrew tap, shanuflash/homebrew-tap (`brew install shanuflash/tap/ray`). Owner, 2026-11-03: no paid Apple Developer Program |
 | Engine | Ardia's engine, renamed and built from source (Phase B, since 0.2.0). Phase A (Ardia's prebuilt) is over |
 | Import | Ardia's import core (`Importer/`, Apache-2.0) for reading; Ray writes through the engine's `ac_*` calls; never another browser's settings |

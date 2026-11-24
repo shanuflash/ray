@@ -874,7 +874,7 @@ private final class SuggestionCell: NSTableCellView {
     case .bookmark: shortcut = "Bookmark"
     default: shortcut = ""
     }
-    action.stringValue = isTab ? "Switch to Tab" : shortcut
+    action.stringValue = isTab ? suggestion.space.map { "Switch to Tab · \($0)" } ?? "Switch to Tab" : shortcut
     action.font = isTab ? .systemFont(ofSize: 13, weight: .medium) : .systemFont(ofSize: 12)
     let text = NSMutableAttributedString(
       string: suggestion.title,

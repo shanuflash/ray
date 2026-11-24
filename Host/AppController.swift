@@ -355,6 +355,21 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
   }
   @objc func selectTab(_ sender: NSMenuItem) { current?.selectTab(number: sender.tag) }
 
+  // Spaces (the normal window's; a private window has none).
+  private var spacesWindow: BrowserWindowController? { current.flatMap { $0.hasSpaces ? $0 : nil } }
+  @objc func selectSpace(_ sender: NSMenuItem) { spacesWindow?.switchSpace(number: sender.tag) }
+  @objc func nextSpace(_ sender: Any?) { spacesWindow?.cycleSpace(by: 1) }
+  @objc func previousSpace(_ sender: Any?) { spacesWindow?.cycleSpace(by: -1) }
+  @objc func newSpace(_ sender: Any?) { spacesWindow?.newSpace() }
+  @objc func editSpace(_ sender: Any?) {
+    guard let window = spacesWindow else { return }
+    window.spaceAction("edit", window.state.current)
+  }
+  @objc func deleteSpace(_ sender: Any?) {
+    guard let window = spacesWindow else { return }
+    window.spaceAction("delete", window.state.current)
+  }
+
   // MARK: Welcome again
 
   /// Ray › Show Welcome Again (⌥ over Settings…): the first run from its welcome, for anyone who never saw it (an
@@ -374,6 +389,20 @@ extension AppController: NSMenuItemValidation {
   /// The menu's, and the command bar's too: the bar offers a command only while this enables it (BarActions).
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
+    case #selector(selectSpace(_:)):
+      guard let window = spacesWindow else { return false }
+      let index = item.tag >= 9 ? window.spaceCount - 1 : item.tag - 1
+      let spaces = window.state.spaces
+      if spaces.indices.contains(index) {
+        item.title = item.tag >= 9 ? "Last Space" : spaces[index].name
+        item.state = index == window.currentSpaceIndex ? .on : .off
+        return true
+      }
+      return false
+    case #selector(nextSpace(_:)): return spacesWindow.map { $0.currentSpaceIndex < $0.spaceCount - 1 } ?? false
+    case #selector(previousSpace(_:)): return spacesWindow.map { $0.currentSpaceIndex > 0 } ?? false
+    case #selector(newSpace(_:)), #selector(editSpace(_:)): return spacesWindow != nil
+    case #selector(deleteSpace(_:)): return (spacesWindow?.spaceCount ?? 0) > 1
     case #selector(goBack(_:)): return current?.canGoBack ?? false
     case #selector(goForward(_:)): return current?.canGoForward ?? false
     case #selector(checkForUpdates(_:)): return Updater.shared.canCheck

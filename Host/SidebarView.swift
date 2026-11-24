@@ -21,6 +21,8 @@ enum SidebarRowAction {
   /// Edit Pinned Page › Replace Pinned URL with Current, and Edit…'s inline field (`setPinnedURL` commits it).
   case replacePinnedURL, editPinnedURL
   case setPinnedURL(String)
+  /// Move to › a Space: to the top of that Space's Today (tabs) or the end of its pinned (pinned tabs, folders).
+  case moveToSpace(UUID)
 }
 
 /// Where a dragged entry lands. Indexes count the section without the dragged entry (for a folder, without
@@ -58,6 +60,12 @@ protocol SidebarViewDelegate: AnyObject {
   func sidebarSiteControls(_ sidebar: SidebarView)
   func sidebarDownloads(_ sidebar: SidebarView, anchor: NSView)
   func sidebarBookmarks(_ sidebar: SidebarView, anchor: NSView)
+  /// Spaces (`// MARK: Spaces`): the footer's icons, its +, the Space's menu, and what a swipe shows on its way.
+  func sidebar(_ sidebar: SidebarView, selectSpace index: Int)
+  func sidebarNewSpace(_ sidebar: SidebarView)
+  func sidebarSpaceMenu(_ sidebar: SidebarView, index: Int) -> NSMenu?
+  func sidebarSpaceLists(_ sidebar: SidebarView, index: Int) -> SidebarSpaceLists?
+  func sidebar(_ sidebar: SidebarView, slideFrom from: Int, to: Int, progress: CGFloat)
 }
 
 enum SidebarColors {
@@ -188,12 +196,16 @@ final class SidebarView: NSView {
   private let downloadsRing = CAShapeLayer()
   private let addressPill = AddressPill()
   private let tilesView = FlippedView()
-  private let scrollView = NSScrollView()
+  private let scrollView = SpaceSwipeScrollView()
   private let content = FlippedView()
   private let separator = NSView()
   private let newTabRow = SidebarRowView()
   private let favoriteHint = DropHintView(symbol: "star", title: "Add to Favorites", inset: 0)
   private let favoritesGlow = DropHintView(symbol: nil, title: "", inset: 0)
+  private let spaceHeader = SpaceHeaderView()
+  private let spaceDock = SpaceDockView()
+  private let newSpaceButton = HoverIconButton.make("plus", label: "New Space", size: 15)
+  private let slideView = SpaceSlide()
 
   private var tiles: [FavoriteTileView] = []
   private var pinnedRows: [SidebarRowView] = []
@@ -276,8 +288,25 @@ final class SidebarView: NSView {
     downloadsRing.strokeEnd = 0
     downloadsButton.wantsLayer = true
     downloadsButton.layer?.addSublayer(downloadsRing)
-    [windowLights, toggleButton, downloadsButton, bookmarksButton, backButton, forwardButton, reloadButton, addressPill, tilesView, scrollView]
+    [windowLights, toggleButton, downloadsButton, bookmarksButton, backButton, forwardButton, reloadButton, addressPill, tilesView, scrollView,
+     slideView, spaceDock, newSpaceButton]
       .forEach(addSubview)
+    slideView.isHidden = true
+    newSpaceButton.target = self
+    newSpaceButton.action = #selector(newSpace)
+    spaceDock.onSelect = { [weak self] index in
+      guard let self else { return }
+      self.delegate?.sidebar(self, selectSpace: index)
+    }
+    spaceDock.menuProvider = { [weak self] index in
+      guard let self else { return nil }
+      return self.delegate?.sidebarSpaceMenu(self, index: index)
+    }
+    spaceHeader.menuProvider = { [weak self] in
+      guard let self else { return nil }
+      return self.delegate?.sidebarSpaceMenu(self, index: self.spaceIndex)
+    }
+    scrollView.onSwipe = { [weak self] event in self?.spaceSwipe(event) ?? false }
     privateBadge.isHidden = true
     registerForDraggedTypes(Self.droppedTypes)
     addSubview(privateBadge)
@@ -300,6 +329,7 @@ final class SidebarView: NSView {
 
     separator.wantsLayer = true
     content.addSubview(separator)
+    content.addSubview(spaceHeader)
 
     newTabRow.showNewTab()
     newTabRow.onClick = { [weak self] _ in
@@ -329,12 +359,37 @@ final class SidebarView: NSView {
     }
   }
 
-  func show(favorites: [SidebarEntry], pinned: [SidebarEntry], today: [SidebarEntry], active: SidebarEntry?) {
+  func show(favorites: [SidebarEntry], pinned: [SidebarEntry], today: [SidebarEntry], active: SidebarEntry?,
+            space: SidebarSpace? = nil, spaces: [SidebarSpace] = [], spaceIndex: Int = 0) {
     if isDragging {
-      pendingShow = { [weak self] in self?.show(favorites: favorites, pinned: pinned, today: today, active: active) }
+      pendingShow = { [weak self] in
+        self?.show(favorites: favorites, pinned: pinned, today: today, active: active, space: space, spaces: spaces,
+                   spaceIndex: spaceIndex)
+      }
       return
     }
     pendingShow = nil
+    let switching = space != nil && shownSpace != nil && space?.id != shownSpace?.id
+    // Another Space's lists: picture the one leaving before its rows change, unless a swipe already showed this one.
+    let leaving = switching && !swipeLanded && window != nil ? currentShot() : nil
+    swipeLanded = false
+    if let space {
+      shownSpace = space
+      spaceHeader.show(space)
+    }
+    self.spaces = spaces
+    self.spaceIndex = spaceIndex
+    spaceDock.show(spaces, current: spaceIndex)
+    showLists(favorites: favorites, pinned: pinned, today: today, active: active)
+    if switching {
+      scrollView.contentView.scroll(to: .zero)
+      scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+    if let leaving { slide(from: leaving, forward: spaceIndex > (previousSpaceIndex ?? spaceIndex)) }
+    previousSpaceIndex = spaceIndex
+  }
+
+  private func showLists(favorites: [SidebarEntry], pinned: [SidebarEntry], today: [SidebarEntry], active: SidebarEntry?) {
     let open = Dictionary((pinned + today).filter(\.isFolder).map { ($0.id, $0.isOpen ?? true) }, uniquingKeysWith: { first, _ in first })
     foldPending = foldPending || window != nil && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
       && open.contains { id, now in folderOpen[id].map { $0 != now } ?? false }
@@ -466,6 +521,13 @@ final class SidebarView: NSView {
     // Downloads sit in the sidebar's footer, bottom left, where Arc keeps its footer buttons.
     downloadsButton.frame = NSRect(x: 13, y: bounds.height - 8 - 32, width: 32, height: 32)
     bookmarksButton.frame = downloadsButton.frame.offsetBy(dx: 34, dy: 0)
+    // The Spaces' icons between the footer's buttons, Arc's + at its right end. A private window has no Spaces.
+    newSpaceButton.isHidden = isPrivate
+    newSpaceButton.frame = NSRect(x: bounds.width - inset - 32 - 2, y: downloadsButton.frame.minY, width: 32, height: 32)
+    spaceDock.isHidden = isPrivate || !spaceDock.shows
+    let dockLeft = bookmarksButton.frame.maxX + 4
+    spaceDock.frame = NSRect(x: dockLeft, y: downloadsButton.frame.minY + 3, width: max(0, newSpaceButton.frame.minX - 4 - dockLeft),
+                             height: 26)
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     downloadsRing.frame = downloadsButton.bounds
@@ -474,6 +536,7 @@ final class SidebarView: NSView {
 
     addressPill.frame = NSRect(x: inset, y: rowCenter + 24, width: width, height: 36)
     var y = contentTop
+    editor?.frame = NSRect(x: 0, y: y - 4, width: bounds.width, height: max(0, bounds.height - y + 4))
 
     let dragged = isDragging ? drag?.entry : nil
     let target = dragged == nil ? nil : drag?.target
@@ -574,6 +637,13 @@ final class SidebarView: NSView {
     let footer: CGFloat = 40
     place(scrollView, NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y - inset - footer)), entry: nil)
     var rowY: CGFloat = 0
+    // The Space's name heads its list (Arc's); not in a private window, which has no Spaces.
+    spaceHeader.isHidden = isPrivate || shownSpace == nil
+    if !spaceHeader.isHidden {
+      place(spaceHeader, NSRect(x: inset, y: 0, width: width, height: SpaceHeaderView.height), entry: nil)
+      rowY += SpaceHeaderView.height + 2
+    }
+    if !slideView.isHidden { slideView.frame = scrollView.frame }
     var placed: [UUID: NSRect] = [:]
     let byID = Dictionary((pinned + today).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     // Where a row that isn't (or wasn't) showing sits: folded into its nearest visible folder.
@@ -1079,7 +1149,8 @@ final class SidebarView: NSView {
       return .favorites(min(row * columns + column, others))
     }
     let height = Self.rowHeight
-    let centre = convert(point, to: content).y - drag.grab.y + (drag.ghost?.frame.height ?? height) / 2
+    // Measured from the list's first row (the Space's name sits above it).
+    let centre = convert(point, to: content).y - listTop - drag.grab.y + (drag.ghost?.frame.height ?? height) / 2
     let top = centre - height / 2
     let rest = visibleTree(pinned, without: drag.entry)
     let pinnedCount = rest.count
@@ -1704,6 +1775,14 @@ final class SidebarView: NSView {
         && single.map { $0 !== candidate && !isInside(candidate, $0) } ?? true
     }
     let sections = [("Today", todayChoices), ("Pinned", pinnedChoices)].filter { !$0.1.isEmpty }
+    defer {
+      let others = spaceChoices(item, for: entries)
+      if !others.isEmpty {
+        menu.addItem(.separator())
+        menu.addItem(.sectionHeader(title: "Spaces"))
+        others.forEach(menu.addItem)
+      }
+    }
     for (name, choices) in sections {
       menu.addItem(.separator())
       if sections.count > 1 { menu.addItem(.sectionHeader(title: name)) }
@@ -1804,6 +1883,281 @@ final class SidebarView: NSView {
   var bookmarksAnchor: NSView { bookmarksButton }
 
   @objc private func showBookmarks() { delegate?.sidebarBookmarks(self, anchor: bookmarksButton) }
+
+  @objc private func newSpace() { delegate?.sidebarNewSpace(self) }
+
+  /// Where the list's rows start in the scrolled content: under the Space's name when it shows.
+  private var listTop: CGFloat { spaceHeader.isHidden ? 0 : SpaceHeaderView.height + 2 }
+
+  /// New Space's and Edit Space…'s form (4A, Arc's): the sidebar under its top row becomes it.
+  private(set) var editor: NSView?
+
+  func showEditor(_ view: NSView?) {
+    editor?.removeFromSuperview()
+    editor = view
+    if let view { addSubview(view) }
+    needsLayout = true
+  }
+
+  // MARK: Spaces
+
+  /// The Space on screen, every Space (the footer's icons) and where it sits among them.
+  private(set) var shownSpace: SidebarSpace?
+  private(set) var spaces: [SidebarSpace] = []
+  private(set) var spaceIndex = 0
+  private var previousSpaceIndex: Int?
+  /// A swipe ended on another Space and already shows it: the switch that follows doesn't slide again.
+  private var swipeLanded = false
+  private lazy var slideSpring = Spring(value: 0, response: Spring.response, dampingRatio: Spring.dampingRatio) {
+    [weak self] value in self?.slideMoved(value)
+  }
+  private var slideTarget: (from: Int, to: Int)?
+  /// A finished slide: what it does once it settles (a swipe's commit or its return).
+  private var slideDone: ((Bool) -> Void)?
+  /// For the state log: slides started, swipes committed and cancelled, frames drawn part way.
+  private(set) var slideCount = 0
+  private(set) var swipeCommits = 0
+  private(set) var swipeCancels = 0
+  var slideSteps: Int { slideView.steps }
+  var isSliding: Bool { !slideView.isHidden }
+  var spaceHeaderTitle: String { spaceHeader.isHidden ? "" : spaceHeader.title }
+  var spaceDockShown: Bool { !spaceDock.isHidden }
+  func spaceCellFrame(_ index: Int) -> NSRect? { spaceDock.cellFrame(index) }
+  func pressSpaceCell(_ index: Int) -> Bool { spaceDock.press(index) }
+
+  private func currentShot() -> SpaceSlide.Shot? {
+    layoutSubtreeIfNeeded()
+    return SpaceSlide.shot(of: content, visible: scrollView.documentVisibleRect, header: spaceHeader,
+                           scale: PixelGrid.scale(of: self))
+  }
+
+  /// Slides from a picture of the list that left to the list now laid out (a click on a Space's icon, ⌃1–9).
+  private func slide(from old: SpaceSlide.Shot, forward: Bool) {
+    guard let new = currentShot() else { return }
+    let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    if reduce { return }
+    startSlide(old, new, direction: forward ? 1 : -1)
+    slideTarget = nil
+    slideSpring.jump(to: 0)
+    slideRunning = true
+    slideSpring.animate(to: 1, in: self)
+  }
+
+  private var slideRunning = false
+
+  private func startSlide(_ old: SpaceSlide.Shot, _ new: SpaceSlide.Shot?, direction: CGFloat) {
+    slideCount += 1
+    slideView.frame = scrollView.frame
+    slideView.isHidden = false
+    slideView.begin(from: old, to: new, direction: direction)
+    scrollView.alphaValue = 0
+  }
+
+  private func slideMoved(_ value: CGFloat) {
+    slideView.set(progress: value)
+    if let target = slideTarget { delegate?.sidebar(self, slideFrom: target.from, to: target.to, progress: value) }
+    guard slideRunning, !slideSpring.isMoving, swipe == nil else { return }
+    endSlide(landed: value >= 0.5)
+  }
+
+  private func endSlide(landed: Bool) {
+    slideRunning = false
+    slideView.isHidden = true
+    slideView.clear()
+    scrollView.alphaValue = 1
+    let done = slideDone
+    slideDone = nil
+    slideTarget = nil
+    done?(landed)
+  }
+
+  // Two fingers across the sidebar change Space (Arc's): the list follows them 1:1, then springs onto a Space with the
+  // speed they let go at. A gesture stays the list's until it has moved 6 pt and clearly sideways (1.3 times its
+  // vertical travel, Circa's probation); until then its events scroll the list as usual, and vertical travel keeps it
+  // the list's. Past the first or last Space the list stretches and comes back (rubber band, Circa's, Phi's and Open Arc's). It
+  // lands past half way, or on a flick (500 pt/s over the last 0.1 s, 12 pt moved); a flick back cancels.
+  private struct Swipe {
+    let from: Int
+    var to: Int?
+    var travel: CGFloat = 0
+    var samples: [(time: TimeInterval, travel: CGFloat)] = []
+    var old: SpaceSlide.Shot?
+    let saved: (favorites: [SidebarEntry], pinned: [SidebarEntry], today: [SidebarEntry], active: SidebarEntry?)
+    /// No Space that way: the list only stretches.
+    var edge = false
+  }
+  private var swipe: Swipe?
+  /// A gesture not decided yet: its travel so far (absolute sideways and vertical, and signed sideways).
+  private var probe: (dx: CGFloat, dy: CGFloat, fingers: CGFloat)?
+  /// The gesture has momentum events coming that belong to a swipe (they're swallowed, never a second swipe).
+  private var swipeOwnsMomentum = false
+  static let swipeProbe: CGFloat = 6
+  static let swipeFlick: CGFloat = 500
+  static let swipeReverse: CGFloat = 250
+
+  override func scrollWheel(with event: NSEvent) {
+    if spaceSwipe(event) { return }
+    super.scrollWheel(with: event)
+  }
+
+  /// Takes a scroll event if it belongs to a sideways swipe; false hands it to the list.
+  func spaceSwipe(_ event: NSEvent) -> Bool {
+    guard !isPrivate, spaces.count > 1, event.hasPreciseScrollingDeltas else { return false }
+    if !event.momentumPhase.isEmpty { return swipeOwnsMomentum }
+    let fingers = event.isDirectionInvertedFromDevice ? event.scrollingDeltaX : -event.scrollingDeltaX
+    switch event.phase {
+    case .began, .changed:
+      if event.phase == .began {
+        swipeOwnsMomentum = false
+        probe = isDragging || slideSpring.isMoving || swipe != nil ? nil : (0, 0, 0)
+      }
+      if swipe != nil {
+        updateSwipe(by: fingers, at: event.timestamp)
+        return true
+      }
+      guard var seen = probe else { return false }
+      seen.dx += abs(event.scrollingDeltaX)
+      seen.dy += abs(event.scrollingDeltaY)
+      seen.fingers += fingers
+      if seen.dy >= 12 || seen.dy > seen.dx && seen.dy >= 4 {
+        probe = nil
+        return false
+      }
+      probe = seen
+      guard seen.dx >= Self.swipeProbe, seen.dx >= seen.dy * 1.3 else { return false }
+      probe = nil
+      swipeOwnsMomentum = true
+      beginSwipe()
+      updateSwipe(by: seen.fingers, at: event.timestamp)
+      return true
+    case .ended, .cancelled:
+      probe = nil
+      guard swipe != nil else { return false }
+      finishSwipe(cancelled: event.phase == .cancelled, at: event.timestamp)
+      return true
+    default:
+      return swipe != nil
+    }
+  }
+
+  private func beginSwipe() {
+    swipe = Swipe(from: spaceIndex, saved: (favorites, pinned, today, active))
+  }
+
+  /// Sideways speed now, in points per second towards `sign` (the last 0.1 s of samples).
+  private func swipeSpeed(_ swipe: Swipe) -> CGFloat {
+    guard let first = swipe.samples.first, let last = swipe.samples.last, last.time - first.time > 0.005 else { return 0 }
+    return (last.travel - first.travel) / CGFloat(last.time - first.time)
+  }
+
+  private func updateSwipe(by fingers: CGFloat, at time: TimeInterval) {
+    guard var swipe else { return }
+    swipe.travel += fingers
+    swipe.samples.append((time, swipe.travel))
+    swipe.samples.removeAll { time - $0.time > 0.1 }
+    // Fingers moving left bring in the Space to the right, as pages turn.
+    let wanted = swipe.travel < 0 ? swipe.from + 1 : swipe.from - 1
+    if swipe.to == nil, !swipe.edge, abs(swipe.travel) > 2 {
+      swipe.old = currentShot()
+      if spaces.indices.contains(wanted), let lists = delegate?.sidebarSpaceLists(self, index: wanted) {
+        shownSpace = lists.space
+        spaceHeader.show(lists.space)
+        showLists(favorites: lists.favorites, pinned: lists.pinned, today: lists.today, active: lists.active)
+        scrollView.contentView.scroll(to: .zero)
+        if let old = swipe.old, let new = currentShot() {
+          swipe.to = wanted
+          startSlide(old, new, direction: wanted > swipe.from ? 1 : -1)
+          slideTarget = (swipe.from, wanted)
+        }
+      } else if let old = swipe.old {
+        swipe.edge = true
+        startSlide(old, nil, direction: swipe.travel < 0 ? 1 : -1)
+      }
+    }
+    self.swipe = swipe
+    let width = max(bounds.width, 1)
+    if swipe.edge {
+      // Stretches less the further it goes, and never past the way it started.
+      let along = max(0, -swipe.travel * slideView.direction)
+      slideSpring.jump(to: along / (1 + along / (0.18 * width)) / width)
+    } else if let to = swipe.to {
+      slideSpring.jump(to: min(max(-swipe.travel * (to > swipe.from ? 1 : -1) / width, 0), 1))
+    }
+  }
+
+  private func finishSwipe(cancelled: Bool, at time: TimeInterval) {
+    guard let swipe else { return }
+    self.swipe = nil
+    let width = max(bounds.width, 1)
+    let sign: CGFloat = swipe.edge ? slideView.direction : swipe.to.map { $0 > swipe.from ? 1 : -1 } ?? 1
+    // Speed towards the target: fingers left (negative travel) move towards a Space on the right.
+    let speed = time - (swipe.samples.last?.time ?? time) > 0.1 ? 0 : -swipeSpeed(swipe) * sign
+    let progress = slideSpring.value
+    var lands = false
+    if let to = swipe.to, !swipe.edge, !cancelled {
+      _ = to
+      if speed <= -Self.swipeReverse {
+        lands = false
+      } else if speed >= Self.swipeFlick && abs(swipe.travel) >= 12 {
+        lands = true
+      } else {
+        lands = progress > 0.5
+      }
+    }
+    guard swipe.to != nil || swipe.edge else { return }
+    let to = swipe.to
+    slideDone = { [weak self] landed in
+      guard let self, !swipe.edge, let to else { return }
+      if landed {
+        self.swipeCommits += 1
+        self.swipeLanded = true
+        self.delegate?.sidebar(self, selectSpace: to)
+        self.swipeLanded = false
+      } else {
+        self.swipeCancels += 1
+        if let space = self.spaces.indices.contains(swipe.from) ? self.spaces[swipe.from] : nil {
+          self.shownSpace = space
+          self.spaceHeader.show(space)
+        }
+        let saved = swipe.saved
+        self.showLists(favorites: saved.favorites, pinned: saved.pinned, today: saved.today, active: saved.active)
+        self.delegate?.sidebar(self, slideFrom: swipe.from, to: to, progress: 0)
+      }
+    }
+    slideRunning = true
+    // The spring goes on at the speed the fingers let go at.
+    slideSpring.animate(to: lands ? 1 : 0, in: self, velocity: swipe.edge ? 0 : speed / width)
+    if !slideSpring.isMoving { endSlide(landed: lands) }
+  }
+
+  /// For tests: a swipe of this many points (negative: fingers to the left), in steps a display frame apart, then let go.
+  func debugSwipe(by distance: CGFloat, steps: Int, release: Bool) {
+    var time = debugSwipeTime ?? ProcessInfo.processInfo.systemUptime
+    if swipe == nil { beginSwipe() }
+    let count = max(1, steps)
+    for _ in 0..<count {
+      time += 1.0 / 60
+      updateSwipe(by: distance / CGFloat(count), at: time)
+    }
+    debugSwipeTime = time
+    if release {
+      debugSwipeTime = nil
+      finishSwipe(cancelled: false, at: time)
+    }
+  }
+
+  private var debugSwipeTime: TimeInterval?
+
+  /// Move to ›'s Spaces: every other Space, for tabs and folders (favorites are every Space's).
+  fileprivate func spaceChoices(_ item: (String, SidebarRowAction) -> NSMenuItem, for entries: [SidebarEntry]) -> [NSMenuItem] {
+    guard spaces.count > 1, !entries.contains(where: { $0.kind == .favorite }) else { return [] }
+    return spaces.enumerated().compactMap { index, space in
+      guard index != spaceIndex else { return nil }
+      let made = item(space.name, .moveToSpace(space.id))
+      made.image = space.icon
+      return made
+    }
+  }
 
   private func reuse<V: NSView>(_ views: [V], count: Int, in parent: NSView, make: () -> V) -> [V] {
     var views = views
@@ -3180,4 +3534,16 @@ final class SidebarDropEdge: NSView {
   }
 
   override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { [] }
+}
+
+
+/// The sidebar's list: a sideways two-finger swipe that starts on it changes Space (`SidebarView.spaceSwipe`) instead
+/// of reaching the scroll view.
+final class SpaceSwipeScrollView: NSScrollView {
+  var onSwipe: ((NSEvent) -> Bool)?
+
+  override func scrollWheel(with event: NSEvent) {
+    if onSwipe?(event) == true { return }
+    super.scrollWheel(with: event)
+  }
 }

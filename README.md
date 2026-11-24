@@ -78,12 +78,12 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Its own screen-sharing picker, sharing note and shared-tab marks
   - Asks before quitting cancels downloads
   - Bookmarks in a panel, the menu bar and the command bar
+  - Spaces, like Arc: swipe between them, ⌃1–9, each with its own theme and pinned tabs, and its own profile if you want
   - JumpCloud Go sign-in
 
 ## Coming
 
-- Spaces
-- Profiles
+- Profiles (a Space can have its own already)
 - Split View
 - Installing your imported extensions
 

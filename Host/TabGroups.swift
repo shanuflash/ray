@@ -85,11 +85,13 @@ final class TabGroupSync {
                         collapsed: group["collapsed"] as? Bool ?? false)
     }
     let state = state()
+    let today = Self.today(of: state)
     var adopted = false
-    func folder(_ token: String) -> SidebarEntry? { state.todayFolders.first { $0.groupToken == token } }
+    // Read again each time: a folder made for a group's first tab is there for its second.
+    func folder(_ token: String) -> SidebarEntry? { Self.today(of: state).first { $0.isFolder && $0.groupToken == token } }
 
     // Groups that went away (the last tab left or closed): their folders are plain folders until a tab opens.
-    for folder in state.todayFolders {
+    for folder in today where folder.isFolder {
       if let token = folder.groupToken, groups[token] == nil, seenGroups[token] != nil { folder.groupToken = nil }
     }
     // A look changed in Chrome (an extension's `tabGroups.update`): the folder takes it.
@@ -103,7 +105,7 @@ final class TabGroupSync {
       adopted = true
     }
     // Tabs that joined or left a group in Chrome.
-    for entry in state.today where !entry.isFolder && entry.isLive {
+    for entry in today where !entry.isFolder && entry.isLive {
       let id = Int(entry.tab!.tabId)
       let now = tabs[id], before = seenTabs[id]
       guard now != before else { continue }
@@ -134,8 +136,15 @@ final class TabGroupSync {
     folder.color = FolderLook.rayColor(chrome: look?.color ?? "grey")
     folder.isOpen = !(look?.collapsed ?? false)
     folder.groupToken = token
-    state.today.insert(folder, at: state.today.firstIndex { $0 === entry } ?? 0)
+    let space = state.space(of: entry) ?? state.current
+    space.today.insert(folder, at: space.today.firstIndex { $0 === entry } ?? 0)
     return folder
+  }
+
+  /// Today in every Space on the default profile: Chrome's tab groups live in one profile's window, so a Space on
+  /// a profile of its own keeps its Today folders as plain folders.
+  static func today(of state: SidebarState) -> [SidebarEntry] {
+    state.spaces.filter { $0.profile == nil }.flatMap(\.today)
   }
 
   // MARK: To Chrome
@@ -160,9 +169,10 @@ final class TabGroupSync {
     let window = windowID()
     guard window >= 0 else { return }
     let state = state()
+    let today = Self.today(of: state)
     var claimed = Set<Int>()
-    for folder in state.todayFolders {
-      let members = state.today.filter { $0.parentID == folder.id && $0.isLive }.map { Int($0.tab!.tabId) }
+    for folder in today where folder.isFolder {
+      let members = today.filter { $0.parentID == folder.id && $0.isLive }.map { Int($0.tab!.tabId) }
       claimed.formUnion(members)
       let look = Self.look(of: folder)
       if let token = folder.groupToken {

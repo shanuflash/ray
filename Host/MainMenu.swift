@@ -105,6 +105,23 @@ enum MainMenu {
     main.addItem(bookmarks)
     if let menu = bookmarks.submenu { BookmarksMenu.shared.install(in: menu) }
 
+    // Arc's Spaces: ⌃1–9 to a Space (titles become the Spaces' names when the menu opens), ⌥⌘→ and ⌥⌘← through them.
+    var spaceItems: [NSMenuItem] = [
+      item("New Space…", #selector(AppController.newSpace(_:)), nil, target: target),
+      item("Edit Space…", #selector(AppController.editSpace(_:)), nil, target: target),
+      item("Delete Space…", #selector(AppController.deleteSpace(_:)), nil, target: target),
+      .separator(),
+      item("Next Space", #selector(AppController.nextSpace(_:)), arrow(NSRightArrowFunctionKey), [.command, .option], target: target),
+      item("Previous Space", #selector(AppController.previousSpace(_:)), arrow(NSLeftArrowFunctionKey), [.command, .option], target: target),
+      .separator(),
+    ]
+    for number in 1...9 {
+      let entry = item(number == 9 ? "Last Space" : "Space \(number)", #selector(AppController.selectSpace(_:)), "\(number)", [.control], target: target)
+      entry.tag = number
+      spaceItems.append(entry)
+    }
+    main.addItem(submenu("Spaces", spaceItems))
+
     var tabItems: [NSMenuItem] = [
       item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
       item("Zoom", #selector(NSWindow.performZoom(_:)), nil),

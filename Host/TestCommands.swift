@@ -665,6 +665,11 @@ enum TestCommands {
       guard let little = LittleRay.all.last else { result = "no little ray"; break }
       switch parts.first ?? "" {
       case "openinray": little.openInRay()
+      case "openinspace":
+        // `littleray openinspace <n>`: Open in ‹Space› for the normal window's nth Space.
+        guard parts.count == 2, let n = Int(parts[1]), let window = AppController.shared.windows.first(where: { !$0.isPrivate }),
+              window.state.spaces.indices.contains(n - 1) else { result = "usage: littleray openinspace <n>"; break }
+        little.openInRay(space: window.state.spaces[n - 1].id)
       case "close": little.close()
       case "closelight": little.pressCloseLight()
       case "copy": little.copyLink()
@@ -681,6 +686,11 @@ enum TestCommands {
         little.resize(to: NSSize(width: numbers[0], height: numbers[1]))
       default: result = "usage: littleray open <url>|openinray|close|closelight|escape|copy|snap <path>|size <w> <h>|reset"
       }
+    case "space":
+      // `space switch <n>|click <n>|next|previous|new|edit|delete|deletenow|menu <n> [title]|swipe <dx> [steps]
+      // [hold]|release|editor …|question cancel|delete|move <entry> <n>|state` (Spaces, `// MARK: Spaces`).
+      guard let controller = AppController.shared.current else { result = "no window"; break }
+      result = controller.spaceCommand(argument.split(separator: " ").map(String.init))
     case "sidebarlist":
       // `sidebarlist scroll <y>` (a user's scroll), `sidebarlist doubleclick` (a double click on empty space).
       let parts = argument.split(separator: " ").map(String.init)

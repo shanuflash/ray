@@ -44,7 +44,9 @@ final class Spring: NSObject {
     damping = 4 * .pi * dampingRatio / response
   }
 
-  func animate(to newTarget: CGFloat, in view: NSView) {
+  /// `velocity`: where to start the spring's speed (units per second), as a gesture let go; nil keeps the current.
+  func animate(to newTarget: CGFloat, in view: NSView, velocity start: CGFloat? = nil) {
+    if let start, link == nil { velocity = start }
     target = newTarget
     guard link == nil else { return }
     if abs(value - target) < 0.0005 { return }

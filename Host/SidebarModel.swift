@@ -144,10 +144,15 @@ final class SidebarEntry: Codable {
 final class SidebarState: Codable {
   static let todayLifetime: TimeInterval = 12 * 60 * 60
 
-  var favorites: [SidebarEntry] = []
-  var pinned: [SidebarEntry] = []
-  var today: [SidebarEntry] = []
-  var activeEntryID: UUID?
+  /// The Spaces, in the footer's order: never empty. Each has its own pinned tabs, folders and Today (Arc's).
+  var spaces: [Space] = [Space(name: Space.firstName)]
+  /// The Space the window shows.
+  var currentSpaceID: UUID
+  /// The default profile's favorites, shared by every Space on it (Arc's).
+  var defaultFavorites: [SidebarEntry] = []
+  /// Favorites of the other profiles, by profile directory: Arc's favorites belong to a profile, so Spaces on the same
+  /// profile share them.
+  var profileFavorites: [String: [SidebarEntry]] = [:]
   var sidebarHidden = false
   /// Whether the window was full screen, to reopen that way. Optional so older files still load.
   var fullScreen: Bool?
@@ -158,7 +163,70 @@ final class SidebarState: Codable {
   /// older file's value moves there once on load and is cleared.
   var fullAddress: Bool?
 
-  var allEntries: [SidebarEntry] { favorites + pinned + today }
+  init() {
+    currentSpaceID = spaces[0].id
+  }
+
+  // MARK: Spaces
+
+  /// The Space shown now.
+  var current: Space { spaces.first { $0.id == currentSpaceID } ?? spaces[0] }
+
+  func space(id: UUID) -> Space? { spaces.first { $0.id == id } }
+
+  /// The Space an entry's row is in; nil for favorites (shared) and for entries that are gone.
+  func space(of entry: SidebarEntry) -> Space? {
+    spaces.first { space in space.pinned.contains { $0 === entry } || space.today.contains { $0 === entry } }
+  }
+
+  /// The current Space's lists: everything that edits "the" sidebar edits the Space on screen.
+  var pinned: [SidebarEntry] {
+    get { current.pinned }
+    set { current.pinned = newValue }
+  }
+
+  var today: [SidebarEntry] {
+    get { current.today }
+    set { current.today = newValue }
+  }
+
+  /// The active tab of the Space on screen (each Space remembers its own, Arc's).
+  var activeEntryID: UUID? {
+    get { current.activeEntryID }
+    set { current.activeEntryID = newValue }
+  }
+
+  /// The favorites the current Space shows: its profile's.
+  var favorites: [SidebarEntry] {
+    get { favorites(profile: current.profile) }
+    set { setFavorites(newValue, profile: current.profile) }
+  }
+
+  func favorites(profile: String?) -> [SidebarEntry] {
+    guard let profile else { return defaultFavorites }
+    return profileFavorites[profile] ?? []
+  }
+
+  func setFavorites(_ list: [SidebarEntry], profile: String?) {
+    if let profile { profileFavorites[profile] = list } else { defaultFavorites = list }
+  }
+
+  var allFavorites: [SidebarEntry] { defaultFavorites + profileFavorites.keys.sorted().flatMap { profileFavorites[$0] ?? [] } }
+
+  /// Every Space's Today, for what spans them (Chrome's tab groups).
+  var allToday: [SidebarEntry] { spaces.flatMap(\.today) }
+
+  /// Everything in every Space, favorites first.
+  var allEntries: [SidebarEntry] { allFavorites + spaces.flatMap { $0.pinned + $0.today } }
+
+  /// What the Space on screen holds, with its favorites.
+  var shownEntries: [SidebarEntry] { favorites + pinned + today }
+
+  /// The profile an entry's page loads in: its Space's, or for a favorite the profile whose list holds it.
+  func profileDirectory(of entry: SidebarEntry) -> String? {
+    if let space = space(of: entry) { return space.profile }
+    return profileFavorites.first { $0.value.contains { $0 === entry } }?.key
+  }
 
   func entry(for tab: RayCoreTab) -> SidebarEntry? {
     allEntries.first { $0.tab === tab }
@@ -169,10 +237,65 @@ final class SidebarState: Codable {
   }
 
   func remove(_ entry: SidebarEntry) {
-    favorites.removeAll { $0 === entry }
-    pinned.removeAll { $0 === entry }
-    today.removeAll { $0 === entry }
-    if activeEntryID == entry.id { activeEntryID = nil }
+    defaultFavorites.removeAll { $0 === entry }
+    for key in profileFavorites.keys { profileFavorites[key]?.removeAll { $0 === entry } }
+    for space in spaces {
+      space.pinned.removeAll { $0 === entry }
+      space.today.removeAll { $0 === entry }
+      if space.activeEntryID == entry.id { space.activeEntryID = nil }
+    }
+  }
+
+  // MARK: Saved form
+
+  private enum CodingKeys: String, CodingKey {
+    case spaces, currentSpaceID, favorites, profileFavorites, sidebarHidden, fullScreen, pageToolbar, fullAddress
+    // Before Spaces: one list of each, now the first Space's.
+    case pinned, today, activeEntryID
+  }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    defaultFavorites = try c.decodeIfPresent([SidebarEntry].self, forKey: .favorites) ?? []
+    profileFavorites = try c.decodeIfPresent([String: [SidebarEntry]].self, forKey: .profileFavorites) ?? [:]
+    sidebarHidden = try c.decodeIfPresent(Bool.self, forKey: .sidebarHidden) ?? false
+    fullScreen = try c.decodeIfPresent(Bool.self, forKey: .fullScreen)
+    pageToolbar = try c.decodeIfPresent(Bool.self, forKey: .pageToolbar)
+    fullAddress = try c.decodeIfPresent(Bool.self, forKey: .fullAddress)
+    let saved = (try? c.decodeIfPresent([Space].self, forKey: .spaces)) ?? nil
+    if let saved, !saved.isEmpty {
+      spaces = saved
+    } else {
+      // A file from before Spaces: everything goes into one Space.
+      let first = Space(name: Space.firstName)
+      first.pinned = try c.decodeIfPresent([SidebarEntry].self, forKey: .pinned) ?? []
+      first.today = try c.decodeIfPresent([SidebarEntry].self, forKey: .today) ?? []
+      first.activeEntryID = try c.decodeIfPresent(UUID.self, forKey: .activeEntryID)
+      spaces = [first]
+    }
+    // A Space id seen twice (a hand-edited file) keeps its first.
+    var seen = Set<UUID>()
+    spaces = spaces.filter { seen.insert($0.id).inserted }
+    let wanted = try c.decodeIfPresent(UUID.self, forKey: .currentSpaceID)
+    let list = spaces
+    currentSpaceID = wanted.flatMap { id in list.first { $0.id == id }?.id } ?? list[0].id
+    // Favorites of a profile no Space uses any more stay (the profile's data does too); entries of a kind that
+    // doesn't belong in a list move where they do.
+    for space in spaces {
+      for entry in space.pinned where entry.kind == .favorite { entry.kind = .pinned }
+    }
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var c = encoder.container(keyedBy: CodingKeys.self)
+    try c.encode(spaces, forKey: .spaces)
+    try c.encode(currentSpaceID, forKey: .currentSpaceID)
+    try c.encode(defaultFavorites, forKey: .favorites)
+    if !profileFavorites.isEmpty { try c.encode(profileFavorites, forKey: .profileFavorites) }
+    try c.encode(sidebarHidden, forKey: .sidebarHidden)
+    try c.encodeIfPresent(fullScreen, forKey: .fullScreen)
+    try c.encodeIfPresent(pageToolbar, forKey: .pageToolbar)
+    try c.encodeIfPresent(fullAddress, forKey: .fullAddress)
   }
 
   // MARK: Pinned folders
@@ -180,14 +303,16 @@ final class SidebarState: Codable {
   /// `pinned` holds folders and tabs in tree order: each folder is followed by everything inside it. `today` does too,
   /// one level deep.
   func section(of entry: SidebarEntry) -> [SidebarEntry] {
-    today.contains { $0 === entry } ? today : pinned
+    let space = self.space(of: entry) ?? current
+    return space.today.contains { $0 === entry } ? space.today : space.pinned
   }
 
   func isTodayFolder(_ entry: SidebarEntry) -> Bool {
-    entry.isFolder && today.contains { $0 === entry }
+    entry.isFolder && allToday.contains { $0 === entry }
   }
 
-  var todayFolders: [SidebarEntry] { today.filter(\.isFolder) }
+  /// Today's folders in every Space (each is a Chrome tab group).
+  var todayFolders: [SidebarEntry] { allToday.filter(\.isFolder) }
 
   func depth(of entry: SidebarEntry) -> Int {
     let list = section(of: entry)
@@ -221,6 +346,10 @@ final class SidebarState: Codable {
   /// Rebuilds a valid tree from parent links, keeping the order items appear in: drops links to missing folders or
   /// to non-folders, breaks cycles, and puts every folder's items right after it.
   func normalizePinned() {
+    for space in spaces { space.pinned = Self.normalizedPinned(space.pinned) }
+  }
+
+  private static func normalizedPinned(_ pinned: [SidebarEntry]) -> [SidebarEntry] {
     let folders = Set(pinned.filter(\.isFolder).map(\.id))
     for entry in pinned {
       if entry.kind != .pinned && !entry.isFolder { entry.parentID = nil }
@@ -247,12 +376,16 @@ final class SidebarState: Codable {
       }
     }
     add(nil)
-    pinned = ordered
+    return ordered
   }
 
   /// Today's folders keep Chrome's rules: one level, each followed by its tabs, and gone once it holds no tab. A tab
   /// whose folder is missing (or isn't a Today folder) moves to the top level.
   func normalizeToday() {
+    for space in spaces { space.today = Self.normalizedToday(space.today) }
+  }
+
+  private static func normalizedToday(_ today: [SidebarEntry]) -> [SidebarEntry] {
     let folders = Set(today.filter(\.isFolder).map(\.id))
     for entry in today {
       if entry.isFolder || entry.parentID.map({ !folders.contains($0) }) == true { entry.parentID = nil }
@@ -269,12 +402,15 @@ final class SidebarState: Codable {
         ordered.append(entry)
       }
     }
-    today = ordered
+    return ordered
   }
 
   func archiveStaleToday(now: Date = Date()) {
-    today.removeAll {
-      !$0.isFolder && !$0.isLive && $0.id != activeEntryID && now.timeIntervalSince($0.lastActive) > Self.todayLifetime
+    for space in spaces {
+      space.today.removeAll {
+        !$0.isFolder && !$0.isLive && $0.id != space.activeEntryID
+          && now.timeIntervalSince($0.lastActive) > Self.todayLifetime
+      }
     }
     normalizeToday()
   }

@@ -395,7 +395,8 @@ final class ImportRun: @unchecked Sendable {
   }
 
   /// Pinned tabs, favorites and open tabs: read once, then added to the sidebar in one go. Arc's and Zen's spaces
-  /// each become a pinned folder named after the space (Ray has no Spaces yet), unless there's only one.
+  /// each become a Space of Ray's (name, icon, colour, pinned tabs and folders, open tabs), or join the one of that
+  /// name.
   private func sidebar(_ wanted: [ImportItem], _ def: BrowserDefinition) {
     begin(wanted)
     let spacesFamily = def.sidebar != nil
@@ -416,20 +417,24 @@ final class ImportRun: @unchecked Sendable {
     var pinned: [ArcImport.Node] = []
     var today: [ArcImport.Node] = []
     var favorites: [ArcImport.Node] = []
+    var spaces: [ImportedSpace] = []
     if spacesFamily {
-      if wanted.contains(.pinnedTabs) {
-        if let reason = Self.failure(.pinnedTabs, in: result) {
-          failures[.pinnedTabs] = reason
-        } else {
-          let spaces = result.spaces.map { (name: $0.name, nodes: ImportShape.nodes($0.pinned)) }.filter { !$0.nodes.isEmpty }
-          pinned = spaces.count == 1
-            ? spaces[0].nodes : spaces.map { .folder(title: ImportShape.plain($0.name), children: $0.nodes) }
-        }
-      }
-      if wanted.contains(.openTabs) {
-        if let reason = Self.failure(.tabs, in: result) { failures[.openTabs] = reason } else {
-          today = result.tabs.compactMap(ImportShape.node)
-        }
+      let pinnedFailure = wanted.contains(.pinnedTabs) ? Self.failure(.pinnedTabs, in: result) : nil
+      let tabsFailure = wanted.contains(.openTabs) ? Self.failure(.tabs, in: result) : nil
+      if let pinnedFailure { failures[.pinnedTabs] = pinnedFailure }
+      if let tabsFailure { failures[.openTabs] = tabsFailure }
+      let takesPinned = wanted.contains(.pinnedTabs) && pinnedFailure == nil
+      let takesTabs = wanted.contains(.openTabs) && tabsFailure == nil
+      spaces = result.spaces.map { space in
+        ImportedSpace(name: ImportShape.plain(space.name), icon: space.emoji ?? space.icon, color: space.color,
+                      colors: space.colors ?? [],
+                      pinned: takesPinned ? ImportShape.nodes(space.pinned) : [],
+                      today: takesTabs ? space.tabs.compactMap(ImportShape.node) : [])
+      }.filter { !$0.pinned.isEmpty || !$0.today.isEmpty }
+      // Open tabs no space holds (a browser that keeps them apart) land in the Space you're on.
+      if takesTabs {
+        let inSpaces = Set(result.spaces.flatMap { $0.tabs.map(\.url) })
+        today = result.tabs.filter { !inSpaces.contains($0.url) }.compactMap(ImportShape.node)
       }
       if wanted.contains(.favorites) {
         if let reason = Self.failure(.favorites, in: result) { failures[.favorites] = reason } else {
@@ -443,7 +448,7 @@ final class ImportRun: @unchecked Sendable {
       if wanted.contains(.openTabs) { today = result.tabs.filter { !$0.pinned }.compactMap(ImportShape.node) }
     }
     let counts = DispatchQueue.main.sync { [controller] in
-      controller.addImported(favorites: favorites, pinned: pinned, today: today)
+      controller.addImported(favorites: favorites, pinned: pinned, today: today, spaces: spaces)
     }
     for item in wanted {
       if let reason = failures[item] { emit(.failed(item, reason: reason)); continue }
