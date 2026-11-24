@@ -298,12 +298,15 @@
   #v2.open .morph { clip-path: circle(150% at 21px calc(100% - 20px)); opacity: 1; }
   /* B: tray under the sidebar */
   #v6 { padding: 0; }
-  #v6 .upper { position: absolute; left: 0; right: 0; top: 0; bottom: 40px; z-index: 2; background: var(--side); padding: 8px 8px 0;
+  #v6 .upper { position: absolute; left: 0; right: 0; top: 0; bottom: 40px; z-index: 2; background: var(--side); padding: 0;
     display: flex; flex-direction: column; overflow: hidden; border-radius: 0 0 0 0;
-    transition: bottom .48s cubic-bezier(.22,1,.36,1), border-radius .3s, box-shadow .3s; }
-  #v6.open .upper { bottom: calc(40px + 56%); border-radius: 0 0 14px 14px;
-    box-shadow: 0 0.5px 0 var(--hair), 0 10px 22px rgba(0,0,0,.22), 0 2px 5px rgba(0,0,0,.12); }
-  #v6 .under { position: absolute; left: 0; right: 0; bottom: 40px; height: 56%; z-index: 1; background: var(--tray);
+    transition: top .48s cubic-bezier(.22,1,.36,1), left .48s cubic-bezier(.22,1,.36,1), right .48s cubic-bezier(.22,1,.36,1), bottom .48s cubic-bezier(.22,1,.36,1), border-radius .3s, box-shadow .3s; }
+  #v6.open .upper { top: 6px; left: 8px; right: 8px; bottom: calc(40px + 54%); border-radius: 14px;
+    box-shadow: 0 0 0 0.5px var(--hair), 0 12px 26px rgba(0,0,0,.26), 0 2px 6px rgba(0,0,0,.14); }
+  #v6 .upin { position: absolute; left: 0; right: 0; top: 0; height: 520px; padding: 8px 8px 0; display: flex; flex-direction: column;
+    transform-origin: 50% 0; transition: transform .48s cubic-bezier(.22,1,.36,1); }
+  #v6.open .upin { transform: scale(.9); }
+  #v6 .under { position: absolute; left: 0; right: 0; bottom: 40px; height: 54%; z-index: 1; background: var(--tray);
     box-shadow: inset 0 8px 14px -8px rgba(0,0,0,.25); padding: 22px 10px 6px; display: flex; flex-direction: column; }
   #v6 .lowfoot { position: absolute; left: 8px; right: 8px; bottom: 0; z-index: 3; }
   #v6.open .lowfoot { background: var(--tray); left: 0; right: 0; padding: 0 12px; }
@@ -1073,17 +1076,17 @@
   </ul>
 
   <h3>B. Slides out from under the sidebar</h3>
-  <p>A separate surface, not part of the sidebar: the tab list lifts up as a card (its bottom corners round, it casts a shadow down), and the Library tray is revealed underneath it, recessed, darker, as if it had been lying under the sidebar all along. The tray's rows come up from below the card's edge. Closing drops the card back over it.</p>
+  <p>A separate surface, not part of the sidebar: the whole sidebar shrinks into a smaller card (inset from the edges, all corners rounded, everything in it scaled to 90 %, casting a shadow), and the Library tray is revealed underneath it, recessed, darker, as if it had been lying under the sidebar all along. The tray's rows come up from below the card's edge. Closing grows the sidebar back to full size over it.</p>
   <div class="stage">
     <div class="win vwin"><div class="sb" id="v6">
       <div class="under">
         <div class="seg2" data-seg="v6"><span class="on" data-v="dl">Downloads</span><span data-v="bm">Bookmarks</span></div>
         <div class="view dl stag" data-fill="dl"></div><div class="view bm stag" data-fill="bm"></div>
       </div>
-      <div class="upper">
+      <div class="upper"><div class="upin">
         <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
         <div class="list" data-fill="tabs"></div>
-      </div>
+      </div></div>
       <div class="foot lowfoot" data-fill="foot" data-for="v6"></div>
     </div><div class="pg" data-fill="page"></div></div>
   </div>
