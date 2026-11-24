@@ -250,7 +250,7 @@ entry.
   sidebar covers it, Ray's subview rule), Panels and notes above it. The source page stays attached and visible
   (never hide a page on screen: Chrome drops its compositor) under a dim layer; `PageContainerView` isn't asked to
   show a second page.
-- **Look:** a mock first (`docs/mocks/peek.html`, owner's pick), offering Arc's measured layout (Open Arc's numbers
+- **Look:** the owner's pick of `docs/mocks/peek.html` (A Arc's layout, recommended; B Ardia's bar; C A with back/forward), offering Arc's measured layout (Open Arc's numbers
   above, buttons in a column right of the card) against Ardia's (a bar on the card). Surfaces as Ray's own:
   `SurfaceBackdrop` shadow and edge, the profile colour for nothing but focus rings, `HoverIconButton.make` for the
   buttons (VoiceOver names "Close", "Open as Tab", later "Open in Split View"). The address shown on the card goes

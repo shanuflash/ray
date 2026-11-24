@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Peek</title>
+<style>
+:root {
+  --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --hair: rgba(0,0,0,.08);
+  --side: #E8E5EF; --sideInk: #3A3A3F; --page: #FFFFFF; --line: #EDEDF0; --chip: #FFFFFF;
+  --field: rgba(0,0,0,.055); --sel: rgba(255,255,255,.78); --dim: rgba(28,24,40,.28);
+  --card: #FFFFFF; --btn: #FFFFFF; --btnInk: #3A3A3F; --accent: #8257E5; --onAccent: #fff;
+  --src1: #F3F1F8; --src2: #E4E0EE; --art: #F6F4EE; --artInk: #2A2620;
+}
+:root[data-theme="dark"] {
+  --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09);
+  --side: #1D1B22; --sideInk: #D8D6DE; --page: #242428; --line: #2F2F34; --chip: #28282D;
+  --field: rgba(255,255,255,.07); --sel: rgba(255,255,255,.12); --dim: rgba(0,0,0,.45);
+  --card: #2A292F; --btn: #34333A; --btnInk: #E6E4EC; --accent: #A486F0; --onAccent: #000;
+  --src1: #2A2830; --src2: #34313B; --art: #26241F; --artInk: #EDE8DD;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09);
+    --side: #1D1B22; --sideInk: #D8D6DE; --page: #242428; --line: #2F2F34; --chip: #28282D;
+    --field: rgba(255,255,255,.07); --sel: rgba(255,255,255,.12); --dim: rgba(0,0,0,.45);
+    --card: #2A292F; --btn: #34333A; --btnInk: #E6E4EC; --accent: #A486F0; --onAccent: #000;
+    --src1: #2A2830; --src2: #34313B; --art: #26241F; --artInk: #EDE8DD;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1060px; margin: 0 auto; padding: 0 16px 64px; }
+h1 { font-size: 22px; font-weight: 600; margin: 22px 0 4px; letter-spacing: -.01em; }
+h2 { font-size: 16px; font-weight: 600; margin: 34px 0 4px; }
+.sub { color: var(--ink2); margin: 0 0 10px; max-width: 820px; }
+.rec { display: inline-block; font-size: 10px; font-weight: 700; color: var(--onAccent); background: var(--accent); border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: 2px; }
+
+/* One mock screen: a Ray window */
+.shot { padding: 18px; background: linear-gradient(135deg, #C9CFE0, #E4D9E8); border-radius: 14px; margin-top: 10px; }
+:root[data-theme="dark"] .shot { background: linear-gradient(135deg, #1B1F2C, #2A2230); }
+.win { position: relative; height: 560px; border-radius: 11px; overflow: hidden; display: flex; background: var(--side);
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.22), 0 18px 44px -14px rgba(0,0,0,.35); }
+.side { width: 216px; flex: none; padding: 10px 9px; color: var(--sideInk); font-size: 12.5px; position: relative; z-index: 1; }
+.lights { display: flex; gap: 7px; margin: 2px 0 12px 4px; } .lights i { width: 11px; height: 11px; border-radius: 50%; background: #FF5F57; }
+.lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+.addr { height: 30px; border-radius: 9px; background: var(--field); display: flex; align-items: center; gap: 6px; padding: 0 9px; margin-bottom: 12px; font-size: 12px; }
+.addr b { font-weight: 600; } .addr .peekTag { margin-left: auto; font-size: 10px; font-weight: 700; color: var(--accent); }
+.favs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
+.fav { height: 40px; border-radius: 9px; background: var(--field); display: grid; place-items: center; position: relative; }
+.fav.on { background: var(--sel); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.fav i, .row i { width: 16px; height: 16px; border-radius: 4px; display: block; }
+.badge { position: absolute; right: 4px; bottom: 4px; width: 13px; height: 13px; border-radius: 50%; background: var(--accent); color: var(--onAccent);
+  font-size: 8px; font-weight: 800; display: grid; place-items: center; box-shadow: 0 0 0 1.5px var(--side); }
+.row { height: 32px; border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 8px; position: relative; }
+.row.on { background: var(--sel); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.row .badge { position: static; margin-left: auto; }
+.sep { height: 1px; background: var(--hair); margin: 8px 4px; }
+.lbl { font-size: 10.5px; color: var(--ink2); margin: 2px 8px 4px; }
+
+/* The page card and the source page */
+.pagearea { flex: 1; position: relative; padding: 8px 8px 8px 0; }
+.page { position: absolute; inset: 8px 8px 8px 0; border-radius: 9px; overflow: hidden; background: var(--page);
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.12); transition: inset .2s; }
+.src { padding: 18px 22px; }
+.src .top { height: 26px; display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+.src .top span { height: 10px; border-radius: 5px; background: var(--src2); }
+.src .task { display: flex; gap: 10px; align-items: center; height: 34px; border-bottom: 1px solid var(--line); }
+.src .task i { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid var(--src2); }
+.src .task span { height: 9px; border-radius: 5px; background: var(--src1); }
+.src .task a { color: #1F6FEB; font-size: 12px; text-decoration: underline; }
+.dim { position: absolute; inset: 0; background: var(--dim); }
+
+/* Peek card */
+.peek { position: absolute; border-radius: 11px; overflow: hidden; background: var(--card);
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.18), 0 24px 60px -18px rgba(0,0,0,.5), 0 6px 18px -8px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+.art { flex: 1; background: var(--art); color: var(--artInk); padding: 26px 34px; overflow: hidden; }
+.art .kick { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; opacity: .55; font-weight: 700; }
+.art h3 { font: 600 24px/1.2 Georgia, "New York", serif; margin: 8px 0 10px; max-width: 520px; }
+.art .by { font-size: 11px; opacity: .6; margin-bottom: 16px; }
+.art .img { height: 120px; border-radius: 6px; background: linear-gradient(120deg, #C7B79A, #8E7E66); margin-bottom: 14px; }
+.art p { margin: 0 0 8px; height: 9px; border-radius: 5px; background: currentColor; opacity: .14; }
+.round { width: 30px; height: 30px; border-radius: 50%; background: var(--btn); color: var(--btnInk); display: grid; place-items: center;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.14), 0 3px 10px -3px rgba(0,0,0,.3); font-size: 14px; font-weight: 600; }
+.round.off { opacity: .45; }
+.col { position: absolute; display: flex; flex-direction: column; gap: 9px; }
+.tip { position: absolute; font-size: 10.5px; color: #fff; background: rgba(20,20,24,.82); border-radius: 5px; padding: 2px 7px; white-space: nowrap; }
+.pbar { height: 34px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.pbar .host b { font-weight: 600; } .pbar .host span { color: var(--ink2); }
+.pbar .sp { flex: 1; }
+.chipbtn { height: 24px; border-radius: 7px; padding: 0 9px; display: flex; align-items: center; gap: 5px; background: var(--field); font-size: 11.5px; font-weight: 500; }
+.ico { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; color: var(--ink2); font-size: 13px; }
+.ico.off { opacity: .35; }
+.lock { color: var(--ink2); font-size: 11px; }
+.callout { margin: 10px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
+.callout div { background: var(--chip); border: 1px solid var(--hair); border-radius: 9px; padding: 8px 10px; font-size: 12px; color: var(--ink2); }
+.callout b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Peek</h1>
+<p class="sub">A plain click in the pinned “Tasks” tab on a link to another site. The page under it doesn't move; the card is a
+live page. Same window and same moment in each option; only the card's look differs. Plan: <code>docs/PEEK-PLAN.md</code>.</p>
+
+<!-- Shared pieces are repeated per option so each screen renders on its own -->
+
+<h2 id="h-a">A · Arc's layout <span class="rec">recommended</span></h2>
+<p class="sub">Arc's measured spot: the card nearly fills the page's height, a column of round buttons beside it (close, open as tab,
+split view later). The page behind shrinks a little and dims. The sidebar's address field shows the Peek's host; the pinned tab gets a
+small badge. No bar on the card: the page gets every point.</p>
+<div class="shot" id="shot-a">
+  <div class="win">
+    <div class="side">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="addr"><span class="lock">🔒</span><b>news.example.org</b><span class="peekTag">PEEK</span></div>
+      <div class="favs">
+        <div class="fav"><i style="background:#E5533D"></i></div>
+        <div class="fav"><i style="background:#2F80ED"></i></div>
+        <div class="fav"><i style="background:#27AE60"></i></div>
+      </div>
+      <div class="lbl">Pinned</div>
+      <div class="row on"><i style="background:#8257E5"></i>Tasks<span class="badge">↗</span></div>
+      <div class="row"><i style="background:#F2994A"></i>Calendar</div>
+      <div class="row"><i style="background:#56CCF2"></i>Docs</div>
+      <div class="sep"></div>
+      <div class="lbl">Today</div>
+      <div class="row"><i style="background:#BDBDBD"></i>Release notes</div>
+      <div class="row"><i style="background:#9B51E0"></i>Design review</div>
+    </div>
+    <div class="pagearea">
+      <div class="page" style="inset: 17px 17px 17px 9px">
+        <div class="src">
+          <div class="top"><span style="width:90px"></span><span style="width:60px"></span></div>
+          <div class="task"><i></i><span style="width:220px"></span></div>
+          <div class="task"><i></i><span style="width:140px"></span> <a>news.example.org/…/ship-it</a></div>
+          <div class="task"><i></i><span style="width:260px"></span></div>
+          <div class="task"><i></i><span style="width:180px"></span></div>
+          <div class="task"><i></i><span style="width:240px"></span></div>
+        </div>
+        <div class="dim"></div>
+      </div>
+      <div class="peek" style="left: 34px; right: 62px; top: 12px; bottom: 13px">
+        <div class="art">
+          <div class="kick">Technology</div>
+          <h3>How small teams ship software every day</h3>
+          <div class="by">By A. Writer · 6 min read</div>
+          <div class="img"></div>
+          <p style="width:96%"></p><p style="width:91%"></p><p style="width:94%"></p><p style="width:70%"></p>
+          <p style="width:93%"></p><p style="width:88%"></p>
+        </div>
+      </div>
+      <div class="col" style="right: 22px; top: 19px">
+        <div class="round" title="Close">✕</div>
+        <div class="round" title="Open as Tab">⤢</div>
+        <div class="round off" title="Open in Split View">◫</div>
+      </div>
+      <div class="tip" style="right: 60px; top: 61px">Open as Tab ⌘O</div>
+    </div>
+  </div>
+  <div class="callout">
+    <div><b>Close:</b> ✕, Escape, ⌘W or a click on the dimmed page. The Tasks page is exactly as it was.</div>
+    <div><b>Open as Tab:</b> ⤢ or ⌘O: the live page moves to the top of Today, history kept.</div>
+    <div><b>Split View:</b> greyed until Split View lands.</div>
+  </div>
+</div>
+
+<h2 id="h-b">B · Ardia's bar</h2>
+<p class="sub">A smaller, centred card with its own bar: “Peek: host” on the left, Open as Tab and close on the right. Says what it is
+in words; costs 34 pt of page and looks less like Arc.</p>
+<div class="shot" id="shot-b">
+  <div class="win">
+    <div class="side">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="addr"><span class="lock">🔒</span><b>tasks.example.com</b></div>
+      <div class="favs">
+        <div class="fav"><i style="background:#E5533D"></i></div>
+        <div class="fav"><i style="background:#2F80ED"></i></div>
+        <div class="fav"><i style="background:#27AE60"></i></div>
+      </div>
+      <div class="lbl">Pinned</div>
+      <div class="row on"><i style="background:#8257E5"></i>Tasks</div>
+      <div class="row"><i style="background:#F2994A"></i>Calendar</div>
+      <div class="row"><i style="background:#56CCF2"></i>Docs</div>
+      <div class="sep"></div>
+      <div class="lbl">Today</div>
+      <div class="row"><i style="background:#BDBDBD"></i>Release notes</div>
+      <div class="row"><i style="background:#9B51E0"></i>Design review</div>
+    </div>
+    <div class="pagearea">
+      <div class="page">
+        <div class="src">
+          <div class="top"><span style="width:90px"></span><span style="width:60px"></span></div>
+          <div class="task"><i></i><span style="width:220px"></span></div>
+          <div class="task"><i></i><span style="width:140px"></span> <a>news.example.org/…/ship-it</a></div>
+          <div class="task"><i></i><span style="width:260px"></span></div>
+          <div class="task"><i></i><span style="width:180px"></span></div>
+          <div class="task"><i></i><span style="width:240px"></span></div>
+        </div>
+        <div class="dim"></div>
+      </div>
+      <div class="peek" style="left: 46px; right: 54px; top: 40px; bottom: 40px">
+        <div class="pbar">
+          <span class="host">Peek: <b>news.example.org</b></span><span class="sp"></span>
+          <span class="chipbtn">⤢ Open as Tab</span><span class="ico">✕</span>
+        </div>
+        <div class="art">
+          <div class="kick">Technology</div>
+          <h3>How small teams ship software every day</h3>
+          <div class="by">By A. Writer · 6 min read</div>
+          <div class="img"></div>
+          <p style="width:96%"></p><p style="width:91%"></p><p style="width:94%"></p><p style="width:70%"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2 id="h-c">C · Arc's layout with navigation</h2>
+<p class="sub">A with a slim bar on the card (Circa's): back, forward, reload and the Peek's address, for following a few links inside the
+Peek before deciding. The round buttons stay beside the card.</p>
+<div class="shot" id="shot-c">
+  <div class="win">
+    <div class="side">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="addr"><span class="lock">🔒</span><b>news.example.org</b><span class="peekTag">PEEK</span></div>
+      <div class="favs">
+        <div class="fav"><i style="background:#E5533D"></i></div>
+        <div class="fav"><i style="background:#2F80ED"></i></div>
+        <div class="fav"><i style="background:#27AE60"></i></div>
+      </div>
+      <div class="lbl">Pinned</div>
+      <div class="row on"><i style="background:#8257E5"></i>Tasks<span class="badge">↗</span></div>
+      <div class="row"><i style="background:#F2994A"></i>Calendar</div>
+      <div class="row"><i style="background:#56CCF2"></i>Docs</div>
+      <div class="sep"></div>
+      <div class="lbl">Today</div>
+      <div class="row"><i style="background:#BDBDBD"></i>Release notes</div>
+      <div class="row"><i style="background:#9B51E0"></i>Design review</div>
+    </div>
+    <div class="pagearea">
+      <div class="page" style="inset: 17px 17px 17px 9px">
+        <div class="src">
+          <div class="top"><span style="width:90px"></span><span style="width:60px"></span></div>
+          <div class="task"><i></i><span style="width:220px"></span></div>
+          <div class="task"><i></i><span style="width:140px"></span> <a>news.example.org/…/ship-it</a></div>
+          <div class="task"><i></i><span style="width:260px"></span></div>
+          <div class="task"><i></i><span style="width:180px"></span></div>
+          <div class="task"><i></i><span style="width:240px"></span></div>
+        </div>
+        <div class="dim"></div>
+      </div>
+      <div class="peek" style="left: 34px; right: 62px; top: 12px; bottom: 13px">
+        <div class="pbar">
+          <span class="ico">←</span><span class="ico off">→</span><span class="ico">↻</span>
+          <span class="host"><b>news.example.org</b><span>/2026/11/ship-it</span></span><span class="sp"></span>
+        </div>
+        <div class="art">
+          <div class="kick">Technology</div>
+          <h3>How small teams ship software every day</h3>
+          <div class="by">By A. Writer · 6 min read</div>
+          <div class="img"></div>
+          <p style="width:96%"></p><p style="width:91%"></p><p style="width:94%"></p><p style="width:70%"></p>
+        </div>
+      </div>
+      <div class="col" style="right: 22px; top: 19px">
+        <div class="round">✕</div>
+        <div class="round">⤢</div>
+        <div class="round off">◫</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</body>
+</html>
