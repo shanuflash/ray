@@ -21,7 +21,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
    AppKit.
 2. **Profiles**: several logins (Arc ties a profile to a Space). Ray has one profile; the engine has
    `loadProfile`/`offTheRecordProfileFor`.
-3. **Split View**: two or more pages side by side in one window.
+3. **Split View**: two or more pages side by side in one window. Mocks for the owner to pick: `docs/mocks/split-view.html`.
 4. ~~**Little Arc**~~ (Done: Little Ray, a quick look at links from other apps; owner 2026-11-24: not a mini browser,
    so no ⌥⌘N). Leftovers: Known limitations 77.
 5. **Archive view**: Ray archives stale Today tabs but has no way to browse or restore them.
@@ -45,6 +45,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 11. Boosts: per-site CSS/JS, zapping elements.
 12. Air Traffic Control: rules for which Space a link opens in (Cra's `LinkRouting`). Ardia 0.2.47-nightly.2 ships
     it per profile (rules by app and by site or pattern, first match wins, Everything Else, a Try a Link tester).
+    Mocks for the owner to pick: `docs/mocks/air-traffic-control.html` (Settings › Links).
 13. Capture (Arc's screenshot tool).
 14. Easels, Notes, Library.
 15. Sidebar on the right. Ardia shipped it in 0.2.44-nightly.4–6 (traffic lights ride the sidebar, the peek comes

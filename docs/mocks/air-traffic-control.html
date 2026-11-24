@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Air Traffic Control</title>
+<style>
+:root {
+  --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --hair: rgba(0,0,0,.08); --chip: #FFFFFF; --btn: rgba(0,0,0,.06); --btnHot: rgba(0,0,0,.1);
+  --accent: #8257E5; --onAccent: #fff; --inkSel: #5b34c4; --red: #D70015; --green: #248A3D;
+  --sidebar: #E8E5EF; --content: #F2F2F4; --card: #FFFFFF; --cardEdge: rgba(0,0,0,.06); --label: #1D1D1F; --grey: #6E6E73; --tert: #A7A7AC;
+  --track: rgba(0,0,0,.06); --field: #FFFFFF; --fieldEdge: rgba(0,0,0,.14); --switchOff: rgba(0,0,0,.2);
+  --sel: color-mix(in srgb, var(--accent) 22%, var(--sidebar)); --flash: color-mix(in srgb, var(--accent) 14%, var(--card));
+}
+:root[data-theme="dark"] {
+  --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09); --chip: #28282D; --btn: rgba(255,255,255,.08); --btnHot: rgba(255,255,255,.13);
+  --accent: #A486F0; --onAccent: #000; --inkSel: #cdbaf9; --red: #FF6961; --green: #30D158;
+  --sidebar: #1D1B22; --content: #1E1E1E; --card: rgba(255,255,255,.045); --cardEdge: rgba(255,255,255,.07); --label: #F2F2F4; --grey: #A1A1A6; --tert: #636366;
+  --track: rgba(255,255,255,.08); --field: rgba(255,255,255,.06); --fieldEdge: rgba(255,255,255,.14); --switchOff: rgba(255,255,255,.25);
+  --sel: color-mix(in srgb, var(--accent) 30%, var(--sidebar)); --flash: color-mix(in srgb, var(--accent) 18%, #262626);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09); --chip: #28282D; --btn: rgba(255,255,255,.08); --btnHot: rgba(255,255,255,.13);
+    --accent: #A486F0; --onAccent: #000; --inkSel: #cdbaf9; --red: #FF6961; --green: #30D158;
+    --sidebar: #1D1B22; --content: #1E1E1E; --card: rgba(255,255,255,.045); --cardEdge: rgba(255,255,255,.07); --label: #F2F2F4; --grey: #A1A1A6; --tert: #636366;
+    --track: rgba(255,255,255,.08); --field: rgba(255,255,255,.06); --fieldEdge: rgba(255,255,255,.14); --switchOff: rgba(255,255,255,.25);
+    --sel: color-mix(in srgb, var(--accent) 30%, var(--sidebar)); --flash: color-mix(in srgb, var(--accent) 18%, #262626);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1060px; margin: 0 auto; padding: 0 16px 64px; }
+h1 { font-size: 22px; font-weight: 600; margin: 22px 0 4px; letter-spacing: -.01em; }
+h2 { font-size: 16px; font-weight: 600; margin: 34px 0 6px; }
+.sub, .note { color: var(--ink2); margin: 0 0 10px; max-width: 820px; }
+code { font-size: 12px; }
+.bar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--desk) 86%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 8px 0; border-bottom: 1px solid var(--hair); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 3px 0; }
+.lab { color: var(--ink2); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; min-width: 92px; }
+button.t { font: inherit; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--chip); border: 1px solid var(--hair); border-radius: 7px; padding: 3px 9px; cursor: pointer; }
+button.t[aria-pressed="true"] { background: var(--accent); color: var(--onAccent); border-color: transparent; }
+.rec { display: inline-block; font-size: 10px; font-weight: 700; color: var(--onAccent); background: var(--accent); border-radius: 4px; padding: 1px 5px; margin-left: 4px; vertical-align: 1px; }
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.opt { background: var(--chip); border: 1px solid var(--hair); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+.opt[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }
+.opt h3 { margin: 0 0 3px; font-size: 13px; }
+.opt p { margin: 0; color: var(--ink2); font-size: 12px; }
+ol.q { padding-left: 20px; max-width: 820px; } ol.q li { margin-bottom: 7px; }
+table.ref { border-collapse: collapse; font-size: 12px; max-width: 900px; }
+table.ref td, table.ref th { text-align: left; vertical-align: top; padding: 5px 10px 5px 0; border-bottom: 1px solid var(--hair); }
+table.ref th { color: var(--ink2); font-weight: 600; }
+
+/* The Settings window: 880×600, direction G (pick A of settings-look.html), scaled to fit */
+.stage { position: relative; margin-top: 12px; border-radius: 12px; overflow: hidden; background: linear-gradient(135deg, #C9CFE0, #E4D9E8); }
+:root[data-theme="dark"] .stage { background: linear-gradient(135deg, #1B1F2C, #2A2230); }
+.scaler { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.win { position: absolute; left: 20px; top: 20px; width: 880px; height: 600px; border-radius: 12px; overflow: hidden; display: flex; color: var(--label);
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.25), 0 22px 50px -16px rgba(0,0,0,.4); }
+.side { width: 210px; flex: none; background: var(--sidebar); padding: 42px 10px 14px; display: flex; flex-direction: column; position: relative; }
+.lights { position: absolute; left: 16px; top: 16px; display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; } .lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+.search { height: 28px; border-radius: 8px; background: var(--track); display: flex; align-items: center; gap: 6px; padding: 0 9px; color: var(--grey); font-size: 13px; margin-bottom: 10px; }
+.nav { height: 30px; border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 8px; font-size: 13px; margin-bottom: 2px; }
+.nav .g { width: 20px; display: grid; place-items: center; color: var(--grey); }
+.nav .g svg { width: 15px; height: 15px; }
+.nav.on { background: var(--sel); color: var(--inkSel); font-weight: 500; } .nav.on .g { color: var(--inkSel); }
+.nav.new::after { content: "New"; margin-left: auto; font-size: 10px; font-weight: 600; color: var(--accent); }
+.sec { font-size: 11px; font-weight: 600; color: var(--grey); margin: 12px 0 4px 10px; }
+.chromeLink { margin-top: auto; font-size: 12px; color: var(--grey); padding: 0 10px; }
+.main { flex: 1; background: var(--content); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+.col { max-width: 600px; margin: 0 auto; padding: 34px 24px 40px; }
+.pt { font-size: 22px; font-weight: 600; margin: 0 0 22px; letter-spacing: -.01em; }
+.grp { margin-bottom: 24px; }
+.gh { display: flex; align-items: center; justify-content: space-between; margin: 0 4px 7px; min-height: 22px; }
+.gh b { font-size: 13px; font-weight: 600; }
+.cardbox { background: var(--card); border-radius: 10px; box-shadow: 0 0 0 .5px var(--cardEdge); overflow: hidden; }
+.srow { min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; position: relative; font-size: 13px; }
+.srow + .srow::before, .srow + .rt::before, .rt + .rt::before, .rt + .srow::before { content: ""; position: absolute; left: 14px; right: 0; top: 0; height: .5px; background: var(--hair); }
+.srow .d { color: var(--grey); font-size: 11.5px; }
+.srow .tx { flex: 1; min-width: 0; }
+.foot { font-size: 11.5px; color: var(--grey); margin: 7px 4px 0; }
+/* Controls */
+.sw { width: 32px; height: 19px; border-radius: 10px; background: var(--switchOff); position: relative; flex: none; cursor: pointer; transition: background .15s; }
+.sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .18s cubic-bezier(.3,.8,.25,1); }
+.sw.on { background: var(--accent); } .sw.on::after { transform: translateX(13px); }
+.pop { position: relative; display: inline-flex; flex: none; }
+.pop select { appearance: none; -webkit-appearance: none; font: inherit; font-size: 13px; color: var(--label); background: var(--btn); border: 0; border-radius: 6px; height: 24px; padding: 0 24px 0 9px; cursor: pointer; max-width: 210px; }
+.pop select:hover { background: var(--btnHot); }
+.pop::after { content: ""; position: absolute; right: 8px; top: 50%; width: 5px; height: 5px; border: solid var(--grey); border-width: 0 1.4px 1.4px 0; transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+.pop.dest select { padding-left: 27px; }
+.pop .ic { position: absolute; left: 7px; top: 50%; transform: translateY(-50%); pointer-events: none; }
+.sp { width: 14px; height: 14px; border-radius: 4px; display: inline-grid; place-items: center; color: #fff; font: 700 8px/1 -apple-system, system-ui; flex: none; }
+.fieldIn { font: inherit; font-size: 13px; color: var(--label); background: var(--field); border: 0; box-shadow: 0 0 0 .5px var(--fieldEdge); border-radius: 6px; height: 24px; padding: 0 8px; min-width: 0; outline: none; }
+.fieldIn:focus { box-shadow: 0 0 0 .5px var(--fieldEdge), 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); }
+.fieldIn::placeholder { color: var(--tert); }
+.btn { font: inherit; font-size: 13px; color: var(--label); background: var(--btn); border: 0; border-radius: 8px; height: 26px; padding: 0 11px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+.btn:hover { background: var(--btnHot); } .btn.primary { background: var(--accent); color: var(--onAccent); font-weight: 500; } .btn.del { color: var(--red); }
+.btn.small { height: 22px; font-size: 12px; padding: 0 9px; border-radius: 6px; }
+.ib { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: var(--grey); cursor: pointer; flex: none; background: none; border: 0; }
+.ib:hover { background: var(--btnHot); color: var(--label); } .ib svg { width: 13px; height: 13px; }
+.handle { width: 12px; color: var(--tert); cursor: grab; flex: none; display: grid; place-items: center; }
+/* Routes: list look A, Arc's two-line sentence */
+.rt { position: relative; transition: background .5s; }
+.rt.flash { background: var(--flash); transition: background .12s; }
+.rt.hit::after { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 2px 2px 0; background: var(--accent); }
+.rtA { padding: 9px 10px 9px 8px; display: grid; grid-template-columns: 14px 1fr 22px; gap: 4px 8px; align-items: center; }
+.rtA .l1, .rtA .l2 { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.rtA .l1 .fieldIn { flex: 1; }
+.rtA .l2 { grid-column: 2; color: var(--grey); }
+.rtA .w { color: var(--grey); white-space: nowrap; }
+.rtA .rm { grid-row: 1 / span 2; grid-column: 3; }
+.rtA .handle { grid-row: 1 / span 2; }
+/* Routes: list look B, Ray's item rows that open to a form */
+.rtB { min-height: 44px; padding: 0 14px 0 8px; display: flex; align-items: center; gap: 10px; cursor: default; }
+.rtB:hover { background: color-mix(in srgb, var(--label) 3%, transparent); }
+.rtB .ico { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: #fff; font: 700 11px/1 -apple-system, system-ui; flex: none; }
+.rtB .tx { flex: 1; min-width: 0; }
+.rtB .tx b { font-weight: 400; display: block; font-size: 13px; } .rtB .tx span { color: var(--grey); font-size: 11.5px; }
+.rtB .chev { width: 7px; height: 7px; border: solid var(--tert); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); flex: none; margin-right: 3px; transition: transform .18s; }
+.rtB.open .chev { transform: rotate(45deg); }
+.form { padding: 4px 14px 12px 40px; display: grid; grid-template-columns: 64px 1fr; gap: 8px 10px; align-items: center; position: relative; }
+.form .k { color: var(--grey); font-size: 12px; text-align: right; }
+.form .fl { display: flex; gap: 8px; align-items: center; min-width: 0; } .form .fl .fieldIn { flex: 1; }
+.form .btns { grid-column: 1 / span 2; display: flex; gap: 8px; margin-top: 4px; } .form .btns .gap { flex: 1; }
+.warn { color: var(--red); font-size: 11.5px; }
+/* Typed match: the field guesses the kind */
+.typed { position: relative; flex: 1; display: flex; min-width: 0; }
+.typed .fieldIn { flex: 1; padding-right: 74px; }
+.kchip { position: absolute; right: 3px; top: 3px; height: 18px; border-radius: 5px; padding: 0 7px; font-size: 11px; font-weight: 500; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--inkSel); border: 0; cursor: pointer; font-family: inherit; }
+.kchip:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+/* Default row */
+.def { padding: 10px 14px; display: flex; align-items: center; gap: 8px; position: relative; }
+.def::before { content: ""; position: absolute; left: 14px; right: 0; top: 0; height: .5px; background: var(--hair); }
+.def .w { flex: 1; } .def b { font-weight: 500; }
+.empty { padding: 16px 14px; color: var(--grey); font-size: 12.5px; text-align: center; }
+/* Tester */
+.tester { padding: 12px 14px; }
+.tester .in { display: flex; gap: 8px; align-items: center; }
+.tester .in .fieldIn { flex: 1; height: 28px; font-size: 13px; }
+.samples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.samples button { font: inherit; font-size: 11.5px; color: var(--grey); background: var(--track); border: 0; border-radius: 10px; padding: 2px 9px; cursor: pointer; }
+.samples button:hover { color: var(--label); }
+.ans { display: flex; align-items: center; gap: 10px; margin-top: 12px; min-height: 38px; padding: 8px 10px; border-radius: 8px; background: var(--track); }
+.ans .big { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: #fff; font: 700 13px/1 -apple-system, system-ui; flex: none; }
+.ans b { font-weight: 600; } .ans span { color: var(--grey); font-size: 12px; display: block; }
+.trace { margin: 12px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
+.trace li { display: flex; gap: 9px; align-items: center; padding: 5px 0; position: relative; }
+.trace li .m { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; flex: none; background: var(--track); color: var(--grey); }
+.trace li.yes .m { background: var(--accent); color: var(--onAccent); }
+.trace li.skip { color: var(--tert); }
+.trace li + li::before { content: ""; position: absolute; left: 8.5px; top: -6px; height: 8px; width: 1px; background: var(--hair); }
+.trace li .arrow { margin-left: auto; display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.trace code { font-size: 12px; background: var(--track); padding: 0 4px; border-radius: 4px; }
+/* The link as it lands, a tiny scene under the tester */
+.landing { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 11.5px; color: var(--grey); }
+.landing .chipApp { display: flex; align-items: center; gap: 5px; background: var(--track); border-radius: 6px; padding: 2px 7px; color: var(--label); }
+.landing .dash { flex: 1; height: 1px; background: repeating-linear-gradient(90deg, var(--tert) 0 4px, transparent 4px 8px); position: relative; overflow: visible; }
+.landing .dash i { position: absolute; top: -3px; left: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: fly 1.4s ease-in-out infinite; }
+@keyframes fly { from { left: 0; } to { left: calc(100% - 7px); } }
+.caption { font-size: 12px; color: var(--ink2); margin: 6px 2px 0; min-height: 18px; }
+</style>
+</head>
+<body>
+<div class="bar"><div class="wrap">
+  <div class="row"><span class="lab">Route list</span>
+    <button class="t" data-set="list:A">A · Arc's sentences</button><button class="t" data-set="list:B">B · Ray's rows</button></div>
+  <div class="row"><span class="lab">Match</span>
+    <button class="t" data-set="match:A">A · Pick the kind</button><button class="t" data-set="match:B">B · Guess from the text</button></div>
+  <div class="row"><span class="lab">Default</span>
+    <button class="t" data-set="def:A">A · Last row</button><button class="t" data-set="def:B">B · First question</button></div>
+  <div class="row"><span class="lab">Try a link</span>
+    <button class="t" data-set="test:A">A · One answer</button><button class="t" data-set="test:B">B · The route it took</button>
+    <span style="flex:1"></span><span class="lab" style="min-width:0">Theme</span>
+    <button class="t" data-theme-set="light">Light</button><button class="t" data-theme-set="dark">Dark</button></div>
+</div></div>
+
+<div class="wrap">
+  <h1>Air Traffic Control</h1>
+  <p class="sub">Arc's Air Traffic Control: routes that send links opened from other apps (Slack, Mail, Notes) to a
+    chosen Space or to Little Ray. A route matches by site, by what the address contains or by the exact address; the
+    first route that matches wins, and links no route takes go to the default. Links clicked inside Ray never go
+    through it. It lives in a new Settings pane, <b>Links</b>, which also takes General's Little Ray switch. Drawn as
+    Ray's Settings window at full size (880×600), scaled to fit; everything in it works: add, edit, reorder (drag the
+    handle in A), remove, change the default and paste links into the tester. Pick one option per row.</p>
+
+  <div class="stage" id="stage"><div class="scaler" id="scaler">
+    <div class="win">
+      <div class="side">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="search"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="7" r="4.8"/><path d="M10.6 10.6 14 14"/></svg>Search</div>
+        <div id="nav"></div>
+        <div class="chromeLink">All Chrome Settings…</div>
+      </div>
+      <div class="main" id="main"><div class="col" id="col"></div></div>
+    </div>
+  </div></div>
+  <p class="caption" id="caption">Paste a link into "Try a link", or pick one of the samples.</p>
+
+  <h2>Route list</h2>
+  <div class="opts">
+    <div class="opt" data-set="list:A"><h3>A · Arc's sentences <span class="rec">Arc</span></h3>
+      <p>Each route reads as Arc's sheet does: "If URL [Contains ▾] [github.com]" over "↳ Open in [Work ▾]", with a
+        handle to drag it up or down and ⊖ to remove it at once. Everything is edited in place and saved as you type;
+        New Route adds an empty one at the end (Contains, Most Recent Space). Arc's words.</p></div>
+    <div class="opt" data-set="list:B"><h3>B · Ray's rows</h3>
+      <p>Settings' own data list (Privacy's, Passwords'): one 44 pt row per route, the Space's icon, what it matches as
+        the title and "Site · opens in Work" under it. A row opens to a small form under it (EditorFields, Delete in
+        red letters, Cancel and Save); its "…" moves it up or down. New Route opens the form for a new one. Calmer
+        with many routes; one more click to edit.</p></div>
+  </div>
+
+  <h2>Match</h2>
+  <div class="opts">
+    <div class="opt" data-set="match:A"><h3>A · Pick the kind</h3>
+      <p>A pop-up of three: <b>Site is</b> (the host and its subdomains: <code>github.com</code> takes
+        <code>gist.github.com</code>), <b>Contains</b> (anywhere in the address, Arc's), <b>Is equal to</b> (the
+        whole address, Arc's; a trailing slash and http/https don't count). Arc has the last two; Ardia and Cra add the
+        site match, which is what people mean most of the time. New routes start on Site is.</p></div>
+    <div class="opt" data-set="match:B"><h3>B · Guess from the text</h3>
+      <p>No pop-up: one field, and a chip at its end says how it reads what you typed. A bare host
+        (<code>figma.com</code>) is a Site, text with a path (<code>google.com/document</code>) Contains, a whole
+        address starting with https:// Is equal to. Click the chip to pick another. Fewer controls; the chip keeps it
+        honest.</p></div>
+  </div>
+
+  <h2>Default</h2>
+  <div class="opts">
+    <div class="opt" data-set="def:A"><h3>A · Last row <span class="rec">Arc</span></h3>
+      <p>Arc's: the routes card ends in "Default ↳ Open in [Most Recent Space ▾]", what every other link does. The
+        Little Ray switch stays above as its own row; choosing Little Ray as the default turns it on, any other choice
+        turns it off (one setting underneath).</p></div>
+    <div class="opt" data-set="def:B"><h3>B · First question</h3>
+      <p>The pane opens with the one question most people need: "Open links from other apps in [Little Ray ▾]"
+        (Little Ray, Most Recent Space, or a Space). It replaces the switch; the routes below are the exceptions to it.
+        One control instead of a switch and a row that move together.</p></div>
+  </div>
+
+  <h2>Try a link</h2>
+  <div class="opts">
+    <div class="opt" data-set="test:A"><h3>A · One answer</h3>
+      <p>Paste or type a link and the answer shows at once: where it would open and which route sent it ("Route 2:
+        Site is figma.com", or "No route: the default"). The route that took it gets a mark on its left edge and
+        flashes as Settings search results do.</p></div>
+    <div class="opt" data-set="test:B"><h3>B · The route it took</h3>
+      <p>The same field, answered as the path the link takes: each route in order, crossed off until one matches
+        (the ones after it greyed: never checked), then where it lands. Shows why "first match wins" matters when
+        two routes overlap.</p></div>
+  </div>
+
+  <h2>Behaviour (both looks)</h2>
+  <ul class="note" style="padding-left:18px">
+    <li>Only links that other apps hand to Ray (<code>LinksFromApps</code>) are routed; links inside Ray, the command bar
+      and bookmarks never are. Files from Finder aren't either.</li>
+    <li>A Space destination opens the link as a Today tab in that Space, in the front window that shows it (switching
+      that window to it), else the front window; Most Recent Space is the front window's Space; Little Ray opens it there
+      (and Little Ray's Open in Ray goes to the front window's Space). Spaces of another profile show "(Profile)"
+      after the name once Profiles land.</li>
+    <li>A route whose Space was deleted shows "Deleted Space" in its pop-up and is skipped (its row says so in red)
+      until you pick another; a route with nothing typed matches nothing.</li>
+    <li>Matching ignores case, and the scheme and <code>www.</code> for Site is. Saved in Settings.json as a list
+      (<code>linkRoutes</code>), like the site searches, with the default as <code>linkDefault</code>.</li>
+  </ul>
+
+  <h2>What the references do</h2>
+  <table class="ref">
+    <tr><th>Reference</th><th>Air Traffic Control</th></tr>
+    <tr><td>Arc</td><td>Settings › Links › Air Traffic Control…: a sheet with New Route, routes as "If URL [Contains | Is equal
+      to] [text] ↳ Open in [Space | Most Recent Space | Little Arc]", ⊖ removes at once, Default at the bottom. No
+      tester.</td></tr>
+    <tr><td>Open Arc (<code>Settings/AirTrafficControl*</code>)</td><td>Arc's sheet as observed: matching the whole URL
+      string, case-insensitive, empty text matches nothing; the Default row and the Little Arc toggle are one
+      setting.</td></tr>
+    <tr><td>Circa (<code>BrowserAirTrafficControlView</code>, <code>BrowserLinkRoutingEditor</code>)</td><td>Route rows with
+      match pop-up, text and Space, move up/down buttons, "The first matching route wins", Default with Little Circa or
+      Most Recent Space.</td></tr>
+    <tr><td>Ardia (<code>LinkRoutingSection</code>, <code>AirTrafficSheet</code>)</td><td>Rules in a sheet with From (app),
+      Links (any, a site with its subdomains, a pattern, containing, exactly), Open in (profile), As (tab, window, Little
+      Ardia), plus a "Paste a link" tester that traces which rule catches it.</td></tr>
+  </table>
+
+  <h2>Questions for you</h2>
+  <ol class="q">
+    <li><b>Which app the link came from:</b> Ardia can also match by source app ("links from Slack go to Work").
+      Arc can't. Add a From pop-up to routes later, or keep Arc's model?</li>
+    <li><b>Its own pane:</b> a new Links pane (between Tabs and Shortcuts) holding the Little Ray switch and the routes,
+      as Arc's Settings › Links, or a group at the end of General?</li>
+    <li><b>Import:</b> Cra's importer reads Arc's routes. Bring them over with Arc's Spaces in the onboarding (matched
+      by Space name)?</li>
+  </ol>
+</div>
+
+<script>
+const S = { list: "A", match: "A", def: "A", test: "A" };
+const SPACES = [
+  { id: "work", name: "Work", c: "#0A84FF", g: "W" },
+  { id: "personal", name: "Personal", c: "#FF375F", g: "P" },
+  { id: "side", name: "Side Project", c: "#30B158", g: "S" },
+  { id: "client", name: "Client (Acme)", c: "#FF9F0A", g: "A" },
+];
+const SPECIAL = [{ id: "recent", name: "Most Recent Space", c: "#8E8E93", g: "↺" }, { id: "little", name: "Little Ray", c: "#8257E5", g: "◱" }];
+const ALL = [...SPACES, ...SPECIAL];
+const dest = (id) => ALL.find((d) => d.id === id) || { id, name: "Deleted Space", c: "#8E8E93", g: "?" };
+const KINDS = { site: "Site is", contains: "Contains", equals: "Is equal to" };
+const SHORT = { site: "Site", contains: "Contains", equals: "Exactly" };
+let routes, def, little, openRow, draft, testText = "";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let nextId = 1;
+function reset() {
+  routes = [
+    { id: nextId++, kind: "site", text: "github.com", to: "work" },
+    { id: nextId++, kind: "contains", text: "docs.google.com/document", to: "work" },
+    { id: nextId++, kind: "site", text: "figma.com", to: "side" },
+    { id: nextId++, kind: "site", text: "youtube.com", to: "little" },
+    { id: nextId++, kind: "equals", text: "https://acme.atlassian.net/jira/your-work", to: "client" },
+  ];
+  def = "little"; little = true; openRow = null; draft = null;
+}
+
+/* ---------- Matching ---------- */
+function parse(u) {
+  let s = u.trim(); if (!s) return null;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) s = "https://" + s;
+  try { return new URL(s); } catch { return null; }
+}
+const bareHost = (t) => t.trim().toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
+const norm = (u) => u.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
+function guess(t) { t = t.trim(); if (/^https?:\/\//i.test(t)) return "equals"; if (t.includes("/") || t.includes("?")) return "contains"; return "site"; }
+function matches(r, url) {
+  const text = r.text.trim(); if (!text || !ALL.some((d) => d.id === r.to)) return false;
+  const host = url.hostname.toLowerCase().replace(/^www\./, "");
+  if (r.kind === "site") { const h = bareHost(text); return host === h || host.endsWith("." + h); }
+  if (r.kind === "contains") return url.href.toLowerCase().includes(text.toLowerCase());
+  return norm(url.href) === norm(text);
+}
+function route(u) {
+  const url = parse(u); if (!url) return null;
+  if (!/^https?:$/.test(url.protocol)) return { bad: true };
+  const i = routes.findIndex((r) => matches(r, url));
+  return { url, i, to: i >= 0 ? routes[i].to : def };
+}
+
+/* ---------- Drawing ---------- */
+const ICON = {
+  gear: '<path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/>',
+  paint: '<circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/>',
+  tabs: '<rect x="2" y="3" width="12" height="10" rx="2"/><path d="M2 6h12M6 3v3"/>',
+  link: '<path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2.2-2.2a2.6 2.6 0 0 0-3.7-3.7l-.9.9M9.2 6.8a2.6 2.6 0 0 0-3.7 0L3.3 9a2.6 2.6 0 0 0 3.7 3.7l.9-.9"/>',
+  keys: '<rect x="1.5" y="4" width="13" height="8" rx="2"/><path d="M4 7h1M7 7h2M11 7h1M5 9.5h6"/>',
+  search: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/>',
+  hand: '<path d="M8 14s5-2.5 5-6.5V3.5L8 2 3 3.5v4C3 11.5 8 14 8 14z"/>',
+  key: '<circle cx="5.5" cy="10.5" r="3"/><path d="M7.6 8.4 13 3M11 5l1.5 1.5"/>',
+  card: '<rect x="1.5" y="3.5" width="13" height="9" rx="2"/><path d="M1.5 6.5h13"/>',
+  puzzle: '<path d="M3 5h3V3.5a1.5 1.5 0 0 1 3 0V5h3v3h-1.5a1.5 1.5 0 0 0 0 3H12v3H3z"/>',
+  info: '<circle cx="8" cy="8" r="6"/><path d="M8 7.2v4M8 5v.2"/>',
+};
+const svg = (k) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
+function drawNav() {
+  const it = (k, n, on, cls = "") => `<div class="nav${on ? " on" : ""} ${cls}"><span class="g">${svg(k)}</span>${n}</div>`;
+  $("nav").innerHTML = it("gear", "General") + it("paint", "Appearance") + it("tabs", "Tabs") + it("link", "Links", true, "new") + it("keys", "Shortcuts") + it("search", "Search") +
+    `<div class="sec">Your data</div>` + it("hand", "Privacy") + it("key", "Passwords") + it("card", "Autofill") + it("puzzle", "Extensions") +
+    `<div class="sec">More</div>` + it("info", "About");
+}
+const spIcon = (d, size = 14) => `<span class="sp" style="background:${d.c};width:${size}px;height:${size}px;${size > 14 ? "font-size:11px;border-radius:6px" : ""}">${d.g}</span>`;
+function destPop(value, attr, includeMissing = true) {
+  const d = dest(value);
+  const opts = SPACES.map((s) => `<option value="${s.id}"${s.id === value ? " selected" : ""}>${esc(s.name)}</option>`).join("") +
+    `<option disabled>──────────</option>` + SPECIAL.map((s) => `<option value="${s.id}"${s.id === value ? " selected" : ""}>${esc(s.name)}</option>`).join("") +
+    (includeMissing && !ALL.some((x) => x.id === value) ? `<option value="${value}" selected>Deleted Space</option>` : "");
+  return `<span class="pop dest"><span class="ic">${spIcon(d)}</span><select ${attr}>${opts}</select></span>`;
+}
+function kindPop(value, attr) {
+  return `<span class="pop"><select ${attr}>${Object.entries(KINDS).map(([k, v]) => `<option value="${k}"${k === value ? " selected" : ""}>${v}</option>`).join("")}</select></span>`;
+}
+const placeholder = { site: "github.com", contains: "arc.net", equals: "https://example.com/page" };
+function matchInput(r, prefix) {
+  if (S.match === "A") return `${kindPop(r.kind, `data-${prefix}kind="${r.id}"`)}<input class="fieldIn" data-${prefix}text="${r.id}" value="${esc(r.text)}" placeholder="${placeholder[r.kind]}" spellcheck="false">`;
+  return `<span class="typed"><input class="fieldIn" data-${prefix}text="${r.id}" value="${esc(r.text)}" placeholder="A site, part of an address, or a whole one" spellcheck="false"><button class="kchip" data-${prefix}chip="${r.id}" title="Click to change">${SHORT[r.kind]}</button></span>`;
+}
+const grip = `<svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor"><circle cx="2" cy="2" r="1.1"/><circle cx="6" cy="2" r="1.1"/><circle cx="2" cy="6" r="1.1"/><circle cx="6" cy="6" r="1.1"/><circle cx="2" cy="10" r="1.1"/><circle cx="6" cy="10" r="1.1"/></svg>`;
+const minus = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M5.2 8h5.6" stroke-linecap="round"/></svg>`;
+const more = `<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg>`;
+function routeRows(hit) {
+  if (!routes.length && !(S.list === "B" && draft && draft.isNew)) return `<div class="empty">Add a route to choose where links from other apps open.</div>`;
+  if (S.list === "A") {
+    return routes.map((r, i) => {
+      const gone = !ALL.some((d) => d.id === r.to);
+      return `<div class="rt rtA${hit === i ? " hit" : ""}" data-rid="${r.id}" draggable="false">
+        <span class="handle" data-drag="${r.id}" title="Drag to reorder">${grip}</span>
+        <div class="l1"><span class="w">If URL</span>${matchInput(r, "")}</div>
+        <div class="l2"><span class="w">↳ Open in</span>${destPop(r.to, `data-to="${r.id}"`)}${gone ? `<span class="warn">Its Space is gone, so it's skipped</span>` : ""}</div>
+        <button class="ib rm" data-rm="${r.id}" title="Remove Route">${minus}</button></div>`;
+    }).join("");
+  }
+  const row = (r, i) => {
+    const d = dest(r.to), open = openRow === r.id;
+    const what = r.kind === "equals" ? r.text.replace(/^https?:\/\//, "") : r.text;
+    let h = `<div class="rt rtB${open ? " open" : ""}${hit === i ? " hit" : ""}" data-open="${r.id}">
+      <span class="ico" style="background:${d.c}">${d.g}</span>
+      <div class="tx"><b>${esc(what || "Nothing typed")}</b><span>${KINDS[r.kind]} · opens in ${esc(d.name)}</span></div>
+      <button class="ib" data-more="${r.id}" title="Move Up, Move Down">${more}</button><span class="chev"></span></div>`;
+    if (open && draft) h += formHTML();
+    return h;
+  };
+  let h = routes.map(row).join("");
+  if (draft && draft.isNew) h += `<div class="rt rtB open"><span class="ico" style="background:var(--tert)">+</span><div class="tx"><b>New Route</b><span>First match wins: it goes last</span></div><span class="chev"></span></div>` + formHTML();
+  return h;
+}
+function formHTML() {
+  const r = draft;
+  return `<div class="form">
+    <span class="k">Links</span><div class="fl">${matchInput(r, "f")}</div>
+    <span class="k">Open in</span><div class="fl">${destPop(r.to, `data-fto="1"`)}</div>
+    <div class="btns">${r.isNew ? "" : `<button class="btn del" data-fdel="1">Delete</button>`}<span class="gap"></span><button class="btn" data-fcancel="1">Cancel</button><button class="btn primary" data-fsave="1">Save</button></div>
+    ${r.err ? `<span></span><span class="warn">${r.err}</span>` : ""}</div>`;
+}
+function defaultRow() {
+  return `<div class="def"><span class="w"><b>Default</b> <span style="color:var(--grey)">↳ Open in</span></span>${destPop(def, `data-def="1"`)}</div>`;
+}
+function testerHTML() {
+  const res = route(testText);
+  let out = "";
+  if (!testText.trim()) out = S.test === "A" ? `<div class="ans" style="color:var(--grey)">Where it opens shows here.</div>` : "";
+  else if (!res) out = `<div class="ans"><span class="warn">That isn't a link.</span></div>`;
+  else if (res.bad) out = `<div class="ans"><span>Only http and https links from other apps are routed.</span></div>`;
+  else if (S.test === "A") {
+    const d = dest(res.to), r = routes[res.i];
+    out = `<div class="ans"><span class="big" style="background:${d.c}">${d.g}</span><div><b>Opens in ${esc(d.name)}</b><span>${r ? `Route ${res.i + 1}: ${KINDS[r.kind]} ${esc(r.text)}` : "No route takes it: the default"}</span></div></div>`;
+  } else {
+    const url = res.url;
+    out = `<ol class="trace">` + routes.map((r, i) => {
+      const cls = res.i === i ? "yes" : res.i >= 0 && i > res.i ? "skip" : "";
+      const d = dest(r.to);
+      const why = res.i >= 0 && i > res.i ? "not checked" : res.i === i ? "matches" : "no";
+      return `<li class="${cls}"><span class="m">${res.i === i ? "✓" : i + 1}</span><span>${KINDS[r.kind]} <code>${esc(r.text || "…")}</code></span><span class="arrow" style="${res.i === i ? "" : "font-weight:400;color:var(--tert)"}">${res.i === i ? `${spIcon(d)} ${esc(d.name)}` : why}</span></li>`;
+    }).join("") + (res.i < 0 ? `<li class="yes"><span class="m">✓</span><span>Default</span><span class="arrow">${spIcon(dest(def))} ${esc(dest(def).name)}</span></li>` : "") + `</ol>`;
+  }
+  return `<div class="tester"><div class="in"><input class="fieldIn" id="tin" value="${esc(testText)}" placeholder="Paste a link, like github.com/shanuflash/ray" spellcheck="false"></div>
+    <div class="samples">${["github.com/shanuflash/ray/pull/412", "gist.github.com/x/1", "docs.google.com/document/d/1x", "www.figma.com/design/abc", "youtube.com/watch?v=arc", "news.ycombinator.com", "https://acme.atlassian.net/jira/your-work/"].map((s) => `<button data-sample="${esc(s)}">${esc(s)}</button>`).join("")}</div>
+    ${out}</div>`;
+}
+function draw() {
+  const res = route(testText);
+  const hit = res && !res.bad ? res.i : -1;
+  const littleSw = `<div class="srow"><span class="tx">Open links from other apps in Little Ray</span><span class="sw${little ? " on" : ""}" data-little="1"></span></div>`;
+  const defQ = `<div class="srow"><span class="tx">Open links from other apps in</span>${destPop(def, `data-def="1"`)}</div>`;
+  $("col").innerHTML = `<div class="pt">Links</div>
+    <div class="grp"><div class="cardbox">${S.def === "A" ? littleSw : defQ}</div></div>
+    <div class="grp"><div class="gh"><b>Air Traffic Control</b><button class="btn small" data-add="1">＋ New Route</button></div>
+      <div class="cardbox" id="routes">${routeRows(hit)}${S.def === "A" ? defaultRow() : ""}</div>
+      <div class="foot">${S.def === "A" ? "The first route that matches wins." : "Exceptions: the first route that matches wins."}</div></div>
+    <div class="grp"><div class="gh"><b>Try a link</b></div><div class="cardbox" id="tester">${testerHTML()}</div></div>`;
+}
+function redrawKeepFocus() {
+  const a = document.activeElement; const key = a && [...a.attributes].find((x) => x.name.startsWith("data-") || x.name === "id");
+  const sel = a && a.selectionStart;
+  draw();
+  if (key) { const el = key.name === "id" ? $(key.value) : $("col").querySelector(`[${key.name}="${key.value}"]`); if (el) { el.focus(); if (sel != null && el.setSelectionRange) el.setSelectionRange(sel, sel); } }
+}
+function caption(t) { $("caption").textContent = t; }
+function flashHit() {
+  const res = route(testText); if (!res || res.bad || res.i < 0) return;
+  const el = $("routes").querySelectorAll(".rt")[S.list === "A" ? res.i : res.i]; if (!el) return;
+  el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 900);
+}
+
+/* ---------- Events ---------- */
+const col = $("col");
+col.addEventListener("input", (ev) => {
+  const t = ev.target;
+  if (t.id === "tin") { testText = t.value; redrawKeepFocus(); return; }
+  const id = +(t.dataset.text || 0);
+  if (id) { const r = routes.find((x) => x.id === id); r.text = t.value; if (S.match === "B") r.kind = guess(t.value); redrawKeepFocus(); return; }
+  if (t.dataset.ftext !== undefined) { draft.text = t.value; if (S.match === "B") draft.kind = guess(t.value); draft.err = ""; redrawKeepFocus(); }
+});
+col.addEventListener("change", (ev) => {
+  const t = ev.target, d = t.dataset;
+  if (d.kind) { routes.find((x) => x.id === +d.kind).kind = t.value; draw(); }
+  else if (d.to) { routes.find((x) => x.id === +d.to).to = t.value; draw(); caption("Saved at once, as Arc's sheet does: no Save button in this look."); }
+  else if (d.def) { def = t.value; little = def === "little"; draw(); caption(S.def === "A" ? (little ? "Default is Little Ray, so the Little Ray switch turned on: one setting underneath." : "The default isn't Little Ray any more, so the Little Ray switch turned off.") : "Every link no route takes now opens there."); }
+  else if (d.fkind) { draft.kind = t.value; draw(); }
+  else if (d.fto) { draft.to = t.value; }
+});
+col.addEventListener("click", (ev) => {
+  const t = ev.target.closest("button, [data-little], [data-open], [data-sample]"); if (!t) return;
+  const d = t.dataset;
+  if (d.little) { little = !little; def = little ? "little" : (def === "little" ? "recent" : def); draw(); caption(little ? "On: the default is Little Ray." : "Off: the default is Most Recent Space."); }
+  else if (d.sample) { testText = d.sample; draw(); flashHit(); }
+  else if (d.add) {
+    if (S.list === "A") { const r = { id: nextId++, kind: S.match === "A" ? "site" : "site", text: "", to: "recent" }; routes.push(r); draw(); col.querySelector(`[data-text="${r.id}"]`).focus(); caption("New Route: an empty route at the end (an empty one matches nothing)."); }
+    else { openRow = null; draft = { isNew: true, kind: "site", text: "", to: "recent", err: "" }; draw(); col.querySelector("[data-ftext]").focus(); }
+  }
+  else if (d.rm) { routes = routes.filter((r) => r.id !== +d.rm); draw(); caption("Removed at once (Arc's ⊖ asks nothing)."); }
+  else if (d.chip) { const r = routes.find((x) => x.id === +d.chip); r.kind = { site: "contains", contains: "equals", equals: "site" }[r.kind]; draw(); caption("The chip picks another reading of the same text."); }
+  else if (d.fchip) { draft.kind = { site: "contains", contains: "equals", equals: "site" }[draft.kind]; draw(); }
+  else if (d.more) {
+    ev.stopPropagation();
+    const i = routes.findIndex((r) => r.id === +d.more);
+    const j = ev.altKey ? i + 1 : i - 1;
+    if (j >= 0 && j < routes.length) { [routes[i], routes[j]] = [routes[j], routes[i]]; draw(); caption(`Moved ${ev.altKey ? "down" : "up"} (its menu has Move Up and Move Down; here a click moves up, ⌥-click down).`); }
+    else caption("Already at that end.");
+  }
+  else if (d.open) {
+    const id = +d.open;
+    if (openRow === id) { openRow = null; draft = null; } else { const r = routes.find((x) => x.id === id); openRow = id; draft = { ...r, isNew: false, err: "" }; }
+    draw();
+  }
+  else if (d.fcancel) { openRow = null; draft = null; draw(); }
+  else if (d.fdel) { routes = routes.filter((r) => r.id !== openRow); openRow = null; draft = null; draw(); caption("Deleted."); }
+  else if (d.fsave) {
+    if (!draft.text.trim()) { draft.err = draft.kind === "site" ? "Type a site, like github.com. Its subdomains count too." : "Type part of an address."; draw(); return; }
+    if (draft.kind === "site" && !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(bareHost(draft.text))) { draft.err = "That isn't a site. Type one like github.com."; draw(); return; }
+    const clean = { kind: draft.kind, text: draft.kind === "site" ? bareHost(draft.text) : draft.text.trim(), to: draft.to };
+    if (draft.isNew) routes.push({ id: nextId++, ...clean }); else Object.assign(routes.find((r) => r.id === openRow), clean);
+    openRow = null; draft = null; draw(); caption("Saved.");
+  }
+});
+col.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && ev.target.dataset.ftext !== undefined) col.querySelector("[data-fsave]").click();
+  if (ev.key === "Escape" && draft) { openRow = null; draft = null; draw(); }
+  if (ev.key === "Enter" && ev.target.id === "tin") flashHit();
+});
+// Reorder by the handle (look A): a pointer drag moves the route to where it's let go.
+let dragR = null;
+col.addEventListener("mousedown", (ev) => {
+  const h = ev.target.closest("[data-drag]"); if (!h) return;
+  ev.preventDefault();
+  dragR = { id: +h.dataset.drag };
+  h.closest(".rt").style.opacity = .5;
+});
+addEventListener("mouseup", (ev) => {
+  if (!dragR) return;
+  const rows = [...$("routes").querySelectorAll(".rtA")];
+  const from = routes.findIndex((r) => r.id === dragR.id);
+  let to = rows.findIndex((el) => { const b = el.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
+  if (to < 0) to = rows.length;
+  const [r] = routes.splice(from, 1); routes.splice(to > from ? to - 1 : to, 0, r);
+  dragR = null; draw(); caption("Reordered: the first route that matches wins.");
+});
+
+/* ---------- Options, theme, scale ---------- */
+function setOpt(key, val) {
+  S[key] = val;
+  document.querySelectorAll("[data-set]").forEach((b) => { const [k, v] = b.dataset.set.split(":"); b.setAttribute("aria-pressed", String(S[k] === v)); });
+  if (key === "list") { openRow = null; draft = null; }
+  draw();
+}
+document.querySelectorAll("[data-set]").forEach((b) => b.addEventListener("click", () => { const [k, v] = b.dataset.set.split(":"); setOpt(k, v); }));
+const setTheme = (theme) => {
+  document.documentElement.dataset.theme = theme;
+  document.querySelectorAll("[data-theme-set]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeSet === theme)));
+};
+document.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => setTheme(b.dataset.themeSet)));
+setTheme(matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+function fit() {
+  const w = $("stage").clientWidth; const k = Math.min(1, w / 920);
+  $("scaler").style.transform = `scale(${k})`; $("stage").style.height = Math.round(640 * k) + "px";
+}
+addEventListener("resize", fit);
+reset(); drawNav(); fit(); testText = "gist.github.com/x/1"; setOpt("list", "A");
+</script>
+</body>
+</html>
