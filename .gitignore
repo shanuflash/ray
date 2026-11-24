@@ -6,3 +6,5 @@
 /.claude/worktrees/
 .metadata_never_index
 /third_party/cra/
+/third_party/open-arc/
+/third_party/circa/
