@@ -6,3 +6,6 @@
 /.claude/worktrees/
 .metadata_never_index
 /third_party/cra/
+/third_party/circa/
+/third_party/open-arc-browser/
+/third_party/phibrowser-mac/

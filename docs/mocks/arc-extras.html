@@ -1,0 +1,928 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Arc Extras</title>
+<style>
+  :root {
+    --page: #f4f4f5; --ink: #1d1d1f; --muted: #6e6e73; --card: #fff; --accent: #9F8CF2; --accent-ink: #fff;
+    --side: #e6e6e6; --web: #fff; --label: #1d1d1f; --sec: rgba(0,0,0,.5); --ter: rgba(0,0,0,.3);
+    --sel: rgba(255,255,255,.85); --fill: rgba(0,0,0,.06); --fill2: rgba(0,0,0,.1); --hair: rgba(0,0,0,.1);
+    --surface: rgba(246,246,248,.92); --surface-edge: rgba(0,0,0,.12); --menu: rgba(236,236,238,.94);
+    --menubar: rgba(240,240,242,.9); --hl: #9F8CF2; --wash: rgba(159,140,242,.18); --skeleton: rgba(0,0,0,.06);
+    --dash: rgba(0,0,0,.16); --unread-fill: rgba(0,0,0,.11); --unread-ink: rgba(0,0,0,.8); --unread-tile: #D4D4D8;
+    --red: #ff3b30; --dim: rgba(0,0,0,.38);
+  }
+  :root[data-theme="dark"] {
+    --page: #161618; --ink: #f5f5f7; --muted: #98989d; --card: #1f1f22; --accent: #A99AF4; --accent-ink: #111;
+    --side: #131313; --web: #232325; --label: #f2f2f2; --sec: rgba(255,255,255,.55); --ter: rgba(255,255,255,.32);
+    --sel: rgba(255,255,255,.14); --fill: rgba(255,255,255,.08); --fill2: rgba(255,255,255,.14); --hair: rgba(255,255,255,.1);
+    --surface: rgba(44,44,49,.92); --surface-edge: rgba(255,255,255,.12); --menu: rgba(40,40,44,.94);
+    --menubar: rgba(30,30,32,.9); --hl: #7E6BE0; --wash: rgba(169,154,244,.2); --skeleton: rgba(255,255,255,.06);
+    --dash: rgba(255,255,255,.18); --unread-fill: rgba(255,255,255,.16); --unread-ink: rgba(255,255,255,.9); --unread-tile: #55555A;
+    --red: #ff453a; --dim: rgba(0,0,0,.55);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 16px 80px; background: var(--page); color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+  main { max-width: 1060px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  h2 { font-size: 20px; margin: 64px 0 4px; padding-top: 18px; border-top: 1px solid var(--hair); }
+  h3 { font-size: 16px; margin: 34px 0 4px; display: flex; gap: 10px; align-items: baseline; }
+  h3 .tag { font-size: 12px; font-weight: 600; color: var(--accent); }
+  p { margin: 0 0 8px; max-width: 780px; }
+  code { font-size: 12.5px; }
+  .muted { color: var(--muted); }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 14px 0 0; font-size: 13px; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  ul.pc { margin: 8px 0 0; padding-left: 18px; max-width: 780px; }
+  ul.pc li { margin: 2px 0; }
+  .plus::marker { content: "+  "; color: #34a853; font-weight: 700; }
+  .minus::marker { content: "−  "; color: #ea4335; font-weight: 700; }
+  .seg { display: inline-flex; background: var(--fill); border-radius: 8px; padding: 2px; margin: 10px 0 4px; }
+  .seg button { border: 0; background: none; color: var(--ink); padding: 5px 14px; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; }
+  .seg button.on { background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+  table.cmp { border-collapse: collapse; margin-top: 10px; font-size: 13px; width: 100%; max-width: 1060px; }
+  table.cmp th, table.cmp td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+  table.cmp th { color: var(--muted); font-weight: 600; width: 90px; }
+  .stage { margin-top: 14px; overflow-x: auto; padding-bottom: 6px; display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start; }
+  .cap { font-size: 12px; color: var(--muted); margin-top: 6px; max-width: 360px; }
+
+  /* ---------- Window ---------- */
+  .desk { position: relative; padding-top: 24px; flex: none; }
+  .menubar { position: absolute; top: 0; left: 0; right: 0; height: 24px; background: var(--menubar);
+    display: flex; align-items: center; gap: 2px; padding: 0 10px; font-size: 13px; color: var(--label);
+    border-radius: 10px 10px 0 0; backdrop-filter: blur(20px); }
+  .menubar span { padding: 1px 8px; border-radius: 4px; }
+  .menubar .open { background: var(--fill); }
+  .win { width: 680px; height: 470px; border-radius: 12px; overflow: hidden; display: flex; position: relative; flex: none;
+    background: var(--side); box-shadow: 0 0 0 0.5px rgba(0,0,0,.25), 0 10px 30px rgba(0,0,0,.16); }
+  .desk .win { border-radius: 0 0 12px 12px; }
+  .win.narrow { width: 300px; }
+  .win.right { flex-direction: row-reverse; }
+  .sb { width: 236px; flex: none; padding: 8px 8px 0; position: relative; display: flex; flex-direction: column; }
+  .lights { display: flex; gap: 8px; padding: 6px 6px 12px; height: 30px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; flex: none; }
+  .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+  .lights .sp { flex: 1; }
+  .lights .tb { color: var(--sec); display: flex; gap: 10px; align-items: center; margin-top: -1px; }
+  .addr { height: 34px; border-radius: 9px; background: var(--fill); color: var(--sec); font-size: 13px; flex: none;
+    display: flex; align-items: center; padding: 0 11px; margin-bottom: 10px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-bottom: 8px; }
+  .tiles i { height: 40px; border-radius: 9px; background: var(--fill); display: grid; place-items: center; position: relative; }
+  .tiles i.on { background: var(--sel); box-shadow: 0 0.5px 1.5px rgba(0,0,0,.12); }
+  .row { height: 34px; display: flex; align-items: center; position: relative; color: var(--label); font-size: 13px; cursor: default; flex: none; }
+  .row .bg { position: absolute; inset: 1px 0; border-radius: 8px; }
+  .row.sel .bg { background: var(--sel); box-shadow: 0 0.5px 1.5px rgba(0,0,0,.12); }
+  .row.hov .bg { background: var(--fill); }
+  .row .ic { margin: 0 9px 0 10px; position: relative; }
+  .row .t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; padding-right: 8px; }
+  .row .t.dim { color: var(--sec); }
+  .row .end { position: relative; margin-right: 8px; display: flex; gap: 2px; align-items: center; color: var(--sec); }
+  .row .x { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: var(--sec); }
+  .row .x.on { background: var(--fill2); color: var(--label); }
+  .row.in1 .ic { margin-left: 26px; }
+  .row.in2 .ic { margin-left: 42px; }
+  .row .chev { position: absolute; left: -2px; color: var(--ter); font-size: 9px; }
+  .row .snd { position: relative; margin: 0 4px 0 -3px; color: var(--sec); display: grid; place-items: center; width: 16px; }
+  .gap { height: 6px; flex: none; }
+  .list { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .foot { margin-top: auto; height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 4px; flex: none; }
+  .foot .btn { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--sec); position: relative; }
+  .foot .btn.on { background: var(--fill); color: var(--label); }
+  .foot .sp { flex: 1; }
+  .pg { flex: 1; margin: 8px 8px 8px 0; border-radius: 8px; background: var(--web); position: relative; overflow: hidden;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,.08); }
+  .win.right .pg { margin: 8px 0 8px 8px; }
+  .sk { position: absolute; left: 40px; right: 40px; border-radius: 6px; background: var(--skeleton); }
+
+  /* divider between pinned and Today */
+  .dv { height: 22px; display: flex; align-items: center; gap: 8px; padding: 0 8px; flex: none; position: relative;
+    font-size: 11px; font-weight: 500; color: var(--ter); }
+  .dv .line { flex: 1; border-bottom: 1px dashed var(--dash); }
+  .dv .line.solid { border-bottom-style: solid; border-color: var(--hair); }
+  .dv .bt { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .dv .bt.hot { color: var(--label); }
+  .dv .bt svg { width: 9px; height: 9px; stroke-width: 2.2; }
+  .dv .bt .rot { transform: rotate(-90deg); }
+  .dv .pipe { width: 1px; height: 9px; background: var(--hair); }
+  .hdr { height: 26px; display: flex; align-items: center; gap: 5px; padding: 0 8px; font-size: 11px; font-weight: 600; color: var(--sec); flex: none; }
+  .hdr .sp { flex: 1; }
+  .hdr svg { width: 9px; height: 9px; stroke-width: 2.2; }
+  .hdr .cnt { font-weight: 500; color: var(--ter); }
+
+  /* favicons */
+  .fav { width: 16px; height: 16px; border-radius: 4px; display: inline-grid; place-items: center; flex: none;
+    font: 700 9px/1 -apple-system, sans-serif; color: #fff; vertical-align: middle; position: relative; }
+  .f-gh { background: #24292f; } [data-theme="dark"] .f-gh, [data-theme="dark"] .f-no { box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); }
+  .f-li { background: #5e6ad2; } .f-fi { background: #a259ff; } .f-no { background: #111; }
+  .f-yt { background: #ff0033; } .f-md { background: #0a7cff; } .f-re { background: #ff4500; } .f-ny { background: #567b95; }
+  .f-gm { background: #ea4335; } .f-wk { background: #636466; } .f-sl { background: #4a154b; } .f-ca { background: #e8590c; }
+  .f-sp { background: #1db954; } .f-wa { background: #25d366; } .f-ds { background: #5865f2; }
+  .fold { width: 16px; height: 14px; position: relative; flex: none; display: inline-block; vertical-align: middle; }
+  .fold::before { content: ""; position: absolute; left: 0; top: 0; width: 7px; height: 4px; border-radius: 2px 2px 0 0; background: var(--fc, #8E8E93); }
+  .fold::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; top: 2.5px; border-radius: 2.5px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--fc, #8E8E93) 75%, #fff), var(--fc, #8E8E93)); }
+  .fold.blue { --fc: #4C8BF5; } .fold.purple { --fc: #A142F4; } .fold.green { --fc: #34A853; } .fold.orange { --fc: #FA903E; }
+  .fold.open::after { top: 4.5px; transform: skewX(-12deg); transform-origin: bottom; }
+  svg.sym { width: 14px; height: 14px; display: block; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  svg.fill { fill: currentColor; stroke: none; }
+
+  /* unread */
+  .pill { height: 16px; min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--unread-fill); color: var(--unread-ink);
+    font: 600 11px/16px -apple-system, sans-serif; text-align: center; position: relative; }
+  .pill.red { background: var(--red); color: #fff; }
+  .tpill { position: absolute; top: 2px; right: 2px; height: 11px; min-width: 11px; padding: 0 3px; border-radius: 6px;
+    background: var(--unread-tile); color: var(--unread-ink); font: 600 8.5px/11px -apple-system, sans-serif; text-align: center; }
+  .tpill.red { background: var(--red); color: #fff; top: -4px; right: -4px; height: 15px; min-width: 15px; border-radius: 8px; font-size: 10px; line-height: 15px; padding: 0 4px; box-shadow: 0 0 0 1.5px var(--side); }
+  .dot { width: 6px; height: 6px; border-radius: 3px; background: var(--unread-ink); opacity: .7; position: relative; flex: none; }
+  .dot.acc { background: var(--accent); opacity: 1; }
+  .tdot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 3px; background: var(--accent); }
+  .fdot { position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; border-radius: 4px; background: var(--red); box-shadow: 0 0 0 1.5px var(--side); }
+
+  /* media */
+  .player { flex: none; margin: 6px 0 4px; border-radius: 10px; background: var(--fill); padding: 6px 4px 6px 6px; position: relative; color: var(--label); }
+  .player.flat { background: none; padding: 6px 4px 6px 6px; border-top: 0.5px solid var(--hair); border-radius: 0; }
+  .player .top { display: flex; align-items: center; gap: 8px; height: 28px; }
+  .art { width: 28px; height: 28px; border-radius: 6px; flex: none; display: grid; place-items: center; overflow: hidden;
+    background: linear-gradient(135deg, #f7971e, #e1306c 60%, #833ab4); }
+  .art.yt { background: linear-gradient(135deg, #2b2b2b, #6b1a1a); }
+  .player .tt { flex: 1; min-width: 0; line-height: 1.15; }
+  .player .tt b { display: block; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player .tt span { display: block; font-size: 11px; color: var(--sec); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ib { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: var(--label); flex: none; }
+  .ib.big svg { width: 16px; height: 16px; }
+  .ib.hot { background: var(--fill2); }
+  .ib.sec { color: var(--sec); }
+  .seek { height: 18px; display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--sec); padding: 0 2px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .seek .tr { flex: 1; height: 3px; border-radius: 2px; background: var(--fill2); position: relative; overflow: hidden; }
+  .seek .tr i { position: absolute; inset: 0 62% 0 0; background: var(--sec); }
+  .ctrls { height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
+  .ctrls .mid { display: flex; gap: 10px; align-items: center; }
+
+  /* ---------- menus ---------- */
+  .menu { position: absolute; background: var(--menu); border-radius: 8px; padding: 5px;
+    box-shadow: 0 0 0 0.5px var(--surface-edge), 0 10px 30px rgba(0,0,0,.22); backdrop-filter: blur(30px);
+    font-size: 13px; color: var(--label); z-index: 5; min-width: 210px; }
+  .menu .mi { height: 22px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border-radius: 4px; white-space: nowrap; }
+  .menu .mi.hl { background: var(--hl); color: #fff; }
+  .menu .mi.hl .k, .menu .mi.hl .ch { color: rgba(255,255,255,.85); }
+  .menu .mi .x { flex: 1; }
+  .menu .mi .k { color: var(--sec); font-size: 12.5px; letter-spacing: 1px; }
+  .menu .mi .ch { color: var(--sec); font-size: 10px; }
+  .menu .mi.dim { color: var(--ter); }
+  .menu .mi .tick { width: 10px; font-size: 11px; }
+  .menu .sepm { height: 1px; background: var(--hair); margin: 5px 9px; }
+  .keyhint { position: absolute; z-index: 6; font-size: 11px; font-weight: 600; padding: 3px 7px; border-radius: 6px; background: var(--card); color: var(--label); box-shadow: 0 0 0 0.5px var(--surface-edge), 0 4px 10px rgba(0,0,0,.12); }
+
+  /* ---------- surfaces ---------- */
+  .surface { position: absolute; background: var(--surface); border-radius: 14px; backdrop-filter: blur(24px);
+    box-shadow: 0 0 0 0.5px var(--surface-edge), 0 14px 40px rgba(0,0,0,.22); color: var(--label); z-index: 4; }
+  .cb { width: 520px; padding: 0 0 6px; }
+  .cb .field { height: 52px; display: flex; align-items: center; padding: 0 18px; font-size: 18px; gap: 10px; border-bottom: 0.5px solid var(--hair); }
+  .cb .field .caret { width: 1.5px; height: 20px; background: var(--accent); margin-left: -8px; }
+  .cb .r { height: 46px; margin: 0 6px; padding: 0 12px; display: flex; align-items: center; gap: 12px; border-radius: 9px; font-size: 14px; }
+  .cb .r.hl { background: var(--wash); }
+  .cb .r .box { width: 28px; height: 28px; border-radius: 6px; background: var(--fill); display: grid; place-items: center; flex: none; color: var(--sec); }
+  .cb .r .tx { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cb .r .act { font-size: 12px; color: var(--sec); letter-spacing: .5px; }
+  .note { position: absolute; z-index: 4; padding: 8px 12px; border-radius: 10px; font-size: 12.5px; display: flex; gap: 10px; align-items: center;
+    background: var(--surface); box-shadow: 0 0 0 0.5px var(--surface-edge), 0 8px 24px rgba(0,0,0,.16); color: var(--label); }
+  .note .nb { height: 24px; padding: 0 10px; border-radius: 7px; background: var(--fill); display: grid; place-items: center; font-size: 12px; }
+  .note .nb.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .thumb { width: 64px; height: 42px; border-radius: 5px; background: var(--web); box-shadow: 0 0 0 0.5px var(--hair); position: relative; overflow: hidden; flex: none; }
+  .thumb::before { content: ""; position: absolute; left: 6px; right: 6px; top: 6px; height: 6px; border-radius: 2px; background: var(--skeleton); }
+  .thumb::after { content: ""; position: absolute; left: 6px; right: 18px; top: 16px; height: 18px; border-radius: 2px; background: var(--skeleton); }
+  .pb { white-space: nowrap; height: 28px; padding: 0 12px; border-radius: 7px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; background: var(--fill); color: var(--label); }
+  .pb.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .pb.on { background: var(--fill2); font-weight: 600; }
+  .pb svg { width: 13px; height: 13px; }
+
+  /* capture */
+  .shade { position: absolute; inset: 0; background: var(--dim); z-index: 2; }
+  .hole { position: absolute; z-index: 3; box-shadow: 0 0 0 9999px var(--dim); border: 1.5px solid #fff; border-radius: 2px; }
+  .hole .sz { position: absolute; right: 0; bottom: -22px; font-size: 10.5px; font-weight: 600; background: rgba(0,0,0,.7); color: #fff; padding: 2px 6px; border-radius: 4px; }
+  .hole .hd { position: absolute; width: 7px; height: 7px; background: #fff; border-radius: 50%; }
+  .ctool { position: absolute; z-index: 4; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px; border-radius: 11px; }
+  .ctool .pb { height: 26px; }
+  .elhl { position: absolute; z-index: 3; outline: 2px solid var(--accent); outline-offset: 1px; background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 4px; }
+  .callout { position: absolute; font-size: 11.5px; color: var(--accent); font-weight: 600; z-index: 6; white-space: nowrap; }
+  .peekarrow { position: absolute; top: 50%; font-size: 22px; color: var(--accent); z-index: 6; }
+  .floating { position: absolute; top: 6px; bottom: 6px; width: 236px; border-radius: 10px; background: var(--side); z-index: 4; padding: 8px 8px 0;
+    box-shadow: 0 0 0 0.5px var(--surface-edge), 0 10px 30px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Arc extras for Ray</h1>
+  <p class="muted">Seven of Arc's smaller pieces that Ray still lacks (docs/MISSING.md, Arc's list items 8, 13, 15, 17, 18; Ardia's list item 9; and Collapse/Expand All Folders). Each section has 2–3 looks to pick from; the first is the recommended one unless marked otherwise. Sizes are Ray's (267 pt sidebar drawn at 236 here, 41 pt rows at 34, as in the other mocks) and Ardia's <code>theme.ts</code>. Flip Light/Dark to see both.</p>
+  <div class="seg" id="theme"><button data-t="auto" class="on">Auto</button><button data-t="light">Light</button><button data-t="dark">Dark</button></div>
+  <nav class="toc">
+    <a href="#media">1. Media controls</a><a href="#pinned">2. Collapse Pinned</a><a href="#clear">3. Clear button</a>
+    <a href="#unread">4. Unread counts</a><a href="#right">5. Sidebar on the right</a><a href="#capture">6. Capture</a>
+    <a href="#folders">7. Collapse/Expand All Folders</a>
+  </nav>
+
+  <!-- ================================================================ 1 -->
+  <h2 id="media">1. Sidebar media controls</h2>
+  <p>MISSING Arc 8. Something plays in a tab you've left: the sidebar shows what, with play/pause, without going back to it. Ray already has the speaker on rows and favorites and Mute in the row menu. Needs Chrome's Media Session (title, artist, artwork, actions) from the engine: <code>MediaSessionObserver</code> in an <code>ac_media_*</code> call or a tab event (an engine fixup), Ray's side is a view.</p>
+  <table class="cmp">
+    <tr><th>Arc</th><td>A card at the bottom of the sidebar above the footer: artwork, title over site, play/pause; hover grows it with back/forward, mute and PiP. Only for a tab you're not on; click the card goes to the tab.</td></tr>
+    <tr><th>Ardia</th><td><code>SidebarPlayer</code>: 40 pt row (28 pt art, 24 pt buttons, title 16 + artist 14 in a marquee), hover expands by a seek row (18) and controls row (32: mute, ⏮ play ⏭, PiP) over 220 ms. Mute Tab and Mute Site are separate; Mute Site behind ⌥.</td></tr>
+    <tr><th>Circa</th><td><code>SidebarMediaPlayerView</code> directly above the footer, "media still playing in tabs the user left", grows into the list on hover.</td></tr>
+    <tr><th>Chrome</th><td>The toolbar's Global Media Controls button opens a list of every playing session.</td></tr>
+  </table>
+
+  <h3>A. Arc's card above the footer <span class="tag">recommended</span></h3>
+  <p>A 40 pt card in the sidebar's fill, only while a tab you're not on plays (or paused in the last 5 minutes). Left: resting. Right: hovered, grown upward on the sidebar's spring: seek line, then mute, ⏮ ⏯ ⏭ (only the actions the page offers), PiP. Click the art or title goes to the tab. Several playing: the most recent, with a "2" pill that steps through them.</p>
+  <div class="stage">
+    <div class="win narrow">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="addr">linear.app</div>
+        <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+        <div class="list">
+          <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+          <div class="dv"><span class="line"></span></div>
+          <div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-yt">▶</span><span class="snd"><svg class="sym" viewBox="0 0 14 14" style="width:12px;height:12px"><path d="M2 5.5h2.5L7.5 3v8L4.5 8.5H2z"/><path d="M9.5 5a2.5 2.5 0 010 4M11 3.5a5 5 0 010 7"/></svg></span><span class="t">Lo-fi beats to build to</span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        </div>
+        <div class="player">
+          <div class="top">
+            <span class="art yt"><span class="fav f-yt">▶</span></span>
+            <span class="tt"><b>Lo-fi beats to build to</b><span>youtube.com</span></span>
+            <span class="ib big"><svg class="sym fill" viewBox="0 0 14 14"><rect x="3" y="2.5" width="2.6" height="9" rx=".8"/><rect x="8.4" y="2.5" width="2.6" height="9" rx=".8"/></svg></span>
+          </div>
+        </div>
+        <div class="foot"><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2v7M4 6.5L7 9.5l3-3M2.5 12h9"/></svg></span><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M3.5 1.5h7v11L7 10l-3.5 2.5z"/></svg></span><span class="sp"></span><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2.5v9M2.5 7h9"/></svg></span></div>
+      </div>
+    </div>
+    <div class="win narrow">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="addr">linear.app</div>
+        <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+        <div class="list">
+          <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+          <div class="dv"><span class="line"></span></div>
+          <div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+        </div>
+        <div class="player">
+          <div class="top">
+            <span class="art"></span>
+            <span class="tt"><b>Midnight City</b><span>M83 · open.spotify.com</span></span>
+            <span class="pill" style="margin-right:4px">2</span>
+          </div>
+          <div class="seek"><span>1:32</span><span class="tr"><i></i></span><span>−2:31</span></div>
+          <div class="ctrls">
+            <span class="ib sec"><svg class="sym" viewBox="0 0 14 14"><path d="M2 5.5h2.5L7.5 3v8L4.5 8.5H2z"/><path d="M9.5 5a2.5 2.5 0 010 4M11 3.5a5 5 0 010 7"/></svg></span>
+            <span class="mid">
+              <span class="ib"><svg class="sym fill" viewBox="0 0 14 14"><path d="M7 7l5-3.5v7zM2 7l5-3.5v7z"/><rect x="1" y="3" width="1.4" height="8" rx=".5"/></svg></span>
+              <span class="ib big hot"><svg class="sym fill" viewBox="0 0 14 14"><rect x="3" y="2.5" width="2.6" height="9" rx=".8"/><rect x="8.4" y="2.5" width="2.6" height="9" rx=".8"/></svg></span>
+              <span class="ib"><svg class="sym fill" viewBox="0 0 14 14"><path d="M7 7L2 3.5v7zM12 7L7 3.5v7z"/><rect x="11.6" y="3" width="1.4" height="8" rx=".5"/></svg></span>
+            </span>
+            <span class="ib sec"><svg class="sym" viewBox="0 0 14 14"><rect x="1.5" y="2.5" width="11" height="9" rx="1.5"/><rect x="7" y="7" width="4" height="3" rx=".6" fill="currentColor"/></svg></span>
+          </div>
+        </div>
+        <div class="foot"><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2v7M4 6.5L7 9.5l3-3M2.5 12h9"/></svg></span><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M3.5 1.5h7v11L7 10l-3.5 2.5z"/></svg></span><span class="sp"></span><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2.5v9M2.5 7h9"/></svg></span></div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Arc's own place and shape; Ardia and Circa landed on the same thing, so its motion and sizes are known.</li>
+    <li class="plus">Layer-drawn, one card: cheap on the sidebar's hot path; it takes list height only while something plays.</li>
+    <li class="minus">The biggest of the three: marquee, seek line, a hover grow that pushes into the list.</li>
+  </ul>
+
+  <h3>B. In the playing tab's row</h3>
+  <p>No card. The playing row's speaker becomes a small ⏯ under the pointer, and the row's end grows ⏭ and mute. A favorite's speaker mark (already there) takes a click as play/pause. Nothing new on screen when you're not looking.</p>
+  <div class="stage">
+    <div class="win narrow">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="addr">linear.app</div>
+        <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span><svg class="sym fill" viewBox="0 0 14 14" style="position:absolute;right:4px;bottom:4px;width:8px;height:8px;color:var(--sec)"><path d="M2 5h3l3.5-3v10L5 9H2z"/></svg></i></div>
+        <div class="list">
+          <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+          <div class="dv"><span class="line"></span></div>
+          <div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+          <div class="row hov"><span class="bg"></span><span class="ic fav f-yt">▶</span><span class="snd" style="color:var(--label)"><svg class="sym fill" viewBox="0 0 14 14" style="width:11px;height:11px"><rect x="3" y="2.5" width="2.6" height="9" rx=".8"/><rect x="8.4" y="2.5" width="2.6" height="9" rx=".8"/></svg></span><span class="t">Lo-fi beats to build to</span><span class="end"><span class="x"><svg class="sym fill" viewBox="0 0 14 14" style="width:11px;height:11px"><path d="M7 7L2 3.5v7zM12 7L7 3.5v7z"/></svg></span><span class="x"><svg class="sym" viewBox="0 0 14 14" style="width:12px;height:12px"><path d="M2 5.5h2.5L7.5 3v8L4.5 8.5H2z"/><path d="M9.5 5a2.5 2.5 0 010 4"/></svg></span><span class="x"><svg class="sym" viewBox="0 0 14 14" style="width:10px;height:10px"><path d="M3 3l8 8M11 3l-8 8"/></svg></span></span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Smallest build: rows already have the sound slot and hover buttons.</li>
+    <li class="minus">No title or artwork: you see the tab's title, not the song; a tab scrolled out of the list or in a closed folder has no controls.</li>
+    <li class="minus">Not Arc's: Arc users look at the bottom of the sidebar.</li>
+  </ul>
+
+  <h3>C. A footer button and a panel</h3>
+  <p>A note-sized pulse in the footer (an animated three-bar mark) while anything plays elsewhere; its click opens a <code>Panels</code> panel above it, like Downloads: every playing tab as a card (art, title, site, ⏮ ⏯ ⏭, mute), Chrome's Global Media Controls in Ray's look.</p>
+  <div class="stage">
+    <div class="win" style="width:560px">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="addr">linear.app</div>
+        <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+        <div class="list">
+          <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+          <div class="dv"><span class="line"></span></div>
+          <div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+        </div>
+        <div class="foot"><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2v7M4 6.5L7 9.5l3-3M2.5 12h9"/></svg></span><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M3.5 1.5h7v11L7 10l-3.5 2.5z"/></svg></span><span class="btn on" style="color:var(--accent)"><svg class="sym" viewBox="0 0 14 14" style="stroke-width:2"><path d="M3 10V6M7 10V3M11 10V7"/></svg></span><span class="sp"></span><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2.5v9M2.5 7h9"/></svg></span></div>
+      </div>
+      <div class="pg"><div class="sk" style="top:40px;height:22px;width:40%"></div><div class="sk" style="top:80px;height:140px"></div></div>
+      <div class="surface" style="left:8px;bottom:46px;width:290px;padding:10px 8px 8px">
+        <div style="font-weight:600;font-size:13px;padding:0 6px 8px">Playing</div>
+        <div class="player" style="margin:0 0 6px">
+          <div class="top"><span class="art"></span><span class="tt"><b>Midnight City</b><span>M83 · open.spotify.com</span></span>
+          <span class="ib sec"><svg class="sym fill" viewBox="0 0 14 14"><path d="M7 7l5-3.5v7zM2 7l5-3.5v7z"/></svg></span><span class="ib big hot"><svg class="sym fill" viewBox="0 0 14 14"><rect x="3" y="2.5" width="2.6" height="9" rx=".8"/><rect x="8.4" y="2.5" width="2.6" height="9" rx=".8"/></svg></span><span class="ib sec"><svg class="sym fill" viewBox="0 0 14 14"><path d="M7 7L2 3.5v7zM12 7L7 3.5v7z"/></svg></span></div>
+        </div>
+        <div class="player" style="margin:0">
+          <div class="top"><span class="art yt"><span class="fav f-yt">▶</span></span><span class="tt"><b>Lo-fi beats to build to</b><span>youtube.com · Paused</span></span>
+          <span class="ib big"><svg class="sym fill" viewBox="0 0 14 14"><path d="M4 2.5l8 4.5-8 4.5z"/></svg></span><span class="ib sec"><svg class="sym" viewBox="0 0 14 14"><path d="M2 5.5h2.5L7.5 3v8L4.5 8.5H2z"/><path d="M10 5l3 4M13 5l-3 4"/></svg></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Handles many players well; reuses <code>Panels</code> and the downloads button's spot.</li>
+    <li class="minus">Two clicks to pause; the footer gets busier; Arc's card is glanceable, this isn't.</li>
+  </ul>
+
+  <h3>In every option: Mute Site behind ⌥ <span class="tag">shared</span></h3>
+  <p>Ardia's corrected model (ARDIA-WATCH, Ray should 5): the speaker and Mute Tab mute that tab only; holding ⌥ in the row menu turns Mute Tab into Mute Site (every tab on that site, and new ones, until unmuted; also in Site controls). A muted site's notifications post without a sound.</p>
+  <div class="stage">
+    <div class="win narrow" style="height:260px">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="list">
+          <div class="row sel"><span class="bg"></span><span class="ic fav f-yt">▶</span><span class="snd"><svg class="sym" viewBox="0 0 14 14" style="width:12px;height:12px"><path d="M2 5.5h2.5L7.5 3v8L4.5 8.5H2z"/><path d="M9.5 5a2.5 2.5 0 010 4M11 3.5a5 5 0 010 7"/></svg></span><span class="t">Lo-fi beats to build to</span></div>
+        </div>
+      </div>
+      <div class="menu" style="left:70px;top:58px">
+        <div class="mi"><span class="x">Copy Link</span><span class="k">⇧⌘C</span></div>
+        <div class="mi"><span class="x">Share</span><span class="ch">▶</span></div>
+        <div class="sepm"></div>
+        <div class="mi"><span class="x">Change Icon…</span></div>
+        <div class="mi"><span class="x">Rename…</span></div>
+        <div class="mi hl"><span class="x">Mute Site youtube.com</span><span class="k">⌥</span></div>
+        <div class="sepm"></div>
+        <div class="mi"><span class="x">Duplicate</span></div>
+      </div>
+      <span class="keyhint" style="left:12px;top:220px">⌥ held: Mute Tab → Mute Site</span>
+    </div>
+  </div>
+
+  <!-- ================================================================ 2 + 3 -->
+  <h2 id="pinned">2. Collapse the pinned section</h2>
+  <p>MISSING Arc 17, Ardia's most-asked issue (shipped in its 0.2.43). A "Pinned" toggle on the divider above Today; collapsed, only the entry holding the active tab stays (its folder path too), so the list starts at Today. Remembered per window in Sidebar.json. Sections 2 and 3 share the same divider, so pick them together.</p>
+  <table class="cmp">
+    <tr><th>Arc</th><td>No toggle for Pinned; the divider holds "↓ Clear" on hover. Arc's Space name at the top is the only header.</td></tr>
+    <tr><th>Ardia</th><td><code>ClearDivider</code>: a dashed line in a band of the tiny line height; on hover "⌄ Pinned" (8 pt chevron, tiny medium text, tertiary → primary under the pointer) at the left, and "Tidy | ↓ Clear" at the right. Collapsed, "› Pinned" stays shown.</td></tr>
+    <tr><th>Circa / Phi</th><td>Phi has a "Pinned" section header with a chevron (Chrome-like section). Circa none.</td></tr>
+  </table>
+
+  <h3>A. Ardia's: "Pinned" appears on the divider on hover <span class="tag">recommended</span></h3>
+  <p>Left: hovering the divider shows "⌄ Pinned". Middle: collapsed, Linear (in Work) holds the active tab, so Work and Linear stay; "› Pinned" stays on the divider. Right: same, nothing pinned active: Today starts right under the favorites. The rows leave and come back with the folder motion Ray already has.</p>
+  <div class="stage">
+    <div class="win narrow" style="height:360px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">linear.app</div>
+      <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+      <div class="list">
+        <div class="row"><span class="bg"></span><span class="ic fold blue open"></span><span class="t">Work</span></div>
+        <div class="row in1"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+        <div class="row in1"><span class="bg"></span><span class="ic fav f-fi">F</span><span class="t">Design System</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+        <div class="dv"><span class="bt hot"><svg class="sym" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3"/></svg>Pinned</span><span class="line"></span><span class="bt"><svg class="sym" viewBox="0 0 10 10"><path d="M5 1.5v7M2.5 6l2.5 2.5L7.5 6"/></svg>Clear</span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-re">r</span><span class="t">r/MacOS</span></div>
+      </div>
+    </div></div>
+    <div class="win narrow" style="height:360px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">linear.app</div>
+      <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+      <div class="list">
+        <div class="row"><span class="bg"></span><span class="ic fold blue open"></span><span class="t">Work</span></div>
+        <div class="row in1 sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+        <div class="dv"><span class="bt"><svg class="sym" viewBox="0 0 10 10"><path d="M3.5 2l3 3-3 3"/></svg>Pinned</span><span class="line"></span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-re">r</span><span class="t">r/MacOS</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-md">D</span><span class="t">Docs</span></div>
+      </div>
+    </div></div>
+    <div class="win narrow" style="height:360px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+      <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+      <div class="list">
+        <div class="dv"><span class="bt"><svg class="sym" viewBox="0 0 10 10"><path d="M3.5 2l3 3-3 3"/></svg>Pinned</span><span class="line"></span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-re">r</span><span class="t">r/MacOS</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-md">D</span><span class="t">Docs</span></div>
+      </div>
+    </div></div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Nothing new at rest: the divider looks as today until you hover it or collapse.</li>
+    <li class="plus">Ardia shipped it to the users who asked; behaviour and sizes are known.</li>
+    <li class="minus">Hidden until hover: found by accident or the View menu / command bar ("Collapse Pinned", shared).</li>
+  </ul>
+
+  <h3>B. A "Pinned" header always shown</h3>
+  <p>A small section label above the pinned rows with a chevron and, collapsed, a count. The divider below stays for Clear.</p>
+  <div class="stage">
+    <div class="win narrow" style="height:330px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">linear.app</div>
+      <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+      <div class="list">
+        <div class="hdr"><svg class="sym" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3"/></svg>Pinned</div>
+        <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+        <div class="dv"><span class="line"></span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+      </div>
+    </div></div>
+    <div class="win narrow" style="height:330px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+      <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+      <div class="list">
+        <div class="hdr"><svg class="sym" viewBox="0 0 10 10"><path d="M3.5 2l3 3-3 3"/></svg>Pinned <span class="cnt">· 9</span></div>
+        <div class="dv"><span class="line"></span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-re">r</span><span class="t">r/MacOS</span></div>
+      </div>
+    </div></div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Discoverable; reads like Finder's sidebar sections.</li>
+    <li class="minus">A permanent label Arc never had: more chrome on every window, and a second line where Arc has one.</li>
+  </ul>
+
+  <h3>C. Collapse into a strip of icons</h3>
+  <p>Collapsed, pinned tabs fold into one 34 pt row of favicons (folders as their icon), like a second favorites row; a click opens that tab, the chevron opens the section again.</p>
+  <div class="stage">
+    <div class="win narrow" style="height:300px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+      <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+      <div class="list">
+        <div class="row" style="gap:12px;padding:0 10px"><span class="fold blue"></span><span class="fav f-no">N</span><span class="fav f-fi">F</span><span class="fav f-li">L</span><span class="fold green"></span><span class="fav f-wk">W</span><span style="flex:1"></span><span style="color:var(--ter);font-size:11px">+3</span></div>
+        <div class="dv"><span class="bt"><svg class="sym" viewBox="0 0 10 10"><path d="M3.5 2l3 3-3 3"/></svg>Pinned</span><span class="line"></span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+      </div>
+    </div></div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Collapsed still reaches every pinned tab in one click.</li>
+    <li class="minus">Icons without names; folders become a menu; new drag rules. The most to build and the least Arc.</li>
+  </ul>
+
+  <h2 id="clear">3. Arc's Clear button</h2>
+  <p>MISSING Ardia settings 9 (its Settings row, <code>showClearButton</code>, exists, unbuilt). Clear Today (⇧⌘K) already works: keeps the active tab and tabs playing sound, one ⇧⌘T/⌘Z brings the batch back. This is only where to press it.</p>
+  <table class="cmp">
+    <tr><th>Arc</th><td>The line between pinned and Today; hover shows "↓ Clear" at its right. Click: Today's tabs slide down and out, the list closes up.</td></tr>
+    <tr><th>Ardia</th><td>Same, with "Tidy | ↓ Clear" (Tidy is its AI grouping). Arrow 9 pt semibold, tiny medium text, tertiary → primary under the pointer.</td></tr>
+    <tr><th>Phi / Circa</th><td>Phi: "Clear" next to its Today header. Circa: none.</td></tr>
+  </table>
+
+  <h3>A. Arc's: "↓ Clear" on the divider on hover <span class="tag">recommended</span></h3>
+  <p>Hidden at rest; under the pointer the divider shows Clear at the right (Pinned at the left if you pick 2A). Click runs Clear Today: rows slide down 12 pt and fade on the sidebar's spring, then a note "Cleared 8 Tabs" with Undo. With the setting off, nothing shows.</p>
+  <div class="stage">
+    <div class="win narrow" style="height:300px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+      <div class="list">
+        <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+        <div class="dv"><span class="line solid"></span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-re">r</span><span class="t">r/MacOS</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-md">D</span><span class="t">Docs</span></div>
+      </div>
+      <div class="cap" style="padding:0 6px">At rest</div>
+    </div></div>
+    <div class="win narrow" style="height:300px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+      <div class="list">
+        <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+        <div class="dv"><span class="line solid"></span><span class="bt hot"><svg class="sym" viewBox="0 0 10 10"><path d="M5 1.5v7M2.5 6l2.5 2.5L7.5 6"/></svg>Clear</span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-re">r</span><span class="t">r/MacOS</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-md">D</span><span class="t">Docs</span></div>
+      </div>
+      <div class="cap" style="padding:0 6px">Hovered</div>
+    </div></div>
+    <div class="win" style="width:420px;height:300px"><div class="sb" style="width:180px">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+      <div class="list">
+        <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+        <div class="dv"><span class="line solid"></span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+      </div>
+    </div><div class="pg"><div class="note" style="left:12px;bottom:12px">Cleared 8 Tabs<span class="nb">Undo</span></div></div></div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Exactly Arc's; pairs with 2A on one line.</li>
+    <li class="minus">Hidden until hover (Arc users already know it's there).</li>
+  </ul>
+
+  <h3>B. Always shown, quiet</h3>
+  <p>"Clear" sits on the divider in tertiary grey all the time and darkens under the pointer.</p>
+  <div class="stage">
+    <div class="win narrow" style="height:220px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="list">
+        <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+        <div class="dv"><span class="line solid"></span><span class="bt"><svg class="sym" viewBox="0 0 10 10"><path d="M5 1.5v7M2.5 6l2.5 2.5L7.5 6"/></svg>Clear</span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-re">r</span><span class="t">r/MacOS</span></div>
+      </div>
+    </div></div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Found without hunting.</li>
+    <li class="minus">Text on the sidebar at rest, which Arc avoided; easy to hit by accident (Undo covers it).</li>
+  </ul>
+
+  <h3>C. A "Today" header with Clear</h3>
+  <p>Goes with 2B: the divider becomes a "Today" label, Clear at its right on hover.</p>
+  <div class="stage">
+    <div class="win narrow" style="height:240px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="list">
+        <div class="hdr"><svg class="sym" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3"/></svg>Pinned</div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+        <div class="hdr" style="margin-top:4px">Today<span class="sp"></span><span style="color:var(--label);display:flex;gap:4px;align-items:center;font-weight:500"><svg class="sym" viewBox="0 0 10 10"><path d="M5 1.5v7M2.5 6l2.5 2.5L7.5 6"/></svg>Clear</span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-re">r</span><span class="t">r/MacOS</span></div>
+      </div>
+    </div></div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Consistent with 2B; says what Clear clears.</li>
+    <li class="minus">Two labels Arc doesn't have.</li>
+  </ul>
+
+  <!-- ================================================================ 4 -->
+  <h2 id="unread">4. Unread counts</h2>
+  <p>MISSING Arc 18. A web app's count on its favorite, pinned tab or row: from the title ("(3) Inbox"; app-side, no engine change), then the Badging API (<code>navigator.setAppBadge</code>: needs an engine hook), and a favicon dot as the fallback. Ardia shows it and turned it off by default after users disliked it, dropping the title's "(3)": start off by default (Settings › Tabs › Show unread counts), title count first, pinned and favorites first.</p>
+  <table class="cmp">
+    <tr><th>Arc</th><td>No count of its own; favicons show their own dots (Gmail's, Slack's).</td></tr>
+    <tr><th>Ardia</th><td>Grey pills: row 16 pt (5 pt sides, caption semibold) at the row's end; tile 11 pt (badge type) in the tile's top right, 2 pt in; a 6 pt dot when there's no number. Pop in on a bouncy spring from 0.5 scale. Off by default.</td></tr>
+    <tr><th>Circa</th><td>A 6 pt dot on favorites only (Gmail preview), turned on separately.</td></tr>
+    <tr><th>Phi</th><td>Tab status icons only.</td></tr>
+  </table>
+
+  <h3>A. Ardia's grey pills <span class="tag">recommended</span></h3>
+  <p>Quiet: the profile's neutral grey, not red. 99+ caps. A row's pill sits where the close button goes and gives way to it on hover; the title's "(3) " is dropped from the row's title.</p>
+  <div class="stage">
+    <div class="win narrow" style="height:320px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">linear.app</div>
+      <div class="tiles"><i><span class="fav f-gm">M</span><span class="tpill">12</span></i><i><span class="fav f-sl">S</span><span class="tpill">3</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-wa">W</span><span class="tdot" style="background:var(--unread-ink);opacity:.65"></span></i></div>
+      <div class="list">
+        <div class="row"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span><span class="end"><span class="pill">4</span></span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-ds">D</span><span class="t">Discord</span><span class="end"><span class="pill">99+</span></span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+        <div class="dv"><span class="line"></span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Notifications</span><span class="end"><span class="dot"></span></span></div>
+        <div class="row hov"><span class="bg"></span><span class="ic fav f-gm">M</span><span class="t">Inbox – Work</span><span class="end"><span class="x"><svg class="sym" viewBox="0 0 14 14" style="width:10px;height:10px"><path d="M3 3l8 8M11 3l-8 8"/></svg></span></span></div>
+      </div>
+    </div></div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Calm enough to leave on; the setting Ardia's users ended up wanting.</li>
+    <li class="minus">Grey reads as status, not urgency: a mail count can go unnoticed (that's the point, for some).</li>
+  </ul>
+
+  <h3>B. Red badges, like the Dock</h3>
+  <p>macOS's own app badge: red with white numbers, on the tile's corner, ringed in the sidebar's colour; a red pill at the row's end.</p>
+  <div class="stage">
+    <div class="win narrow" style="height:260px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">linear.app</div>
+      <div class="tiles"><i><span class="fav f-gm">M</span><span class="tpill red">12</span></i><i><span class="fav f-sl">S</span><span class="tpill red">3</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-wa">W</span></i></div>
+      <div class="list">
+        <div class="row"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span><span class="end"><span class="pill red">4</span></span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-ds">D</span><span class="t">Discord</span><span class="end"><span class="pill red">99+</span></span></div>
+        <div class="dv"><span class="line"></span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Notifications</span></div>
+      </div>
+    </div></div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Unmissable; every Mac user knows what it means.</li>
+    <li class="minus">Loud on a sidebar full of apps; the thing Ardia's users switched off.</li>
+  </ul>
+
+  <h3>C. Dots only (Arc's spirit)</h3>
+  <p>No numbers: a 6 pt dot in the profile's colour on the favicon's corner when the count is above zero. Rows show the same dot on the icon.</p>
+  <div class="stage">
+    <div class="win narrow" style="height:260px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div><div class="addr">linear.app</div>
+      <div class="tiles"><i><span class="fav f-gm">M</span><span class="tdot"></span></i><i><span class="fav f-sl">S</span><span class="tdot"></span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-wa">W</span></i></div>
+      <div class="list">
+        <div class="row"><span class="bg"></span><span class="ic fav f-li">L<span class="fdot" style="background:var(--accent)"></span></span><span class="t">Linear</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-ds">D<span class="fdot" style="background:var(--accent)"></span></span><span class="t">Discord</span></div>
+        <div class="dv"><span class="line"></span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Notifications</span></div>
+      </div>
+    </div></div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Smallest mark; never truncates; no "99+" noise.</li>
+    <li class="minus">Says "something" not "how much"; collides with favicons that already draw their own dot.</li>
+  </ul>
+
+  <!-- ================================================================ 5 -->
+  <h2 id="right">5. Sidebar on the right</h2>
+  <p>MISSING Arc 15. View › Sidebar on Right and Settings › Tabs. Everything beside the sidebar mirrors: the dock slide, the peek (from the window's right edge, its 5 pt and 24 pt past it), the resize strip (on the sidebar's left edge, drag inverted), panels anchored on the sidebar (downloads, bookmarks, icon picker open leftward), drops and the drag-to-peek edge. Open question is only where the traffic lights go.</p>
+  <table class="cmp">
+    <tr><th>Arc</th><td>View › Sidebar on Right. The window buttons go with the sidebar, at its top left; the page's top edge stays clean.</td></tr>
+    <tr><th>Ardia</th><td>First (0.2.44-nightly.4) the buttons stayed at the window's top left with a 30 pt strip above the page; a nightly later they ride the sidebar, which sits 9 pt from the window's edge (<code>1544dabc</code>).</td></tr>
+    <tr><th>Circa / Open Arc / Phi</th><td>Left only.</td></tr>
+  </table>
+
+  <h3>A. The lights ride the sidebar (Arc's) <span class="tag">recommended</span></h3>
+  <p>Ray's <code>WindowLightButton</code>s move with the sidebar, in its top-left corner as today; the sidebar's own toolbar buttons follow them. The page card runs to the window's left edge with Ray's usual 8 pt inset. Hidden sidebar: the lights ride the peek card too, as the left-hand peek does now.</p>
+  <div class="stage">
+    <div class="win right">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i><span class="sp"></span><span class="tb"><svg class="sym" viewBox="0 0 14 14"><rect x="1.5" y="2.5" width="11" height="9" rx="1.5"/><path d="M9 2.5v9"/></svg><svg class="sym" viewBox="0 0 14 14"><path d="M8.5 3L4.5 7l4 4"/></svg><svg class="sym" viewBox="0 0 14 14"><path d="M5.5 3l4 4-4 4"/></svg></span></div>
+        <div class="addr">linear.app</div>
+        <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+        <div class="list">
+          <div class="row"><span class="bg"></span><span class="ic fold blue"></span><span class="t">Work</span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Roadmap</span></div>
+          <div class="dv"><span class="line"></span></div>
+          <div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        </div>
+      </div>
+      <div class="pg"><div class="sk" style="top:40px;height:22px;width:40%"></div><div class="sk" style="top:80px;height:140px"></div><div class="sk" style="top:240px;height:12px"></div></div>
+      <span class="callout" style="right:250px;top:2px">◂ resize strip on the sidebar's left edge</span>
+    </div>
+    <div class="win" style="width:420px">
+      <div class="pg" style="margin:8px"><div class="sk" style="top:40px;height:22px;width:40%"></div><div class="sk" style="top:80px;height:140px"></div></div>
+      <div class="floating" style="right:6px">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="addr">linear.app</div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+        <div class="row"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+      </div>
+      <span class="peekarrow" style="right:2px;margin-top:-14px;z-index:7">▏</span>
+      <div class="cap" style="position:absolute;left:14px;bottom:10px;z-index:7">Hidden: pointer at the right edge peeks it in from the right</div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Arc's, and where Ardia ended up; the page's top stays clean, as on the left.</li>
+    <li class="plus">Ray already draws its own lights in the sidebar: they move with it for free.</li>
+    <li class="minus">Lights away from the window's top left, where macOS puts them; close is under the right hand.</li>
+  </ul>
+
+  <h3>B. The lights stay at the window's top left</h3>
+  <p>Ardia's first take: the lights stay where macOS keeps them, over a 30 pt strip above the page card (in the sidebar's colour). With the address bar on the page, they sit at its left and it starts after them.</p>
+  <div class="stage">
+    <div class="win right">
+      <div class="sb">
+        <div class="lights" style="justify-content:flex-end"><span class="tb"><svg class="sym" viewBox="0 0 14 14"><rect x="1.5" y="2.5" width="11" height="9" rx="1.5"/><path d="M9 2.5v9"/></svg><svg class="sym" viewBox="0 0 14 14"><path d="M8.5 3L4.5 7l4 4"/></svg><svg class="sym" viewBox="0 0 14 14"><path d="M5.5 3l4 4-4 4"/></svg></span></div>
+        <div class="addr">linear.app</div>
+        <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+        <div class="list">
+          <div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        </div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column">
+        <div class="lights" style="padding:14px 14px 0;height:30px"><i></i><i></i><i></i></div>
+        <div class="pg" style="margin:0 0 8px 8px"><div class="sk" style="top:40px;height:22px;width:40%"></div><div class="sk" style="top:80px;height:140px"></div></div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Lights where every Mac app has them.</li>
+    <li class="minus">30 pt of the page lost for three buttons; Ardia moved away from it.</li>
+  </ul>
+
+  <h3>C. Lights ride the sidebar, toolbar mirrored</h3>
+  <p>Like A, but the sidebar's buttons (sidebar, back, forward) go to its left side next to the page and the lights to the right corner, so the buttons you use sit near the page.</p>
+  <div class="stage">
+    <div class="win right">
+      <div class="sb">
+        <div class="lights"><span class="tb" style="margin-left:2px"><svg class="sym" viewBox="0 0 14 14"><path d="M8.5 3L4.5 7l4 4"/></svg><svg class="sym" viewBox="0 0 14 14"><path d="M5.5 3l4 4-4 4"/></svg><svg class="sym" viewBox="0 0 14 14"><rect x="1.5" y="2.5" width="11" height="9" rx="1.5"/><path d="M5 2.5v9"/></svg></span><span class="sp"></span><i></i><i></i><i></i></div>
+        <div class="addr">linear.app</div>
+        <div class="tiles"><i><span class="fav f-gm">M</span></i><i><span class="fav f-sl">S</span></i><i><span class="fav f-ca">C</span></i><i><span class="fav f-sp">S</span></i></div>
+        <div class="list">
+          <div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+          <div class="row"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div>
+        </div>
+      </div>
+      <div class="pg"><div class="sk" style="top:40px;height:22px;width:40%"></div><div class="sk" style="top:80px;height:140px"></div></div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Fully mirrored; back/forward stay next to the page.</li>
+    <li class="minus">Lights at the window's top right look like a Windows app; macOS users click there and find nothing at the left.</li>
+  </ul>
+
+  <!-- ================================================================ 6 -->
+  <h2 id="capture">6. Capture</h2>
+  <p>MISSING Arc 13. Arc's screenshot tool: ⇧⌘2 (Arc's key), or the command bar's "Capture". The page dims; drag an area, click an element, or take the full page (the whole scroll height, through Chrome's <code>Page.captureScreenshot</code> with <code>captureBeyondViewport</code>, an engine call); then Copy or Save. Pixels come from the engine's <code>copyPicture</code> Ray already uses for ⌃Tab, so Screen Recording permission is never needed.</p>
+  <table class="cmp">
+    <tr><th>Arc</th><td>Capture from the command bar or ⇧⌘2: drag a rectangle, or hover to snap to an element, or "Full page"; a preview card with Copy and Save (and Easel). Copy is the default.</td></tr>
+    <tr><th>Chrome</th><td>Screenshot (the share menu; behind a flag on Mac): drag an area, then a bubble with Copy and Download.</td></tr>
+    <tr><th>Ardia / Circa / Phi</th><td>None found (Ardia has the screen-share picker only).</td></tr>
+  </table>
+
+  <h3>A. Arc's: dim, drag or click, then a preview card <span class="tag">recommended</span></h3>
+  <p>A small bar at the page's top centre on the shared surface: Area (default) · Element · Full Page, and Cancel (Escape). Dragging draws Arc's white frame with its size; Element snaps to the hovered block. Let go: the shot drops into a card at the bottom right with Copy (Return) and Save… (⌘S); doing nothing copies it after 6 s, like Arc. Card closes as a note "Copied Screenshot".</p>
+  <div class="stage">
+    <div class="win">
+      <div class="sb">
+        <div class="lights"><i></i><i></i><i></i></div><div class="addr">linear.app</div>
+        <div class="list"><div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div><div class="row"><span class="bg"></span><span class="ic fav f-gh">G</span><span class="t">Pull requests</span></div></div>
+      </div>
+      <div class="pg">
+        <div class="sk" style="top:30px;height:22px;width:40%"></div><div class="sk" style="top:70px;height:150px"></div><div class="sk" style="top:240px;height:12px"></div><div class="sk" style="top:262px;height:12px;right:180px"></div><div class="sk" style="top:300px;height:90px"></div>
+        <div class="hole" style="left:40px;top:62px;width:250px;height:170px"><span class="hd" style="left:-4px;top:-4px"></span><span class="hd" style="right:-4px;bottom:-4px"></span><span class="sz">500 × 340</span></div>
+        <div class="surface ctool" style="top:10px"><span class="pb on"><svg class="sym" viewBox="0 0 14 14"><path d="M2 4.5V2h2.5M9.5 2H12v2.5M12 9.5V12H9.5M4.5 12H2V9.5"/></svg>Area</span><span class="pb"><svg class="sym" viewBox="0 0 14 14"><rect x="2" y="3" width="10" height="8" rx="1.5"/><path d="M4.5 6h5"/></svg>Element</span><span class="pb"><svg class="sym" viewBox="0 0 14 14"><rect x="3.5" y="1.5" width="7" height="11" rx="1.5"/><path d="M5.5 5h3M5.5 7.5h3"/></svg>Full Page</span><span class="pb">Cancel</span></div>
+      </div>
+    </div>
+    <div class="win" style="width:420px">
+      <div class="pg" style="margin:8px">
+        <div class="sk" style="top:30px;height:22px;width:40%"></div><div class="sk" style="top:70px;height:150px"></div>
+        <div class="surface" style="right:12px;bottom:12px;width:230px;padding:10px">
+          <div style="height:110px;border-radius:7px;background:var(--web);box-shadow:0 0 0 0.5px var(--hair);position:relative;overflow:hidden"><div class="sk" style="left:10px;right:10px;top:10px;height:12px;width:50%"></div><div class="sk" style="left:10px;right:10px;top:30px;height:70px"></div></div>
+          <div style="display:flex;gap:6px;margin-top:10px;justify-content:flex-end"><span class="pb">Save…</span><span class="pb primary">Copy</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Arc's flow: one key, a drag, Return. Element snapping is what made Arc's feel smart.</li>
+    <li class="minus">Element mode needs the page's layout (DevTools' <code>DOM.getNodeForLocation</code> through an engine call), the biggest piece.</li>
+  </ul>
+
+  <h3>B. A Site controls page</h3>
+  <p>A "Capture" quick action in Site controls (and the command bar) opens a panel page: Visible Area, Full Page, Select Area…; then Copy to Clipboard or Save. Select Area dims the page as in A, without Element.</p>
+  <div class="stage">
+    <div class="win" style="width:560px">
+      <div class="pg" style="margin:8px">
+        <div style="height:41px;border-bottom:0.5px solid var(--hair);display:flex;align-items:center;padding:0 14px;font-size:13px;gap:10px;color:var(--sec)"><span style="flex:1"><b style="color:var(--label);font-weight:500">linear.app</b>/ray/issues</span><span class="ib on" style="background:var(--fill)"><svg class="sym" viewBox="0 0 14 14"><path d="M2 4h10M2 10h10"/><circle cx="5" cy="4" r="1.6" fill="var(--web)"/><circle cx="9" cy="10" r="1.6" fill="var(--web)"/></svg></span></div>
+        <div class="sk" style="top:70px;height:150px"></div>
+        <div class="surface" style="right:10px;top:46px;width:250px;padding:10px 8px">
+          <div style="font-size:12px;color:var(--sec);padding:0 8px 6px">‹ Capture</div>
+          <div class="row hov" style="height:30px"><span class="bg"></span><span class="ic"><svg class="sym" viewBox="0 0 14 14"><rect x="1.5" y="2.5" width="11" height="9" rx="1.5"/></svg></span><span class="t">Visible Area</span></div>
+          <div class="row" style="height:30px"><span class="bg"></span><span class="ic"><svg class="sym" viewBox="0 0 14 14"><rect x="3.5" y="1.5" width="7" height="11" rx="1.5"/></svg></span><span class="t">Full Page</span></div>
+          <div class="row" style="height:30px"><span class="bg"></span><span class="ic"><svg class="sym" viewBox="0 0 14 14"><path d="M2 4.5V2h2.5M9.5 2H12v2.5M12 9.5V12H9.5M4.5 12H2V9.5"/></svg></span><span class="t">Select Area…</span><span class="end" style="font-size:11.5px">⇧⌘2</span></div>
+          <div style="height:1px;background:var(--hair);margin:6px 8px"></div>
+          <div style="display:flex;gap:6px;padding:2px 8px 0"><span class="pb on">Copy</span><span class="pb">Save</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Uses Site controls' panel pages as they are; no element mode to build.</li>
+    <li class="minus">Three clicks for what Arc does in one drag; Capture is tucked in a panel.</li>
+  </ul>
+
+  <h3>C. Straight to the clipboard</h3>
+  <p>No card: command bar rows "Capture Area" (⇧⌘2), "Capture Full Page" (⇧⌘3 is macOS's, so none by default). Let go and it's copied, with a top-right note "Copied Screenshot" holding a thumbnail and Save.</p>
+  <div class="stage">
+    <div class="win" style="width:560px">
+      <div class="pg" style="margin:8px">
+        <div class="sk" style="top:30px;height:22px;width:40%"></div><div class="sk" style="top:70px;height:150px"></div><div class="sk" style="top:240px;height:12px"></div>
+        <div class="note" style="right:12px;top:12px"><span class="thumb"></span>Copied Screenshot<span class="nb">Save…</span></div>
+        <div class="surface cb" style="left:10px;top:120px;width:500px">
+          <div class="field"><span>capt</span><span class="caret"></span></div>
+          <div class="r hl"><span class="box"><svg class="sym" viewBox="0 0 14 14"><path d="M2 4.5V2h2.5M9.5 2H12v2.5M12 9.5V12H9.5M4.5 12H2V9.5"/></svg></span><span class="tx">Capture Area</span><span class="act">⇧⌘2</span></div>
+          <div class="r"><span class="box"><svg class="sym" viewBox="0 0 14 14"><rect x="3.5" y="1.5" width="7" height="11" rx="1.5"/></svg></span><span class="tx">Capture Full Page</span><span class="act"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Fastest; reuses notes; most of the time a screenshot goes straight into a message.</li>
+    <li class="minus">No chance to look before it lands on the clipboard; no Element mode.</li>
+  </ul>
+
+  <!-- ================================================================ 7 -->
+  <h2 id="folders">7. Collapse All Folders / Expand All Folders</h2>
+  <p>Arc's View menu commands. Menu items in the View menu after Show Full Address, so <code>BarActions</code> lists them in the command bar and Settings › Shortcuts can key them (no default key). Each folder's open state moves with the folder motion Ray has; the active tab's folder stays open (as 2A's collapsed Pinned keeps it).</p>
+  <table class="cmp">
+    <tr><th>Arc</th><td>View › Collapse All Folders / Expand All Folders, also in the command bar; whole sidebar.</td></tr>
+    <tr><th>Ardia / Phi</th><td>Ardia: none; Phi: per-group "Collapse all groups" in the tab strip menu (Chrome's).</td></tr>
+    <tr><th>Finder</th><td>⌥-click a disclosure chevron opens or closes everything under it.</td></tr>
+  </table>
+
+  <h3>A. Two items, always there <span class="tag">recommended</span></h3>
+  <p>Arc's: both items; one that would change nothing greys out (the menu validates). In the command bar both names match "fold", "collapse", "expand", "close folders". Plus Finder's ⌥-click on a folder's chevron.</p>
+  <div class="stage">
+    <div class="desk">
+      <div class="menubar"><span>&#63743;</span><span><b>Ray</b></span><span>File</span><span>Edit</span><span class="open">View</span><span>History</span><span>Bookmarks</span><span>Window</span></div>
+      <div class="win" style="width:600px;height:360px">
+        <div class="sb">
+          <div class="lights"><i></i><i></i><i></i></div><div class="addr">linear.app</div>
+          <div class="list">
+            <div class="row"><span class="bg"></span><span class="ic fold blue open"></span><span class="t">Work</span></div>
+            <div class="row in1"><span class="bg"></span><span class="ic fav f-fi">F</span><span class="t">Design System</span></div>
+            <div class="row in1"><span class="bg"></span><span class="ic fold purple open"></span><span class="t">Specs</span></div>
+            <div class="row in2"><span class="bg"></span><span class="ic fav f-no">N</span><span class="t">Ray PRD</span></div>
+            <div class="row"><span class="bg"></span><span class="ic fold green open"></span><span class="t">Reading</span></div>
+            <div class="row in1"><span class="bg"></span><span class="ic fav f-ny">N</span><span class="t">The Times</span></div>
+            <div class="dv"><span class="line"></span></div>
+            <div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+          </div>
+        </div>
+        <div class="pg"></div>
+      </div>
+      <div class="menu" style="left:190px;top:24px;width:260px">
+        <div class="mi"><span class="x">Toggle Sidebar</span><span class="k">⌘S</span></div>
+        <div class="mi"><span class="tick">✓</span><span class="x">Show Address Bar on Page</span></div>
+        <div class="mi"><span class="x">Show Full Address</span></div>
+        <div class="mi hl"><span class="x">Collapse All Folders</span></div>
+        <div class="mi dim"><span class="x">Expand All Folders</span></div>
+        <div class="mi"><span class="x">Site Controls</span></div>
+        <div class="sepm"></div>
+        <div class="mi"><span class="x">Zoom In</span><span class="k">⌘+</span></div>
+        <div class="mi"><span class="x">Zoom Out</span><span class="k">⌘−</span></div>
+      </div>
+    </div>
+    <div class="win" style="width:560px;height:250px;margin-top:24px">
+      <div class="pg" style="margin:8px">
+        <div class="surface cb" style="left:10px;top:12px;width:510px">
+          <div class="field"><span>collap</span><span class="caret"></span></div>
+          <div class="r hl"><span class="box"><svg class="sym" viewBox="0 0 14 14"><path d="M4 5.5L7 3l3 2.5M4 8.5L7 11l3-2.5"/></svg></span><span class="tx">Collapse All Folders</span><span class="act"></span></div>
+          <div class="r"><span class="box"><svg class="sym" viewBox="0 0 14 14"><path d="M4 9l3 2.5 3-2.5M4 5l3-2.5L10 5"/></svg></span><span class="tx">Collapse Pinned</span><span class="act"></span></div>
+          <div class="r"><span class="box">⚙︎</span><span class="tx">Settings: Show unread counts</span><span class="act"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Arc's wording and place; the command bar and Shortcuts pick them up with no extra code.</li>
+    <li class="minus">Two lines in an already long View menu.</li>
+  </ul>
+
+  <h3>B. One item that flips</h3>
+  <p>"Collapse All Folders" while any folder is open, else "Expand All Folders"; ⌥ shows the other one as an alternate item.</p>
+  <div class="stage">
+    <div class="desk">
+      <div class="menubar"><span>&#63743;</span><span><b>Ray</b></span><span>File</span><span>Edit</span><span class="open">View</span><span>History</span></div>
+      <div class="win" style="width:420px;height:200px"><div class="pg" style="margin:8px"></div></div>
+      <div class="menu" style="left:150px;top:24px;width:250px">
+        <div class="mi"><span class="x">Toggle Sidebar</span><span class="k">⌘S</span></div>
+        <div class="mi"><span class="x">Show Full Address</span></div>
+        <div class="mi hl"><span class="x">Collapse All Folders</span></div>
+        <div class="mi"><span class="x">Site Controls</span></div>
+      </div>
+    </div>
+  </div>
+  <ul class="pc">
+    <li class="plus">One line; still both names in the command bar.</li>
+    <li class="minus">A menu item whose name changes is harder to give a shortcut and to find in Help.</li>
+  </ul>
+
+  <h3>C. Also in the sidebar's background menu, per section</h3>
+  <p>A plus A: right-clicking the sidebar's empty space (or the divider) offers Collapse All Folders, Expand All Folders, and, per section, "Collapse Pinned Folders" / "Collapse Today Folders".</p>
+  <div class="stage">
+    <div class="win narrow" style="height:320px"><div class="sb">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="list">
+        <div class="row"><span class="bg"></span><span class="ic fold blue open"></span><span class="t">Work</span></div>
+        <div class="row in1"><span class="bg"></span><span class="ic fav f-fi">F</span><span class="t">Design System</span></div>
+        <div class="dv"><span class="line"></span></div>
+        <div class="row sel"><span class="bg"></span><span class="ic fav f-li">L</span><span class="t">Linear</span></div>
+      </div>
+      <div class="menu" style="left:40px;top:150px">
+        <div class="mi"><span class="x">New Tab</span><span class="k">⌘T</span></div>
+        <div class="mi"><span class="x">New Folder</span></div>
+        <div class="sepm"></div>
+        <div class="mi hl"><span class="x">Collapse All Folders</span></div>
+        <div class="mi dim"><span class="x">Expand All Folders</span></div>
+        <div class="mi"><span class="x">Collapse Pinned</span></div>
+      </div>
+    </div></div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Where the pointer already is; also a home for 2's Collapse Pinned.</li>
+    <li class="minus">Ray's sidebar has no background menu yet (Ardia's does): a new menu to build and keep in sync.</li>
+  </ul>
+</main>
+<script>
+  const root = document.documentElement, seg = document.getElementById("theme");
+  const media = matchMedia("(prefers-color-scheme: dark)");
+  let mode = "auto";
+  const apply = () => root.dataset.theme = mode === "auto" ? (media.matches ? "dark" : "light") : mode;
+  seg.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    mode = b.dataset.t; seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); apply();
+  });
+  media.addEventListener("change", apply); apply();
+</script>
+</body>
+</html>
