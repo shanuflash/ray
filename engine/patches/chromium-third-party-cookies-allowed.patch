@@ -1,0 +1,17 @@
+Ray: Chrome's third-party cookie default. Helium's inox-patchset/modify-default-prefs.patch registers
+profile.cookie_controls_mode as kBlockThirdParty; Chrome (and Arc) allow third-party cookies outside private windows
+(kIncognitoOnly), and sites that embed another site's page need them (Teams' app tabs). A user's own choice in
+chrome://settings/cookies still wins. Ray's app also writes this value into profiles that never chose
+(Host/ProfileDefaults.swift), for engines built before this patch.
+
+--- a/components/content_settings/core/browser/cookie_settings.cc
++++ b/components/content_settings/core/browser/cookie_settings.cc
+@@ -78,7 +78,7 @@
+     user_prefs::PrefRegistrySyncable* registry) {
+   registry->RegisterIntegerPref(
+       prefs::kCookieControlsMode,
+-      static_cast<int>(CookieControlsMode::kBlockThirdParty),
++      static_cast<int>(CookieControlsMode::kIncognitoOnly),
+       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
+ }
+ 

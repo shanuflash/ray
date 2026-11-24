@@ -1,0 +1,34 @@
+Ray: Chrome's third-party cookie default (Helium's blocks them; Teams' app tabs need them). Adds the series patch
+chromium-third-party-cookies-allowed.patch after Helium's prefs changes.
+
+diff --git a/patches/chromium-third-party-cookies-allowed.patch b/patches/chromium-third-party-cookies-allowed.patch
+new file mode 100644
+index 0000000..f06181e
+--- /dev/null
++++ b/patches/chromium-third-party-cookies-allowed.patch
+@@ -0,0 +1,17 @@
++Ray: Chrome's third-party cookie default. Helium's inox-patchset/modify-default-prefs.patch registers
++profile.cookie_controls_mode as kBlockThirdParty; Chrome (and Arc) allow third-party cookies outside private windows
++(kIncognitoOnly), and sites that embed another site's page need them (Teams' app tabs). A user's own choice in
++chrome://settings/cookies still wins. Ray's app also writes this value into profiles that never chose
++(Host/ProfileDefaults.swift), for engines built before this patch.
++
++--- a/components/content_settings/core/browser/cookie_settings.cc
+++++ b/components/content_settings/core/browser/cookie_settings.cc
++@@ -78,7 +78,7 @@
++     user_prefs::PrefRegistrySyncable* registry) {
++   registry->RegisterIntegerPref(
++       prefs::kCookieControlsMode,
++-      static_cast<int>(CookieControlsMode::kBlockThirdParty),
+++      static_cast<int>(CookieControlsMode::kIncognitoOnly),
++       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
++ }
++ 
+diff --git a/patches/series b/patches/series
+--- a/patches/series
++++ b/patches/series
+@@ -107,3 +107,4 @@
+ chromium chromium-ungoogled-mime-util-ymp.patch
+ chromium chromium-background-instance-no-default-handlers.patch mac
++chromium chromium-third-party-cookies-allowed.patch
+ chromium chromium-apple-passwords-host-skipped.patch mac

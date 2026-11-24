@@ -2153,6 +2153,40 @@ const checks = {
       rmSync(dir, { recursive: true, force: true });
     }
   },
+  async "third-party-cookies"() {
+    // Chrome's default: a page another site embeds keeps its own cookies (Teams' app tabs need it). The engine blocks
+    // them (Helium's default; MISSING #75), so Ray writes Chrome's value into an existing profile's
+    // Preferences before the engine starts (Host/ProfileDefaults.swift): checked after a relaunch, on a cross-site
+    // frame over HTTPS (SameSite=None needs Secure).
+    const port = secureServer.address().port;
+    pages["/3pc-top"] = `<title>3pc:wait</title><iframe src="https://embed.test:${port}/3pc-frame"></iframe>
+      <script>addEventListener("message", (e) => { document.title = "3pc:" + e.data })</script>`;
+    pages["/3pc-frame"] = `<script>document.cookie = "tp=1; SameSite=None; Secure; Path=/";
+      parent.postMessage(document.cookie.includes("tp=1") ? "kept" : "blocked", "*")</script>`;
+    const dir = mkdtempSync(join(tmpdir(), "ray-third-party-cookies-"));
+    const env = { RAY_DATA_DIR: dir, RAY_START_URL: `${secureOrigin}/3pc-top`, RAY_IGNORE_CERT_ERRORS: "1",
+      RAY_HOST_RULES: "MAP ray.test 127.0.0.1,MAP embed.test 127.0.0.1" };
+    const prefs = join(dir, "Chromium", "Default", "Preferences");
+    let it;
+    try {
+      it = ownInstance("third-party-cookies", env);
+      await it.until("first launch's frame answered", (x) => x?.tabs?.some((t) => /^3pc:(kept|blocked)$/.test(t.title)), 25000);
+      await it.stop().catch(() => {});
+      assert(existsSync(prefs), "the profile has no Preferences after its first launch");
+      it = ownInstance("third-party-cookies-2", env);
+      const s = await it.until("relaunch's frame answered", (x) => x?.tabs?.some((t) => /^3pc:(kept|blocked)$/.test(t.title)), 25000);
+      const title = s.tabs.find((t) => t.title.startsWith("3pc:")).title;
+      assert(title === "3pc:kept", `the embedded site's cookie was ${title.slice(4)}`);
+      assert(it.log.includes("profile defaults: third-party cookies allowed") || it.log.includes("profile defaults: kept"),
+        `profile defaults: ${it.log.match(/profile defaults: [^\n]*/)?.[0]}`);
+      await it.stop().catch(() => {});
+      const mode = JSON.parse(readFileSync(prefs, "utf8")).profile?.cookie_controls_mode;
+      assert(mode === 0, `cookie_controls_mode after the relaunch is ${mode}`);
+    } finally {
+      if (it && it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
   async extensions() {
     // A local unpacked extension with a toolbar popup; nothing is fetched from the Web Store.
     const dir = join(dataDir, "fixture-extension");

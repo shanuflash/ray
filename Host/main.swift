@@ -45,6 +45,11 @@ if safeStorage.mode == .blocked {
   alert.runModal()
   exit(1)
 }
+// MARK: Profile defaults
+
+// Chrome's third-party cookie default where the engine's differs (Host/ProfileDefaults.swift).
+let profileDefaults = ProfileDefaults.apply(dataDirectory: dataDirectory)
+TestEnvironment.log("profile defaults: \(profileDefaults.note)")
 
 var engineArguments = [
   CommandLine.arguments.first ?? "Ray",

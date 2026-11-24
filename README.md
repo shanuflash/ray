@@ -95,6 +95,8 @@ The engine is Chromium 158 (from 0.10.0). Pages run in Chromium's sandbox with s
 (Helium compiles it out). Passwords and cookies are encrypted with Ray's own key in your login keychain. Imports read
 another browser only when you ask, and send nothing anywhere. Updates are signed and checked before they install, and download only what changed when they can.
 A site that asks to share your screen gets only the tab, window or screen you pick in Ray's picker.
+Third-party cookies are allowed outside private windows, as in Chrome and Arc (sites that embed another site, like
+Teams' app tabs, need them); chrome://settings/cookies blocks them if you prefer.
 Preloading is on, as in Chrome: Ray may connect to a site you're about to open before you press Enter (turn it
 off in chrome://settings/performance, Preload pages).
 

@@ -3,6 +3,7 @@
 
 #include "base/observer_list.h"
 #include "components/web_modal/web_contents_modal_dialog_host.h"
+#include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/rect.h"
@@ -29,6 +30,7 @@ void DialogHostObserverAdded();
 void DialogHostObserverRemoved();
 
 class ACTabDialogHost : public web_modal::WebContentsModalDialogHost,
+                        public content::WebContentsObserver,
                         public content::WebContentsUserData<ACTabDialogHost> {
  public:
   ACTabDialogHost(const ACTabDialogHost&) = delete;
@@ -43,11 +45,16 @@ class ACTabDialogHost : public web_modal::WebContentsModalDialogHost,
   void RemoveObserver(web_modal::ModalDialogHostObserver* observer) override;
   void NotifyPositionRequiresUpdate() override;
 
+  // content::WebContentsObserver:
+  void WebContentsDestroyed() override;
+
  private:
   friend class content::WebContentsUserData<ACTabDialogHost>;
   explicit ACTabDialogHost(content::WebContents* contents);
 
   WindowHost* window_host() const;
+  // Tells the dialogs the host is going (they close at once) and forgets them.
+  void NotifyHostDestroying();
 
   base::ObserverList<web_modal::ModalDialogHostObserver> observers_;
   WEB_CONTENTS_USER_DATA_KEY_DECL();

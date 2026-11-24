@@ -295,6 +295,7 @@ export const areas = {
   "Host/AutoPictureInPicture.swift": ["auto-picture-in-picture", "settings-panes"],
   // The section runs to the end of the file (the launch's last lines, which change rarely).
   "Host/main.swift#Picture in picture": ["auto-picture-in-picture"],
+  "Host/main.swift#Profile defaults": ["third-party-cookies"],
   // When a page that was just shown has drawn (the tab switch holds the page left until then).
   "Host/PageFrameWatch.swift": pageSurface,
   "Host/PageToolbar.swift": ["address-not-clipped", "pending-security", "pending-address", "new-tab-sweep", "page-toolbar", "address-fragment", "settings-minimal-url", "page-loading", "load-sweep-once", "site-controls", "sidebar-toggle", "sidebar-motion-cheap",
@@ -331,6 +332,8 @@ export const areas = {
   // Light or dark for Ray's windows, and the scroll bars pages are told to draw.
   "Host/AppLook.swift": ["settings-appearance-mode", "settings-scroll-bars", "settings-panes", "settings-window"],
   "Host/SafeStorage.swift": ["safe-storage-migration"],
+  // Chrome's third-party cookie default written into the profile before the engine starts.
+  "Host/ProfileDefaults.swift": ["third-party-cookies"],
   "Host/WindowDragArea.swift": ["top-strip-click", "window-lights", "drag-click-selects"],
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
@@ -344,6 +347,7 @@ export const areas = {
   // Nothing to run beyond the unit tests.
   "tests/AddressInputTests.swift": [],
   "tests/SafeStorageTests.swift": [],
+  "tests/ProfileDefaultsTests.swift": [],
   // The importer's own tests (swift test) cover its readers; import-browser runs it end to end in the app, and
   // onboarding drives its screens on the importer's fixtures.
   "Importer/": ["import-browser", "onboarding", "jumpcloud-relay"],

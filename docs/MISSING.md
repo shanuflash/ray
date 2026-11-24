@@ -486,11 +486,30 @@ Smaller gaps found while building the items above. Each says where the fix goes.
    - Sidebar: closed folders spring open under a drag (Arc stopped that); a favorite tile ignores a middle click;
      ⇧⌘C doesn't strip trackers. (Drops and ⌥-drag landed 2026-11-23.)
    - Clear Today keeps at most 25 tabs for ⇧⌘T (`ClosedTabs.limit`); a bigger clear loses the oldest.
+75. **Helium's defaults against Chrome's** (2026-11-19, audit of the 156 engine's Helium series, read from the
+    patches, not run; recheck on Helium 0.22). Third-party cookies:
+    allowed now, by the engine's default and in profiles that never chose (Done). Other differences pages can notice,
+    most likely to break first:
+    - Web Push dead (Helium's `disable-gcm`, and Ray's `chromium-helium-web-push-off.patch`): no Slack, Gmail or Teams
+      notifications while their tab is closed. Fixing it talks to Google's GCM: owner's call.
+    - Fingerprint noise on (`helium/core/noise/*`, pref `helium.noise.enabled` true): canvas readback, audio output
+      and `hardwareConcurrency` are nudged; can upset captcha and anti-bot scoring and canvas round trips. Ray can turn
+      it off at run time (`setBoolPreference`).
+    - FedCM sign-in never shows (`helium/core/disable-fedcm-bubble.patch`): Sign in with Google one-tap and other
+      FedCM prompts. Skip the patch.
+    - WebRTC IP policy `default_public_interface_only` (`helium/core/webrtc-default-handling-policy.patch`): LAN
+      peer-to-peer tools fail, calls relay more. A string pref: engine change.
+    - Smaller: WebOTP and Digital Credentials off; Privacy Sandbox APIs denied; HTTPS-First balanced mode on;
+      one-language Accept-Language; no Web Speech (no Google API key); no Reporting API; Shift + right-click skips the
+      page's menu; weaker autofill form detection; Battery API answers defaults; translate offers, search suggestions
+      in Chrome's omnibox, alternate error pages, hyperlink auditing and `canMakePayment` off.
 
 ## Done
 
 | What | When |
 |---|---|
+| No crash when an extension closes a tab showing a sign-in dialog: the engine's dialog host closes its dialogs while the tab is whole (`engine-ray/fixups/0010`); the engine's own third-party cookie default is Chrome's (`0011`) | 2026-11-24, `fix: tab dialogs close before teardown, cookie default` |
+| Third-party cookies allowed as in Chrome and Arc (Helium blocked them, so Teams' app tabs said "This app may have issues in the web version of Teams"); a choice in chrome://settings/cookies still wins | 2026-11-23, `fix: allow third party cookies like chrome` |
 | The command bar preconnects to its top row's site as you type (Chrome's omnibox preconnect), so a first visit's DNS, connect and TLS are done by Enter; never in a private window | 2026-11-23, `feat: command bar preconnects top row` |
 | Engine on Ardia v0.2.48: Chromium 158.0.8127.36 (Helium 0.22.1), M157 and M158 security fixes, Memory Saver and preloading on by default, install by dropping a .crx on a page (Ray's prompt; a failure says why in a note), `ac_preconnect`, glic off, the 4 s window close fixed, Ardia's M158 safe-storage fix | 2026-11-23, 0.10.0 (not built yet) |
 | Pop-up windows stay on a full-screen Ray's Space (a child window), and a drag that reaches the window's left edge brings a hidden sidebar out to take the drop | 2026-11-23, `fix: popup in full screen, drag to peek` |

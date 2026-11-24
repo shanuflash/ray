@@ -699,6 +699,15 @@ publicly or create accounts.
   (checks `pending-address`, `pending-security`).
 - Tab-modal dialogs (print preview…) are centred on the page with rounded corners: `engine-ray/fixups/0004`
   (raycore's `DialogPositionInHostView`, and `chromium-web-dialog-rounded-corners.patch`).
+- `ProfileDefaults` (`Host/ProfileDefaults.swift`, main.swift's `// MARK: Profile defaults`): Chrome's defaults the
+  engine (Helium's `inox-patchset/modify-default-prefs.patch`) changed and RayCore can't set (it sets booleans only).
+  Third-party cookies: Chrome allows them outside private windows (`profile.cookie_controls_mode` 0), Helium blocks
+  them, which broke Teams' app tabs (cross-site iframes). Before the engine starts, Ray adds 0 to
+  `Default/Preferences` when the user has no value (only those bytes: a JSONSerialization round trip rewrites doubles
+  as integers), never makes a missing file (`ProfileImpl::IsNewProfile`), so a new data dir gets it at its second
+  launch. The engine's own default is `engine-ray/fixups/0011` (`chromium-third-party-cookies-allowed.patch`).
+  Unit tests `tests/ProfileDefaultsTests.swift`; check `third-party-cookies` (relaunched, a cross-site frame on the
+  HTTPS fixture keeps its cookie).
 - `Spring`: a CADisplayLink spring. `dockSpring` (⌘S) and `peekSpring` drive `layout()` every frame.
   `Spring.response` / `dampingRatio` (0.26 s, 0.86) are the sidebar's spring that notes, panels, prompts, the find
   bar and the command bar share; `Spring.caAnimation(keyPath:from:to:)` is it as a `CASpringAnimation` for a layer.
@@ -755,6 +764,10 @@ publicly or create accounts.
 - `engine-ray/fixups/0006`: `ac_preconnect` (`{"url"}` → `{"started"}`), Chrome's omnibox preconnect for the
   command bar's top row (`LoadingPredictor::PrepareForPageLoad`, `HintOrigin::OMNIBOX`), gated on network
   prediction as Chrome's is. The bar's side: Preconnect under `CommandBarView` above.
+- `engine-ray/fixups/0010`: `ACTabDialogHost` is a `WebContentsObserver` and closes its tab-modal dialogs in
+  `WebContentsDestroyed()`, while the tab is whole (a sign-in dialog closed from `~WebContentsImpl` read the freed
+  NavigationController: a crash when an extension closed its tab). `0011`: third-party cookies allowed by default
+  (Chrome's `kIncognitoOnly` over Helium's block).
 - `engine-ray/fixups/0008`: keeps `RayCoreTab.canShareThisTabInsteadFor:` (Ardia dropped it in v0.2.48), which
   `ScreenShare` asks before offering Share This Tab. `0009` keeps `autoPictureInPictureIsChromes` (the state log's
   `pictureInPicture` `auto`; v0.2.48's event carries it only when a window closes).

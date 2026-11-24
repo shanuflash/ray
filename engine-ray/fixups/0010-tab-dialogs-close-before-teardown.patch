@@ -1,0 +1,72 @@
+Ray: tab-modal dialogs still open when their tab closes go in WebContentsDestroyed, while the tab is whole,
+not from the host's destructor at the end of ~WebContentsImpl, where the sign-in dialog's CancelAuth read the
+tab's destroyed NavigationController (crash on chrome.tabs.remove of a tab showing it; docs/MISSING.md #68).
+
+--- a/raycore/src/ray/core/ac_modal_dialog_host.h
++++ b/raycore/src/ray/core/ac_modal_dialog_host.h
+@@ -3,6 +3,7 @@
+ 
+ #include "base/observer_list.h"
+ #include "components/web_modal/web_contents_modal_dialog_host.h"
++#include "content/public/browser/web_contents_observer.h"
+ #include "content/public/browser/web_contents_user_data.h"
+ #include "ui/gfx/geometry/point.h"
+ #include "ui/gfx/geometry/rect.h"
+@@ -29,6 +30,7 @@
+ void DialogHostObserverRemoved();
+ 
+ class ACTabDialogHost : public web_modal::WebContentsModalDialogHost,
++                        public content::WebContentsObserver,
+                         public content::WebContentsUserData<ACTabDialogHost> {
+  public:
+   ACTabDialogHost(const ACTabDialogHost&) = delete;
+@@ -43,11 +45,16 @@
+   void RemoveObserver(web_modal::ModalDialogHostObserver* observer) override;
+   void NotifyPositionRequiresUpdate() override;
+ 
++  // content::WebContentsObserver:
++  void WebContentsDestroyed() override;
++
+  private:
+   friend class content::WebContentsUserData<ACTabDialogHost>;
+   explicit ACTabDialogHost(content::WebContents* contents);
+ 
+   WindowHost* window_host() const;
++  // Tells the dialogs the host is going (they close at once) and forgets them.
++  void NotifyHostDestroying();
+ 
+   base::ObserverList<web_modal::ModalDialogHostObserver> observers_;
+   WEB_CONTENTS_USER_DATA_KEY_DECL();
+--- a/raycore/src/ray/core/ac_modal_dialog_host.mm
++++ b/raycore/src/ray/core/ac_modal_dialog_host.mm
+@@ -97,15 +97,29 @@
+ }
+ 
+ ACTabDialogHost::ACTabDialogHost(content::WebContents* contents)
+-    : content::WebContentsUserData<ACTabDialogHost>(*contents) {}
++    : content::WebContentsObserver(contents),
++      content::WebContentsUserData<ACTabDialogHost>(*contents) {}
+ 
+ ACTabDialogHost::~ACTabDialogHost() {
++  NotifyHostDestroying();
++}
++
++// Ray: a dialog still open when its tab closes goes now, while the tab is whole. User data like this host is
++// destroyed last in ~WebContentsImpl, and a dialog closed from there touched the half-destroyed tab: the sign-in
++// dialog cancels its auth through the tab's NavigationController (a crash when an extension's chrome.tabs.remove
++// closed a tab showing one).
++void ACTabDialogHost::WebContentsDestroyed() {
++  NotifyHostDestroying();
++}
++
++void ACTabDialogHost::NotifyHostDestroying() {
+   for (auto& observer : observers_) {
+     observer.OnHostDestroying();
+   }
+   for ([[maybe_unused]] auto& observer : observers_) {
+     DialogHostObserverRemoved();
+   }
++  observers_.Clear();
+ }
+ 
+ WindowHost* ACTabDialogHost::window_host() const {
