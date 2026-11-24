@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Scanline Logos</title>
+<style>
+:root { --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --panel: #fff; --hair: rgba(0,0,0,.08); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --panel: #1C1C1F; --hair: rgba(255,255,255,.09); } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--desk); color: var(--ink); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; }
+.wrap { max-width: 1000px; margin: 0 auto; padding: 8px 16px 48px; }
+h1 { font-size: 22px; font-weight: 600; margin: 18px 0 4px; }
+.sub { color: var(--ink2); margin: 0 0 14px; max-width: 760px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.c { background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; overflow: hidden; }
+.stage { display: grid; grid-template-columns: 1fr 1fr; }
+.stage > div { height: 170px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+.l { background: radial-gradient(500px 260px at 0% 0%, #CFE4FF, transparent 60%), radial-gradient(400px 300px at 100% 100%, #FFD9C7, transparent 60%), #F3F1EE; }
+.d { background: radial-gradient(500px 260px at 0% 100%, #2B3F8C, transparent 60%), radial-gradient(400px 260px at 100% 0%, #5B2A6E, transparent 60%), #0A0B14; }
+.ic { position: relative; flex: none; }
+.ic .tile { position: absolute; left: 9.77%; top: 9.77%; width: 80.47%; height: 80.47%; border-radius: 22.45%; overflow: hidden;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.08), 0 1.5% 3% rgba(0,0,0,.18), 0 4% 9% rgba(0,0,0,.16); }
+.ic .tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 max(.5px,.6%) rgba(255,255,255,.28), inset 0 1.2% 1.5% rgba(255,255,255,.22); }
+.ic svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.smalls { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.t { padding: 10px 14px 14px; }
+.n { font-weight: 600; font-size: 14px; }
+.n small { color: var(--ink2); font-weight: 500; margin-left: 6px; }
+.b { color: var(--ink2); margin-top: 2px; }
+.hero { display: grid; grid-template-columns: 1fr 1fr; border-radius: 14px; overflow: hidden; border: 1px solid var(--hair); margin-bottom: 14px; }
+.hero > div { height: 150px; display: flex; align-items: center; justify-content: center; }
+.hero svg { height: 64px; }
+.word svg { height: 26px; }
+.word { display: flex; align-items: center; gap: 10px; padding: 0 14px 14px; font: 600 22px/1 -apple-system, system-ui, sans-serif; letter-spacing: -.02em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Scanline R, five versions</h1>
+<p class="sub">Five takes on Scanline R from round 3, each at 128, 32 and 16 px on light and dark desktops, beside the RAY wordmark drawn in the same lines.</p>
+<div class="hero" id="hero"></div><p class="sub" style="margin-top:6px">The wordmark in scanlines: the same sharp caps, lines thinning toward the bottom.</p>
+<div class="grid" id="grid"></div>
+</div>
+<script>
+const SUN = `<linearGradient id="sun" gradientUnits="userSpaceOnUse" x1="0" y1="230" x2="0" y2="794"><stop offset="0" stop-color="#FFB13C"/><stop offset=".55" stop-color="#FF5A5F"/><stop offset="1" stop-color="#E23A8A"/></linearGradient>`;
+const R = `<path d="M300 230 H424 V794 H300 Z"/><path fill-rule="evenodd" d="M300 230 H548 A182 182 0 0 1 548 594 H300 Z M424 346 H540 A66 66 0 0 1 540 478 H424 Z"/><path d="M496 560 H630 L770 794 H636 Z"/>`;
+// 16 stripes over the R's height; thin = they narrow toward the bottom like a sunset.
+const stripes = (thin, fill = "#fff", x = 0, w = 1024) => Array.from({ length: 16 }, (_, i) => {
+  const pitch = 564 / 16, h = thin ? 26 - i * 1.15 : 22;
+  return `<rect x="${x}" y="${(230 + i * pitch).toFixed(1)}" width="${w}" height="${h.toFixed(1)}" fill="${fill}"/>`;
+}).join("");
+const mask = (id, thin) => `<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">${stripes(thin)}</mask>`;
+const C = [
+  { id: "sunset", name: "Sunset Lines", tag: "the base, refined",
+    blurb: "Scanline R tidied up: 16 even lines that get thinner toward the bottom, like a sunset sinking, so the R also reads as the sun going down. Crisp on black at every size.",
+    svg: `<defs>${SUN}${mask("m", true)}</defs><rect width="1024" height="1024" fill="#0B0B10"/>
+      <g fill="url(#sun)" mask="url(#m)">${R}</g>` },
+  { id: "synth", name: "Synth Sun", tag: "R in front of the sun",
+    blurb: "A solid white R stands in front of a big striped sun on the horizon, the classic retro-future sunset. The boldest of the five and the most poster-like.",
+    svg: `<defs><linearGradient id="ss" gradientUnits="userSpaceOnUse" x1="0" y1="330" x2="0" y2="800"><stop offset="0" stop-color="#FFC23D"/><stop offset=".6" stop-color="#FF4F6E"/><stop offset="1" stop-color="#B8329A"/></linearGradient>
+      <mask id="sm" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="#fff"/>${[0,1,2,3,4,5].map(i => `<rect x="0" y="${560 + i * 44}" width="1024" height="${8 + i * 4}" fill="#000"/>`).join("")}</mask></defs>
+      <rect width="1024" height="1024" fill="#140B2A"/>
+      <circle cx="512" cy="660" r="360" fill="url(#ss)" mask="url(#sm)"/>
+      <rect x="0" y="828" width="1024" height="196" fill="#140B2A"/>
+      <g fill="#fff" stroke="#140B2A" stroke-width="22" paint-order="stroke" stroke-linejoin="miter">${R}</g>` },
+  { id: "trails", name: "Light Trails", tag: "speed",
+    blurb: "Every line of the R streams back to the left as a trail of light, so the letter looks like it's moving fast. A ray in motion: the most energetic version.",
+    svg: `<defs>${SUN}${mask("tm", false)}<linearGradient id="tr" gradientUnits="userSpaceOnUse" x1="70" y1="0" x2="300" y2="0"><stop offset="0" stop-color="#FF5A5F" stop-opacity="0"/><stop offset="1" stop-color="#FF8A4C"/></linearGradient></defs>
+      <rect width="1024" height="1024" fill="#0B0B10"/>
+      <g mask="url(#tm)"><rect x="70" y="230" width="232" height="564" fill="url(#tr)"/><g fill="url(#sun)">${R}</g></g>` },
+  { id: "glitch", name: "Glitch", tag: "techy",
+    blurb: "The middle band of lines slips sideways with a cyan and magenta split at its edges, like a signal catching. Sharp and developer-tool cool, still clearly an R.",
+    svg: `<defs>${SUN}${mask("gm", false)}<clipPath id="top"><rect x="0" y="0" width="1024" height="440"/></clipPath><clipPath id="mid"><rect x="0" y="440" width="1024" height="160"/></clipPath><clipPath id="bot"><rect x="0" y="600" width="1024" height="424"/></clipPath></defs>
+      <rect width="1024" height="1024" fill="#0B0B10"/>
+      <g mask="url(#gm)">
+        <g clip-path="url(#top)" fill="url(#sun)">${R}</g>
+        <g clip-path="url(#mid)"><g transform="translate(26 0)" fill="#22E0FF" opacity=".85">${R}</g><g transform="translate(62 0)" fill="#FF2F9A" opacity=".85">${R}</g><g transform="translate(44 0)" fill="url(#sun)">${R}</g></g>
+        <g clip-path="url(#bot)" fill="url(#sun)">${R}</g></g>` },
+  { id: "neon", name: "Neon CRT", tag: "glow",
+    blurb: "The lines glow like a neon sign on an old screen: a soft bloom behind the R, faint scanlines across the whole tile and a dark vignette. Moody and premium in the Dock.",
+    svg: `<defs>${SUN}${mask("nm", false)}<filter id="bl" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="34"/></filter>
+      <radialGradient id="vg" cx="512" cy="512" r="720" gradientUnits="userSpaceOnUse"><stop offset=".5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".7"/></radialGradient></defs>
+      <rect width="1024" height="1024" fill="#090B1E"/>
+      ${Array.from({ length: 64 }, (_, i) => `<rect x="0" y="${i * 16}" width="1024" height="2" fill="#fff" opacity=".035"/>`).join("")}
+      <g fill="url(#sun)" filter="url(#bl)" opacity=".75">${R}</g>
+      <g fill="url(#sun)" mask="url(#nm)">${R}</g>
+      <rect width="1024" height="1024" fill="url(#vg)"/>` },
+];
+// The RAY wordmark in scanlines (letters from round 3).
+const WORD = (ink) => { const id = "w" + Math.random().toString(36).slice(2, 7);
+  return `<svg viewBox="0 0 560 200" height="100%"><defs><linearGradient id="${id}g" x1="0" y1="20" x2="0" y2="180" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFB13C"/><stop offset=".55" stop-color="#FF5A5F"/><stop offset="1" stop-color="#E23A8A"/></linearGradient>
+  <mask id="${id}m" maskUnits="userSpaceOnUse" x="0" y="0" width="560" height="200">${Array.from({ length: 16 }, (_, i) => `<rect x="0" y="${20 + i * 10}" width="560" height="${(7.4 - i * .3).toFixed(1)}" fill="#fff"/>`).join("")}</mask></defs>
+  <g fill="${ink === "sun" ? `url(#${id}g)` : ink}" mask="url(#${id}m)">
+  <path d="M0 20 H34 V180 H0 Z"/><path fill-rule="evenodd" d="M0 20 H82 A50 50 0 0 1 82 120 H0 Z M34 52 H80 A18 18 0 0 1 80 88 H34 Z"/><path d="M64 110 H102 L148 180 H110 Z"/>
+  <path fill-rule="evenodd" d="M246 20 H280 L344 180 H308 L263 64 L218 180 H182 Z"/><rect x="214" y="132" width="98" height="16"/>
+  <path transform="translate(24 0)" d="M356 20 H396 L432 90 L468 20 H508 L450 118 V180 H414 V118 Z"/></g></svg>`; };
+
+const icon = (c, s) => `<span class="ic" style="width:${s}px;height:${s}px"><span class="tile"><svg viewBox="0 0 1024 1024">${c.svg.replace(/id="/g, `id="s${s}-`).replace(/url\(#/g, `url(#s${s}-`)}</svg></span></span>`;
+document.getElementById("hero").innerHTML = `<div class="l">${WORD("sun")}</div><div class="d">${WORD("sun")}</div>`;
+document.getElementById("grid").innerHTML = C.map(c => `<div class="c">
+  <div class="stage"><div class="l">${icon(c,128)}<div class="smalls">${icon(c,32)}${icon(c,16)}</div></div>
+  <div class="d">${icon(c,128)}<div class="smalls">${icon(c,32)}${icon(c,16)}</div></div></div>
+  <div class="t"><div class="n">${c.name}<small>${c.tag}</small></div><div class="b">${c.blurb}</div></div>
+  <div class="word">${icon(c,40)}${WORD("sun")}</div></div>`).join("");
+</script>
+</body>
+</html>
