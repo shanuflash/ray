@@ -298,18 +298,29 @@
   #v2.open .morph { clip-path: circle(150% at 21px calc(100% - 20px)); opacity: 1; }
   /* B: tray under the sidebar */
   #v6 { padding: 0; }
-  #v6 .upper { position: absolute; left: 0; right: 0; top: 0; bottom: 40px; z-index: 2; background: var(--side); padding: 0;
+  #v6 .upper { position: absolute; left: 0; right: 0; top: 0; bottom: 40px; z-index: 2; background: var(--side); padding: 8px 8px 0;
     display: flex; flex-direction: column; overflow: hidden; border-radius: 0 0 0 0;
-    transition: top .48s cubic-bezier(.22,1,.36,1), left .48s cubic-bezier(.22,1,.36,1), right .48s cubic-bezier(.22,1,.36,1), bottom .48s cubic-bezier(.22,1,.36,1), border-radius .3s, box-shadow .3s; }
-  #v6.open .upper { top: 6px; left: 8px; right: 8px; bottom: calc(40px + 54%); border-radius: 14px;
-    box-shadow: 0 0 0 0.5px var(--hair), 0 12px 26px rgba(0,0,0,.26), 0 2px 6px rgba(0,0,0,.14); }
-  #v6 .upin { position: absolute; left: 0; right: 0; top: 0; height: 520px; padding: 8px 8px 0; display: flex; flex-direction: column;
-    transform-origin: 50% 0; transition: transform .48s cubic-bezier(.22,1,.36,1); }
-  #v6.open .upin { transform: scale(.9); }
-  #v6 .under { position: absolute; left: 0; right: 0; bottom: 40px; height: 54%; z-index: 1; background: var(--tray);
+    transition: bottom .48s cubic-bezier(.22,1,.36,1), border-radius .3s, box-shadow .3s; }
+  #v6.open .upper { bottom: calc(40px + 56%); border-radius: 0 0 14px 14px;
+    box-shadow: 0 0.5px 0 var(--hair), 0 10px 22px rgba(0,0,0,.22), 0 2px 5px rgba(0,0,0,.12); }
+  #v6 .under { position: absolute; left: 0; right: 0; bottom: 40px; height: 56%; z-index: 1; background: var(--tray);
     box-shadow: inset 0 8px 14px -8px rgba(0,0,0,.25); padding: 22px 10px 6px; display: flex; flex-direction: column; }
   #v6 .lowfoot { position: absolute; left: 8px; right: 8px; bottom: 0; z-index: 3; }
   #v6.open .lowfoot { background: var(--tray); left: 0; right: 0; padding: 0 12px; }
+  /* C: same-coloured bar, sidebar shrinks */
+  #v7 { padding: 0; background: var(--tray); }
+  #v7 .top7 { position: absolute; left: 0; right: 0; top: 0; bottom: 40px; background: var(--side); padding: 8px 8px 0; display: flex; flex-direction: column; overflow: hidden;
+    border-radius: 0; transition: bottom .48s cubic-bezier(.22,1,.36,1), border-radius .25s; }
+  #v7 .bar7 { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: var(--side); padding: 0 8px; display: flex; flex-direction: column; overflow: hidden;
+    border-radius: 0; transition: height .48s cubic-bezier(.22,1,.36,1), border-radius .25s; }
+  #v7 .body7 { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-top: 0; overflow: hidden; opacity: 0; transition: opacity .2s, padding .3s; }
+  #v7.open .body7 { opacity: 1; padding-top: 10px; }
+  #v7.open .top7 .list { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); }
+  #v7 .bar7 .foot { margin-top: 0; flex: none; }
+  #v7.open .top7 { bottom: calc(54% + 8px); border-radius: 0 0 12px 12px; }
+  #v7.open .bar7 { height: 54%; border-radius: 12px 12px 0 0; }
+  #v7.open .btn.lib .ring { opacity: 0; }
+  #v7.open .btn.lib .xx { opacity: 1; transform: rotate(90deg); }
 </style>
 </head>
 <body>
@@ -1055,7 +1066,7 @@
     </div>
   </div>
 
-  <p><b>Both come up from the bottom of the sidebar: no floating popup, no arrow, nothing over the page.</b> A is the button opening up; B is a tray that slides out from under the sidebar. Click the footer button in each to open and close it; Downloads and Bookmarks switch inside. Same spring everywhere (Ray's sidebar spring, 0.26 s, damping 0.86), with rows coming in one after another (30 ms apart).</p>
+  <p><b>All three come up from the bottom of the sidebar: no floating popup, no arrow, nothing over the page.</b> A is the button opening up; B is a tray that slides out from under the sidebar; C is a second bar of the same colour that pushes the sidebar up. Click the footer button in each to open and close it; Downloads and Bookmarks switch inside. Same spring everywhere (Ray's sidebar spring, 0.26 s, damping 0.86), with rows coming in one after another (30 ms apart).</p>
 
   <h3>A. Grows out of the button</h3>
   <p>A circle opens from the button and spreads up over the bottom two thirds of the sidebar, as the active-row colour, so the view is "the button, opened". The button turns into ×. Closing shrinks it back into the button.</p>
@@ -1076,17 +1087,17 @@
   </ul>
 
   <h3>B. Slides out from under the sidebar</h3>
-  <p>A separate surface, not part of the sidebar: the whole sidebar shrinks into a smaller card (inset from the edges, all corners rounded, everything in it scaled to 90 %, casting a shadow), and the Library tray is revealed underneath it, recessed, darker, as if it had been lying under the sidebar all along. The tray's rows come up from below the card's edge. Closing grows the sidebar back to full size over it.</p>
+  <p>A separate surface, not part of the sidebar: the tab list lifts up as a card (its bottom corners round, it casts a shadow down), and the Library tray is revealed underneath it, recessed, darker, as if it had been lying under the sidebar all along. The tray's rows come up from below the card's edge. Closing drops the card back over it.</p>
   <div class="stage">
     <div class="win vwin"><div class="sb" id="v6">
       <div class="under">
         <div class="seg2" data-seg="v6"><span class="on" data-v="dl">Downloads</span><span data-v="bm">Bookmarks</span></div>
         <div class="view dl stag" data-fill="dl"></div><div class="view bm stag" data-fill="bm"></div>
       </div>
-      <div class="upper"><div class="upin">
+      <div class="upper">
         <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
         <div class="list" data-fill="tabs"></div>
-      </div></div>
+      </div>
       <div class="foot lowfoot" data-fill="foot" data-for="v6"></div>
     </div><div class="pg" data-fill="page"></div></div>
   </div>
@@ -1094,6 +1105,29 @@
     <li class="plus">Reads as its own thing (a tray under the sidebar) while never leaving the sidebar or covering the page.</li>
     <li class="plus">Two layers on one spring: the card's bottom edge and the tray's rows.</li>
     <li class="minus">Like A, the bottom of the tab list is out of sight while it's open (the card is shorter, still scrolls).</li>
+  </ul>
+
+  <h3>C. A second bar rises from below, the sidebar shrinks</h3>
+  <p>A bar in the sidebar's own colour grows up from the bottom of the window as its own piece, with the footer riding on it. The sidebar above gets shorter to make room (its bottom corners round), and a thin gap opens between the two, so they read as two separate surfaces of the same material. The tabs stay visible and usable above it; closing lowers the bar and the sidebar grows back down.</p>
+  <div class="stage">
+    <div class="win vwin"><div class="sb" id="v7">
+      <div class="top7">
+        <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+        <div class="list" data-fill="tabs"></div>
+      </div>
+      <div class="bar7">
+        <div class="body7">
+          <div class="seg2" data-seg="v7"><span class="on" data-v="dl">Downloads</span><span data-v="bm">Bookmarks</span></div>
+          <div class="view dl stag" data-fill="dl"></div><div class="view bm stag" data-fill="bm"></div>
+        </div>
+        <div class="foot" data-fill="foot" data-for="v7"></div>
+      </div>
+    </div><div class="pg" data-fill="page"></div></div>
+  </div>
+  <ul class="pc">
+    <li class="plus">Two calm surfaces of one colour: separate, but clearly part of the sidebar; nothing covers the tabs.</li>
+    <li class="plus">One spring moves the gap; the list's frame follows it, as for the media card.</li>
+    <li class="minus">With many pinned tabs the list above gets short while it's open (it still scrolls).</li>
   </ul>
 
   <h3>In every option <span class="tag">shared</span></h3>
