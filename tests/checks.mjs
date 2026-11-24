@@ -2209,6 +2209,146 @@ const checks = {
     assert(!today().some((e) => e.kind === "folder"), `folders left: ${JSON.stringify(today())}`);
     await send("Target.detachFromTarget", { sessionId });
   },
+  async spaces() {
+    // Arc's Spaces (Host/Spaces.swift, `// MARK: Spaces`): New Space's form (4A) with a full theme, ⌃1–9 and ⌥⌘→,
+    // the footer's icons, Move to › a Space, the 2C swipe (lands past half way, springs back short of it), a Space on a
+    // profile of its own, Little Ray's Open in ‹Space›, Delete Space's question, and all of it after a relaunch. Its
+    // own instance: Spaces change what every other check's sidebar holds.
+    const dir = mkdtempSync(join(tmpdir(), "ray-spaces-"));
+    let it;
+    const spaces = (s) => s.sidebar.spaces;
+    try {
+      it = ownInstance("spaces", { RAY_DATA_DIR: dir });
+      let s = await it.until("started", (x) => x?.sidebar?.today.some((e) => e.live));
+      const home = s.sidebar.today.find((e) => e.live);
+      assert(spaces(s).list.length === 1 && spaces(s).list[0].name === "Personal", `first Space ${JSON.stringify(spaces(s).list)}`);
+      assert(spaces(s).header === "Personal" && !spaces(s).dockShown, `header ${spaces(s).header}, dock ${spaces(s).dockShown}`);
+      // New Space: made at once and gone to, its sidebar the form; the theme shows on the window while you pick.
+      await it.ok("space new");
+      s = await it.until("the form", (x) => spaces(x).editor?.new === true && spaces(x).current === 1);
+      assert(s.activeEntry === null, `an empty Space shows a tab: ${s.activeEntry}`);
+      await it.ok("space editor name Work");
+      await it.ok("space editor icon 1");
+      await it.ok("space editor window 2");
+      await it.ok("space editor custom accent #FF8800");
+      s = await it.until("previewed", (x) => spaces(x).look.window === "#2F6BEA" && spaces(x).look.accent === "#FF8800"
+        && spaces(x).header === "Work");
+      await it.ok("space editor confirm");
+      s = await it.until("created", (x) => spaces(x).editor === null && spaces(x).list.length === 2);
+      const work = spaces(s).list[1];
+      assert(work.name === "Work" && work.icon === "💼" && work.color === "#2F6BEA" && work.accent === "#FF8800",
+        `Work ${JSON.stringify(work)}`);
+      assert(spaces(s).dockShown, "two Spaces and no icons in the footer");
+      // A tab in Work, then back and forth: each Space shows its own tab.
+      await it.ok("menu newTab");
+      await it.ok(`type ${origin}/c?n=work`);
+      await it.ok("enter");
+      s = await it.until("Work's tab", (x) => spaces(x).list[1].today.some((e) => e.live && e.url.includes("n=work")));
+      const workTab = spaces(s).list[1].today.find((e) => e.url.includes("n=work"));
+      await it.ok("space switch 1");
+      s = await it.until("back in Personal", (x) => spaces(x).current === 0 && x.activeEntry === home.id);
+      assert(spaces(s).look.window === null && spaces(s).look.accent === null, `Personal's look ${JSON.stringify(spaces(s).look)}`);
+      assert(s.sidebar.today.every((e) => e.id !== workTab.id), "Work's tab shows in Personal");
+      assert(spaces(s).slides >= 1, "no slide on the switch");
+      const keys = JSON.stringify(s.shortcuts ?? {});
+      assert(keys.includes("selectSpace1") && keys.includes("nextSpace"), `Spaces' keys missing from Shortcuts: ${keys.slice(0, 300)}`);
+      await it.ok("space next");
+      await it.until("⌥⌘→ to Work", (x) => spaces(x).current === 1 && x.activeEntry === workTab.id);
+      await it.ok("space click 1");
+      await it.until("the footer's icon", (x) => spaces(x).current === 0 && x.activeEntry === home.id);
+      // Move to › Work: it leaves Personal for the top of Work's Today.
+      const menu = await it.cmd(`rowmenu ${home.id}`);
+      assert(/Move to > [^"]*\|Spaces\|Work/.test(menu), `Move to: ${menu}`);
+      await it.ok(`space move ${home.id} 2`);
+      s = await it.until("moved", (x) => spaces(x).list[1].today[0]?.id === home.id && !spaces(x).list[0].today.some((e) => e.id === home.id));
+      // The command bar finds a tab in another Space, and going there changes Space.
+      await it.ok(`row ${home.id}`);
+      await it.until("its Space came with it", (x) => spaces(x).current === 1 && x.activeEntry === home.id);
+      // A swipe: past half way lands on the next Space; a short, slow one springs back.
+      await it.ok("space switch 1");
+      await it.until("Personal", (x) => spaces(x).current === 0);
+      await it.ok("space swipe -220 12");
+      s = await it.until("swiped to Work", (x) => spaces(x).current === 1 && spaces(x).swipeCommits === 1 && !spaces(x).sliding);
+      await it.ok("space swipe 30 40");
+      s = await it.until("sprang back", (x) => spaces(x).swipeCancels === 1 && !spaces(x).sliding);
+      assert(spaces(s).current === 1 && spaces(s).header === "Work", `after a short swipe: ${spaces(s).current} ${spaces(s).header}`);
+      // Past the last Space the list only stretches and comes back.
+      await it.ok("space swipe -120 6");
+      s = await it.until("rubber band back", (x) => !spaces(x).sliding && spaces(x).slides > 0);
+      assert(spaces(s).current === 1 && spaces(s).swipeCommits === 1 && spaces(s).swipeCancels === 1 && spaces(s).header === "Work",
+        `after a swipe past the end: ${JSON.stringify({ c: spaces(s).current, h: spaces(s).header, k: spaces(s).swipeCommits })}`);
+      // A Space on a profile of its own: its tab loads in that profile.
+      await it.ok("space new");
+      await it.until("the form again", (x) => spaces(x).editor?.new === true);
+      await it.ok("space editor name Side");
+      await it.ok("space editor profile 1");
+      await it.ok("space editor confirm");
+      s = await it.until("its profile", (x) => spaces(x).list[2]?.profile?.startsWith("Space ") && spaces(x).loadedProfiles.includes(spaces(x).list[2].profile), 20000);
+      await it.ok("menu newTab");
+      await it.ok(`type ${origin}/c?n=side`);
+      await it.ok("enter");
+      s = await it.until("Side's tab", (x) => spaces(x).list[2].today.some((e) => e.live && e.url.includes("n=side")), 20000);
+      assert(spaces(s).windowProfile, "the window isn't on Side's profile");
+      // Little Ray's Open in ‹Space›.
+      await it.ok(`littleray open ${origin}/b?little=space`);
+      s = await it.until("a Little Ray", (x) => x.littleRays?.length === 1 && x.littleRays[0].openInSpaces?.length === 3);
+      await it.ok("littleray openinspace 1");
+      s = await it.until("opened in Personal", (x) => spaces(x).current === 0 && spaces(x).list[0].today[0]?.url.includes("little=space")
+        && x.activeEntry === spaces(x).list[0].today[0].id);
+      // Delete Space…: asks (its Delete waits), then the Space goes and its tabs go to Recently Closed.
+      await it.ok("space switch 3");
+      await it.until("Side", (x) => spaces(x).current === 2);
+      await it.ok("space delete");
+      s = await it.until("asked", (x) => spaces(x).question?.answer === null);
+      assert(spaces(s).question.title === "Delete “Side”?", `question ${JSON.stringify(spaces(s).question)}`);
+      assert((await it.cmd("space question delete")) === "not ready", "Delete took a click at once");
+      await sleep(600);
+      await it.ok("space question delete");
+      s = await it.until("deleted", (x) => spaces(x).list.length === 2 && spaces(x).current === 1);
+      await it.ok("menu reopenClosedTab");
+      await it.until("its tab back, in the Space you're on", (x) => spaces(x).list[1].today.some((e) => e.url.includes("n=side")));
+      // After a relaunch: the Spaces, their looks and tabs, and the one you were on.
+      const before = await it.now();
+      await it.stop().catch(() => {});
+      it = ownInstance("spaces-2", { RAY_DATA_DIR: dir });
+      s = await it.until("relaunched", (x) => x?.sidebar?.spaces?.list.length === 2);
+      assert(spaces(s).current === spaces(before).current, `current ${spaces(s).current} vs ${spaces(before).current}`);
+      const again = spaces(s).list[1];
+      assert(again.name === "Work" && again.color === "#2F6BEA" && again.accent === "#FF8800" && again.today.some((e) => e.id === home.id),
+        `Work after the relaunch ${JSON.stringify(again)}`);
+      assert(spaces(s).look.window === "#2F6BEA", `look after the relaunch ${JSON.stringify(spaces(s).look)}`);
+    } finally {
+      if (it) await it.stop().catch(() => {});
+      if (it && it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+  async "spaces-migrate"() {
+    // A Sidebar.json from before Spaces loads as one Space, "Personal", with everything it had.
+    const dir = mkdtempSync(join(tmpdir(), "ray-spaces-migrate-"));
+    const pinnedID = "0B7E4C1A-6C2F-4A8E-9B0D-2C1F7D3E5A11";
+    writeFileSync(join(dir, "Sidebar.json"), JSON.stringify({
+      favorites: [], sidebarHidden: false,
+      pinned: [{ id: pinnedID, kind: "pinned", pinnedURL: `${origin}/a?pinned`, url: `${origin}/a?pinned`, title: "Old", lastActive: 0 }],
+      today: [],
+    }));
+    let it;
+    try {
+      it = ownInstance("spaces-migrate", { RAY_DATA_DIR: dir });
+      const s = await it.until("loaded", (x) => x?.sidebar?.spaces?.list.length === 1);
+      const only = s.sidebar.spaces.list[0];
+      assert(only.name === "Personal" && only.pinned.some((e) => e.id === pinnedID), `migrated ${JSON.stringify(only)}`);
+      assert(s.sidebar.pinned.some((e) => e.id === pinnedID), "the pinned tab isn't in the sidebar");
+      await it.ok("space state");
+      await sleep(800);
+      const saved = JSON.parse(readFileSync(join(dir, "Sidebar.json"), "utf8"));
+      assert(Array.isArray(saved.spaces) && saved.spaces[0].pinned[0].id === pinnedID && saved.pinned === undefined,
+        `saved ${JSON.stringify(saved).slice(0, 300)}`);
+    } finally {
+      if (it) await it.stop().catch(() => {});
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
   async "folders-relaunch"() {
     // A Today folder (name, colour, icon, its tabs) comes back after a relaunch, and is a Chrome group again once one
     // of its tabs is open. Its own instance, relaunched on the same data dir.
@@ -3813,7 +3953,7 @@ const checks = {
         [chromePreview.counts.pinnedTabs, "pinned tab"]].filter(([n]) => n > 0).slice(0, 2).map(([n, w]) => plural(n, w)).join(", ");
       assert(chromePreview.summary === `${chromeLead} · 2 profiles`, `Chrome's summary: ${chromePreview.summary} (want ${chromeLead} · 2 profiles)`);
 
-      // Arc: favorites, each space's pinned tabs in a folder named after it (two spaces), Today's tabs.
+      // Arc: favorites, each space a Space of Ray's (its pinned tabs and folders, its Today tabs).
       const arc = await runImport(it, "arc Default pinnedTabs,favorites,openTabs");
       assert(JSON.stringify(arc.import.failed) === "{}", `Arc import failed: ${JSON.stringify(arc.import.failed)}`);
       assert(arc.import.imported.pinnedTabs === 6 && arc.import.imported.favorites === 3 && arc.import.imported.openTabs === 2,
@@ -3826,25 +3966,30 @@ const checks = {
         && again.import.existing.pinnedTabs === 6 && again.import.existing.favorites === 3 && again.import.existing.openTabs === 2,
         `Arc again: ${JSON.stringify(again.import)}`);
       assert(again.import.events.some((e) => e.finished === "pinnedTabs" && e.count === 0 && e.existing === 6), `events ${JSON.stringify(again.import.events)}`);
-      assert(["favorites", "pinned", "today"].every((k) => again.sidebar[k].length === sidebar[k].length), "the second Arc import added tabs");
+      const everything = (side) => side.favorites.length + side.spaces.list.reduce((n, sp) => n + sp.pinned.length + sp.today.length, 0);
+      assert(everything(again.sidebar) === everything(sidebar) && again.sidebar.spaces.list.length === sidebar.spaces.list.length,
+        "the second Arc import added tabs or Spaces");
       assert(sidebar.favorites.map((e) => e.pinnedURL).join() === "https://mail.example.com/,https://music.example/,https://maps.example/",
         `favorites: ${sidebar.favorites.map((e) => e.pinnedURL)}`);
-      const folder = (title) => sidebar.pinned.find((e) => e.kind === "folder" && e.title === title);
-      const personal = folder("Personal");
-      assert(personal && folder("Space 1"), `space folders: ${sidebar.pinned.filter((e) => e.kind === "folder").map((e) => e.title)}`);
-      assert(folder("Reading")?.parent === personal.id && folder("Later")?.parent === folder("Reading").id, "Arc's nested folders didn't come over");
-      const cal = sidebar.pinned.find((e) => e.pinnedURL === "https://calendar.example/");
-      assert(cal?.title === "Cal" && cal.parent === personal.id && cal.live === false, `Arc's renamed pinned tab: ${JSON.stringify(cal)}`);
+      const spaceNamed = (name) => sidebar.spaces.list.find((sp) => sp.name === name);
+      const personal = spaceNamed("Personal");
+      assert(personal && spaceNamed("Space 1"), `Spaces: ${sidebar.spaces.list.map((sp) => sp.name)}`);
+      const folder = (title) => personal.pinned.find((e) => e.kind === "folder" && e.title === title);
+      assert(folder("Reading")?.parent === null && folder("Later")?.parent === folder("Reading").id, "Arc's nested folders didn't come over");
+      const cal = personal.pinned.find((e) => e.pinnedURL === "https://calendar.example/");
+      assert(cal?.title === "Cal" && cal.parent === null && cal.live === false, `Arc's renamed pinned tab: ${JSON.stringify(cal)}`);
+      const allPinned = sidebar.spaces.list.flatMap((sp) => sp.pinned);
+      const allToday = sidebar.spaces.list.flatMap((sp) => sp.today);
       // Arc's names stay names (the page's own title stays its title): Rename shows them, and clearing brings the title back.
       assert(cal.customTitle === "Cal" && cal.pageTitle === "Calendar – Week of Sep 1", `Arc's name: ${JSON.stringify(cal)}`);
       const tunes = sidebar.favorites.find((e) => e.pinnedURL === "https://music.example/");
       assert(tunes?.customTitle === "Tunes" && tunes.pageTitle === "Music", `Arc's favorite name: ${JSON.stringify(tunes)}`);
-      const renamedToday = sidebar.today.find((e) => e.url === "https://today2.example/");
+      const renamedToday = allToday.find((e) => e.url === "https://today2.example/");
       assert(renamedToday?.customTitle === "Renamed today" && renamedToday.pageTitle === "Another today", `Arc's Today name: ${JSON.stringify(renamedToday)}`);
-      assert(sidebar.pinned.every((e) => e.kind === "folder" || e.pinnedURL === "https://calendar.example/" || e.customTitle === null),
-        `names on tabs Arc never renamed: ${JSON.stringify(sidebar.pinned.filter((e) => e.customTitle))}`);
-      assert(sidebar.today.some((e) => e.pinnedURL === null && e.url === "https://today2.example/" && e.title === "Renamed today"),
-        `Today: ${JSON.stringify(sidebar.today.map((e) => [e.url, e.title]))}`);
+      assert(allPinned.every((e) => e.kind === "folder" || e.pinnedURL === "https://calendar.example/" || e.customTitle === null),
+        `names on tabs Arc never renamed: ${JSON.stringify(allPinned.filter((e) => e.customTitle))}`);
+      assert(allToday.some((e) => e.pinnedURL === null && e.url === "https://today2.example/" && e.title === "Renamed today"),
+        `Today: ${JSON.stringify(allToday.map((e) => [e.url, e.title]))}`);
 
       // Chrome: everything; the key comes from the fixture secret.
       const all = "pinnedTabs,openTabs,history,bookmarks,passwords,cookies,autofill,extensions";
@@ -7301,7 +7446,7 @@ const checks = {
       assert(o.rowTips.length === o.rows.length && o.rows.every((r, i) => r.state === "failed" ? o.rowTips[i].tip === r.reason : o.rowTips[i].tip === null),
         `row tooltips ${JSON.stringify(o.rowTips)} rows ${JSON.stringify(o.rows)}`);
       const imported = await probe(first);
-      assert(imported.sidebar.favorites.length === favoritesBefore + 3 && imported.sidebar.pinned.some((e) => e.kind === "folder" && e.title === "Personal"),
+      assert(imported.sidebar.favorites.length === favoritesBefore + 3 && imported.sidebar.spaces.list.some((sp) => sp.name === "Space 1" && sp.pinned.length > 0),
         `the sidebar after the import ${JSON.stringify(imported.sidebar)}`);
       await snap(first, "5-moved-in");
       // 5. Open links in Ray: Make Default asks macOS (Settings › General's call, a fake here), and the flow moves on
@@ -7586,7 +7731,8 @@ const checks = {
     const file = join(dataDir, "Sidebar.json");
     await until("saved", () => {
       const saved = JSON.parse(readFileSync(file, "utf8"));
-      return saved.pinned.some((e) => e.id === p && e.customTitle === "Work stuff") && saved.today.some((e) => e.id === t && e.customTitle === "Reading")
+      const pinned = saved.spaces.flatMap((sp) => sp.pinned), today = saved.spaces.flatMap((sp) => sp.today);
+      return pinned.some((e) => e.id === p && e.customTitle === "Work stuff") && today.some((e) => e.id === t && e.customTitle === "Reading")
         && saved.favorites.some((e) => e.id === f && e.customTitle === undefined);
     }, 4000);
   },

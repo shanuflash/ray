@@ -40,6 +40,8 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   private let address = PopupAddressView()
   private let copyButton = HoverIconButton.make("link", label: "Copy Link", size: 13)
   private let openButton = OpenInRayButton()
+  /// Open in ‹Space› (Arc's Little Arc): the Spaces to open the page in, when there's more than one.
+  private let spaceButton = HoverIconButton.make("chevron.down", label: "Open in Space", size: 11)
   private let card = NSView()
   private var closeObserver: NSObjectProtocol?
   private var resizeObserver: NSObjectProtocol?
@@ -128,7 +130,9 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     copyButton.action = #selector(copyLink)
     copyButton.toolTip = "Copy Link"
     openButton.onClick = { [weak self] in self?.openInRay() }
-    [lights, address, copyButton, openButton, card].forEach(root.addSubview)
+    spaceButton.target = self
+    spaceButton.action = #selector(showSpaces)
+    [lights, address, copyButton, openButton, spaceButton, card].forEach(root.addSubview)
     tab.view.removeFromSuperview()
     tab.view.autoresizingMask = [.width, .height]
     card.addSubview(tab.view)
@@ -178,7 +182,11 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     // Flipped root: the row on top.
     lights.frame = NSRect(x: 14, y: (row - 16) / 2, width: WindowLights.width, height: 16)
     let openWidth = openButton.intrinsicContentSize.width
-    openButton.frame = NSRect(x: bounds.width - 8 - openWidth, y: (row - 28) / 2, width: openWidth, height: 28)
+    let spaces = Self.spaceChoices
+    spaceButton.isHidden = spaces.count < 2
+    let right = spaceButton.isHidden ? bounds.width - 8 : bounds.width - 8 - 22 - 2
+    spaceButton.frame = NSRect(x: bounds.width - 8 - 22, y: (row - 28) / 2, width: 22, height: 28)
+    openButton.frame = NSRect(x: right - openWidth, y: (row - 28) / 2, width: openWidth, height: 28)
     copyButton.frame = NSRect(x: openButton.frame.minX - 4 - 28, y: (row - 28) / 2, width: 28, height: 28)
     let side = max(lights.frame.maxX, bounds.width - copyButton.frame.minX) + 10
     address.frame = NSRect(x: side, y: (row - 20) / 2, width: max(0, bounds.width - side * 2), height: 20)
@@ -212,14 +220,60 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     log()
   }
 
+  /// The normal window's Spaces, for Open in ‹Space›.
+  private static var spaceChoices: [Space] {
+    AppController.shared.windows.first { !$0.isPrivate }?.state.spaces ?? []
+  }
+
+  @objc private func showSpaces() {
+    let menu = NSMenu()
+    let current = AppController.shared.windows.first { !$0.isPrivate }?.state.current
+    for space in Self.spaceChoices {
+      let item = NSMenuItem(title: "Open in \(space.name)", action: #selector(openInSpace(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = space.id
+      item.image = SpaceIcon.image(for: space, size: 14)
+      item.state = space === current ? .on : .off
+      menu.addItem(item)
+    }
+    menu.popUp(positioning: nil, at: NSPoint(x: 0, y: spaceButton.bounds.maxY + 4), in: spaceButton)
+  }
+
+  @objc private func openInSpace(_ item: NSMenuItem) {
+    guard let id = item.representedObject as? UUID else { return }
+    openInRay(space: id)
+  }
+
+  /// For the state log: the Spaces Open in ‹Space› offers.
+  var spaceTitles: [String] { spaceButton.isHidden ? [] : Self.spaceChoices.map { "Open in \($0.name)" } }
+
   /// Open in Ray (⌘O): the live page moves into Today in Ray's normal window (opened again if it was closed), shown
-  /// and in front; this window goes.
-  func openInRay() {
+  /// and in front; this window goes. `space`: Open in ‹Space›, that Space's Today (on another profile the page
+  /// opens there afresh: a tab can't change profile).
+  func openInRay(space: UUID? = nil) {
     guard !closed, !tab.closed, let owner = AppController.shared.openMainWindow() else { return }
+    let target = space.flatMap { id in owner.state.space(id: id) }
+    if let target, target.profile != nil {
+      let url = tab.url
+      closed = true
+      Self.all.removeAll { $0 === self }
+      Self.steps.append("openedInSpace")
+      owner.openInSpace(url, target)
+      if tab.delegate === self { tab.delegate = nil }
+      tab.close()
+      panel.close()
+      if !launchedInBackground {
+        owner.window.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+      }
+      owner.logState("littleRay")
+      return
+    }
     closed = true
     tab.view.removeFromSuperview()
     if tab.delegate === self { tab.delegate = nil }
-    owner.adoptFromPopup(tab, after: nil, foreground: true)
+    owner.adoptFromPopup(tab, after: nil, foreground: true, in: target)
+    if target != nil { Self.steps.append("openedInSpace") }
     Self.all.removeAll { $0 === self }
     Self.steps.append("openedInRay")
     // The engine window is empty now: closing it (with the panel) closes nothing else.
@@ -367,7 +421,7 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     ["url": tab.url, "address": address.text, "frame": NSStringFromRect(window.frame),
      "content": NSStringFromSize(window.contentRect(forFrameRect: window.frame).size),
      "card": NSStringFromRect(card.frame), "pageInCard": tab.view.superview === card, "visible": window.isVisible,
-     "key": window.isKeyWindow, "private": profile.offTheRecord, "openLabel": openButton.title,
+     "key": window.isKeyWindow, "private": profile.offTheRecord, "openLabel": openButton.title, "openInSpaces": spaceTitles,
      "copied": copyButton.image?.accessibilityDescription == "Copied",
      "fullScreenAuxiliary": window.collectionBehavior.contains(.fullScreenAuxiliary)]
   }

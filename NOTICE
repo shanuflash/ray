@@ -11,6 +11,9 @@ It includes and builds against third-party work:
   (see LICENSE.Apache-2.0), renamed for Ray.
 - Host/TileSelection.swift: adapted from Ardia's packages/shell DockSelection.swift and BlurredIcon.swift, Copyright
   2026 Mantra Patel, Apache License 2.0 (see LICENSE.Apache-2.0).
+- Host/ArcIconNames.swift: Open Arc's app/Sources/OpenArcImport/ArcIconNames.swift
+  (https://github.com/St0neWan9/open-arc-browser), Copyright 2026 The Open Arc Authors, BSD 3-Clause License (the
+  licence text is in the file's header).
 - At build time, the engine built from engine/ (Chromium Framework.framework): Chromium (BSD-3-Clause and others),
   Helium (GPL-3.0, The Helium Authors), ungoogled-chromium (BSD-3-Clause) and the engine layer above. Its
   corresponding source is engine/ plus the Chromium and Helium versions it names.

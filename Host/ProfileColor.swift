@@ -48,7 +48,19 @@ enum ProfileColor {
   private static var custom: NSColor?
 
   /// What every accent draws with. Resolved when drawn, so it follows the appearance (lavender) and the setting.
-  static var accent: NSColor { custom ?? lavender }
+  static var accent: NSColor { spaceAccent ?? custom ?? lavender }
+
+  /// The shown Space's own accent (`SpaceLook`), over the setting's colour while that Space shows; never saved here.
+  private(set) static var spaceAccentHex: String?
+  private static var spaceAccent: NSColor?
+
+  static func override(hex: String?) {
+    let valid = hex.flatMap { parse($0) != nil ? $0.uppercased() : nil }
+    guard valid != spaceAccentHex else { return }
+    spaceAccentHex = valid
+    spaceAccent = valid.flatMap(parse).map { NSColor(srgbRed: $0.r, green: $0.g, blue: $0.b, alpha: 1) }
+    NotificationCenter.default.post(name: didChange, object: nil)
+  }
 
   static var isDefault: Bool { custom == nil }
 
