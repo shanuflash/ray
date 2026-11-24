@@ -24,7 +24,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 3. **Split View**: two or more pages side by side in one window.
 4. ~~**Little Arc**~~ (Done: Little Ray, a quick look at links from other apps; owner 2026-11-24: not a mini browser,
    so no ⌥⌘N). Leftovers: Known limitations 77.
-5. **Archive view**: Ray archives stale Today tabs but has no way to browse or restore them.
+5. **Archive view**: Ray archives stale Today tabs but has no way to browse or restore them. Owner 2026-11-24: not wanted for
+   now (nor importing Arc's archive).
 
 6. **Peek**: Arc's preview of a link in a floating card over the page (open it fully or dismiss). Ray dropped the
    engine hook Ardia used (`chromium-temporary-tab-restore-hook.patch`, in `engine-ray/drop-patches.txt`): bringing
