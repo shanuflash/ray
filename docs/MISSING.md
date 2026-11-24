@@ -56,7 +56,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
     API or a favicon dot (Ardia 0.2.45; Arc showed favicons' own dots only).
 
 Mocks for 8, 13, 15, 17, 18, Arc's Clear button (Ardia settings 9) and Collapse/Expand All Folders, and Downloads and Bookmarks moved
-into the sidebar behind one animated Library button, rising from the bottom (section 8: grows out of the button, slides out from under the sidebar, or a same-colour bar that shrinks the sidebar), waiting on the owner's picks: `docs/mocks/arc-extras.html` (2026-11-24).
+into the sidebar behind one animated Library button, rising from the bottom (section 8: the footer button grows into the view inside the sidebar), waiting on the owner's picks: `docs/mocks/arc-extras.html` (2026-11-24).
 
 **Left out on purpose:** Arc Max's AI features.
 
