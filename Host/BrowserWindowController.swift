@@ -4036,6 +4036,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["popupWindows"] = PopupWindow.all.map(\.debug)
     state["littleRays"] = LittleRay.all.map(\.debug)
     state["littleRaySteps"] = LittleRay.steps
+    state["linkActivationRestores"] = LinkActivationOrder.shared.restores
     state["back"] = ["enabled": canGoBack, "tooltip": backToolTip, "lastPress": HistoryButton.lastPress]
     state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
       .sorted { $0.lastUsed > $1.lastUsed }.map(tabID)

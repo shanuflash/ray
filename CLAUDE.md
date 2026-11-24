@@ -662,7 +662,10 @@ publicly or create accounts.
   `openLittleRayInRay`, enabled only while one is key) moves the live page through `adoptFromPopup` to the top of
   Today; ⌘W, Escape the page didn't use (`handleKeyEvent`) or the close light (`windowShouldClose`) put it in
   Recently Closed (`ac_tab_restore_tag`, so ⇧⌘T brings back its history); ⇧⌘C while key is its Copy Link (a tick on
-  the button). Tabs its page opens go to Ray's window, pop-ups get `PopupWindow`s. Test command `littleray open
+  the button). Tabs its page opens go to Ray's window, pop-ups get `PopupWindow`s. `LinkActivationOrder` (same file,
+  Ardia's): macOS activating Ray for the link raises all its windows, so Ray's other windows go back under the other
+  app's window that was above each (noted at `willBecomeActive`; hidden until then when the link came first), and only
+  the Little Ray comes forward; state log `linkActivationRestores` (hidden instances never activate: checked by hand). Test command `littleray open
   <url>|openinray|close|closelight|escape|copy|snap <path>|size <w> <h>|reset`; state log `littleRays`,
   `littleRaySteps`; check `little-ray` (`open-from-other-apps` and `warn-before-quitting` turn the setting off).
 - Sidebar drops (`SidebarView` `// MARK: Drops from elsewhere`, `BrowserWindowController` `// MARK: Sidebar drops`):

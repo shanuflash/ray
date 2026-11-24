@@ -50,12 +50,14 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   @discardableResult
   static func open(_ url: String) -> LittleRay? {
     guard let engine = RayCoreEngine.shared else { return nil }
+    LinkActivationOrder.shared.linkArriving()
     let little = LittleRay(url: url, profile: engine.defaultProfile)
     all.append(little)
     steps.append("opened")
     if launchedInBackground { little.coreWindow.showInactive() } else {
       little.window.makeKeyAndOrderFront(nil)
       NSApp.activate()
+      LinkActivationOrder.shared.opened(little.window)
     }
     little.tab.focus()
     little.log()
@@ -446,5 +448,134 @@ final class OpenInRayButton: NSView {
   override func accessibilityPerformPress() -> Bool {
     onClick?()
     return true
+  }
+}
+
+// MARK: Link activation
+
+/// macOS activates Ray for a link from another app, and activating an app raises all its windows: Ray's own window
+/// came up over Slack under the Little Ray. Ardia's `LinkActivationOrder`: as Ray becomes active, each of its windows on
+/// screen is noted with the other app's window just above it, and once the Little Ray is open they go back under those
+/// (now and on the next turn, as AppKit may raise them again), so only the Little Ray comes forward. When the link
+/// arrives before the activation, they're also hidden until then, so they don't flash.
+final class LinkActivationOrder {
+  static let shared = LinkActivationOrder()
+  private struct Placement {
+    weak var window: NSWindow?
+    let below: Int
+  }
+  /// A link and its activation are one event within this (Ardia's `pairing`).
+  private static let pairing: TimeInterval = 3
+  private static let arrivalPairing: TimeInterval = 1
+  private static let hiddenLimit: TimeInterval = 0.5
+  private var placements: [Placement] = []
+  private var activatedAt: Date?
+  private var linkAt: Date?
+  private weak var opened: NSWindow?
+  private var hidden: [() -> NSWindow?] = []
+  private var activation = 0
+  /// For the state log: how many times windows were put back.
+  private(set) var restores = 0
+  private var observers: [NSObjectProtocol] = []
+
+  private init() {
+    let center = NotificationCenter.default
+    observers.append(center.addObserver(forName: NSApplication.willBecomeActiveNotification, object: nil, queue: .main) {
+      [weak self] _ in self?.willBecomeActive()
+    })
+    observers.append(center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) {
+      [weak self] _ in self?.didBecomeActive()
+    })
+  }
+
+  /// A link for a Little Ray is in: with Ray in the background, its activation is coming.
+  func linkArriving() {
+    if !NSApp.isActive { linkAt = Date() }
+  }
+
+  /// The Little Ray is shown: the rest go back where they were if this activation came with it.
+  func opened(_ window: NSWindow) {
+    opened = window
+    guard let activatedAt, Date().timeIntervalSince(activatedAt) < Self.pairing else { return }
+    keepOthersWhereTheyWere()
+  }
+
+  private var linkExpected: Bool { linkAt.map { Date().timeIntervalSince($0) < Self.arrivalPairing } == true }
+
+  private func willBecomeActive() {
+    showHidden()
+    activation += 1
+    placements = Self.placements()
+    activatedAt = nil
+    guard linkExpected else { return }
+    for placement in placements {
+      guard let window = placement.window, window !== opened, window.isVisible, window.alphaValue == 1 else { continue }
+      window.alphaValue = 0
+      hidden.append { [weak window] in window }
+    }
+    let scheduledIn = activation
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.hiddenLimit) { [weak self] in
+      guard let self, self.activation == scheduledIn else { return }
+      self.showHidden()
+    }
+  }
+
+  private func didBecomeActive() {
+    activatedAt = Date()
+    if linkExpected || opened.map({ $0.isVisible }) == true && linkAt != nil {
+      linkAt = nil
+      keepOthersWhereTheyWere()
+    } else {
+      opened = nil
+      showHidden()
+    }
+  }
+
+  private func keepOthersWhereTheyWere() {
+    let placements = placements
+    let opened = opened
+    self.opened = nil
+    linkAt = nil
+    guard !placements.isEmpty else { return showHidden() }
+    restores += 1
+    Self.restore(placements, except: opened)
+    let scheduledIn = activation
+    DispatchQueue.main.async { [weak self] in
+      guard let self, self.activation == scheduledIn else { return }
+      Self.restore(placements, except: opened)
+      opened?.orderFrontRegardless()
+      self.showHidden()
+    }
+  }
+
+  private func showHidden() {
+    let windows = hidden.compactMap { $0() }
+    hidden = []
+    for window in windows where window.alphaValue == 0 { window.alphaValue = 1 }
+  }
+
+  private static func restore(_ placements: [Placement], except opened: NSWindow?) {
+    for placement in placements.reversed() {
+      guard let window = placement.window, window !== opened, window.isVisible, !window.isMiniaturized else { continue }
+      window.order(.below, relativeTo: placement.below)
+    }
+  }
+
+  /// Ray's windows on screen, front to back, each with the other app's window just above it (none above: left out,
+  /// it was in front already).
+  private static func placements() -> [Placement] {
+    let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    let pid = ProcessInfo.processInfo.processIdentifier
+    var above: Int?
+    var result: [Placement] = []
+    for info in list where (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0 {
+      guard let number = (info[kCGWindowNumber as String] as? NSNumber)?.intValue else { continue }
+      guard (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid else {
+        above = number
+        continue
+      }
+      if let above, let window = NSApp.window(withWindowNumber: number) { result.append(Placement(window: window, below: above)) }
+    }
+    return result
   }
 }
