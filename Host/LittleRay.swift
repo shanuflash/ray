@@ -55,9 +55,11 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     all.append(little)
     steps.append("opened")
     if launchedInBackground { little.coreWindow.showInactive() } else {
+      // Before the activation: AppKit may run it (and its notifications) inside `activate()`.
+      LinkActivationOrder.shared.opening(little.window)
       little.window.makeKeyAndOrderFront(nil)
       NSApp.activate()
-      LinkActivationOrder.shared.opened(little.window)
+      LinkActivationOrder.shared.shown()
     }
     little.tab.focus()
     little.log()
@@ -493,10 +495,12 @@ final class LinkActivationOrder {
     if !NSApp.isActive { linkAt = Date() }
   }
 
-  /// The Little Ray is shown: the rest go back where they were if this activation came with it.
-  func opened(_ window: NSWindow) {
-    opened = window
-    guard let activatedAt, Date().timeIntervalSince(activatedAt) < Self.pairing else { return }
+  /// The Little Ray about to be shown (and activated): it stays in front.
+  func opening(_ window: NSWindow) { opened = window }
+
+  /// It's shown: the rest go back where they were if this activation came with it.
+  func shown() {
+    guard opened != nil, let activatedAt, Date().timeIntervalSince(activatedAt) < Self.pairing else { return }
     keepOthersWhereTheyWere()
   }
 
@@ -509,7 +513,7 @@ final class LinkActivationOrder {
     activatedAt = nil
     guard linkExpected else { return }
     for placement in placements {
-      guard let window = placement.window, window !== opened, window.isVisible, window.alphaValue == 1 else { continue }
+      guard let window = placement.window, window.isVisible, window.alphaValue == 1 else { continue }
       window.alphaValue = 0
       hidden.append { [weak window] in window }
     }
@@ -533,17 +537,18 @@ final class LinkActivationOrder {
 
   private func keepOthersWhereTheyWere() {
     let placements = placements
-    let opened = opened
-    self.opened = nil
+    let front = opened
+    opened = nil
     linkAt = nil
     guard !placements.isEmpty else { return showHidden() }
     restores += 1
-    Self.restore(placements, except: opened)
+    Self.restore(placements)
+    front?.orderFrontRegardless()
     let scheduledIn = activation
-    DispatchQueue.main.async { [weak self] in
+    DispatchQueue.main.async { [weak self, weak front] in
       guard let self, self.activation == scheduledIn else { return }
-      Self.restore(placements, except: opened)
-      opened?.orderFrontRegardless()
+      Self.restore(placements)
+      front?.makeKeyAndOrderFront(nil)
       self.showHidden()
     }
   }
@@ -554,15 +559,15 @@ final class LinkActivationOrder {
     for window in windows where window.alphaValue == 0 { window.alphaValue = 1 }
   }
 
-  private static func restore(_ placements: [Placement], except opened: NSWindow?) {
+  private static func restore(_ placements: [Placement]) {
     for placement in placements.reversed() {
-      guard let window = placement.window, window !== opened, window.isVisible, !window.isMiniaturized else { continue }
+      guard let window = placement.window, window.isVisible, !window.isMiniaturized else { continue }
       window.order(.below, relativeTo: placement.below)
     }
   }
 
   /// Ray's windows on screen, front to back, each with the other app's window just above it (none above: left out,
-  /// it was in front already).
+  /// it was in front already). Little Rays (and their pop-ups) never: they're what comes forward.
   private static func placements() -> [Placement] {
     let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
     let pid = ProcessInfo.processInfo.processIdentifier
@@ -574,7 +579,9 @@ final class LinkActivationOrder {
         above = number
         continue
       }
-      if let above, let window = NSApp.window(withWindowNumber: number) { result.append(Placement(window: window, below: above)) }
+      guard let above, let window = NSApp.window(withWindowNumber: number),
+            !LittleRay.all.contains(where: { $0.window === window || $0.window === window.parent }) else { continue }
+      result.append(Placement(window: window, below: above))
     }
     return result
   }
