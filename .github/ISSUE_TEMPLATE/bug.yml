@@ -1,0 +1,65 @@
+name: Bug
+description: Something in Ray doesn't work, or works differently from Arc.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. One bug per issue. Please don't paste passwords, cookies or private URLs.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected. If Arc does it differently, say how.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      placeholder: |
+        1. Open a new tab with ⌘T
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: ray
+    attributes:
+      label: Ray version
+      description: Ray › About Ray.
+      placeholder: "0.11.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "15.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installed from
+      options:
+        - Homebrew (shanuflash/tap/ray)
+        - DMG
+        - Built from source
+    validations:
+      required: true
+  - type: textarea
+    id: extensions
+    attributes:
+      label: Extensions
+      description: Only if the bug might involve one.
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshot or recording
+      description: Drag it in. A recording helps most for motion and focus bugs.
+  - type: textarea
+    id: crash
+    attributes:
+      label: Crash report
+      description: If Ray crashed, paste the top of macOS's report (Console › Crash Reports › Ray).
+      render: text

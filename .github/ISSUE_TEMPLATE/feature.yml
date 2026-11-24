@@ -1,0 +1,37 @@
+name: Feature
+description: Something Arc or Chrome does that Ray doesn't.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        First check [docs/MISSING.md](https://github.com/shanuflash/ray/blob/main/docs/MISSING.md): Spaces, Profiles, Split View and more are already on the list. A 👍 on an existing issue counts.
+  - type: textarea
+    id: what
+    attributes:
+      label: What you want
+      description: The feature, in a sentence or two.
+    validations:
+      required: true
+  - type: dropdown
+    id: from
+    attributes:
+      label: Where it's from
+      options:
+        - Arc
+        - Dia
+        - Chrome
+        - Another browser
+        - New idea
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How it works there
+      description: Keys, menus, what you see. A screenshot or recording of Arc helps most.
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters to you
+      description: What you do today without it.

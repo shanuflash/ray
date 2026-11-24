@@ -39,7 +39,9 @@ window. Every decision serves three things:
    and DMG and the tap's `ray.rb` (`brew install shanuflash/tap/ray`).
 5. **Launch prep:** a README that opens with a short motion video/GIF, a one-line pitch and the install command; a
    side-by-side video with Arc; CONTRIBUTING and good-first-issue labels; regular tagged releases with readable
-   notes.
+   notes. **Drafted 2026-11-24:** README (pitch, install, Why Ray, Coming from Arc), CONTRIBUTING.md,
+   `.github/ISSUE_TEMPLATE/`, `docs/GOOD-FIRST-ISSUES.md`. Left: the GIF and the Arc video, labels on GitHub, the
+   README's Spaces/Profiles lines once they ship (marked TODO), a prebuilt engine for contributors.
 6. **Launch week around 2026-12-22.** The owner posts; Claude prepares the drafts, the demo build and answers to
    likely questions.
 7. **After launch:** quick issue triage, and periodic performance comparisons against Zen, Crest and Chrome.

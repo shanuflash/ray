@@ -2,24 +2,95 @@
 
 Arc's sidebar on real, de-Googled Chromium. A native Mac browser for when Arc shuts down.
 
-<!-- Hero GIF goes here: a short clip of the sidebar, ⌘S and the command bar. -->
+<!-- TODO before launch: a 10–15 s motion GIF or MP4 here (sidebar, ⌘S, ⌘T command bar, ⌃Tab). Under 10 MB so
+     GitHub plays it inline. Then a link to the side-by-side video with Arc. -->
+<p align="center"><em>Video coming soon.</em></p>
 
-## Install
+```sh
+brew install shanuflash/tap/ray
+```
 
-macOS 14 or later, Apple Silicon.
+Or download the DMG from the [latest release](https://github.com/shanuflash/ray/releases/latest).
+macOS 14 or later, Apple Silicon. Free and open source.
 
-1. Download `Ray-<version>.dmg` from the [latest release](https://github.com/shanuflash/ray/releases/latest), open it
-   and drag Ray to Applications. Or with Homebrew (the full name matters: plain `ray` is a different app):
+> Use the full name, `shanuflash/tap/ray`. Plain `ray` on Homebrew is a different app.
 
-   ```sh
-   brew install shanuflash/tap/ray
-   ```
+### First open
 
-2. Open it. Ray isn't notarized (no paid Apple developer account), so the first time:
-   - **macOS 15 and later:** open it once, then System Settings › Privacy & Security › **Open Anyway**.
-   - **macOS 14:** right-click Ray › Open.
+Ray isn't notarized (no paid Apple developer account), so macOS asks once:
 
-Ray updates itself after that (Ray › Check for Updates…).
+- **macOS 15 and later:** open it once, then System Settings › Privacy & Security › **Open Anyway**.
+- **macOS 14:** right-click Ray › Open.
+
+From the DMG, drag Ray to Applications first: run from the DMG or Downloads, it can't update itself. After that Ray
+updates itself (Ray › Check for Updates…).
+
+## Why Ray
+
+- **Arc's feel.** The sidebar, pinned tabs, favorites, folders, ⌘S, the command bar, ⌃Tab. Fitted to Arc's sizes
+  and motion.
+- **Native.** AppKit and Core Animation. No Electron, no web UI around the page.
+- **Real Chromium.** Chromium 158 with Helium's de-Googling patches. Chrome Web Store extensions work as in Chrome.
+- **Your Arc comes with you.** One import: tabs, folders, history, passwords, and still signed in.
+- **Yours.** GPL-3.0, no account, no usage stats.
+
+## Coming from Arc
+
+File › Import from Browser… (or the welcome screen on first run).
+
+### What comes over
+
+- Favorites, pinned tabs and folders, with your tab names
+- Open Today tabs
+- History, all of it (not just the last 90 days)
+- Bookmarks, passwords, autofill
+- Cookies: you stay signed in
+
+Also from Dia, Chrome, Brave, Edge, Helium, Firefox, Zen and Safari.
+
+<!-- TODO when Spaces land: Arc's Spaces import as Spaces. Until then they arrive as pinned folders. -->
+Arc's Spaces arrive as pinned folders until Ray has Spaces. Not imported: extensions (reinstall them from the
+Chrome Web Store), the Archive, Air Traffic Control rules, Boosts, Easels and Notes.
+
+### Arc's keys that work
+
+| Key | Does |
+|---|---|
+| ⌘T | Command bar (again to close) |
+| ⌘L | Command bar on this page; Return reloads, ⌘↩ opens in a new tab |
+| ⌘S | Hide or show the sidebar |
+| ⌘D | Pin or unpin the tab |
+| ⌘1 – ⌘9 | Go to a sidebar item |
+| ⌃Tab | Recent tabs, with previews |
+| ⌥⌘↓ / ⌥⌘↑ | Next / previous tab |
+| ⇧⌘C | Copy the page's link |
+| ⇧⌥⌘C | Copy the link as Markdown |
+| ⌥⌘V | Paste a link as a new tab |
+| ⇧⌘K | Clear Today (keeps the tab you're on) |
+| ⇧⌘T, ⌘Z | Reopen closed tabs |
+| ⌘O | Open a Little Ray in Ray |
+| ⇧⌘N | Private window |
+
+Every key can be changed in Settings › Shortcuts.
+
+### What's missing
+
+Honest list. The full one is [docs/MISSING.md](docs/MISSING.md).
+
+<!-- TODO before launch: drop Spaces and Profiles from this list once they ship. -->
+- **Spaces** and **Profiles** (in progress)
+- **Split View**
+- **Peek**: links from a pinned tab open in that tab, not a floating card
+- **Archive view**: stale Today tabs are archived but can't be browsed yet
+- **Several normal windows**: ⌘N brings the one window forward; no dragging a tab out
+- **Boosts**, **Easels**, **Notes**, **Library**, **Capture**, **Live Folders**, **Air Traffic Control**
+- **Sidebar on the right**, **media controls in the sidebar**
+- **Sync between Macs**
+- **A built-in ad blocker**: install uBlock Origin Lite from the Web Store
+- **Notifications while a site's tab is closed** (Web Push): Slack, Gmail and Teams notify only while open
+- Keys: ⌘. to focus the sidebar, Back to Pinned URL, ⌃⇧⌘C copy as quote, ⌥⌘⌫ to remove a suggestion
+
+Left out on purpose: Arc Max's AI features.
 
 ## What works
 
@@ -30,6 +101,8 @@ Ray updates itself after that (Ray › Check for Updates…).
 - Chrome extensions
 - Import from Arc, still signed in
 - Native Mac app, no Electron
+
+<!-- TODO before launch: add Spaces and Profiles here once they ship. -->
 
 ### More
 
@@ -82,6 +155,7 @@ Ray updates itself after that (Ray › Check for Updates…).
 
 ## Coming
 
+<!-- TODO before launch: move whatever has shipped (Spaces, Profiles) out of this list. -->
 - Spaces
 - Profiles
 - Split View
@@ -111,7 +185,8 @@ scripts/test.sh        # unit tests and checks on a hidden test build
 open build/Ray.app
 ```
 
-Details for contributors: [CLAUDE.md](CLAUDE.md) and [PLAN.md](PLAN.md).
+How to build, test and send a change: [CONTRIBUTING.md](CONTRIBUTING.md). Small tasks to start with:
+[docs/GOOD-FIRST-ISSUES.md](docs/GOOD-FIRST-ISSUES.md). Deeper notes: [CLAUDE.md](CLAUDE.md) and [PLAN.md](PLAN.md).
 
 ## Credits and licence
 
