@@ -1090,7 +1090,7 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
 - Before any design or behaviour decision, check all four references and say what each does: Chromium's source
   (Chrome's behaviour), Ardia (`third_party/ardia`, same engine), Crest (`third_party/crest`) and Cra
   (`third_party/cra`, closest to Ray's goal). For a feature one of the other clones has (Spaces, Peek, Split View,
-  Boosts, a blocker, import…), read Circa's and Phi's too (native Mac on Chromium), and the rest where it helps.
+  Boosts, a blocker, import…), read Circa's (AppKit, closest stack), Open Arc's (most of Arc's features, its own Chromium patches) and Phi's too, and the rest where it helps.
   None is automatically right; weigh them, and where they disagree pick on evidence. Don't narrate the checking.
 - Never steal focus with test instances: test only through `scripts/run-hidden.sh` / `tests/checks.mjs`
   (`RAY_BACKGROUND=1`, own data dir).
