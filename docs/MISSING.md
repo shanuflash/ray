@@ -22,9 +22,8 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 2. **Profiles**: several logins (Arc ties a profile to a Space). Ray has one profile; the engine has
    `loadProfile`/`offTheRecordProfileFor`.
 3. **Split View**: two or more pages side by side in one window.
-4. **Little Arc**: the small window for links opened from other apps (⌥⌘N). Links from other apps would open there;
-   today they open as a Today tab in the normal window (`Host/LinksFromApps.swift`). Ardia's design notes for its
-   Little Ardia (new-tab links kept inside it, a tab moved mid-load): `docs/ARDIA-WATCH.md`, "v0.2.44-nightly.4".
+4. ~~**Little Arc**~~ (Done: Little Ray, a quick look at links from other apps; owner 2026-11-24: not a mini browser,
+   so no ⌥⌘N). Leftovers: Known limitations 77.
 5. **Archive view**: Ray archives stale Today tabs but has no way to browse or restore them.
 
 6. **Peek**: Arc's preview of a link in a floating card over the page (open it fully or dismiss). Ray dropped the
@@ -512,11 +511,17 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     sight/occlusion, a closed window, all tabs closed. Not reproducible without real full screen and Spaces. Next: a
     count-only log line for a refused `openTab` (needs `openTab` declared nullable in RayCore.h, an engine change),
     the `[ray]` stderr from a repro, and, if confirmed, opening the links in a fresh window when the engine refuses.
+77. **Little Ray leftovers** (2026-11-24). A link that launches Ray still opens as a Today tab (the launch path is
+    #76's; only links to a running Ray go to Little Ray). Files from Finder stay Today tabs. Escape closes it only when
+    the page didn't use the key. No Arc archive of closed ones (Recently Closed instead), no "Open in ‹Space›" until
+    Spaces, no profile choice until Profiles. Its ⌘O, ⇧⌘C and ⌘W go through the menu only while it is key, which
+    hidden test windows never are: `little-ray` drives its controls directly, so the key routing is checked by hand.
 
 ## Done
 
 | What | When |
 |---|---|
+| Little Ray: a link from another app opens in a small window for a quick look (the pop-up window's look: its address, Copy Link, Open in Ray ⌘O), centred, remembering its size; Open in Ray moves the live page into Today; ⌘W, Escape or the close light put it in Recently Closed. Settings › General › Open links from other apps in Little Ray, on by default | 2026-11-24, `feat: little ray` |
 | No crash when an extension closes a tab showing a sign-in dialog: the engine's dialog host closes its dialogs while the tab is whole (`engine-ray/fixups/0010`); the engine's own third-party cookie default is Chrome's (`0011`) | 2026-11-24, `fix: tab dialogs close before teardown, cookie default` |
 | Third-party cookies allowed as in Chrome and Arc (Helium blocked them, so Teams' app tabs said "This app may have issues in the web version of Teams"); a choice in chrome://settings/cookies still wins | 2026-11-23, `fix: allow third party cookies like chrome` |
 | The command bar preconnects to its top row's site as you type (Chrome's omnibox preconnect), so a first visit's DNS, connect and TLS are done by Enter; never in a private window | 2026-11-23, `feat: command bar preconnects top row` |

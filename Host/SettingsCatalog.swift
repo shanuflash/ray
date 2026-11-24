@@ -16,7 +16,7 @@ extension AnySettingKey {
   static let all: [AnySettingKey] = [
     theme, appearanceMode, surfaceStyle, minimalURL, loadingProgress, defaultZoom, scrollBars, newTabNextToActive, recentTabCycling,
     copyLinkShortcut, sidebarShortcut,
-    warnBeforeQuitting, warnBeforeClosingWindow, onQuit,  // General (SettingsGeneral.swift)
+    littleRayLinks, warnBeforeQuitting, warnBeforeClosingWindow, onQuit,  // General (SettingsGeneral.swift)
     offerToSavePasswords, jumpCloudRelay, autofillAddresses, autofillCards,  // Passwords (and JumpCloudRelay.swift), Autofill
     searchEngine, searchSuggestions, siteSearches,  // Search (SettingsSearchPane.swift)
     pageAddressBar,

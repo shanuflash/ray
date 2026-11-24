@@ -649,6 +649,38 @@ enum TestCommands {
         if !popup.snapshot(to: String(snap.dropFirst(5))) { result = "no picture" }
       default: result = "usage: popup opentab|close|snap <path>"
       }
+    case "littleray":
+      // `littleray open <url>|openinray|close|closelight|escape|copy|snap <path>|size <w> <h>|reset`: the newest Little
+      // Ray's controls (test windows are never key, so these act on it directly), or one opened as a link would be.
+      let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+      if parts.first == "open", parts.count == 2 {
+        if LittleRay.open(parts[1]) == nil { result = "no engine" }
+        break
+      }
+      if parts.first == "reset" {
+        // Forget the remembered size (back to 900×640).
+        RaySettings.shared.rememberLittleRaySize(LittleRay.defaultSize)
+        break
+      }
+      guard let little = LittleRay.all.last else { result = "no little ray"; break }
+      switch parts.first ?? "" {
+      case "openinray": little.openInRay()
+      case "close": little.close()
+      case "closelight": little.pressCloseLight()
+      case "copy": little.copyLink()
+      case "escape":
+        let escape = NSEvent.keyEvent(
+          with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: little.window.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
+          isARepeat: false, keyCode: 53)
+        if let escape { _ = little.pageDidNotUse(escape) } else { result = "no event" }
+      case "snap": if parts.count < 2 || !little.snapshot(to: parts[1]) { result = "no picture" }
+      case "size":
+        let numbers = (parts.count == 2 ? parts[1] : "").split(separator: " ").compactMap { Double($0) }
+        guard numbers.count == 2 else { result = "usage: littleray size <w> <h>"; break }
+        little.resize(to: NSSize(width: numbers[0], height: numbers[1]))
+      default: result = "usage: littleray open <url>|openinray|close|closelight|escape|copy|snap <path>|size <w> <h>|reset"
+      }
     case "sidebarlist":
       // `sidebarlist scroll <y>` (a user's scroll), `sidebarlist doubleclick` (a double click on empty space).
       let parts = argument.split(separator: " ").map(String.init)

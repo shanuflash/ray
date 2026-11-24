@@ -15,9 +15,22 @@ import Sparkle
 
 extension SettingGroup {
   static let quitting = SettingGroup(id: "quitting", title: "Quitting and closing")
+  static let links = SettingGroup(id: "links", title: "Links")
 }
 
 extension AnySettingKey {
+  /// A link another app hands Ray opens in Little Ray (`LittleRay.swift`), a small window for a quick look, instead of
+  /// a Today tab. On, as Arc's "Links from other apps open in Little Arc" and Ardia's are.
+  static let littleRayLinks = SettingKey<Bool>(
+    "littleRayLinks", default: true,
+    ui: SettingUI(
+      pane: .general, group: .links, title: "Open links from other apps in Little Ray",
+      detail: "",
+      about: "A link from Mail, Slack or another app opens in a small window for a quick look. Open in Ray (⌘O) moves "
+        + "it into Today; closing it puts it in Recently Closed.",
+      keywords: ["little ray", "little arc", "links", "other apps", "external links", "small window", "quick look"],
+      control: .toggle))
+
   /// ⌘Q asks first (`CloseWarnings.allowsQuit`). Off, as in Arc, Dia and Ardia.
   static let warnBeforeQuitting = SettingKey<Bool>(
     "warnBeforeQuitting", default: false,

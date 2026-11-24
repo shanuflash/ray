@@ -2,8 +2,8 @@ import AppKit
 
 /// Links and files other apps hand Ray: a link clicked in Mail or Slack once Ray is the default browser, an HTML or
 /// PDF file opened with Ray in Finder, `open -a Ray <url>`. Each opens as a new Today tab in the normal window, never
-/// a private one (Chrome, Arc and Ardia agree), and the last one is active. Arc opens them in Little Arc, which Ray
-/// doesn't have yet (docs/MISSING.md).
+/// a private one (Chrome, Arc and Ardia agree), and the last one is active; with Settings › General › Open links from
+/// other apps in Little Ray on (the default, Arc's), each link opens in a Little Ray instead (`LittleRay.swift`).
 ///
 /// What's taken goes through AddressInput: links only as http(s) (`link(fromOtherApp:)`), files only from a document
 /// open (Finder's, never a `file:` link) and only real local files of the declared types (`document(fromOtherApp:)`).
@@ -83,7 +83,14 @@ enum LinksFromApps {
     TestEnvironment.log("from other apps: \(sent ?? urls.count) received, \(accepted.count) accepted, "
       + (documents ? "documents" : "links") + (started ? "" : ", queued"))
     guard !accepted.isEmpty else { return }
-    if started { AppController.shared.openLinks(accepted) } else { pending += accepted }
+    guard started else { return pending += accepted }
+    // Settings › General › Open links from other apps in Little Ray: each link a quick look of its own (LittleRay.swift).
+    // Files, and the links that launch Ray, still open as Today tabs.
+    if !documents, RaySettings.shared[.littleRayLinks] {
+      accepted.forEach { LittleRay.open($0) }
+      return
+    }
+    AppController.shared.openLinks(accepted)
   }
 }
 

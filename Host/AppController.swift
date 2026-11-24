@@ -267,7 +267,12 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     ])
   }
   @objc func focusAddress(_ sender: Any?) { current?.focusAddress(toggles: true) }
-  @objc func copyURL(_ sender: Any?) { current?.copyURL() }
+  @objc func copyURL(_ sender: Any?) {
+    if let little = LittleRay.key { return little.copyLink() }
+    current?.copyURL()
+  }
+  /// File › Open in Ray (⌘O, Arc's): the Little Ray in front moves its page into Today.
+  @objc func openLittleRayInRay(_ sender: Any?) { LittleRay.key?.openInRay() }
   @objc func newFolder(_ sender: Any?) { current?.newFolder() }
   /// The sidebar-only Arc import (no menu item since Import from Browser…; its check still drives it).
   @objc func importFromArc(_ sender: Any?) { current?.importFromArc() }
@@ -291,6 +296,8 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     } else if let popup = PopupWindow.key {
       // A pop-up window in front: ⌘W closes it, not a tab of the window behind.
       popup.close()
+    } else if let little = LittleRay.key {
+      little.close()
     } else {
       current?.closeActive()
     }
@@ -378,8 +385,14 @@ extension AppController: NSMenuItemValidation {
       return current?.toolbarShown == true
     case #selector(closeTab(_:)):
       // With no tab open, ⌘W closes the window, as in Chrome and Arc.
+      if LittleRay.key != nil {
+        item.title = "Close Window"
+        return true
+      }
       item.title = current?.activeEntry == nil || SettingsWindowController.shared.isKey ? "Close Window" : "Close Tab"
       return current != nil || SettingsWindowController.shared.isKey
+    case #selector(openLittleRayInRay(_:)):
+      return LittleRay.key != nil
     case #selector(reload(_:)), #selector(reloadIgnoringCache(_:)), #selector(toggleDevTools(_:)), #selector(printPage(_:)),
          #selector(printWithSystemDialog(_:)), #selector(savePage(_:)), #selector(zoomIn(_:)), #selector(zoomOut(_:)),
          #selector(actualSize(_:)):

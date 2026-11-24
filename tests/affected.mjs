@@ -122,7 +122,7 @@ export const areas = {
   // The launch's --keep-old-history (and the test switch that drops it).
   "Host/main.swift#History": ["keep-old-history"],
   // A page's sized pop-up in its own window (owner's pick B), Open as Tab, and the tabs it opens.
-  "Host/PopupWindow.swift": ["popup-window", "window-open", "popup-blocked"],
+  "Host/PopupWindow.swift": ["popup-window", "window-open", "popup-blocked", "little-ray"],
   "Host/BrowserWindowController.swift#Pop-up windows": ["popup-window"],
   // Links, files and text dropped on the sidebar, and ⌥-drag's copy.
   "Host/SidebarView.swift#Drops from elsewhere": ["sidebar-drops", "drag-to-peek"],
@@ -227,7 +227,8 @@ export const areas = {
   // Which site search addresses Ray takes, and how a query goes into one.
   "Host/AddressInput.swift#Search templates": ["site-search", "search-engine", "bar-search-suggestions", "bar-search-google"],
   // Links and files from other apps (and the one that launched Ray), and where they open.
-  "Host/LinksFromApps.swift": otherApps,
+  "Host/LinksFromApps.swift": [...otherApps, "little-ray"],
+  "Host/LittleRay.swift": ["little-ray"],
   "Host/BrowserWindowController.swift#Links from other apps": otherApps,
   // The settings: storage and observers, and the catalog of what they are (each entry's window row and test command).
   "Host/RaySettings.swift": settingReaders,
@@ -241,7 +242,7 @@ export const areas = {
   "Host/SettingsAppearance.swift": ["settings-panes", "settings-window", "settings-page-address-bar"],
   "Host/SettingsTabs.swift": ["settings-panes", "settings-window"],
   "Host/SettingsAbout.swift": ["settings-panes", "settings-search", "settings-general"],
-  "Host/SettingsGeneral.swift": ["settings-general", "settings-panes", "settings-search", "warn-before-quitting", "updater-config",
+  "Host/SettingsGeneral.swift": ["little-ray", "settings-general", "settings-panes", "settings-search", "warn-before-quitting", "updater-config",
     "default-browser-ask", "onboarding"],
   "Host/CloseWarnings.swift": ["panels", "warn-before-quitting", "warn-before-closing-window", "close-last-window", "private-window",
     "quit-with-downloads"],
@@ -338,7 +339,7 @@ export const areas = {
   // Test hooks: the feature's own files bring in its checks.
   "Host/TestCommands.swift#Settings": [...settings, "onboarding"],
   "Host/TestCommands.swift#Bookmarks": ["bookmarks"],
-  "Host/TestCommands.swift": ["extension-crx-drop", "memory-saver-default", "screen-share", "site-search", "search-engine", "folder-rename", "tile-hover", "icons-on-pixels", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
+  "Host/TestCommands.swift": ["little-ray", "extension-crx-drop", "memory-saver-default", "screen-share", "site-search", "search-engine", "folder-rename", "tile-hover", "icons-on-pixels", "import-browser", "onboarding", "bar-actions", "load-sweep-once",
     "reopen-closed-tab", "close-last-window", ...otherApps, "switch-no-blank", "tab-rename", "settings-general",
     "warn-before-quitting", "warn-before-closing-window", "settings-undo-reopens", "settings-shortcut-editor", "notes",
     "row-menus", "multi-select", "folders", "password-prompt", "autofill-prompt", "link-preview", "tab-sound", "back-forward-list",

@@ -26,6 +26,7 @@ enum MainMenu {
       item("New Window", #selector(AppController.newWindow(_:)), "n", target: target),
       item("New Private Window", #selector(AppController.newPrivateWindow(_:)), "n", [.command, .shift], target: target),
       item("Open Location…", #selector(AppController.focusAddress(_:)), "l", target: target),
+      item("Open in Ray", #selector(AppController.openLittleRayInRay(_:)), "o", target: target),
       .separator(),
       item("Close Tab", #selector(AppController.closeTab(_:)), "w", target: target),
       .separator(),

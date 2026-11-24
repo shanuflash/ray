@@ -247,7 +247,7 @@ final class PopupWindow: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   }
 
   /// Close Tab's key as the menu has it now (⌘W unless Settings › Shortcuts moved it).
-  private static func isCloseKey(_ event: NSEvent) -> Bool {
+  static func isCloseKey(_ event: NSEvent) -> Bool {
     guard event.type == .keyDown, let item = MainMenu.item(for: #selector(AppController.closeTab(_:))),
           !item.keyEquivalent.isEmpty else { return false }
     let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).intersection([.command, .option, .control, .shift])

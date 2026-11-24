@@ -4026,6 +4026,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "toggleSidebar": MainMenu.keyEquivalent(of: #selector(AppController.toggleSidebar(_:))) ?? NSNull(),
       "settings": MainMenu.keyEquivalent(of: #selector(AppController.showSettings(_:))) ?? NSNull(),
       "savePage": MainMenu.keyEquivalent(of: #selector(AppController.savePage(_:))) ?? NSNull(),
+      "openLittleRayInRay": MainMenu.keyEquivalent(of: #selector(AppController.openLittleRayInRay(_:))) ?? NSNull(),
     ] as [String: Any]
     state["shortcuts"] = MenuShortcuts.debug
     state["welcomeAgainItem"] = MainMenu.alternateInfo(of: #selector(AppController.showWelcomeAgain(_:))) ?? NSNull()
@@ -4033,6 +4034,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["lastDrop"] = lastDrop
     state["dragPeek"] = dragPeekState
     state["popupWindows"] = PopupWindow.all.map(\.debug)
+    state["littleRays"] = LittleRay.all.map(\.debug)
+    state["littleRaySteps"] = LittleRay.steps
     state["back"] = ["enabled": canGoBack, "tooltip": backToolTip, "lastPress": HistoryButton.lastPress]
     state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
       .sorted { $0.lastUsed > $1.lastUsed }.map(tabID)

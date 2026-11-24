@@ -534,7 +534,7 @@ publicly or create accounts.
   own GetURL and Open Documents Apple Event handlers on willFinishLaunching (AppKit's never reached the delegate);
   links go through `AddressInput.link(fromOtherApp:)` (http(s) only), files only from Open Documents through
   `document(fromOtherApp:)` (real local files of those types). Each opens as a Today tab in the normal window, the
-  last one active. A launch by a link waits for AppKit's launch to finish (its event comes after the engine starts)
+  last one active; links open in `LittleRay` instead while its setting is on. A launch by a link waits for AppKit's launch to finish (its event comes after the engine starts)
   and opens the links in place of the start page. Test command `appopen link|files|direct`; checks
   `open-from-other-apps` and `open-from-other-apps-launch` (a cold start through `open -g -n`, its own data dir).
 - `JumpCloudRelay`: JumpCloud Go through Google Chrome (docs/MISSING.md #15: JumpCloud's native helper serves only
@@ -651,6 +651,20 @@ publicly or create accounts.
   opened it (`.fullScreenAuxiliary`): above it and on its Space, so a full-screen Ray keeps it there instead of macOS
   sending it to the desktop's Space (state log `child`, `fullScreenAuxiliary`). Test command `popup opentab|close|snap
   <path>`; state log `popupWindows`; check `popup-window`.
+- `LittleRay` (`Host/LittleRay.swift`): Arc's Little Arc as a quick look at a link from another app, not a mini browser
+  (owner 2026-11-24: no ⌥⌘N, back/forward, address field, command bar or site controls). Owner's picks A, 1, 2 of
+  `docs/mocks/little-ray.html`: `PopupWindow`'s look (one 38 pt row in the sidebar colour, `WindowLights`, the engine's
+  address centred in `PopupAddressView`, Copy Link, `OpenInRayButton` "Open in Ray ⌘O" with the menu item's live key;
+  the page a card 6 pt in), 900×640 then the last size you gave one (Settings.json state `littleRaySize`), at most
+  80 % of the screen (Ardia's `FitSide`), centred on the pointer's screen, 24 pt cascade. Its own `RayCoreWindow` opens
+  the tab on the normal profile (never private). `LinksFromApps.receive` sends links (not files, not the launch's
+  queued ones) there while `littleRayLinks` (Settings › General › Links, on) is on. File › Open in Ray (⌘O,
+  `openLittleRayInRay`, enabled only while one is key) moves the live page through `adoptFromPopup` to the top of
+  Today; ⌘W, Escape the page didn't use (`handleKeyEvent`) or the close light (`windowShouldClose`) put it in
+  Recently Closed (`ac_tab_restore_tag`, so ⇧⌘T brings back its history); ⇧⌘C while key is its Copy Link (a tick on
+  the button). Tabs its page opens go to Ray's window, pop-ups get `PopupWindow`s. Test command `littleray open
+  <url>|openinray|close|closelight|escape|copy|snap <path>|size <w> <h>|reset`; state log `littleRays`,
+  `littleRaySteps`; check `little-ray` (`open-from-other-apps` and `warn-before-quitting` turn the setting off).
 - Sidebar drops (`SidebarView` `// MARK: Drops from elsewhere`, `BrowserWindowController` `// MARK: Sidebar drops`):
   a link dragged from a page, a file from Finder or text from anywhere opens as a tab where it lands, with the gap a
   dragged tab opens (a placeholder `SidebarDrag`); links only http(s) (`AddressInput.link(fromOtherApp:)`), files only

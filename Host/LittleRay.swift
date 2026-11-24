@@ -1,0 +1,450 @@
+import AppKit
+
+// Little Ray, Ray's Little Arc: a quick look at a link from another app (Settings › General › Open links from other
+// apps in Little Ray, on by default as in Arc and Ardia), not a mini browser. The owner's picks of
+// docs/mocks/little-ray.html (2026-11-24): chrome A (the pop-up window's look: one 38 pt row in Ray's sidebar colour,
+// Ray's traffic lights, the engine's address centred and read only, Copy Link, then a labelled "Open in Ray ⌘O"; the
+// page a card 6 pt in), placement 1 (Ardia's: 900×640 the first time, then the last size you gave one, never past
+// 80 % of the screen, centred on the screen the pointer is on, each further one 24 pt down and right). No back or
+// forward buttons, address field, command bar, site controls or ⌥⌘N. Always the normal profile, never private.
+// Open in Ray (⌘O) moves the live page (history kept) into Today in Ray's window, as `PopupWindow`'s Open as Tab does
+// (`adoptFromPopup`); ⌘W, Escape the page didn't use, or the close light close it and put it in Recently Closed, so
+// ⇧⌘T brings it back as a Today tab with its history. Tabs its page opens go to Ray's window; its pop-ups get windows.
+
+final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
+  /// The open ones, so they live until their window closes.
+  private(set) static var all: [LittleRay] = []
+  static let rowHeight: CGFloat = 38
+  static let inset: CGFloat = 6
+  static let cornerRadius: CGFloat = 9
+  static let defaultSize = NSSize(width: 900, height: 640)
+  static let minimumSize = NSSize(width: 420, height: 300)
+  /// The largest share of the screen's visible frame it takes (Ardia's `kLargestShareOfScreen`).
+  static let largestShare: CGFloat = 0.8
+  static let cascade: CGFloat = 24
+  /// What happened, for the state log: "opened", "openedInRay", "closed", "pageClosed".
+  private(set) static var steps: [String] = []
+
+  let tab: RayCoreTab
+  private let coreWindow: RayCoreWindow
+  private let profile: RayCoreProfile
+  private let root = LittleRayRootView()
+  private let lights = WindowLights()
+  private let address = PopupAddressView()
+  private let copyButton = HoverIconButton.make("link", label: "Copy Link", size: 13)
+  private let openButton = OpenInRayButton()
+  private let card = NSView()
+  private var closeObserver: NSObjectProtocol?
+  private var resizeObserver: NSObjectProtocol?
+  private var closed = false
+  /// Put in Recently Closed already (the close light asks, then the window closes: once).
+  private var remembered = false
+  private var copiedReset: DispatchWorkItem?
+
+  var window: NSWindow { coreWindow.window }
+
+  /// The Little Ray that's key, if one is (⌘W, ⇧⌘C and ⌘O act on it, not on a tab behind).
+  static var key: LittleRay? { all.first { $0.window.isKeyWindow } }
+
+  /// Opens `url` (already through `AddressInput.link(fromOtherApp:)`) in a new Little Ray, in front.
+  @discardableResult
+  static func open(_ url: String) -> LittleRay? {
+    guard let engine = RayCoreEngine.shared else { return nil }
+    let little = LittleRay(url: url, profile: engine.defaultProfile)
+    all.append(little)
+    steps.append("opened")
+    if launchedInBackground { little.coreWindow.showInactive() } else {
+      little.window.makeKeyAndOrderFront(nil)
+      NSApp.activate()
+    }
+    little.tab.focus()
+    little.log()
+    return little
+  }
+
+  private init(url: String, profile: RayCoreProfile) {
+    self.profile = profile
+    let size = Self.size(on: Self.screenForNewWindow())
+    coreWindow = RayCoreWindow(contentRect: NSRect(origin: .zero, size: size))
+    coreWindow.activeProfile = profile
+    // A placeholder until the engine hands the tab over (assigned right below).
+    tab = coreWindow.openTab(url, profile: profile, foreground: true)
+    super.init()
+    coreWindow.delegate = self
+    tab.delegate = self
+    let window = coreWindow.window
+    window.styleMask.formUnion([.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView])
+    window.titlebarAppearsTransparent = true
+    window.titleVisibility = .hidden
+    window.isReleasedWhenClosed = false
+    window.isRestorable = false
+    window.tabbingMode = .disallowed
+    window.animationBehavior = .documentWindow
+    // Over another app's full-screen Space too: the link came from there.
+    window.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
+    window.minSize = NSSize(width: Self.minimumSize.width + Self.inset * 2,
+                            height: Self.minimumSize.height + Self.rowHeight + Self.inset)
+    window.backgroundColor = SidebarColors.background
+    for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+      window.standardWindowButton(kind)?.isHidden = true
+    }
+    window.setContentSize(size)
+    place()
+    closeObserver = NotificationCenter.default.addObserver(
+      forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in self?.windowWillClose() }
+    resizeObserver = NotificationCenter.default.addObserver(
+      forName: NSWindow.didEndLiveResizeNotification, object: window, queue: .main) { [weak self] _ in
+        guard let self else { return }
+        RaySettings.shared.rememberLittleRaySize(self.window.contentRect(forFrameRect: self.window.frame).size)
+      }
+
+    let host = coreWindow.hostView
+    root.frame = host.bounds
+    root.autoresizingMask = [.width, .height]
+    root.onLayout = { [weak self] in self?.layout() }
+    host.addSubview(root)
+    card.wantsLayer = true
+    card.layer?.cornerRadius = Self.cornerRadius
+    card.layer?.cornerCurve = .continuous
+    card.layer?.masksToBounds = true
+    card.layer?.backgroundColor = NSColor.white.cgColor
+    copyButton.target = self
+    copyButton.action = #selector(copyLink)
+    copyButton.toolTip = "Copy Link"
+    openButton.onClick = { [weak self] in self?.openInRay() }
+    [lights, address, copyButton, openButton, card].forEach(root.addSubview)
+    tab.view.removeFromSuperview()
+    tab.view.autoresizingMask = [.width, .height]
+    card.addSubview(tab.view)
+    updateTitle()
+    address.show(url: tab.url, security: ConnectionLook.level(tab.securityInfo))
+    layout()
+  }
+
+  // MARK: Size and place
+
+  /// The screen the pointer is on (where the link was clicked), else the main one.
+  private static func screenForNewWindow() -> NSScreen? {
+    let mouse = NSEvent.mouseLocation
+    return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
+  }
+
+  /// The content size: the last one you gave a Little Ray, else 900×640; at least the minimum and at most 80 % of the
+  /// screen's visible frame (Ardia's `FitSide`).
+  static func size(on screen: NSScreen?) -> NSSize {
+    let wanted = RaySettings.shared.littleRaySize.map(NSSizeFromString).flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil }
+      ?? defaultSize
+    guard let visible = screen?.visibleFrame, !visible.isEmpty else { return wanted }
+    func fit(_ wanted: CGFloat, _ minimum: CGFloat, _ room: CGFloat) -> CGFloat {
+      let largest = min(max((room * largestShare).rounded(), minimum), room)
+      return min(min(max(wanted, minimum), largest).rounded(), room)
+    }
+    return NSSize(width: fit(wanted.width, minimumSize.width + inset * 2, visible.width),
+                  height: fit(wanted.height, minimumSize.height + rowHeight + inset, visible.height))
+  }
+
+  /// Centred on the pointer's screen; each Little Ray already open moves the next one 24 pt down and right.
+  private func place() {
+    let screen = Self.screenForNewWindow()
+    guard let visible = screen?.visibleFrame, !visible.isEmpty else { return window.center() }
+    var frame = window.frame
+    let step = CGFloat(Self.all.filter { !$0.closed }.count) * Self.cascade
+    frame.origin = NSPoint(x: (visible.midX - frame.width / 2 + step).rounded(),
+                           y: (visible.midY - frame.height / 2 - step).rounded())
+    frame.origin.x = max(visible.minX, min(frame.minX, visible.maxX - frame.width))
+    frame.origin.y = max(visible.minY, min(frame.minY, visible.maxY - frame.height))
+    window.setFrame(frame, display: false)
+  }
+
+  private func layout() {
+    let bounds = root.bounds
+    let row = Self.rowHeight
+    // Flipped root: the row on top.
+    lights.frame = NSRect(x: 14, y: (row - 16) / 2, width: WindowLights.width, height: 16)
+    let openWidth = openButton.intrinsicContentSize.width
+    openButton.frame = NSRect(x: bounds.width - 8 - openWidth, y: (row - 28) / 2, width: openWidth, height: 28)
+    copyButton.frame = NSRect(x: openButton.frame.minX - 4 - 28, y: (row - 28) / 2, width: 28, height: 28)
+    let side = max(lights.frame.maxX, bounds.width - copyButton.frame.minX) + 10
+    address.frame = NSRect(x: side, y: (row - 20) / 2, width: max(0, bounds.width - side * 2), height: 20)
+    card.frame = NSRect(x: Self.inset, y: row, width: max(0, bounds.width - Self.inset * 2),
+                        height: max(0, bounds.height - row - Self.inset)).integral
+    if tab.view.superview === card { tab.view.frame = card.bounds }
+  }
+
+  private func updateTitle() {
+    let title = tab.title
+    window.title = title.isEmpty || title == tab.url ? AddressInput.addressParts(for: tab.url).text : title
+  }
+
+  // MARK: Actions
+
+  /// Copy Link (and ⇧⌘C while it's key): the engine's address; the button shows a tick for a moment.
+  @objc func copyLink() {
+    let url = tab.url
+    guard !url.isEmpty, !closed else { return }
+    let pasteboard = BrowserWindowController.pasteboard
+    pasteboard.clearContents()
+    pasteboard.setString(url, forType: .string)
+    copyButton.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "Copied")
+    copiedReset?.cancel()
+    let reset = DispatchWorkItem { [weak self] in
+      self?.copyButton.image = NSImage(systemSymbolName: "link", accessibilityDescription: "Copy Link")
+    }
+    copiedReset = reset
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: reset)
+    Self.steps.append("copied")
+    log()
+  }
+
+  /// Open in Ray (⌘O): the live page moves into Today in Ray's normal window (opened again if it was closed), shown
+  /// and in front; this window goes.
+  func openInRay() {
+    guard !closed, !tab.closed, let owner = AppController.shared.openMainWindow() else { return }
+    closed = true
+    tab.view.removeFromSuperview()
+    if tab.delegate === self { tab.delegate = nil }
+    owner.adoptFromPopup(tab, after: nil, foreground: true)
+    Self.all.removeAll { $0 === self }
+    Self.steps.append("openedInRay")
+    window.orderOut(nil)
+    // The engine window is empty now: closing it closes nothing else.
+    DispatchQueue.main.async { [coreWindow] in coreWindow.close() }
+    if !launchedInBackground {
+      owner.window.makeKeyAndOrderFront(nil)
+      NSApp.activate()
+    }
+    owner.logState("littleRay")
+  }
+
+  /// ⌘W, Escape or the close light: the page goes to Recently Closed (⇧⌘T brings it back as a Today tab, with its
+  /// history), then the window closes.
+  func close() {
+    guard !closed else { return }
+    remember()
+    closed = true
+    Self.steps.append("closed")
+    coreWindow.close()
+  }
+
+  /// Puts the page in Recently Closed, its back/forward list tagged for Chrome's tab restore (as a closed Today tab's).
+  private func remember() {
+    guard !remembered, !tab.closed else { return }
+    remembered = true
+    let url = tab.url
+    guard !url.isEmpty, url != "about:blank", !url.lowercased().hasPrefix("javascript:") else { return }
+    let tag = "ray-closed-" + UUID().uuidString
+    EngineCalls.call("ac_tab_restore_tag", profile: profile, args: ["tab": Int(tab.tabId), "key": tag]) { _ in }
+    ClosedTabs.main.add(ClosedTab(
+      entryID: UUID(), kind: .today, index: 0, parentID: nil, pinnedURL: nil, url: url, title: tab.title,
+      customTitle: nil, favicon: tab.favicon, restoreKey: tag))
+  }
+
+  private func windowWillClose() {
+    closed = true
+    copiedReset?.cancel()
+    for observer in [closeObserver, resizeObserver].compactMap({ $0 }) { NotificationCenter.default.removeObserver(observer) }
+    closeObserver = nil
+    resizeObserver = nil
+    if tab.delegate === self { tab.delegate = nil }
+    let me = self
+    DispatchQueue.main.async {
+      Self.all.removeAll { $0 === me }
+      me.log()
+    }
+  }
+
+  private func log() { AppController.shared.current?.logState("littleRay") }
+
+  /// For tests: a key the page didn't use, as the engine hands it over.
+  func pageDidNotUse(_ event: NSEvent) -> Bool { window(coreWindow, handleKeyEvent: event) }
+
+  /// For tests: a live resize ending at that content size (remembered for the next one).
+  func resize(to size: NSSize) {
+    window.setContentSize(size)
+    RaySettings.shared.rememberLittleRaySize(window.contentRect(forFrameRect: window.frame).size)
+  }
+
+  /// For tests: the close light's click (macOS's performClose, which asks the engine first).
+  func pressCloseLight() { window.performClose(nil) }
+
+  /// For tests: the window's own views (Chrome's page draws nothing into it) as a PNG.
+  func snapshot(to path: String) -> Bool {
+    guard let frame = window.contentView?.superview,
+          let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) else { return false }
+    frame.cacheDisplay(in: frame.bounds, to: rep)
+    guard let data = rep.representation(using: .png, properties: [:]) else { return false }
+    return (try? data.write(to: URL(fileURLWithPath: path))) != nil
+  }
+
+  // MARK: RayCoreWindowDelegate
+
+  /// The close light (performClose): Recently Closed first, while the tab is whole.
+  func windowShouldClose(_ window: RayCoreWindow) -> Bool {
+    remember()
+    if !closed { Self.steps.append("closed") }
+    closed = true
+    return true
+  }
+
+  func window(_ window: RayCoreWindow, didInsert tab: RayCoreTab, opener: RayCoreTab?, disposition: String) {
+    guard tab !== self.tab else { return }
+    guard let owner = AppController.shared.openMainWindow() else { return }
+    if disposition == "popup" {
+      PopupWindow.open(tab, from: owner, opener: nil, parent: self.window)
+      return
+    }
+    // A tab the page opens goes to Ray's window, at the top of Today.
+    DispatchQueue.main.async {
+      owner.adoptFromPopup(tab, after: nil, foreground: disposition != "background_tab")
+    }
+  }
+
+  func window(_ window: RayCoreWindow, didRemove tab: RayCoreTab) {
+    guard tab === self.tab, !closed else { return }
+    // The page closed itself: the window goes too (nothing to bring back).
+    Self.steps.append("pageClosed")
+    DispatchQueue.main.async { [weak self] in
+      guard let self, !self.closed else { return }
+      self.closed = true
+      self.coreWindow.close()
+    }
+  }
+
+  func window(_ window: RayCoreWindow, preHandleKeyEvent event: NSEvent) -> Bool {
+    if PopupWindow.isCloseKey(event) {
+      close()
+      return true
+    }
+    return Shortcuts.isReserved(event) && (NSApp.mainMenu?.performKeyEquivalent(with: event) ?? false)
+  }
+
+  /// Keys the page didn't use: Escape closes it (a dialog, a full-screen video or a find on the page takes Escape
+  /// first), the rest go to the menu (⌘O, ⇧⌘C).
+  func window(_ window: RayCoreWindow, handleKeyEvent event: NSEvent) -> Bool {
+    if PopupWindow.isCloseKey(event) || Self.isEscape(event) {
+      close()
+      return true
+    }
+    return event.type == .keyDown && (NSApp.mainMenu?.performKeyEquivalent(with: event) ?? false)
+  }
+
+  private static func isEscape(_ event: NSEvent) -> Bool {
+    event.type == .keyDown && event.keyCode == 53
+      && event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+  }
+
+  // MARK: RayCoreTabDelegate
+
+  func tabDidChangeTitle(_ tab: RayCoreTab) { updateTitle() }
+  func tabDidChangeURL(_ tab: RayCoreTab) {
+    updateTitle()
+    address.show(url: tab.url, security: ConnectionLook.level(tab.securityInfo))
+  }
+  func tabDidChangeSecurity(_ tab: RayCoreTab) {
+    address.show(url: tab.url, security: ConnectionLook.level(tab.securityInfo))
+  }
+  func tab(_ tab: RayCoreTab, requestsActivation reason: String) {
+    if !launchedInBackground { window.makeKeyAndOrderFront(nil) }
+  }
+  func tab(_ tab: RayCoreTab, externalAppRequest request: [String: Any]) {
+    AppController.shared.current?.tab(tab, externalAppRequest: request)
+  }
+
+  /// For the state log.
+  var debug: [String: Any] {
+    ["url": tab.url, "address": address.text, "frame": NSStringFromRect(window.frame),
+     "content": NSStringFromSize(window.contentRect(forFrameRect: window.frame).size),
+     "card": NSStringFromRect(card.frame), "pageInCard": tab.view.superview === card, "visible": window.isVisible,
+     "key": window.isKeyWindow, "private": profile.offTheRecord, "openLabel": openButton.title,
+     "copied": copyButton.image?.accessibilityDescription == "Copied",
+     "fullScreenAuxiliary": window.collectionBehavior.contains(.fullScreenAuxiliary)]
+  }
+}
+
+/// Little Ray's root: flipped, the row free to drag the window by.
+private final class LittleRayRootView: NSView {
+  var onLayout: (() -> Void)?
+  override var isFlipped: Bool { true }
+  override var mouseDownCanMoveWindow: Bool { true }
+  override func layout() {
+    super.layout()
+    onLayout?()
+  }
+}
+
+/// "Open in Ray ⌘O": Ray's plain button look (`ButtonLook`), the title then the key in grey; the key follows the
+/// menu item's when Settings › Shortcuts changes it.
+final class OpenInRayButton: NSView {
+  var onClick: (() -> Void)?
+  private let label = NSTextField(labelWithString: "")
+  private var hovered = false
+  private var down = false
+  private(set) var title = ""
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    ButtonLook.shape(layer)
+    addSubview(label)
+    setAccessibilityElement(true)
+    setAccessibilityRole(.button)
+    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    refreshTitle()
+  }
+
+  required init?(coder: NSCoder) { fatalError() }
+
+  override var isFlipped: Bool { true }
+  override var wantsUpdateLayer: Bool { true }
+  override var mouseDownCanMoveWindow: Bool { false }
+  override var intrinsicContentSize: NSSize {
+    NSSize(width: ceil(label.attributedStringValue.size().width) + 4 + 22, height: 28)
+  }
+
+  /// The title with the menu item's key as it is now.
+  func refreshTitle() {
+    let key = MainMenu.item(for: #selector(AppController.openLittleRayInRay(_:))).flatMap(KeyCombo.init(item:))?.display ?? ""
+    let text = NSMutableAttributedString(string: "Open in Ray", attributes: [
+      .font: NSFont.systemFont(ofSize: 12.5, weight: .medium), .foregroundColor: ButtonLook.ink(.plain),
+    ])
+    if !key.isEmpty {
+      text.append(NSAttributedString(string: "  " + key, attributes: [
+        .font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: NSColor.secondaryLabelColor,
+      ]))
+    }
+    label.attributedStringValue = text
+    title = text.string
+    setAccessibilityLabel("Open in Ray")
+    invalidateIntrinsicContentSize()
+    needsLayout = true
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if window != nil { refreshTitle() }
+  }
+
+  override func layout() {
+    super.layout()
+    let height = ceil(label.intrinsicContentSize.height)
+    label.frame = NSRect(x: 11, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 22, height: height)
+  }
+
+  override func updateLayer() {
+    layer?.backgroundColor = ButtonLook.fill(.plain, hovered: hovered, pressed: down).cgColor
+  }
+
+  override func mouseEntered(with event: NSEvent) { hovered = true; needsDisplay = true }
+  override func mouseExited(with event: NSEvent) { hovered = false; needsDisplay = true }
+  override func mouseDown(with event: NSEvent) { down = true; needsDisplay = true }
+  override func mouseUp(with event: NSEvent) {
+    let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+    down = false
+    needsDisplay = true
+    if inside { onClick?() }
+  }
+  override func accessibilityPerformPress() -> Bool {
+    onClick?()
+    return true
+  }
+}

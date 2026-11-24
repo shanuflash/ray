@@ -534,6 +534,99 @@ const checks = {
     await until("closed by hand", async () => (await popups()).length === 0);
     assert(!(await targets()).some((t) => t.url.includes("?popupC")), "its page stayed open");
   },
+  async "little-ray"() {
+    // Little Ray (owner's picks A, 1, 2 of docs/mocks/little-ray.html): a link from another app opens in a small window
+    // of its own, not a tab: the engine's address on top, Copy Link and "Open in Ray ⌘O". Open in Ray moves the live
+    // page into Today; ⌘W, Escape and the close light put it in Recently Closed (⇧⌘T brings it back). Off, links are
+    // Today tabs again.
+    await command("state");
+    assert(state().settings.littleRayLinks === true, "Open links from other apps in Little Ray isn't on by default");
+    await command("littleray reset");
+    const littles = async () => { await command("state"); return state().littleRays ?? []; };
+    const tabsBefore = state().tabs.length;
+    const activeBefore = state().active;
+    const openLink = async (marker, count = 1) => {
+      await command(`appopen link ${origin}/b?${marker}`);
+      return until(`little ray ${marker}`, async () => {
+        const all = await littles();
+        const it = all.find((l) => l.url.includes(marker));
+        return all.length === count && it?.pageInCard && it.address.includes(marker) && it;
+      }, 8000);
+    };
+    let first = await openLink("little=1");
+    assert(state().tabs.length === tabsBefore, "the link became a sidebar tab too");
+    assert(state().active === activeBefore, "the link changed the window's active tab");
+    assert(first.private === false, "Little Ray is private");
+    assert(first.address.startsWith("127.0.0.1"), `address ${first.address}`);
+    assert(first.openLabel.startsWith("Open in Ray") && first.openLabel.includes("⌘O"), `button ${first.openLabel}`);
+    const [w, h] = first.content.match(/[\d.]+/g).map(Number);
+    assert(w <= 900 && h <= 640 && w >= 432 && h >= 344, `first size ${first.content}`);
+    assert(state().menuKeys.openLittleRayInRay === "o", `Open in Ray's key: ${JSON.stringify(state().menuKeys.openLittleRayInRay)}`);
+    // Several at once: the second 24 pt down and right of the first (unless the screen's edge stops it).
+    const second = await openLink("little=2", 2);
+    assert(second.frame !== first.frame, "the second Little Ray sits on the first");
+    // Copy Link: the engine's address on the pasteboard, a tick on the button.
+    await command("littleray copy");
+    await until("copied", async () => { const l = (await littles()).at(-1); return l?.copied && state().pasteboard === `${origin}/b?little=2`; });
+    // Open in Ray: the live page moves to Today, shown; its window goes.
+    await command("littleray openinray");
+    await until("moved into Today", async () => {
+      const all = await littles();
+      const moved = tabFor("?little=2");
+      return all.length === 1 && moved && state().active === moved.id && entryOfTab(moved.id)?.kind === "today" &&
+        state().tabs.length === tabsBefore + 1;
+    });
+    assert(state().littleRaySteps.includes("openedInRay"), `steps ${state().littleRaySteps}`);
+    // ⌘W: closed, its page gone, and ⇧⌘T brings it back as a Today tab.
+    await command("littleray close");
+    await until("closed", async () => (await littles()).length === 0);
+    await until("its page closed", async () => !(await targets()).some((t) => t.url.includes("little=1")));
+    await command("menu reopenClosedTab");
+    await until("reopened from Recently Closed", async () => {
+      await command("state");
+      const back = tabFor("?little=1");
+      return back && state().active === back.id && entryOfTab(back.id)?.kind === "today";
+    });
+    // Escape the page didn't use closes it; so does the close light (it asks the engine first).
+    await openLink("little=esc");
+    await command("littleray escape");
+    await until("Escape closed it", async () => (await littles()).length === 0);
+    await openLink("little=light");
+    await command("littleray closelight");
+    await until("the close light closed it", async () => (await littles()).length === 0);
+    await command("menu reopenClosedTab");
+    await until("the close light's page reopens", async () => { await command("state"); return tabFor("?little=light"); });
+    // A page that closes itself takes its window along.
+    await openLink("little=self");
+    const self = await session("?little=self");
+    await evaluate(self.sessionId, "setTimeout(() => window.close(), 50), 1");
+    await until("the page closed its window", async () => (await littles()).length === 0);
+    // The size you give one is the next one's.
+    await openLink("little=size");
+    await command("littleray size 700 500");
+    await command("littleray close");
+    await until("closed", async () => (await littles()).length === 0);
+    const sized = await openLink("little=sized");
+    assert(sized.content === "{700, 500}", `remembered size ${sized.content}`);
+    await command("littleray close");
+    await until("closed", async () => (await littles()).length === 0);
+    await command("littleray reset");
+    // Off: a Today tab in the normal window, as before.
+    assert((await commandResult("setting littleRayLinks false")) === "ok", "setting off");
+    await command(`appopen link ${origin}/b?little=off`);
+    await until("a Today tab with it off", async () => {
+      await command("state");
+      const t = tabFor("?little=off");
+      return t && state().active === t.id && (state().littleRays ?? []).length === 0;
+    });
+    await command("setting littleRayLinks default");
+    // Tidy: close what this check opened in the sidebar.
+    for (const part of ["?little=2", "?little=1", "?little=light", "?little=off"]) {
+      const target = (await targets()).find((t) => t.url.includes(part));
+      if (target) await send("Target.closeTarget", { targetId: target.targetId });
+    }
+    await until("tidied", async () => { await command("state"); return state().tabs.length === tabsBefore; });
+  },
   async "background-tab"() {
     const { target } = await session("/a");
     await send("Target.activateTarget", { targetId: target.targetId });
@@ -2536,6 +2629,8 @@ const checks = {
       return t && state().active === t.id && state().private === false && t;
     };
 
+    // With Little Ray off (check little-ray covers it): a link from another app is a Today tab.
+    assert((await commandResult("setting littleRayLinks false")) === "ok", "Little Ray off");
     // A link, as another app sends it (a GetURL Apple Event): a new active Today tab in the normal window.
     await command(`appopen link ${origin}/b?other=1`);
     const first = await until("link tab", activeIs("/b?other=1"));
@@ -2599,6 +2694,7 @@ const checks = {
       "the link opened in the private window");
     await command("closewindow private");
     await until("private window closed", async () => (await commandResult("windows")) === "1");
+    await command("setting littleRayLinks default");
     await command("state");
   },
   async "open-from-other-apps-launch"() {
@@ -8537,7 +8633,7 @@ const checks = {
     await command("general accept yes");
     await command("settings open general");
     await seen("general pane", () => win().open && win().pane === "general" && pane());
-    assert(win().rows.general.join() === "general.openAtLogin,warnBeforeQuitting,warnBeforeClosingWindow,onQuit,general.downloads,general.updates,general.import",
+    assert(win().rows.general.join() === "general.openAtLogin,littleRayLinks,warnBeforeQuitting,warnBeforeClosingWindow,onQuit,general.downloads,general.updates,general.import",
       `general rows ${win().rows.general}`);
     assert(state().settings.warnBeforeQuitting === false && state().settings.warnBeforeClosingWindow === true && state().settings.onQuit === "keep",
       `defaults ${JSON.stringify(state().settings)}`);
@@ -8640,7 +8736,7 @@ const checks = {
     await command("settings asapp on");
     await command("settings open general");
     await seen("Ray.app's general", () => win().looksLikeRayApp && win().pane === "general");
-    assert(win().panes.includes("general") && win().rows.general.length === 7, `Ray.app general ${JSON.stringify(win().rows.general)}`);
+    assert(win().panes.includes("general") && win().rows.general.length === 8, `Ray.app general ${JSON.stringify(win().rows.general)}`);
     await command("settings asapp off");
     await command("settings open general");
     await seen("general again", () => !win().looksLikeRayApp && win().pane === "general");
@@ -8745,6 +8841,7 @@ const checks = {
       // First launch: the start page, two links from other apps (Today tabs) and one of them pinned.
       const first = start();
       await reach(first, "first window", (s) => s.sidebar && s.tabs.some((t) => t.url.includes("?start")), 25000);
+      assert((await run(first, "setting littleRayLinks false")) === "ok", "Little Ray off");
       await run(first, `appopen link ${origin}/b?fresh1`);
       await run(first, `appopen link ${origin}/c?fresh2`);
       let s = await reach(first, "links open", (s) => ["fresh1", "fresh2"].every((p) => s.sidebar.today.some((e) => e.url.includes(p) && e.live)));

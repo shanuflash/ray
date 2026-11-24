@@ -20,7 +20,7 @@ final class RaySettings {
 
   /// Ray's own state kept in Settings.json beside the settings: no row, no observers, never reset.
   private static let stateKeys: Set<String> = ["zoomedHosts", "zoomAdopted", "windowFrame", "onboarded", "defaultBrowserAsks",
-                                                "defaultBrowserAskedAt", "defaultBrowserNever", "sidebarWidth"]
+                                                "defaultBrowserAskedAt", "defaultBrowserNever", "sidebarWidth", "littleRaySize"]
 
   /// Each setting's value by id, always valid (see `SettingKey.validate`).
   private var values: [String: Any] = [:]
@@ -43,6 +43,8 @@ final class RaySettings {
   private(set) var defaultBrowserNever: Bool
   /// The sidebar's width, dragged at its edge (`SidebarResize.swift`): one for every window.
   private(set) var sidebarWidth: CGFloat
+  /// Little Ray's size (`LittleRay.swift`), as `NSStringFromSize`: the last one you gave one.
+  private(set) var littleRaySize: String?
   /// Posted when the width is remembered; the object is the window controller that dragged it.
   static let sidebarWidthDidChange = Notification.Name("RaySidebarWidthDidChange")
 
@@ -70,6 +72,7 @@ final class RaySettings {
     defaultBrowserNever = file["defaultBrowserNever"].flatMap { Bool(settingJSON: $0) } ?? false
     // A width that isn't a number is the standard one; one outside the limits is brought to the nearest.
     sidebarWidth = SidebarWidth.saved(file["sidebarWidth"]) ?? SidebarWidth.standard
+    littleRaySize = file["littleRaySize"] as? String
     values = Dictionary(uniqueKeysWithValues: AnySettingKey.all.map { ($0.id, $0.load(file[$0.id])) })
     let known = Set(AnySettingKey.all.map(\.id)).union(Self.stateKeys)
     unknown = file.filter { !known.contains($0.key) }
@@ -234,6 +237,14 @@ final class RaySettings {
     NotificationCenter.default.post(name: Self.sidebarWidthDidChange, object: sender)
   }
 
+  /// Little Ray's size, remembered when one is resized.
+  func rememberLittleRaySize(_ size: NSSize) {
+    let text = NSStringFromSize(size)
+    guard littleRaySize != text else { return }
+    littleRaySize = text
+    save()
+  }
+
   // MARK: Saving
 
   /// The Settings window's frame, remembered without telling anyone.
@@ -267,6 +278,7 @@ final class RaySettings {
     file["defaultBrowserNever"] = defaultBrowserNever
     file["windowFrame"] = windowFrame
     file["sidebarWidth"] = sidebarWidth == SidebarWidth.standard ? nil : Double(sidebarWidth)
+    file["littleRaySize"] = littleRaySize
     guard JSONSerialization.isValidJSONObject(file),
           let data = try? JSONSerialization.data(withJSONObject: file, options: [.sortedKeys]) else { return }
     try? data.write(to: url, options: .atomic)
@@ -285,6 +297,7 @@ final class RaySettings {
     out["defaultBrowserAskedAt"] = defaultBrowserAskedAt ?? NSNull()
     out["defaultBrowserNever"] = defaultBrowserNever
     out["sidebarWidth"] = Double(sidebarWidth)
+    out["littleRaySize"] = littleRaySize ?? NSNull()
     return out
   }
 }
