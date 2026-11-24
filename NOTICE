@@ -14,6 +14,8 @@ It includes and builds against third-party work:
 - Host/ArcIconNames.swift: Open Arc's app/Sources/OpenArcImport/ArcIconNames.swift
   (https://github.com/St0neWan9/open-arc-browser), Copyright 2026 The Open Arc Authors, BSD 3-Clause License (the
   licence text is in the file's header).
+- Host/TabSwitcher.swift: ⌃W in the switcher adapted from Circa's BrowserTabSwitcher.swift
+  (https://github.com/okafrancois/circa), Copyright (c) 2026 Okatech, MIT License.
 - At build time, the engine built from engine/ (Chromium Framework.framework): Chromium (BSD-3-Clause and others),
   Helium (GPL-3.0, The Helium Authors), ungoogled-chromium (BSD-3-Clause) and the engine layer above. Its
   corresponding source is engine/ plus the Chromium and Helium versions it names.

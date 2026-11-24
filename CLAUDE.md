@@ -441,7 +441,10 @@ publicly or create accounts.
   shows after 0.15 s, centred on the whole window, below `floating`, with no animation (Arc has none). Tab / ⇧Tab and
   ← → move and wrap; the pointer picks a card (once it has moved since the panel showed); releasing Control (the
   `flagsChanged` monitor's `endTabCycle`), Return or a click switch through `select`; Escape, a click outside, any
-  other key, another switch or the window resigning cancel. The page never changes during the walk, and a quick tap
+  other key, another switch or the window resigning cancel. ⌃W (Arc's, after Circa's) closes the chosen card's tab
+  through `closeByUser` (Recently Closed, ⇧⌘T); its card leaves and the walk goes on from the next one, ending with no
+  card left, or at once if Control is no longer down (`TabSwitcher.controlIsHeld`, read from the keyboard; test
+  builds' synthetic keys hold it until `key ctrlup`). A tab closed otherwise leaves its card (`removed`). The page never changes during the walk, and a quick tap
   switches with no panel. One press can arrive by the switcher's key monitor, the menu's ⌃Tab and Chrome's redispatch
   of an unused key: `tabPressed` moves once per event timestamp. Off, ⌃Tab walks the sidebar at once (`cycleTab`).
   `TabPictures`: the tab left is pictured in `select` and the current one when a walk starts (engine
@@ -451,7 +454,8 @@ publicly or create accounts.
   utility queue), in the page's own colour space (converting every pixel to sRGB was two thirds of 10 ms): the
   full-size picture on the main thread was half of a tab switch's CPU. State log `tabSwitcher.pictureCopies`. A picture lives only while its tab is open (`drop` in `didRemove`; a copy that comes back
   after the tab closed is refused; state log `tabPictures`, check `tab-pictures-dropped`). Test commands `key ctrltap`, `key left|right|return`, `tabswitcher hover|click <n>`; state log
-  `tabSwitcher` (`open`, `shown`, `items`, `titles`, `pictures`, `index`, `style`, `last` with `how`/`chosen`);
+  `tabSwitcher` (`open`, `shown`, `items`, `titles`, `pictures`, `index`, `style`, `closed`, `last` with
+  `how`/`chosen`/`closed`); test command `key w ctrl keywin` for ⌃W;
   checks `tab-switcher` (photos with `SNAP_DIR`), `settings-recent-tab-cycling`.
 - `Notes` (`Host/Notes.swift`): short messages on the page at one of six `NoteSpot`s (corners, top and bottom
   centre), one note per spot, never stacked; notes in different spots show together. Any feature:

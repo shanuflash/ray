@@ -5262,6 +5262,23 @@ const checks = {
     await closed("closed by Return");
     assert(sw().last.how === "return" && state().activeEntry === sw().last.chosen, `return: ${JSON.stringify(sw().last)}`);
     await command("key ctrlup");
+    // ⌃W (Arc's) closes the chosen card's tab: the card leaves, the walk stays open on the card after it, the page
+    // stays, and ⇧⌘T brings the tab back.
+    await open();
+    const walk = sw().items, at = sw().index, gone = walk[at];
+    const goneURL = state().sidebar.today.find((e) => e.id === gone).url;
+    const activeBefore = state().activeEntry;
+    await command("key w ctrl keywin");
+    await until("card closed", async () => { await command("state"); return !sw().items.includes(gone) && !state().sidebar.today.some((e) => e.id === gone); }, 4000);
+    const expected = walk[at + 1] ?? walk[walk.length - 2];
+    assert(sw().open && sw().shown && sw().items.length === walk.length - 1 && sw().items[sw().index] === expected, `after ⌃W: ${JSON.stringify(sw())}`);
+    assert(sw().closed.join() === gone && state().activeEntry === activeBefore, `⌃W closed ${sw().closed}, active ${state().activeEntry}`);
+    await command("key ctrlup");
+    await closed("closed on release after ⌃W");
+    assert(sw().last.how === "release" && sw().last.chosen === expected && sw().last.closed.join() === gone, `release after ⌃W: ${JSON.stringify(sw().last)}`);
+    await until("⌃W's next card active", () => state().activeEntry === expected);
+    await command("key t cmd shift keywin");
+    await until("⌃W's tab reopened", async () => { await command("state"); return state().sidebar.today.some((e) => e.url === goneURL && e.live); }, 5000);
     // Solid follows Panels and notes.
     await setSetting("surfaceStyle", "solid");
     await open();

@@ -1,6 +1,9 @@
 import AppKit
 import QuartzCore
 
+// ⌃W closing the chosen card's tab and Control's state read at delivery follow Circa's BrowserTabSwitcher
+// (github.com/okafrancois/circa, MIT License, Copyright (c) 2026 Okatech).
+//
 // Arc's ⌃Tab switcher (its ModalItemSwitcher; sizes measured on Arc 1.170 by Cra, docs/arc-reverse-engineering.md,
 // and in the owner's recording): the most recently used tabs as cards with a picture of the page, as ⌘Tab shows
 // apps. ⌃Tab starts on the next card and the panel shows after a short hold, so a quick tap just switches; Tab / ⇧Tab
@@ -103,12 +106,21 @@ final class TabSwitcher {
   var onHide: (() -> Void)?
   var onChange: (() -> Void)?
   var onCommit: ((SidebarEntry) -> Void)?
+  /// ⌃W on a card: close that card's tab (the controller's user close, so ⇧⌘T brings it back).
+  var onClose: ((SidebarEntry) -> Void)?
   var describe: ((SidebarEntry) -> TabSwitcherView.Card)?
 
   private var showWork: DispatchWorkItem?
   private var monitor: Any?
   private var pointerAtShow: NSPoint?
   private var movedByTab: TimeInterval?
+  /// Tabs ⌃W closed during this walk, for the state log.
+  private var closedInWalk: [String] = []
+
+  /// Whether Control is down now, read from the keyboard rather than from a queued key: a ⌃W handled after Control
+  /// was let go must end the walk, or nothing else would (Circa's check). Test builds' synthetic keys press nothing,
+  /// so they swap it for the state their own keys left.
+  static var controlIsHeld: () -> Bool = { NSEvent.modifierFlags.contains(.control) }
 
   init() {
     view.onHover = { [weak self] index in self?.hover(index) }
@@ -123,6 +135,7 @@ final class TabSwitcher {
     guard list.count > 1 else { return }
     items = list
     index = step > 0 ? 1 : list.count - 1
+    closedInWalk = []
     movedByTab = NSApp.currentEvent?.timestamp
     guard held else { return finish("menu", choose: true) }
     monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
@@ -149,6 +162,30 @@ final class TabSwitcher {
       movedByTab = event.timestamp
     }
     move(step)
+  }
+
+  /// ⌃W (Arc's): the chosen card's tab closes, its card leaves and the walk goes on from the card after it (the one
+  /// before when it was the last); with no card left the walk ends.
+  func closeChosen() {
+    guard isOpen, items.indices.contains(index) else { return }
+    let entry = items.remove(at: index)
+    closedInWalk.append(entry.id.uuidString)
+    if !items.isEmpty { index = min(index, items.count - 1) }
+    onClose?(entry)
+    guard !items.isEmpty else { return finish("closed all", choose: false) }
+    guard Self.controlIsHeld() else { return commit("release") }
+    if shown { reloadCards() }
+    onChange?()
+  }
+
+  /// A tab closed some other way while the walk is open: its card leaves.
+  func removed(_ entry: SidebarEntry) {
+    guard isOpen, let at = items.firstIndex(where: { $0 === entry }) else { return }
+    items.remove(at: at)
+    if at < index || index >= items.count { index = max(0, index - 1) }
+    guard !items.isEmpty else { return finish("closed all", choose: false) }
+    if shown { reloadCards() }
+    onChange?()
   }
 
   /// Control was let go: switch to the chosen card.
@@ -200,7 +237,7 @@ final class TabSwitcher {
     let chosen = choose && items.indices.contains(index) ? items[index] : nil
     lastResult = [
       "how": how, "shown": shown, "index": index, "chosen": chosen?.id.uuidString ?? NSNull(),
-      "items": items.map(\.id.uuidString),
+      "items": items.map(\.id.uuidString), "closed": closedInWalk,
     ]
     showWork?.cancel()
     showWork = nil
@@ -229,6 +266,8 @@ final class TabSwitcher {
     case 123: move(-1)  // ←
     case 53: cancel("escape")
     case 36, 76: commit("return")  // Return, Enter
+    case 13 where event.modifierFlags.intersection([.control, .command, .option, .shift]) == .control:
+      closeChosen()  // ⌃W
     default:
       cancel("other key")
       return event
@@ -240,7 +279,7 @@ final class TabSwitcher {
     [
       "open": isOpen, "shown": shown, "index": index, "items": items.map(\.id.uuidString),
       "titles": view.titles, "pictures": view.pictured, "frame": shown ? NSStringFromRect(view.frame) : NSNull(),
-      "style": view.backdropStyle, "last": lastResult ?? NSNull(),
+      "style": view.backdropStyle, "last": lastResult ?? NSNull(), "closed": closedInWalk,
     ]
   }
 }

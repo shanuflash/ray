@@ -2077,6 +2077,13 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       self.select(entry)
       self.switcherChoosing = false
     }
+    switcher.onClose = { [weak self] entry in
+      guard let self else { return }
+      // Closing the active tab shows the one used before it; that switch is the walk's own, not another.
+      self.switcherChoosing = true
+      self.closeByUser(entry)
+      self.switcherChoosing = false
+    }
     tabPictures.onChange = { [weak switcher] id in switcher?.pictureChanged(id) }
     return switcher
   }
@@ -3574,6 +3581,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     entry.remember()
     entry.tab = nil
     tabPictures.drop(entry.id)
+    tabSwitcher.removed(entry)
     zoomHosts[tab.tabId] = nil
     if let closing = userClosing.removeValue(forKey: entry.id) {
       rememberClosed(entry, key: closing.key, favicon: closing.favicon, batch: closing.batch)

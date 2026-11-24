@@ -5,6 +5,7 @@ enum TestCommands {
 
   static func start() {
     guard TestEnvironment["RAY_TEST_COMMANDS"] == "1" else { return }
+    TabSwitcher.controlIsHeld = { syntheticControl || NSEvent.modifierFlags.contains(.control) }
     FileHandle.standardInput.readabilityHandler = { handle in
       guard let text = String(data: handle.availableData, encoding: .utf8), !text.isEmpty else {
         handle.readabilityHandler = nil
@@ -31,6 +32,8 @@ enum TestCommands {
     if parts.contains("shift") { flags.insert(.shift) }
     if parts.contains("opt") { flags.insert(.option) }
     if parts.contains("ctrl") { flags.insert(.control) }
+    // The switcher reads Control from the keyboard; a synthetic press holds it until `key ctrlup`.
+    if flags.contains(.control) { syntheticControl = true }
     // `keywin`: make the window key first (without ordering it front), so the press takes AppKit's real key path.
     if parts.contains("keywin") { window.makeKey() }
     // A real keyboard reports the shifted character (⇧⌘C arrives as "C"), even ignoring modifiers.
@@ -150,7 +153,10 @@ enum TestCommands {
   }
 
   /// `key ctrlup`: Control let go, as a real keyboard reports it (through the event queue, where local monitors see it).
+  private static var syntheticControl = false
+
   private static func releaseControl(in window: NSWindow?) -> String {
+    syntheticControl = false
     guard let window, let event = NSEvent.keyEvent(
       with: .flagsChanged, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
       windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "",
