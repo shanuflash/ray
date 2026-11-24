@@ -44,6 +44,9 @@ window. Every decision serves three things:
    likely questions.
 7. **After launch:** quick issue triage, and periodic performance comparisons against Zen, Crest and Chrome.
 
+**Next up (owner, 2026-11-24), in order:** Spaces (in progress), Profiles (on top of Spaces), alternate app icons,
+Split View, Air Traffic Control, Peek, then Boosts (soon, not now). Not wanted for now: an Archive view.
+
 Claude never posts anything publicly or creates accounts; the owner does.
 
 `docs/MISSING.md` lists what Ray still lacks against Arc and Chrome, and what's been done; the owner picks the order.
