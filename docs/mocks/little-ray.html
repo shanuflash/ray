@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Little Ray</title>
+<style>
+:root {
+  --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --hair: rgba(0,0,0,.08);
+  --wall1: #C9CFE0; --wall2: #E4D9E8;
+  --side: #E8E5EF; --sideInk: #3A3A3F; --page: #FFFFFF; --line: #EDEDF0; --chip: #FFFFFF;
+  --field: rgba(0,0,0,.055); --fieldHot: rgba(0,0,0,.09); --btn: rgba(0,0,0,.06); --btnHot: rgba(0,0,0,.1);
+  --slack: #4A154B; --slackPane: #FFFFFF; --card: #FFFFFF; --sel: #DCD6EA;
+  --accent: #8257E5; --onAccent: #fff; --link: #1264A3;
+}
+:root[data-theme="dark"] {
+  --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09);
+  --wall1: #1B1F2C; --wall2: #2A2230;
+  --side: #1D1B22; --sideInk: #D8D6DE; --page: #242428; --line: #2F2F34; --chip: #28282D;
+  --field: rgba(255,255,255,.07); --fieldHot: rgba(255,255,255,.11); --btn: rgba(255,255,255,.08); --btnHot: rgba(255,255,255,.13);
+  --slack: #2B0D2C; --slackPane: #1A1D21; --card: #2A292F; --sel: #3A3446;
+  --accent: #A486F0; --onAccent: #000; --link: #4FA3E3;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --hair: rgba(255,255,255,.09);
+    --wall1: #1B1F2C; --wall2: #2A2230;
+    --side: #1D1B22; --sideInk: #D8D6DE; --page: #242428; --line: #2F2F34; --chip: #28282D;
+    --field: rgba(255,255,255,.07); --fieldHot: rgba(255,255,255,.11); --btn: rgba(255,255,255,.08); --btnHot: rgba(255,255,255,.13);
+    --slack: #2B0D2C; --slackPane: #1A1D21; --card: #2A292F; --sel: #3A3446;
+    --accent: #A486F0; --onAccent: #000; --link: #4FA3E3;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1060px; margin: 0 auto; padding: 0 16px 64px; }
+h1 { font-size: 22px; font-weight: 600; margin: 22px 0 4px; letter-spacing: -.01em; }
+h2 { font-size: 16px; font-weight: 600; margin: 34px 0 6px; }
+h3 { font-size: 13px; font-weight: 600; margin: 16px 0 2px; }
+.sub, .note { color: var(--ink2); margin: 0 0 10px; max-width: 800px; }
+code { font-size: 12px; }
+.bar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--desk) 86%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 8px 0; border-bottom: 1px solid var(--hair); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 3px 0; }
+.lab { color: var(--ink2); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; min-width: 92px; }
+button.t { font: inherit; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--chip); border: 1px solid var(--hair); border-radius: 7px; padding: 3px 9px; cursor: pointer; }
+button.t[aria-pressed="true"] { background: var(--accent); color: var(--onAccent); border-color: transparent; }
+button.play { font: inherit; font-size: 12px; font-weight: 600; color: var(--onAccent); background: var(--accent); border: 0; border-radius: 7px; padding: 4px 11px; cursor: pointer; }
+.rec { display: inline-block; font-size: 10px; font-weight: 700; color: var(--onAccent); background: var(--accent); border-radius: 4px; padding: 1px 5px; margin-left: 4px; vertical-align: 1px; }
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.opt { background: var(--chip); border: 1px solid var(--hair); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+.opt[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }
+.opt h3 { margin: 0 0 3px; }
+.opt p { margin: 0; color: var(--ink2); font-size: 12px; }
+ol.q { padding-left: 20px; max-width: 820px; } ol.q li { margin-bottom: 7px; }
+
+/* The screen */
+.screen { position: relative; height: 640px; margin-top: 12px; border-radius: 12px; overflow: hidden;
+  background: linear-gradient(135deg, var(--wall1), var(--wall2)); box-shadow: 0 0 0 .5px rgba(0,0,0,.2); }
+.menubar { position: absolute; inset: 0 0 auto 0; height: 24px; background: color-mix(in srgb, var(--chip) 55%, transparent);
+  backdrop-filter: blur(20px); display: flex; align-items: center; gap: 18px; padding: 0 14px; font-size: 12.5px; z-index: 30; }
+.menubar b { font-weight: 700; }
+.lights { display: flex; gap: 8px; flex: none; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; } .lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+.inactive .lights i { background: color-mix(in srgb, var(--ink) 22%, transparent); }
+.appwin { position: absolute; border-radius: 11px; overflow: hidden; box-shadow: 0 0 0 .5px rgba(0,0,0,.22), 0 18px 44px -14px rgba(0,0,0,.35); }
+
+/* Slack, where the link is */
+.slack { left: 26px; top: 46px; width: 520px; height: 400px; display: flex; background: var(--slackPane); }
+.slack .rail { width: 150px; background: var(--slack); color: #E8D8E8; padding: 10px; font-size: 12px; }
+.slack .rail .lights { margin-bottom: 14px; }
+.slack .rail div.ch { padding: 3px 6px; border-radius: 5px; opacity: .8; } .slack .rail div.ch.on { background: #1164A3; opacity: 1; color: #fff; }
+.slack .msgs { flex: 1; padding: 14px 16px; font-size: 12.5px; }
+.msg { display: flex; gap: 9px; margin-bottom: 14px; } .msg .av { width: 28px; height: 28px; border-radius: 6px; flex: none; }
+.msg b { display: block; font-size: 12.5px; } .msg a { color: var(--link); text-decoration: none; } .msg a.hot { text-decoration: underline; }
+.pointer { position: absolute; width: 14px; height: 20px; z-index: 40; pointer-events: none; transition: left .5s, top .5s; }
+
+/* Ray's window behind */
+.ray { left: 300px; top: 120px; width: 640px; height: 460px; display: flex; background: var(--side); }
+.ray .sb { width: 190px; padding: 11px 9px; color: var(--sideInk); flex: none; }
+.ray .sb .lights { margin: 2px 0 14px 4px; }
+.ray .sb .addr0 { height: 30px; border-radius: 8px; background: var(--field); margin-bottom: 12px; display: flex; align-items: center; padding: 0 9px; font-size: 12px; color: var(--ink2); }
+.ray .sb .sec { font-size: 11px; color: var(--ink2); margin: 10px 4px 4px; }
+.tab { height: 30px; border-radius: 8px; margin-bottom: 2px; display: flex; align-items: center; gap: 8px; padding: 0 8px; font-size: 12.5px; white-space: nowrap; overflow: hidden; }
+.tab.on { background: var(--page); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.tab b { width: 16px; height: 16px; border-radius: 4px; background: var(--c); flex: none; }
+.tab.arrive { animation: arrive .5s ease-out; }
+@keyframes arrive { from { opacity: 0; transform: translateY(-12px); max-height: 0; } to { opacity: 1; transform: none; max-height: 30px; } }
+.ray .pg { flex: 1; margin: 8px 8px 8px 0; border-radius: 10px; background: var(--page); box-shadow: 0 0 0 .5px rgba(0,0,0,.08); padding: 30px 34px; overflow: hidden; }
+.ray.front { z-index: 25; }
+
+/* Little Ray */
+.little { z-index: 20; background: var(--side); display: flex; flex-direction: column; transform-origin: var(--ox, 50%) var(--oy, 50%);
+  transition: left .12s ease-out, top .12s ease-out, width .12s ease-out, height .12s ease-out, opacity .12s; }
+.little.flying { transition: transform .38s cubic-bezier(.3,.7,.2,1), opacity .38s; }
+.little .top { display: flex; align-items: center; gap: 6px; flex: none; position: relative; }
+.little .cardpg { flex: 1; margin: 0 6px 6px; border-radius: 9px; background: var(--page); box-shadow: 0 0 0 .5px rgba(0,0,0,.08); overflow: hidden; position: relative; }
+.little.chromeB .cardpg { margin: 0 5px 5px; }
+.article { padding: 26px 30px; }
+.article .crumb { font-size: 11px; color: var(--ink2); margin-bottom: 8px; }
+.article h4 { font-size: 20px; margin: 0 0 10px; letter-spacing: -.01em; }
+.article .l { height: 9px; border-radius: 4px; background: var(--line); margin-bottom: 8px; }
+.article .code { height: 70px; border-radius: 8px; background: var(--line); margin: 14px 0; }
+
+.iconbtn { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--ink2); flex: none; position: relative; }
+.iconbtn:hover { background: var(--btnHot); color: var(--ink); }
+.iconbtn.dim { opacity: .4; }
+.iconbtn svg { width: 15px; height: 15px; }
+.lock { width: 11px; height: 11px; flex: none; color: var(--ink2); }
+.addr { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; font-size: 12.5px; }
+.addr .host { font-weight: 500; color: var(--ink); } .addr .path { color: var(--ink2); overflow: hidden; text-overflow: ellipsis; }
+.tip { position: absolute; top: 32px; right: 0; white-space: nowrap; background: var(--chip); color: var(--ink); font-size: 11.5px; padding: 3px 8px; border-radius: 6px;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.2), 0 6px 16px -6px rgba(0,0,0,.3); opacity: 0; pointer-events: none; transition: opacity .15s .4s; z-index: 5; }
+.iconbtn:hover .tip, .openbtn:hover .tip { opacity: 1; }
+kbd { font: 500 10.5px -apple-system, system-ui; color: var(--ink2); background: var(--btn); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+
+/* Chrome A: Ray's row (pop-up B plus back, forward, copy, open) */
+.chromeA .top { height: 38px; padding: 0 8px 0 13px; }
+.chromeA .navs { display: flex; gap: 2px; margin-left: 6px; }
+.chromeA .mid { flex: 1; display: flex; justify-content: center; min-width: 0; padding: 0 8px; }
+.chromeA .mid .addr { height: 26px; padding: 0 10px; border-radius: 7px; cursor: text; } .chromeA .mid .addr:hover { background: var(--field); }
+/* Chrome B: Arc's strip, a full-width field and a labelled button */
+.chromeB .top { height: 46px; padding: 0 7px 0 13px; gap: 10px; }
+.chromeB .pill { flex: 1; height: 30px; border-radius: 8px; background: var(--field); display: flex; align-items: center; padding: 0 3px 0 10px; gap: 6px; min-width: 0; margin-left: 10px; }
+.chromeB .pill:hover { background: var(--fieldHot); }
+.chromeB .pill .addr { flex: 1; justify-content: center; }
+.chromeB .pill .iconbtn { width: 24px; height: 24px; }
+/* Chrome C: quiet: lights and the address; the buttons come in under the pointer */
+.chromeC .top { height: 38px; padding: 0 8px 0 13px; }
+.chromeC .mid { position: absolute; left: 90px; right: 90px; display: flex; justify-content: center; }
+.chromeC .tools { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.chromeC .top:hover .tools, .chromeC.showtools .tools { opacity: 1; }
+
+/* Open in Ray, three looks */
+.openbtn { position: relative; flex: none; display: flex; align-items: center; height: 28px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: var(--ink); cursor: default; }
+.openbtn.o2 { padding: 0 6px 0 10px; background: var(--btn); } .openbtn.o2:hover { background: var(--btnHot); }
+.chromeB .openbtn { height: 30px; }
+.openbtn.o3 { background: var(--btn); }
+.openbtn.o3 .main { padding: 0 9px 0 10px; height: 100%; display: flex; align-items: center; border-radius: 7px 0 0 7px; }
+.openbtn.o3 .chev { width: 24px; height: 100%; display: grid; place-items: center; border-left: 1px solid var(--hair); border-radius: 0 7px 7px 0; color: var(--ink2); }
+.openbtn.o3 .main:hover, .openbtn.o3 .chev:hover { background: var(--btnHot); }
+.menu { position: absolute; top: 34px; right: 0; width: 210px; background: var(--chip); border-radius: 10px; padding: 5px; z-index: 6;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.2), 0 14px 32px -8px rgba(0,0,0,.35); display: none; font-size: 12.5px; font-weight: 400; }
+.menu.show { display: block; }
+.menu div { padding: 5px 9px; border-radius: 6px; display: flex; align-items: center; gap: 8px; } .menu div:hover { background: var(--sel); }
+.menu .sep { height: 1px; padding: 0; margin: 4px 6px; background: var(--hair); }
+.menu .k { margin-left: auto; color: var(--ink2); font-size: 11.5px; }
+
+/* Empty ⌥⌘N states */
+.empty { position: absolute; inset: 0; background: var(--page); }
+.e1 .bar1 { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); width: min(440px, 86%); }
+.cbar { background: var(--card); border-radius: 13px; box-shadow: 0 0 0 .5px rgba(0,0,0,.2), 0 22px 50px -12px rgba(0,0,0,.4); overflow: hidden; }
+.cbar .f { height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 14px; font-size: 15px; color: var(--ink2); }
+.cbar .f .caret { width: 1.5px; height: 18px; background: var(--accent); margin-left: -6px; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.cbar .r { height: 34px; display: flex; align-items: center; gap: 9px; padding: 0 14px; font-size: 12.5px; border-top: 1px solid var(--hair); }
+.cbar .r.on { background: var(--sel); }
+.cbar .r b { width: 16px; height: 16px; border-radius: 4px; background: var(--c); flex: none; }
+.cbar .r .k { margin-left: auto; color: var(--ink2); font-size: 11.5px; }
+.e2drop { position: absolute; z-index: 4; left: 50%; transform: translateX(-50%); top: 36px; width: min(460px, 80%); }
+.fieldEdit { height: 28px; border-radius: 7px; background: var(--page); box-shadow: 0 0 0 2px var(--accent); display: flex; align-items: center; padding: 0 10px; color: var(--ink2); font-size: 12.5px; gap: 6px; width: min(420px, 100%); }
+.spot { position: absolute; z-index: 22; left: 50%; top: 150px; transform: translateX(-50%); width: 560px; transition: opacity .15s; }
+.hint { position: absolute; z-index: 35; left: 50%; bottom: 12px; transform: translateX(-50%); background: color-mix(in srgb, var(--chip) 90%, transparent); color: var(--ink);
+  font-size: 12px; padding: 5px 11px; border-radius: 8px; box-shadow: 0 0 0 .5px rgba(0,0,0,.15); white-space: nowrap; }
+.note2 { position: absolute; z-index: 36; right: 16px; top: 36px; background: var(--chip); border-radius: 10px; padding: 7px 12px; font-size: 12.5px; font-weight: 500;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.2), 0 10px 26px -8px rgba(0,0,0,.35); opacity: 0; transition: opacity .16s; }
+.note2.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="bar"><div class="wrap">
+  <div class="row"><span class="lab">Window chrome</span>
+    <button class="t" data-set="chrome:A">A · Ray's row</button><button class="t" data-set="chrome:B">B · Arc's strip</button><button class="t" data-set="chrome:C">C · Quiet</button></div>
+  <div class="row"><span class="lab">Size, place</span>
+    <button class="t" data-set="place:1">1 · Centred</button><button class="t" data-set="place:2">2 · Grows from the link</button><button class="t" data-set="place:3">3 · Small, by the link</button></div>
+  <div class="row"><span class="lab">Open in Ray</span>
+    <button class="t" data-set="open:1">1 · Icon</button><button class="t" data-set="open:2">2 · Labelled</button><button class="t" data-set="open:3">3 · Labelled + where</button></div>
+  <div class="row"><span class="lab">Empty ⌥⌘N</span>
+    <button class="t" data-set="empty:1">E1 · Bar in the window</button><button class="t" data-set="empty:2">E2 · Field in the row</button><button class="t" data-set="empty:3">E3 · Bar alone first</button></div>
+  <div class="row"><span class="lab">Try it</span>
+    <button class="play" id="playLink">Click a link in Slack</button><button class="play" id="playNew">⌥⌘N</button><button class="play" id="playOpen">Open in Ray</button><button class="play" id="playClose">⌘W</button>
+    <span style="flex:1"></span><span class="lab" style="min-width:0">Theme</span>
+    <button class="t" data-theme-set="light">Light</button><button class="t" data-theme-set="dark">Dark</button></div>
+</div></div>
+
+<div class="wrap">
+  <h1>Little Ray</h1>
+  <p class="sub">Ray's Little Arc: a small window of its own for a link from another app (with the setting on) or for ⌥⌘N.
+    One page, no sidebar, always a normal (not private) tab. Open in Ray moves the live page, history and all, into
+    the top of Today in Ray's window; closing it throws the page away (its visits stay in History). Several can be
+    open at once. Pick one option per row; the scene combines them. Windows are drawn at about two-thirds size, the
+    bars at full size.</p>
+
+  <div class="screen" id="screen">
+    <div class="menubar"><b></b><b id="appname">Slack</b><span>File</span><span>Edit</span><span>View</span><span>Window</span></div>
+    <div class="appwin ray inactive" id="ray">
+      <div class="sb"><div class="lights"><i></i><i></i><i></i></div><div class="addr0">linear.app</div>
+        <div class="sec">Today</div><div id="today"></div></div>
+      <div class="pg"><div class="article"><div class="l" style="width:40%;height:16px"></div><div class="l" style="width:85%"></div><div class="l" style="width:70%"></div><div class="l" style="width:78%"></div></div></div>
+    </div>
+    <div class="appwin slack" id="slack">
+      <div class="rail"><div class="lights"><i></i><i></i><i></i></div><div class="ch"># general</div><div class="ch on"># browser</div><div class="ch"># design</div><div class="ch"># random</div></div>
+      <div class="msgs">
+        <div class="msg"><div class="av" style="background:#E8912D"></div><div><b>Maya</b>Is the new window API in? Docs are here:
+          <a id="thelink" href="#">developer.apple.com/documentation/appkit/nswindow</a></div></div>
+        <div class="msg"><div class="av" style="background:#2EB67D"></div><div><b>Theo</b>Looks like it. Checking the sample now.</div></div>
+      </div>
+    </div>
+    <div id="littles"></div>
+    <div class="spot" id="spot" style="display:none"></div>
+    <div class="note2" id="note">Copied Current URL</div>
+    <svg class="pointer" id="pointer" viewBox="0 0 14 20"><path d="M1 1v15l4-4 3 7 2.5-1-3-7h5.5z" fill="#000" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>
+    <div class="hint" id="hint">Press a button under "Try it"</div>
+  </div>
+
+  <h2>Window chrome</h2>
+  <div class="opts">
+    <div class="opt" data-set="chrome:A"><h3>A · Ray's row <span class="rec">Ray / Ardia</span></h3>
+      <p>The pop-up window you picked (B) with what a page needs: one 38 pt row in Ray's sidebar colour, the traffic
+        lights, back and forward, the address centred (click it for the command bar, ⌘L), Copy Link, site controls
+        (extensions, permissions) and Open in Ray. The page is a card 6 pt in. Ardia's Little Ardia has the same
+        pieces.</p></div>
+    <div class="opt" data-set="chrome:B"><h3>B · Arc's strip <span class="rec">Arc</span></h3>
+      <p>Arc's measured layout (Cra's notes): a 46 pt strip, one field across it with the address centred and Copy
+        Link and site controls inside its right end, then Open in Ray. No back or forward buttons (swipe, ⌘[ ⌘]).
+        Taller; the most Arc.</p></div>
+    <div class="opt" data-set="chrome:C"><h3>C · Quiet</h3>
+      <p>The 38 pt row with only the lights and the address. Copy Link, site controls and Open in Ray fade in while
+        the pointer is over the row (the keys always work). The least chrome; the button you need is hidden until you
+        reach for it.</p></div>
+  </div>
+
+  <h2>Size and placement</h2>
+  <div class="opts">
+    <div class="opt" data-set="place:1"><h3>1 · Centred <span class="rec">Ardia</span></h3>
+      <p>900×640 the first time, then the last size you gave one; never past 80 % of the screen. Centred on the screen
+        the pointer is on; a second one opens 24 pt down and right of the first. Opens with macOS's own window
+        animation.</p></div>
+    <div class="opt" data-set="place:2"><h3>2 · Grows from the link <span class="rec">Arc</span></h3>
+      <p>Same size rule and spot as 1, but the window grows out of a small box under the pointer to its frame in
+        0.12 s (Arc's, measured by Cra), so you see where it came from. ⌥⌘N grows from the screen's centre.</p></div>
+    <div class="opt" data-set="place:3"><h3>3 · Small, by the link</h3>
+      <p>A narrower 560×700 window whose top left sits at the pointer, kept on screen: a quick look beside what you
+        were doing rather than over it. Remembers its size too.</p></div>
+  </div>
+
+  <h2>Open in Ray</h2>
+  <div class="opts">
+    <div class="opt" data-set="open:1"><h3>1 · Icon <span class="rec">Ardia</span></h3>
+      <p>A 28 pt icon button (two arrows out), its tooltip "Open in Ray ⌘O". Smallest; you learn it once.</p></div>
+    <div class="opt" data-set="open:2"><h3>2 · Labelled <span class="rec">Arc</span></h3>
+      <p>"Open in Ray" with its key, ⌘O, as Arc's "Open in &lt;Space&gt; ⌘O". Always clear what it does. When
+        Spaces land it becomes "Open in &lt;Space&gt;".</p></div>
+    <div class="opt" data-set="open:3"><h3>3 · Labelled, with where</h3>
+      <p>2 plus Arc's chevron: a menu of where it goes: Today (⌘O), Pinned, Favorites, then each folder. Later the
+        Spaces, as Arc's chevron lists them.</p></div>
+  </div>
+  <p class="note">Whichever: the page moves live (no reload, history kept) to the top of Today, becomes the active
+    tab, Ray's window comes forward and the little window goes. Copy Link copies and shows "Copied Current URL", as
+    ⇧⌘C does in Ray's window.</p>
+
+  <h2>Empty Little Ray (⌥⌘N)</h2>
+  <div class="opts">
+    <div class="opt" data-set="empty:1"><h3>E1 · Bar in the window <span class="rec">Arc</span></h3>
+      <p>The window opens on a blank page with Ray's command bar inside it, a third of the way down (Arc's). Type,
+        Return loads it there. Escape closes the bar and, with nothing loaded, the window.</p></div>
+    <div class="opt" data-set="empty:2"><h3>E2 · Field in the row</h3>
+      <p>The window opens with its own address field editable in the row, suggestions hanging under it, like
+        Chrome's address bar. Nothing floats over the page.</p></div>
+    <div class="opt" data-set="empty:3"><h3>E3 · Bar alone first</h3>
+      <p>⌥⌘N shows only the command bar, centred on the screen like Spotlight, with no window; Return grows a Little
+        Ray out of it with the page. Escape leaves nothing behind.</p></div>
+  </div>
+
+  <h2>Questions for you</h2>
+  <ol class="q">
+    <li><b>Default for "Open links from other apps in Little Ray":</b> on (Arc's and Ardia's default) or off (today's
+      behaviour: a Today tab)? And Settings › General (next to the default browser row) or › Tabs?</li>
+    <li><b>⌥⌘N:</b> Ray gives it to New Folder today. Arc gives it to Little Arc and New Folder has no key. Move it
+      to Little Ray and leave New Folder without one?</li>
+    <li><b>Open in Ray's key:</b> ⌘O (Arc's and Ardia's; free in Ray) or ⌥⌘O?</li>
+    <li><b>Closing:</b> throw the page away (only History keeps it), or also put it in Recently Closed so ⇧⌘T brings it
+      back as a Today tab (Arc keeps closed Little Arcs in its archive)?</li>
+  </ol>
+</div>
+
+<script>
+const S = { chrome: "A", place: "2", open: "2", empty: "1" };
+const LOCK = '<svg class="lock" viewBox="0 0 12 12" fill="currentColor"><path d="M3.5 5V3.8a2.5 2.5 0 0 1 5 0V5h.5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h.5Zm1 0h3V3.8a1.5 1.5 0 0 0-3 0V5Z"/></svg>';
+const svg = (d, w = 1.5) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I = {
+  back: svg('<path d="M13 8H3M7 4 3 8l4 4"/>'), fwd: svg('<path d="M3 8h10M9 4l4 4-4 4"/>'),
+  link: svg('<path d="M6.5 9.5a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-.8.8M9.5 6.5a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l.8-.8"/>'),
+  sliders: svg('<path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6"/><circle cx="10" cy="4.5" r="1.5"/><circle cx="6" cy="11.5" r="1.5"/>'),
+  expand: svg('<path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/>'),
+  chev: svg('<path d="m4.5 6.5 3.5 3.5 3.5-3.5"/>', 1.7), search: svg('<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/>'),
+};
+const PAGE = { host: "developer.apple.com", path: "/documentation/appkit/nswindow", title: "NSWindow", c: "#1D1D1F" };
+const addr = (p) => `${LOCK}<span class="host">${p.host}</span><span class="path">${p.path}</span>`;
+const btn = (icon, tip, cls = "") => `<div class="iconbtn ${cls}">${icon}<span class="tip">${tip}</span></div>`;
+function openControl() {
+  if (S.open === "1") return btn(I.expand, "Open in Ray <kbd>⌘O</kbd>", "openicon");
+  if (S.open === "2") return `<div class="openbtn o2">Open in Ray<kbd>⌘O</kbd></div>`;
+  return `<div class="openbtn o3"><div class="main">Open in Ray<kbd>⌘O</kbd></div><div class="chev" data-chev>${I.chev}</div>
+    <div class="menu"><div>Today<span class="k">⌘O</span></div><div>Pinned</div><div>Add to Favorites</div><div class="sep"></div>
+    <div>📁 Work</div><div>📁 Reading</div></div></div>`;
+}
+function topRow(p, editing) {
+  const tools = btn(I.link, "Copy Link <kbd>⇧⌘C</kbd>", "copy") + btn(I.sliders, "Site Controls");
+  const field = editing ? `<div class="fieldEdit">${I.search.replace("<svg", '<svg style="width:13px;height:13px"')}<span>Search or Enter URL…</span></div>`
+    : p ? `<div class="addr">${addr(p)}</div>` : `<div class="addr"><span class="path">Search or Enter URL…</span></div>`;
+  if (S.chrome === "A") return `<div class="lights"><i></i><i></i><i></i></div>
+    <div class="navs">${btn(I.back, "Back", p ? "" : "dim")}${btn(I.fwd, "Forward", "dim")}</div>
+    <div class="mid">${field}</div>${tools}${openControl()}`;
+  if (S.chrome === "B") return `<div class="lights"><i></i><i></i><i></i></div>
+    <div class="pill">${editing ? field.replace('class="fieldEdit"', 'class="fieldEdit" style="width:100%;margin-left:-7px"') : field}${editing ? "" : tools}</div>${openControl()}`;
+  return `<div class="lights"><i></i><i></i><i></i></div><div class="mid">${field}</div><div class="tools">${tools}${openControl()}</div>`;
+}
+const article = () => `<div class="article"><div class="crumb">AppKit › Windows, panels and screens</div><h4>NSWindow</h4>
+  <div class="l" style="width:92%"></div><div class="l" style="width:84%"></div><div class="l" style="width:66%"></div>
+  <div class="code"></div><div class="l" style="width:88%"></div><div class="l" style="width:72%"></div></div>`;
+const cbarRows = (typed) => `<div class="cbar"><div class="f">${I.search.replace("<svg", '<svg style="width:17px;height:17px;flex:none"')}<span style="color:var(--ink)">${typed}</span><span class="caret"></span>${typed ? "" : "<span>Search or Enter URL…</span>"}</div>
+  ${[["#1D1D1F", "NSWindow | Apple Developer", "developer.apple.com", 1], ["#5E6AD2", "Issues · Linear", "Switch to Tab"], ["#24292F", "Pull requests · GitHub", "Switch to Tab"]]
+    .map(([c, t, k, on]) => `<div class="r${on ? " on" : ""}" style="--c:${c}"><b></b>${t}<span class="k">${k}</span></div>`).join("")}</div>`;
+
+// Screen geometry: the screen is 1036×640 here for a 1512×945 one (×0.685); bars stay full size.
+const SCALE = 0.685;
+const scr = () => document.getElementById("screen").getBoundingClientRect();
+const linkPoint = () => { const a = document.getElementById("thelink").getBoundingClientRect(), s = scr(); return { x: a.left - s.left + 60, y: a.top - s.top + 8 }; };
+function frameFor(n, from) {
+  const W = scr().width, H = scr().height, top = 24;
+  if (S.place === "3") {
+    const w = Math.round(560 * SCALE), h = Math.round(700 * SCALE);
+    const x = Math.min(Math.max(8, from.x - 10), W - w - 8), y = Math.min(Math.max(top + 6, from.y + 6), H - h - 8);
+    return { x: x + n * 18, y: y + n * 18, w, h };
+  }
+  const w = Math.round(900 * SCALE), h = Math.round(640 * SCALE);
+  return { x: Math.round((W - w) / 2) + n * 18, y: Math.round(top + (H - top - h) / 2) + n * 18, w, h };
+}
+let littles = [];
+function setFrame(el, f) { Object.assign(el.style, { left: f.x + "px", top: f.y + "px", width: f.w + "px", height: f.h + "px" }); }
+function makeLittle(page, from, empty) {
+  const el = document.createElement("div");
+  el.className = `appwin little chrome${S.chrome}`;
+  const n = littles.length;
+  const f = frameFor(n, from);
+  el.innerHTML = `<div class="top">${topRow(page, empty && S.empty === "2")}</div><div class="cardpg">${page ? article() : '<div class="empty"></div>'}</div>`;
+  if (empty && S.empty === "1") el.querySelector(".cardpg").insertAdjacentHTML("beforeend", `<div class="e1"><div class="bar1">${cbarRows("")}</div></div>`);
+  if (empty && S.empty === "2") el.querySelector(".top").insertAdjacentHTML("beforeend", `<div class="e2drop">${cbarRows("").replace('<div class="f">', '<div class="f" style="display:none">')}</div>`);
+  document.getElementById("littles").appendChild(el);
+  wire(el);
+  const grow = S.place === "2";
+  if (grow) {
+    el.style.transition = "none";
+    setFrame(el, { x: from.x - 24, y: from.y - 15, w: 48, h: 30 });
+    el.offsetWidth; el.style.transition = "";
+  } else { el.style.opacity = 0; setFrame(el, f); el.offsetWidth; }
+  requestAnimationFrame(() => { setFrame(el, f); el.style.opacity = 1; });
+  littles.forEach((l) => l.el.classList.add("inactive"));
+  littles.push({ el, page });
+  focusApp("Ray");
+  return el;
+}
+function wire(el) {
+  el.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", () => toast("Copied Current URL")));
+  el.querySelectorAll(".openbtn.o2, .openbtn.o3 .main, .openicon").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); openInRay(el); }));
+  el.querySelectorAll("[data-chev]").forEach((c) => c.addEventListener("click", (e) => { e.stopPropagation(); c.parentElement.querySelector(".menu").classList.toggle("show"); }));
+  el.querySelectorAll(".menu div:not(.sep)").forEach((m) => m.addEventListener("click", (e) => { e.stopPropagation(); openInRay(el); }));
+  el.querySelectorAll(".e1 .r, .e2drop .r").forEach((r) => r.addEventListener("click", () => loadInto(el)));
+  if (S.chrome === "C") el.classList.add("showtools"), setTimeout(() => el.classList.remove("showtools"), 1400);
+}
+function loadInto(el) {
+  const i = littles.findIndex((l) => l.el === el); if (i < 0) return;
+  littles[i].page = PAGE;
+  el.querySelector(".top").innerHTML = topRow(PAGE);
+  el.querySelector(".cardpg").innerHTML = article();
+  wire(el); hint("Loaded in the little window");
+}
+function toast(t) { const n = document.getElementById("note"); n.textContent = t; n.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => n.classList.remove("show"), 1600); }
+function hint(t) { document.getElementById("hint").textContent = t; }
+function focusApp(name) {
+  document.getElementById("appname").textContent = name;
+  document.getElementById("slack").classList.toggle("inactive", name !== "Slack");
+}
+const TODAY = [["#5E6AD2", "Issues · Linear"], ["#E01E5A", "Slack | browser"], ["#24292F", "Pull requests"]];
+function drawToday(fresh) {
+  document.getElementById("today").innerHTML = (fresh ? [[PAGE.c, PAGE.title, 1, 1]] : []).concat(TODAY.map(([c, t], i) => [c, t, !fresh && i === 0]))
+    .map(([c, t, on, arr]) => `<div class="tab${on ? " on" : ""}${arr ? " arrive" : ""}" style="--c:${c}"><b></b>${t}</div>`).join("");
+}
+function openInRay(el) {
+  const l = littles.find((x) => x.el === el);
+  if (!l || !l.page) return hint("Nothing loaded: Open in Ray needs a page");
+  const ray = document.getElementById("ray"), r = ray.getBoundingClientRect(), e = el.getBoundingClientRect();
+  ray.classList.add("front"); ray.classList.remove("inactive");
+  el.classList.add("flying");
+  const dx = (r.left + 100) - (e.left + e.width / 2), dy = (r.top + 112) - (e.top + e.height / 2);
+  el.style.transform = `translate(${dx}px, ${dy}px) scale(.12)`; el.style.opacity = 0;
+  setTimeout(() => { drawToday(true); el.remove(); littles = littles.filter((x) => x !== l); }, 330);
+  hint("The page moved, live, to the top of Today; Ray's window came forward");
+}
+function reset() {
+  document.getElementById("littles").innerHTML = ""; littles = [];
+  const ray = document.getElementById("ray"); ray.classList.remove("front"); ray.classList.add("inactive");
+  document.getElementById("spot").style.display = "none";
+  drawToday(false); focusApp("Slack");
+}
+function movePointer(p) { const el = document.getElementById("pointer"); el.style.left = p.x + "px"; el.style.top = p.y + "px"; }
+document.getElementById("playLink").addEventListener("click", () => {
+  if (littles.length > 1 || document.getElementById("ray").classList.contains("front")) reset();
+  const a = document.getElementById("thelink"), p = linkPoint();
+  movePointer(p); a.classList.add("hot");
+  setTimeout(() => { a.classList.remove("hot"); makeLittle(PAGE, p, false); hint(littles.length > 1 ? "A second one opens beside the first" : "A link from Slack opens in Little Ray"); }, 520);
+});
+document.getElementById("playNew").addEventListener("click", () => {
+  const W = scr().width, H = scr().height, c = { x: W / 2, y: H / 2 };
+  if (S.empty === "3") {
+    const spot = document.getElementById("spot");
+    spot.innerHTML = cbarRows(""); spot.style.display = "block"; focusApp("Ray");
+    spot.querySelectorAll(".r").forEach((r) => r.addEventListener("click", () => { spot.style.display = "none"; makeLittle(PAGE, c, false); hint("Return grew a Little Ray out of the bar"); }));
+    return hint("⌥⌘N: the bar alone. Click a row to open it");
+  }
+  makeLittle(null, c, true); hint("⌥⌘N: an empty Little Ray. Click a row to load it");
+});
+document.getElementById("playOpen").addEventListener("click", () => {
+  const l = [...littles].reverse().find((x) => x.page);
+  if (!l) return hint("Open a link first");
+  openInRay(l.el);
+});
+document.getElementById("playClose").addEventListener("click", () => {
+  const l = littles[littles.length - 1]; if (!l) return hint("Nothing open");
+  l.el.style.opacity = 0; setTimeout(() => l.el.remove(), 150); littles.pop();
+  if (littles.length) littles[littles.length - 1].el.classList.remove("inactive"); else focusApp("Slack");
+  hint("Closed: the page is gone, its visit stays in History");
+});
+document.addEventListener("click", (e) => { if (!e.target.closest(".openbtn")) document.querySelectorAll(".menu.show").forEach((m) => m.classList.remove("show")); });
+
+function setOpt(key, val) {
+  S[key] = val;
+  document.querySelectorAll("[data-set]").forEach((b) => { const [k, v] = b.dataset.set.split(":"); b.setAttribute("aria-pressed", String(S[k] === v)); });
+  // Redraw what's open with the new choice.
+  const had = littles.map((l) => l.page);
+  const hadSpot = document.getElementById("spot").style.display === "block";
+  reset(); movePointer(linkPoint());
+  if (key === "empty") return document.getElementById("playNew").click();
+  had.forEach((p) => p ? makeLittle(p, linkPoint(), false) : makeLittle(null, { x: scr().width / 2, y: scr().height / 2 }, true));
+  if (!had.length && !hadSpot) makeLittle(PAGE, linkPoint(), false);
+}
+document.querySelectorAll("[data-set]").forEach((b) => b.addEventListener("click", () => { const [k, v] = b.dataset.set.split(":"); setOpt(k, v); }));
+const setTheme = (theme) => {
+  document.documentElement.dataset.theme = theme;
+  document.querySelectorAll("[data-theme-set]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeSet === theme)));
+};
+document.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => setTheme(b.dataset.themeSet)));
+setTheme(matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+drawToday(false);
+// Wait for a laid-out screen (a hidden pane reports width 0), and redraw when the page is resized.
+const start = () => scr().width > 300 ? setOpt("chrome", S.chrome) : setTimeout(start, 100);
+start();
+let resizeTimer;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => setOpt("chrome", S.chrome), 150); });
+</script>
+</body>
+</html>
