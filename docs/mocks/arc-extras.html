@@ -12,7 +12,7 @@
     --surface: rgba(246,246,248,.92); --surface-edge: rgba(0,0,0,.12); --menu: rgba(236,236,238,.94);
     --menubar: rgba(240,240,242,.9); --hl: #9F8CF2; --wash: rgba(159,140,242,.18); --skeleton: rgba(0,0,0,.06);
     --dash: rgba(0,0,0,.16); --unread-fill: rgba(0,0,0,.11); --unread-ink: rgba(0,0,0,.8); --unread-tile: #D4D4D8;
-    --red: #ff3b30; --dim: rgba(0,0,0,.38); --solid-sel: #f7f7f8;
+    --red: #ff3b30; --dim: rgba(0,0,0,.38); --solid-sel: #f7f7f8; --tray: #d6d6d9;
   }
   :root[data-theme="dark"] {
     --page: #161618; --ink: #f5f5f7; --muted: #98989d; --card: #1f1f22; --accent: #A99AF4; --accent-ink: #111;
@@ -21,7 +21,7 @@
     --surface: rgba(44,44,49,.92); --surface-edge: rgba(255,255,255,.12); --menu: rgba(40,40,44,.94);
     --menubar: rgba(30,30,32,.9); --hl: #7E6BE0; --wash: rgba(169,154,244,.2); --skeleton: rgba(255,255,255,.06);
     --dash: rgba(255,255,255,.18); --unread-fill: rgba(255,255,255,.16); --unread-ink: rgba(255,255,255,.9); --unread-tile: #55555A;
-    --red: #ff453a; --dim: rgba(0,0,0,.55); --solid-sel: #26262a;
+    --red: #ff453a; --dim: rgba(0,0,0,.55); --solid-sel: #26262a; --tray: #09090a;
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 28px 16px 80px; background: var(--page); color: var(--ink);
@@ -284,57 +284,29 @@
   .vwin { width: 600px; height: 540px; }
   .vwin .sb { overflow: hidden; user-select: none; -webkit-user-select: none; }
   .stag > * { opacity: 0; transform: translateY(12px); transition: opacity .2s, transform .34s cubic-bezier(.22,1,.36,1); }
-  .open .stag > *, .vpage.cur .stag > * { opacity: 1; transform: none; }
+  .open .stag > * { opacity: 1; transform: none; }
   .btn.lib .chev, .btn.lib .xx { position: absolute; opacity: 0; transition: opacity .2s, transform .3s; }
   .btn.lib .tray { transition: opacity .2s, transform .3s; }
   .open .btn.lib .tray { opacity: 0; transform: translateY(5px); }
-  #v1.open .btn.lib .chev { opacity: 1; }
-  #v1.open .btn.lib .ring, #v2.open .btn.lib .ring, #v3.open .btn.lib .ring { opacity: 0; }
-  #v2.open .btn.lib .xx, #v3.open .btn.lib .xx, #v4.open .btn.lib .xx { opacity: 1; transform: rotate(90deg); }
+  #v2.open .btn.lib .ring, #v6.open .btn.lib .ring { opacity: 0; }
+  #v2.open .btn.lib .xx, #v6.open .btn.lib .xx { opacity: 1; transform: rotate(90deg); }
   .open .btn.lib { background: var(--fill); color: var(--label); }
-  /* A */
-  .shelf { flex: none; height: 0; overflow: hidden; border-top: 0.5px solid transparent; display: flex; flex-direction: column;
-    transition: height .44s cubic-bezier(.22,1,.36,1), border-color .2s; }
-  #v1.open .shelf { height: 58%; border-top-color: var(--hair); }
-  .ttabs { display: flex; gap: 16px; padding: 10px 6px 8px; font-size: 12.5px; font-weight: 600; color: var(--ter); position: relative; flex: none; cursor: pointer; }
-  .ttabs span.on { color: var(--label); }
-  .ttabs .ul { position: absolute; bottom: 4px; height: 2px; border-radius: 1px; background: var(--accent); transition: left .32s cubic-bezier(.22,1,.36,1), width .32s cubic-bezier(.22,1,.36,1); }
   /* B */
   .morph { position: absolute; left: 6px; right: 6px; bottom: 6px; height: 70%; border-radius: 12px; background: var(--solid-sel); z-index: 2;
     box-shadow: 0 0 0 0.5px var(--hair); padding: 10px 8px 44px; display: flex; flex-direction: column;
     clip-path: circle(14px at 21px calc(100% - 20px)); opacity: 0; transition: clip-path .52s cubic-bezier(.22,1,.36,1), opacity .12s; }
   #v2.open .morph { clip-path: circle(150% at 21px calc(100% - 20px)); opacity: 1; }
-  /* C */
-  .veil { position: absolute; inset: 0; background: linear-gradient(to top, var(--side) 45%, color-mix(in srgb, var(--side) 60%, transparent)); opacity: 0; transition: opacity .3s; z-index: 1; pointer-events: none; }
-  #v3.open .veil { opacity: 1; }
-  .fan { position: absolute; left: 10px; bottom: 44px; width: 206px; height: 40px; border-radius: 10px; background: var(--card); z-index: 2;
-    box-shadow: 0 0 0 0.5px var(--hair), 0 4px 12px rgba(0,0,0,.12); display: flex; gap: 9px; align-items: center; padding: 0 10px; color: var(--label);
-    opacity: 0; transform: translateY(0) scale(.5); transform-origin: 12px 100%;
-    transition: transform .5s cubic-bezier(.3,1.35,.5,1), opacity .18s; transition-delay: calc(var(--i) * 40ms); }
-  #v3.open .fan { opacity: 1; transform: translate(calc(var(--i) * 4px), calc(var(--i) * -46px - 8px)) rotate(calc(var(--i) * -1.4deg)); }
-  #v3:not(.open) .fan { transition-delay: calc((5 - var(--i)) * 25ms); }
-  .fan .ft { min-width: 0; display: flex; flex-direction: column; font-size: 11px; color: var(--sec); gap: 2px; flex: 1; }
-  .fan .ft b { font-size: 12px; font-weight: 500; color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fan .ft .bar { height: 3px; border-radius: 2px; background: var(--fill2); position: relative; overflow: hidden; }
-  .fan .ft .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
-  .fan.all { justify-content: center; color: var(--accent); font-size: 12px; font-weight: 600; height: 32px; }
-  /* D */
-  .recede { transition: transform .44s cubic-bezier(.22,1,.36,1), opacity .3s; transform-origin: 50% 0; }
-  #v4.open .recede { transform: scale(.94) translateY(4px); opacity: .5; }
-  .dsheet { position: absolute; left: 0; right: 0; bottom: 0; height: 0; z-index: 3; border-radius: 14px 14px 0 0; background: var(--card);
-    box-shadow: 0 0 0 0.5px var(--hair), 0 -10px 30px rgba(0,0,0,.14); padding: 0 10px; display: flex; flex-direction: column; overflow: hidden;
-    transition: height .44s cubic-bezier(.22,1,.36,1); }
-  .dsheet.drag { transition: none; }
-  #v4:not(.open) .dsheet { box-shadow: none; }
-  .grip { height: 20px; display: grid; place-items: center; cursor: grab; flex: none; touch-action: none; }
-  .grip .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--fill2); }
-  /* E */
-  .vp { flex: 1; min-height: 0; overflow: hidden; position: relative; }
-  .vtrack { height: 100%; transition: transform .5s cubic-bezier(.22,1,.36,1); }
-  .vpage { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
-  .vtabs { position: relative; }
-  .vtabs .btn { z-index: 1; cursor: pointer; }
-  .pillbg { position: absolute; left: 4px; top: 6px; width: 28px; height: 28px; border-radius: 7px; background: var(--fill2); transition: transform .4s cubic-bezier(.22,1,.36,1); }
+  /* B: tray under the sidebar */
+  #v6 { padding: 0; }
+  #v6 .upper { position: absolute; left: 0; right: 0; top: 0; bottom: 40px; z-index: 2; background: var(--side); padding: 8px 8px 0;
+    display: flex; flex-direction: column; overflow: hidden; border-radius: 0 0 0 0;
+    transition: bottom .48s cubic-bezier(.22,1,.36,1), border-radius .3s, box-shadow .3s; }
+  #v6.open .upper { bottom: calc(40px + 56%); border-radius: 0 0 14px 14px;
+    box-shadow: 0 0.5px 0 var(--hair), 0 10px 22px rgba(0,0,0,.22), 0 2px 5px rgba(0,0,0,.12); }
+  #v6 .under { position: absolute; left: 0; right: 0; bottom: 40px; height: 56%; z-index: 1; background: var(--tray);
+    box-shadow: inset 0 8px 14px -8px rgba(0,0,0,.25); padding: 22px 10px 6px; display: flex; flex-direction: column; }
+  #v6 .lowfoot { position: absolute; left: 8px; right: 8px; bottom: 0; z-index: 3; }
+  #v6.open .lowfoot { background: var(--tray); left: 0; right: 0; padding: 0 12px; }
 </style>
 </head>
 <body>
@@ -1080,29 +1052,10 @@
     </div>
   </div>
 
-  <p><b>All five below come up from the bottom of the sidebar, inside it: no floating card, no arrow, nothing over the page.</b> They differ in how they move and what they do to the tabs above. Click the footer button in each to open and close it; Downloads and Bookmarks switch inside. Same spring everywhere (Ray's sidebar spring, 0.26 s, damping 0.86), with rows coming in one after another (30 ms apart).</p>
+  <p><b>Both come up from the bottom of the sidebar: no floating popup, no arrow, nothing over the page.</b> A is the button opening up; B is a tray that slides out from under the sidebar. Click the footer button in each to open and close it; Downloads and Bookmarks switch inside. Same spring everywhere (Ray's sidebar spring, 0.26 s, damping 0.86), with rows coming in one after another (30 ms apart).</p>
 
-  <h3>A. Rising shelf: pushes the tabs up <span class="tag">recommended</span></h3>
-  <p>The footer grows upward into a shelf in the sidebar's own material (no shadow, no edge, just a hairline), and the tab list gets shorter above it, still scrollable, still clickable. Downloads and Bookmarks are two words with a sliding underline. The button's tray turns into a chevron that closes it. Feels like part of the sidebar, because it is.</p>
-  <div class="stage">
-    <div class="win vwin"><div class="sb" id="v1">
-      <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
-      <div class="list" data-fill="tabs"></div>
-      <div class="shelf">
-        <div class="ttabs" data-tabs="v1"><span class="on" data-v="dl">Downloads</span><span data-v="bm">Bookmarks</span><i class="ul"></i></div>
-        <div class="view dl stag" data-fill="dl"></div><div class="view bm stag" data-fill="bm"></div>
-      </div>
-      <div class="foot" data-fill="foot" data-for="v1"></div>
-    </div><div class="pg" data-fill="page"></div></div>
-  </div>
-  <ul class="pc">
-    <li class="plus">Never hides the tabs; reads as the sidebar making room, not something on top of it.</li>
-    <li class="plus">Cheapest: one height on the spring, the list's frame follows (as it does for the media card).</li>
-    <li class="minus">Less dramatic than the others; with many pinned tabs the list above gets short.</li>
-  </ul>
-
-  <h3>B. Grows out of the button</h3>
-  <p>A circle opens from the button and spreads up over the bottom two thirds of the sidebar, as the active-row colour, so the view is "the button, opened". The plus beside it turns into ×. Closing shrinks it back into the button.</p>
+  <h3>A. Grows out of the button</h3>
+  <p>A circle opens from the button and spreads up over the bottom two thirds of the sidebar, as the active-row colour, so the view is "the button, opened". The button turns into ×. Closing shrinks it back into the button.</p>
   <div class="stage">
     <div class="win vwin"><div class="sb" id="v2">
       <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
@@ -1119,66 +1072,25 @@
     <li class="minus">Covers the bottom of the tab list while open.</li>
   </ul>
 
-  <h3>C. Fanned stack, then the shelf</h3>
-  <p>Like a Dock stack, inside the sidebar: the last five downloads fan up out of the button as small cards, each a little further and tilted, springing into place one by one; the tabs fade behind them. Click a card to open the file, drag it out to Finder or a page. "Show All" at the top turns the stack into A's shelf. Bookmarks: the same fan of your most used bookmarks.</p>
+  <h3>B. Slides out from under the sidebar</h3>
+  <p>A separate surface, not part of the sidebar: the tab list lifts up as a card (its bottom corners round, it casts a shadow down), and the Library tray is revealed underneath it, recessed, darker, as if it had been lying under the sidebar all along. The tray's rows come up from below the card's edge. Closing drops the card back over it.</p>
   <div class="stage">
-    <div class="win vwin"><div class="sb" id="v3">
-      <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
-      <div class="list" data-fill="tabs"></div>
-      <div class="veil"></div>
-      <div class="fan" style="--i:0"><span class="fi" style="width:20px;height:24px;line-height:24px">DMG</span><span class="ft"><b>Ray-0.12.0.dmg</b><span class="bar"><i style="right:55%"></i></span></span></div>
-      <div class="fan" style="--i:1"><span class="fi" style="width:20px;height:24px;line-height:24px;background:#e5484d">PDF</span><span class="ft"><b>Q4 roadmap.pdf</b><span>2.1 MB</span></span></div>
-      <div class="fan" style="--i:2"><span class="fi" style="width:20px;height:24px;line-height:24px;background:#30a46c">CSV</span><span class="ft"><b>export-2026-11-24.csv</b><span>48 KB</span></span></div>
-      <div class="fan" style="--i:3"><span class="fi" style="width:20px;height:24px;line-height:24px;background:#0a7cff">PNG</span><span class="ft"><b>Screenshot 2026-11-23.png</b><span>880 KB</span></span></div>
-      <div class="fan" style="--i:4"><span class="fi" style="width:20px;height:24px;line-height:24px;background:#8e8e93">ZIP</span><span class="ft"><b>fixtures.zip</b><span>12 MB</span></span></div>
-      <div class="fan all" style="--i:5">Show All Downloads ↑</div>
-      <div class="foot" style="position:relative;z-index:3" data-fill="foot" data-for="v3"></div>
-    </div><div class="pg" data-fill="page"></div></div>
-  </div>
-  <ul class="pc">
-    <li class="plus">The most playful; the newest file is one click from the button.</li>
-    <li class="minus">Two steps to the full list; a fan suits files better than a bookmark tree.</li>
-  </ul>
-
-  <h3>D. A sheet you can drag</h3>
-  <p>A flush sheet, edge to edge of the sidebar, rises over the footer; the tabs behind sink back slightly and dim, like iOS. Drag its top: it stops at a third, two thirds or nearly full height; drag it down to close. <b>Try dragging the grabber.</b></p>
-  <div class="stage">
-    <div class="win vwin"><div class="sb" id="v4">
-      <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
-      <div class="recede list" data-fill="tabs"></div>
-      <div class="foot" data-fill="foot" data-for="v4"></div>
-      <div class="dsheet">
-        <div class="grip"><div class="grab"></div></div>
-        <div class="seg2" data-seg="v4"><span class="on" data-v="dl">Downloads</span><span data-v="bm">Bookmarks</span></div>
+    <div class="win vwin"><div class="sb" id="v6">
+      <div class="under">
+        <div class="seg2" data-seg="v6"><span class="on" data-v="dl">Downloads</span><span data-v="bm">Bookmarks</span></div>
         <div class="view dl stag" data-fill="dl"></div><div class="view bm stag" data-fill="bm"></div>
       </div>
+      <div class="upper">
+        <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
+        <div class="list" data-fill="tabs"></div>
+      </div>
+      <div class="foot lowfoot" data-fill="foot" data-for="v6"></div>
     </div><div class="pg" data-fill="page"></div></div>
   </div>
   <ul class="pc">
-    <li class="plus">You choose how much room it takes; a quick flick closes it.</li>
-    <li class="minus">Most to build (drag, detents, flick speed); a grabber is an iPhone idea on a Mac.</li>
-  </ul>
-
-  <h3>E. The sidebar pages up</h3>
-  <p>The footer becomes three tabs: Tabs, Downloads, Bookmarks, with a pill sliding between them. Choosing one scrolls the whole sidebar below the address field up to that page, as if the sidebar were a tall column: your tabs go up and out, downloads rise in from the bottom. Arc's Library, but vertical, so it always comes from the bottom.</p>
-  <div class="stage">
-    <div class="win vwin"><div class="sb" id="v5">
-      <div class="lights"><i></i><i></i><i></i></div><div class="addr">github.com</div>
-      <div class="vp"><div class="vtrack">
-        <div class="vpage" data-fill="tabs"></div>
-        <div class="vpage"><div class="lhd">Downloads</div><div class="view dl stag" style="display:flex" data-fill="dl"></div></div>
-        <div class="vpage"><div class="lhd">Bookmarks</div><div class="view bm stag" style="display:flex" data-fill="bm"></div></div>
-      </div></div>
-      <div class="foot vtabs"><i class="pillbg"></i>
-        <span class="btn" data-page="0"><svg class="sym" viewBox="0 0 14 14"><rect x="2" y="2.5" width="10" height="3" rx="1"/><rect x="2" y="8.5" width="10" height="3" rx="1"/></svg></span>
-        <span class="btn lib" data-page="1"><svg class="ring" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11.5" class="trk"/><circle cx="14" cy="14" r="11.5" class="val" style="stroke-dashoffset:40"/></svg><svg class="sym tray" viewBox="0 0 14 14"><path d="M2 8.5v2.5a1 1 0 001 1h8a1 1 0 001-1V8.5"/><path d="M2 8.5h2.8l.8 1.4h2.8l.8-1.4H12"/></svg></span>
-        <span class="btn" data-page="2"><svg class="sym" viewBox="0 0 14 14"><path d="M3.5 1.5h7v11L7 10l-3.5 2.5z"/></svg></span>
-        <span class="sp"></span><span class="btn"><svg class="sym" viewBox="0 0 14 14"><path d="M7 2.5v9M2.5 7h9"/></svg></span></div>
-    </div><div class="pg" data-fill="page"></div></div>
-  </div>
-  <ul class="pc">
-    <li class="plus">Full height for long lists; the footer always says where you are.</li>
-    <li class="minus">Tabs leave the screen (one click back); three footer buttons where Arc has one.</li>
+    <li class="plus">Reads as its own thing (a tray under the sidebar) while never leaving the sidebar or covering the page.</li>
+    <li class="plus">Two layers on one spring: the card's bottom edge and the tray's rows.</li>
+    <li class="minus">Like A, the bottom of the tab list is out of sight while it's open (the card is shorter, still scrolls).</li>
   </ul>
 
   <h3>In every option <span class="tag">shared</span></h3>
@@ -1236,11 +1148,8 @@
   document.querySelectorAll("[data-fill]").forEach(el => { const t = T[el.dataset.fill]; el.innerHTML = typeof t === "function" ? t(el.dataset.for) : t; });
   const stagger = root => root.querySelectorAll(".stag").forEach(v => [...v.children].forEach((c, i) => c.style.transitionDelay = (120 + i * 30) + "ms"));
   const unstagger = root => root.querySelectorAll(".stag > *").forEach(c => c.style.transitionDelay = "0ms");
-  const detents = [.36, .66, .9];
-  const sheet = document.querySelector("#v4 .dsheet");
   const setOpen = (sb, on) => {
     on ? stagger(sb) : unstagger(sb); sb.classList.toggle("open", on);
-    if (sb.id === "v4") sheet.style.height = on ? (detents[1] * sb.clientHeight) + "px" : "0px";
   };
   document.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => { const sb = document.getElementById(b.dataset.open); setOpen(sb, !sb.classList.contains("open")); }));
   document.querySelectorAll("[data-tabs]").forEach(tb => {
@@ -1251,22 +1160,6 @@
       tb.querySelectorAll("span").forEach(x => x.classList.toggle("on", x === b)); place(b);
       const sb = document.getElementById(tb.dataset.tabs); sb.classList.toggle("bm", b.dataset.v === "bm"); stagger(sb); });
   });
-  { // D: drag the sheet
-    const sb = document.getElementById("v4"), grip = sheet.querySelector(".grip"); let y0, h0;
-    grip.addEventListener("pointerdown", e => { y0 = e.clientY; h0 = sheet.offsetHeight; sheet.classList.add("drag"); grip.setPointerCapture(e.pointerId); });
-    grip.addEventListener("pointermove", e => { if (y0 == null) return; sheet.style.height = Math.max(0, Math.min(sb.clientHeight * .95, h0 + y0 - e.clientY)) + "px"; });
-    grip.addEventListener("pointerup", () => { y0 = null; sheet.classList.remove("drag");
-      const f = sheet.offsetHeight / sb.clientHeight;
-      if (f < .22) return setOpen(sb, false);
-      const d = detents.reduce((a, b) => Math.abs(b - f) < Math.abs(a - f) ? b : a);
-      sheet.style.height = d * sb.clientHeight + "px"; });
-  }
-  { // E: pages
-    const sb = document.getElementById("v5"), track = sb.querySelector(".vtrack"), pill = sb.querySelector(".pillbg"), pages = sb.querySelectorAll(".vpage");
-    const go = n => { track.style.transform = `translateY(${-100 * n}%)`; const b = sb.querySelector(`[data-page="${n}"]`); pill.style.transform = `translateX(${b.offsetLeft - 4}px)`;
-      pages.forEach((p, i) => { p.classList.toggle("cur", i === n); i === n ? stagger(p) : unstagger(p); }); };
-    sb.querySelectorAll("[data-page]").forEach(b => b.addEventListener("click", () => go(+b.dataset.page))); go(0);
-  }
   const fly = document.getElementById("flyDemo");
   const replay = () => { fly.classList.remove("go"); void fly.offsetWidth; fly.classList.add("go"); };
   document.getElementById("flyPlay").addEventListener("click", replay);
