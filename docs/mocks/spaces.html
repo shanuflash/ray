@@ -124,7 +124,7 @@ ol.q { padding-left: 20px; max-width: 840px; } ol.q li { margin-bottom: 7px; }
 .cmd .r .k { margin-left: auto; color: var(--ink2); font-size: 11px; display: flex; gap: 5px; align-items: center; }
 .cmd .tag { font-size: 10.5px; padding: 1px 6px; border-radius: 9px; background: rgba(127,127,127,.14); color: var(--ink2); }
 /* create & edit */
-.form { position: absolute; inset: 88px 0 0 0; padding: 4px 10px 10px; background: inherit; z-index: 15; display: none; flex-direction: column; gap: 8px; color: var(--sideInk); }
+.form { position: absolute; inset: 40px 0 0 0; overflow: auto; padding: 4px 10px 10px; background: inherit; z-index: 15; display: none; flex-direction: column; gap: 8px; color: var(--sideInk); }
 .win .form { background: color-mix(in srgb, rgb(var(--sc)) var(--mixSide), var(--side)); }
 .form.show { display: flex; }
 .form h4 { margin: 2px 0 0; font-size: 13px; }
@@ -182,6 +182,7 @@ ol.q { padding-left: 20px; max-width: 840px; } ol.q li { margin-bottom: 7px; }
 <h1>Spaces</h1>
 <p class="sub">Arc's model stays exactly: each Space has its own name, icon, colour, pinned tabs, folders and Today; favorites are shared; two-finger swipe across the sidebar, <kbd>⌃1</kbd>–<kbd>⌃9</kbd>, icons in the footer, Move to ▸ a Space, and the command bar finds tabs in every Space. Each row below changes one thing only, with the other rows held at Arc's (A). Pick one per row; picks can combine (1B's card on 1C's pill, for example).</p>
 
+<p class="sub"><b>Owner's picks (2026-11-24):</b> 1A, 2C, 3: full themes (a Window colour for the browser and an Accent), 4A with a Profile per Space (Default, shared or new, as Arc), 5A.</p>
 <h2>1. The switcher in the footer</h2>
 <p class="sub">Hover the footer icons. Arc shows the icons, the current one bright.</p>
 <div class="opts" id="row1"></div>
@@ -455,7 +456,7 @@ function mock(el, cfg) {
   function fields(s) {
     return `<input class="inp" value="${s.name}" placeholder="Space name">
       <div class="lbl">Icon</div><div class="emo">${EMO.map(e => `<span class="${e === s.icon ? 'on' : ''}">${e}</span>`).join('')}</div>
-      <div class="lbl">Colour</div><div class="sw">${COLS.map(c => `<span data-c="${c}" style="background:rgb(${c})" class="${String(c) === String(s.c) ? 'on' : ''}"></span>`).join('')}${cfg.e === 'A' ? '<span class="wheel" title="Any colour"></span>' : ''}</div>`;
+      <div class="lbl">${cfg.e === 'A' ? 'Window' : 'Colour'}</div><div class="sw">${COLS.map(c => `<span data-c="${c}" style="background:rgb(${c})" class="${String(c) === String(s.c) ? 'on' : ''}"></span>`).join('')}${cfg.e === 'A' ? '<span class="wheel" title="Any colour"></span>' : ''}</div>`;
   }
   function bindFields(box, s, i) {
     const inp = box.querySelector('.inp');
@@ -477,7 +478,8 @@ function mock(el, cfg) {
     if (cfg.e === 'A') {
       const f = q('.form');
       f.innerHTML = `<h4>${isNew ? 'New Space' : 'Edit Space'}</h4>${fields(s)}
-        <div class="lbl">Theme</div><div class="seg"><span>Light</span><span class="on">Auto</span><span>Dark</span></div>
+        <div class="lbl">Accent</div><div class="sw">${COLS.map(c => `<span style="background:rgb(${c})"></span>`).join('')}</div>
+        <div class="lbl">Profile</div><select class="inp" style="height:26px"><option>Default</option><option>Work (shared with 💼 Work)</option><option>New Profile…</option></select>
         <div class="btns"><button class="pb" data-a="x">Cancel</button><button class="pb pri" data-a="ok">${isNew ? 'Create Space' : 'Done'}</button></div>`;
       f.classList.add('show'); bindFields(f, s, i);
       f.querySelectorAll('.pb').forEach(bn => bn.addEventListener('click', () => {
@@ -534,7 +536,7 @@ const ROWS = {
     { id: '3C', title: 'Accent only', desc: "Ray's own sidebar colour stays. The Space's colour replaces the profile colour as the accent: active tab, selection, loading, the footer.", cfg: { s: 'A', m: 'A', c: 'C' } },
   ],
   row4: [
-    { id: '4A', title: 'In the sidebar', arc: true, desc: "Arc's: the new Space opens and its sidebar becomes the form: name, icon, colour (with any colour) and theme, then Create Space.", cfg: { s: 'A', m: 'A', c: 'A', e: 'A' } },
+    { id: '4A', title: 'In the sidebar', arc: true, desc: "Arc's: the new Space opens and its sidebar becomes the form: name, icon, a full theme (Window colour for the browser, Accent for selection, loading and the footer) and its Profile: Default, another Space's, or New Profile…, then Create Space.", cfg: { s: 'A', m: 'A', c: 'A', e: 'A' } },
     { id: '4B', title: 'Panel', desc: "A panel grows out of the + (Ray's panels): name, icon, colour. Hovering a colour previews it on the window behind.", cfg: { s: 'A', m: 'A', c: 'A', e: 'B' } },
     { id: '4C', title: 'Inline', desc: "+ makes an Untitled Space at once and slides to it; its name is a field at the top of the list, with icons and colours right under it, as a new folder is named.", cfg: { s: 'A', m: 'A', c: 'A', e: 'C' } },
   ],
