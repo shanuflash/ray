@@ -5,11 +5,6 @@
 /third_party/crest/
 /.claude/worktrees/
 .metadata_never_index
-/third_party/cra/
 /third_party/phi/
-/third_party/compass/
-/third_party/nera/
 /third_party/circa/
-/third_party/ilo/
-/third_party/rearc/
 /third_party/open-arc/

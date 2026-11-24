@@ -43,7 +43,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 10. Arc's row-menu items that wait on other features: Add Split View (tabs) and Turn "<folder>" into Space (folders)
     once Split View and Spaces exist; Share Folder… as Arc's shared-folder link (Ray shares the folder's links).
 11. Boosts: per-site CSS/JS, zapping elements.
-12. Air Traffic Control: rules for which Space a link opens in (Cra's `LinkRouting`). Ardia 0.2.47-nightly.2 ships
+12. Air Traffic Control: rules for which Space a link opens in (Circa's `BrowserLinkRoutingEditor`, Open Arc's). Ardia 0.2.47-nightly.2 ships
     it per profile (rules by app and by site or pattern, first match wins, Everything Else, a Try a Link tester).
 13. Capture (Arc's screenshot tool).
 14. Easels, Notes, Library.

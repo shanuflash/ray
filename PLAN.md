@@ -32,7 +32,7 @@ window. Every decision serves three things:
    import core) and the first-run onboarding bring pinned tabs and folders, favorites, open tabs, history,
    bookmarks, passwords, cookies and autofill from Arc and eight other browsers. Left: Arc's Spaces as Spaces (they
    land as pinned folders until Spaces exist), installing imported extensions (the engine installs only from a
-   file), Arc's archive and link routes (Cra's importer reads both).
+   file), Arc's archive and link routes (Circa's importer reads both).
 4. **Distribution:** Sparkle + GitHub Releases, self-signed (Apple Development, free Personal Team), no
    notarization: a DMG with first-open instructions and the owner's own Homebrew tap, shanuflash/homebrew-tap (owner,
    2026-11-03: no paid Apple Developer Program). **Done 2026-11-03:** `scripts/release.sh` makes the zip, appcast

@@ -838,24 +838,15 @@ publicly or create accounts.
   should" list) and `docs/CHROMIUM-WATCH.md` (Chrome stable and Helium releases vs `engine.lock`'s Chromium, security
   fixes first). Two daily scheduled tasks in the owner's Claude app (`ardia-watch-daily` 10:00,
   `chromium-watch-daily` 10:15) append to them and commit only that file; they never touch engine files or builds.
-- `third_party/cra/`: read-only reference clone of Cra (gitignored; github.com/VictorKildahl/cra, MIT), an Arc
-  replacement on CEF with SwiftUI UI. Its importers (`Sources/Cra/Services/Import`) and models are plain Swift and
-  may be copied: keep its copyright line in the file header and in `NOTICE`. Its SwiftUI views are references only
-  for Ray's hot paths (sidebar, tab rows, window chrome stay AppKit + Core Animation); skip its content blocker.
-- More read-only reference clones (gitignored, shallow; `git -C third_party/<dir> pull` to refresh), other Arc
-  replacements on Chromium, added 2026-11-24. Code under a GPL-compatible licence may be copied with its copyright
-  line in the file header and `NOTICE` (Nera's MPL-2.0 files stay MPL-2.0, file by file); UI stays AppKit + Core
-  Animation whatever theirs is.
-  - `third_party/circa/` (github.com/okafrancois/circa, MIT): Swift + AppKit on Chromium, closest to Ray's stack;
-    Spaces, Peek, Little Circa, Boosts, a built-in blocker.
-  - `third_party/phi/` (github.com/phibrowser/phibrowser-mac, Apache-2.0): AppKit + SwiftUI on Chromium.
-  - `third_party/rearc/` (github.com/judioo/rearc, Apache-2.0): SwiftUI shell over a lightly patched Chromium.
-  - `third_party/open-arc/` (github.com/St0neWan9/open-arc-browser, BSD-3): Swift app, its own Chromium patches.
-  - `third_party/ilo/` (github.com/MartinPTielemans/ilo, GPL-3.0): Rust GPUI on ungoogled Chromium; Peek, Boosts,
-    built-in uBlock Origin, Arc import.
-  - `third_party/nera/` (github.com/tariq235/nera, MPL-2.0): SwiftUI on CEF, WebKit as a second engine.
-  - `third_party/compass/` (github.com/Compass-Browser/Compass, BSD-3): a Chromium fork (`chromium_src` + patches),
-    cross-platform; sync without an account.
+- `third_party/circa/`, `third_party/open-arc/`, `third_party/phi/`: read-only reference clones (gitignored, shallow;
+  `git -C third_party/<dir> pull` to refresh), other Arc replacements on Chromium. Their code may be copied with its
+  copyright line in the file header and `NOTICE`; UI stays AppKit + Core Animation whatever theirs is.
+  - Circa (github.com/okafrancois/circa, MIT): AppKit on CEF, the closest UI stack; Spaces, Peek, Little Circa,
+    Boosts, a blocker, Air Traffic Control, Arc import with the archive.
+  - Open Arc (github.com/St0neWan9/open-arc-browser, BSD-3): Swift with its own Chromium patches; the most of Arc's
+    features (Archive, Split View of 2–4, Air Traffic Control, Easel, Library, Profiles).
+  - Phi (github.com/phibrowser/phibrowser-mac, Apache-2.0): AppKit on a real Chromium framework; polish, Profiles,
+    URL rules.
 
 ## Build and run
 - `scripts/build-app.sh` → `build/Ray.app` (the user's app) and `build/RayTests.app` (same code compiled with
@@ -1087,10 +1078,9 @@ Web pages are hostile; Chromium sandboxes them, but Ray's chrome must not hand t
   (same design lineage) instead of measuring pixels.
 - Commit messages: caveman style, one short line like `feat: arc like sidebar` or `fix: sidebar opening too quickly`
   (conventional prefix, lowercase, no body unless the why is non-obvious). No Co-Authored-By or other attribution.
-- Before any design or behaviour decision, check all four references and say what each does: Chromium's source
-  (Chrome's behaviour), Ardia (`third_party/ardia`, same engine), Crest (`third_party/crest`) and Cra
-  (`third_party/cra`, closest to Ray's goal). For a feature one of the other clones has (Spaces, Peek, Split View,
-  Boosts, a blocker, import…), read Circa's (AppKit, closest stack), Open Arc's (most of Arc's features, its own Chromium patches) and Phi's too, and the rest where it helps.
+- Before any design or behaviour decision, check the references and say what each does: Chromium's source
+  (Chrome's behaviour), Ardia (`third_party/ardia`, same engine: engine calls, patches, exact sizes), Circa and Open
+  Arc (Arc's features), Phi and Crest (`third_party/crest`; a polished native Mac app on Chromium). Only these.
   None is automatically right; weigh them, and where they disagree pick on evidence. Don't narrate the checking.
 - Never steal focus with test instances: test only through `scripts/run-hidden.sh` / `tests/checks.mjs`
   (`RAY_BACKGROUND=1`, own data dir).
