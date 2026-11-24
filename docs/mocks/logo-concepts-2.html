@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Logo Concepts 2</title>
+<style>
+:root { --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --panel: #fff; --hair: rgba(0,0,0,.08); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --panel: #1C1C1F; --hair: rgba(255,255,255,.09); } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--desk); color: var(--ink); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; }
+.wrap { max-width: 1000px; margin: 0 auto; padding: 8px 16px 48px; }
+h1 { font-size: 22px; font-weight: 600; margin: 18px 0 4px; }
+.sub { color: var(--ink2); margin: 0 0 14px; max-width: 760px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.c { background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; overflow: hidden; }
+.stage { display: grid; grid-template-columns: 1fr 1fr; }
+.stage > div { height: 170px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+.l { background: radial-gradient(500px 260px at 0% 0%, #CFE4FF, transparent 60%), radial-gradient(400px 300px at 100% 100%, #FFD9C7, transparent 60%), #F3F1EE; }
+.d { background: radial-gradient(500px 260px at 0% 100%, #2B3F8C, transparent 60%), radial-gradient(400px 260px at 100% 0%, #5B2A6E, transparent 60%), #0A0B14; }
+.ic { position: relative; flex: none; }
+.ic .tile { position: absolute; left: 9.77%; top: 9.77%; width: 80.47%; height: 80.47%; border-radius: 22.45%; overflow: hidden;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.08), 0 1.5% 3% rgba(0,0,0,.18), 0 4% 9% rgba(0,0,0,.16); }
+.ic .tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 max(.5px,.6%) rgba(255,255,255,.28), inset 0 1.2% 1.5% rgba(255,255,255,.22); }
+.ic svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.smalls { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.t { padding: 10px 14px 14px; }
+.n { font-weight: 600; font-size: 14px; }
+.n small { color: var(--ink2); font-weight: 500; margin-left: 6px; }
+.b { color: var(--ink2); margin-top: 2px; }
+.word { display: flex; align-items: center; gap: 10px; padding: 0 14px 14px; font: 600 22px/1 -apple-system, system-ui, sans-serif; letter-spacing: -.02em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Ray logo concepts, round 2</h1>
+<p class="sub">New marks for a possible rebrand, each as an app icon at 128, 32 and 16 px on light and dark desktops, with the wordmark beside a small one. Round 1 was flat shapes on gradients; these go for light, depth, material and story. Still sketches.</p>
+<div class="grid" id="grid"></div>
+</div>
+<script>
+const MANTA = "M512 372 C556 372 586 390 604 418 C700 430 806 482 872 590 C790 594 712 620 650 676 C606 716 562 736 512 738 C462 736 418 716 374 676 C312 620 234 594 152 590 C218 482 324 430 420 418 C438 390 468 372 512 372 Z";
+const FINS = '<path d="M424 414 C398 366 420 318 472 300 C462 336 468 372 484 400 Z"/><path d="M600 414 C626 366 604 318 552 300 C562 336 556 372 540 400 Z"/>';
+const C = [
+  { id: "ring", name: "Diamond Ring", tag: "eclipse",
+    blurb: "The last flash of sun before a total eclipse: a black disc, a glowing corona, and one blinding point of light flaring out. Dramatic, rare in a Dock full of flat icons, and it's still a ray of light. Arc said goodbye; this is the light coming back.",
+    svg: `<defs><radialGradient id="e-bg" cx="512" cy="512" r="720" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#22123F"/><stop offset="1" stop-color="#04030A"/></radialGradient>
+      <filter id="e-b1" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="38"/></filter>
+      <filter id="e-b2" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="90"/></filter>
+      <filter id="e-b3" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="10"/></filter>
+      <radialGradient id="e-pt" cx="660" cy="372" r="150" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset=".2" stop-color="#FFF1C9" stop-opacity=".9"/><stop offset="1" stop-color="#FFB347" stop-opacity="0"/></radialGradient></defs>
+      <rect width="1024" height="1024" fill="url(#e-bg)"/>
+      <circle cx="512" cy="512" r="260" fill="#FF6A3D" opacity=".55" filter="url(#e-b2)"/>
+      <circle cx="512" cy="512" r="226" fill="#FFD9A0" opacity=".9" filter="url(#e-b1)"/>
+      <circle cx="519" cy="505" r="206" fill="#FFF6E2"/>
+      <g filter="url(#e-b3)" fill="#fff"><ellipse cx="660" cy="372" rx="330" ry="9" transform="rotate(-38 660 372)"/><ellipse cx="660" cy="372" rx="120" ry="6" transform="rotate(52 660 372)"/></g>
+      <ellipse cx="660" cy="372" rx="300" ry="3" fill="#fff" transform="rotate(-38 660 372)"/>
+      <circle cx="512" cy="512" r="204" fill="#06050C"/>
+      <circle cx="660" cy="372" r="150" fill="url(#e-pt)"/>
+      <circle cx="660" cy="372" r="22" fill="#fff"/>` },
+  { id: "deep", name: "Deep Light", tag: "both rays at once",
+    blurb: "Looking up from under the sea: sunlight breaks through the surface in shafts and caustics, and a manta glides across it in silhouette. Both meanings of \"ray\" in one picture, calm and a little magical.",
+    svg: `<defs><linearGradient id="d-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9FF3FF"/><stop offset=".35" stop-color="#22A6D8"/><stop offset="1" stop-color="#062457"/></linearGradient>
+      <filter id="d-c" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".011 .022" numOctaves="2" seed="7"/>
+        <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  1.6 0 0 0 -.55"/>
+        <feComponentTransfer><feFuncA type="table" tableValues="0 0 .9 0 0 .7 0"/></feComponentTransfer></filter>
+      <linearGradient id="d-f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      <mask id="d-m"><rect width="1024" height="1024" fill="url(#d-f)"/></mask>
+      <filter id="d-s" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="14"/></filter>
+      <linearGradient id="d-sh" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      <linearGradient id="d-ray" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0B3A72"/><stop offset="1" stop-color="#041A3D"/></linearGradient></defs>
+      <rect width="1024" height="1024" fill="url(#d-bg)"/>
+      <rect width="1024" height="1024" filter="url(#d-c)" mask="url(#d-m)" opacity=".85"/>
+      <g filter="url(#d-s)" fill="url(#d-sh)"><path d="M300 0 L380 0 L250 1024 L120 1024 Z"/><path d="M520 0 L570 0 L620 1024 L500 1024 Z"/><path d="M720 0 L800 0 L980 1024 L860 1024 Z"/><path d="M430 0 L460 0 L380 1024 L330 1024 Z"/></g>
+      <g transform="translate(512 600) rotate(-14) scale(.92) translate(-512 -560)" fill="url(#d-ray)"><path d="${MANTA}"/>${FINS}<path d="M500 730 L524 730 L514 930 Z"/></g>` },
+  { id: "paper", name: "Paper Sunrise", tag: "handmade",
+    blurb: "A sunrise cut from layers of paper, each casting a soft shadow on the one behind, with the sun's rays cut out of the sky. Warm, crafted and human: the opposite of a corporate browser.",
+    svg: `<defs><linearGradient id="p-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE3B8"/><stop offset="1" stop-color="#FFB08A"/></linearGradient>
+      <filter id="p-sh" x="-10%" y="-20%" width="120%" height="140%"><feDropShadow dx="0" dy="-10" stdDeviation="14" flood-color="#5A1E2E" flood-opacity=".35"/></filter>
+      <filter id="p-sh2" x="-10%" y="-20%" width="120%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#7A3020" flood-opacity=".3"/></filter></defs>
+      <rect width="1024" height="1024" fill="url(#p-bg)"/>
+      <g fill="#FFF3DE" filter="url(#p-sh2)">${[-90,-60,-30,-120,-150,-15,-165,-45,-135,-75,-105].map(a => `<path d="M512 560 L${512+430*Math.cos((a-4)*Math.PI/180)} ${560+430*Math.sin((a-4)*Math.PI/180)} L${512+430*Math.cos((a+4)*Math.PI/180)} ${560+430*Math.sin((a+4)*Math.PI/180)} Z" opacity="${a%30===0?1:.55}"/>`).join("")}
+        <circle cx="512" cy="560" r="170" fill="#FFFBF2"/></g>
+      <path filter="url(#p-sh)" fill="#FF8A5C" d="M0 600 C180 540 300 640 480 600 C650 560 820 520 1024 590 V1024 H0 Z"/>
+      <path filter="url(#p-sh)" fill="#F0566A" d="M0 700 C200 650 360 740 560 690 C740 650 880 690 1024 660 V1024 H0 Z"/>
+      <path filter="url(#p-sh)" fill="#B8336A" d="M0 790 C160 760 330 820 520 790 C700 760 860 820 1024 770 V1024 H0 Z"/>
+      <path filter="url(#p-sh)" fill="#6E2357" d="M0 880 C220 850 380 900 560 875 C760 850 880 900 1024 870 V1024 H0 Z"/>` },
+  { id: "prism", name: "Glass Prism", tag: "Liquid Glass era",
+    blurb: "A single white ray hits a glass orb and leaves as a spectrum. It fits macOS 26's glass look, shows off Icon Composer's materials, and says what a browser does: takes the web and makes it colourful.",
+    svg: `<defs><radialGradient id="g-bg" cx="512" cy="420" r="760" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1C1A2E"/><stop offset="1" stop-color="#07070C"/></radialGradient>
+      <radialGradient id="g-orb" cx="440" cy="400" r="320" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset=".6" stop-color="#9FB8FF" stop-opacity=".12"/><stop offset="1" stop-color="#fff" stop-opacity=".4"/></radialGradient>
+      <filter id="g-b" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="8"/></filter>
+      <filter id="g-bb" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="30"/></filter>
+      <linearGradient id="g-in" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff"/></linearGradient></defs>
+      <rect width="1024" height="1024" fill="url(#g-bg)"/>
+      <g opacity=".95">${["#FF3B5C","#FF8A3D","#FFD23F","#3EE07A","#2FB8FF","#7A5CFF"].map((c,i) => `<path d="M560 ${470+i*14} L1100 ${300+i*92} L1100 ${392+i*92} L560 ${484+i*14} Z" fill="${c}"/>`).join("")}</g>
+      <g filter="url(#g-bb)" opacity=".6">${["#FF3B5C","#FFD23F","#2FB8FF","#7A5CFF"].map((c,i) => `<path d="M600 ${480+i*20} L1100 ${330+i*160} L1100 ${430+i*160} Z" fill="${c}"/>`).join("")}</g>
+      <path d="M-40 560 L420 506 L420 520 L-40 590 Z" fill="url(#g-in)" filter="url(#g-b)"/>
+      <path d="M-40 568 L420 510 L420 516 L-40 580 Z" fill="#fff"/>
+      <circle cx="512" cy="512" r="190" fill="url(#g-orb)" stroke="#fff" stroke-opacity=".55" stroke-width="5"/>
+      <ellipse cx="440" cy="410" rx="90" ry="44" fill="#fff" opacity=".55" transform="rotate(-30 440 410)" filter="url(#g-b)"/>
+      <path d="M380 620 A190 190 0 0 0 640 640" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="10" stroke-linecap="round" filter="url(#g-b)"/>` },
+  { id: "liquid", name: "Liquid Light", tag: "abstract",
+    blurb: "Pools of coloured light swirling like oil on water, cut by one razor-sharp ray. No object at all, just mood: closest in spirit to Arc's gradient Spaces, and every Space could tint its own.",
+    svg: `<defs><filter id="q-f" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="70" result="b"/>
+        <feTurbulence type="fractalNoise" baseFrequency=".006" numOctaves="2" seed="3" result="t"/><feDisplacementMap in="b" in2="t" scale="260" xChannelSelector="R" yChannelSelector="G"/><feGaussianBlur stdDeviation="34"/></filter>
+      <filter id="q-g" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="16"/></filter>
+      <filter id="q-n"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="2"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .08 0"/></filter></defs>
+      <rect width="1024" height="1024" fill="#120C2A"/>
+      <g filter="url(#q-f)"><circle cx="300" cy="320" r="300" fill="#2FE0FF"/><circle cx="760" cy="300" r="280" fill="#FF3FA4"/><circle cx="620" cy="760" r="320" fill="#FFB020"/><circle cx="260" cy="780" r="220" fill="#7A3CFF"/></g>
+      <rect width="1024" height="1024" filter="url(#q-n)"/>
+      <path d="M150 900 L880 120 L892 132 L162 912 Z" fill="#fff" filter="url(#q-g)" opacity=".9"/>
+      <path d="M150 900 L880 120 L884 124 L154 904 Z" fill="#fff"/>` },
+  { id: "mascot", name: "Ray the Manta", tag: "a character",
+    blurb: "A soft, clay-like manta with big eyes and a grin, swimming up past bubbles. A mascot gives Ray a face: stickers, the welcome screen, empty states and error pages can all star it.",
+    svg: `<defs><linearGradient id="k-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7EF0D8"/><stop offset="1" stop-color="#1FA8C9"/></linearGradient>
+      <radialGradient id="k-body" cx="430" cy="440" r="520" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFC6A8"/><stop offset=".55" stop-color="#FF7A6B"/><stop offset="1" stop-color="#D9436A"/></radialGradient>
+      <filter id="k-sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="28" stdDeviation="26" flood-color="#0A4A66" flood-opacity=".35"/></filter>
+      <filter id="k-in"><feGaussianBlur stdDeviation="6"/></filter></defs>
+      <rect width="1024" height="1024" fill="url(#k-bg)"/>
+      <g fill="#fff" opacity=".55"><circle cx="190" cy="250" r="26"/><circle cx="240" cy="180" r="14"/><circle cx="830" cy="760" r="30"/><circle cx="870" cy="680" r="15"/><circle cx="160" cy="820" r="18"/></g>
+      <g fill="none" stroke="#fff" stroke-width="5" opacity=".8"><circle cx="190" cy="250" r="26"/><circle cx="830" cy="760" r="30"/></g>
+      <g filter="url(#k-sh)" transform="translate(0 -20)">
+        <path d="M512 720 C520 800 560 860 640 890" fill="none" stroke="#D9436A" stroke-width="20" stroke-linecap="round"/>
+        <path fill="url(#k-body)" d="M512 330 C568 330 604 352 624 386 C736 396 852 470 904 600 C812 600 724 626 660 690 C616 734 566 756 512 758 C458 756 408 734 364 690 C300 626 212 600 120 600 C172 470 288 396 400 386 C420 352 456 330 512 330 Z"/>
+        <g fill="#FF9C86"><ellipse cx="446" cy="350" rx="24" ry="46" transform="rotate(28 446 350)"/><ellipse cx="578" cy="350" rx="24" ry="46" transform="rotate(-28 578 350)"/></g>
+        <ellipse cx="470" cy="360" rx="70" ry="22" fill="#fff" opacity=".35" filter="url(#k-in)"/>
+        <g><circle cx="446" cy="470" r="44" fill="#fff"/><circle cx="578" cy="470" r="44" fill="#fff"/><circle cx="456" cy="478" r="24" fill="#1E1A2E"/><circle cx="568" cy="478" r="24" fill="#1E1A2E"/><circle cx="464" cy="468" r="8" fill="#fff"/><circle cx="576" cy="468" r="8" fill="#fff"/></g>
+        <path d="M470 560 C492 588 532 588 554 560" fill="none" stroke="#1E1A2E" stroke-width="14" stroke-linecap="round"/>
+        <g fill="#FF5C7A" opacity=".55"><ellipse cx="404" cy="540" rx="26" ry="14"/><ellipse cx="620" cy="540" rx="26" ry="14"/></g></g>` },
+];
+
+const icon = (c, s) => `<span class="ic" style="width:${s}px;height:${s}px"><span class="tile"><svg viewBox="0 0 1024 1024">${c.svg.replace(/id="/g, `id="s${s}-`).replace(/url\(#/g, `url(#s${s}-`)}</svg></span></span>`;
+document.getElementById("grid").innerHTML = C.map(c => `<div class="c">
+  <div class="stage"><div class="l">${icon(c,128)}<div class="smalls">${icon(c,32)}${icon(c,16)}</div></div>
+  <div class="d">${icon(c,128)}<div class="smalls">${icon(c,32)}${icon(c,16)}</div></div></div>
+  <div class="t"><div class="n">${c.name}<small>${c.tag}</small></div><div class="b">${c.blurb}</div></div>
+  <div class="word">${icon(c,34)}Ray</div></div>`).join("");
+</script>
+</body>
+</html>
