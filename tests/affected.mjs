@@ -246,7 +246,7 @@ export const areas = {
   "Host/LittleRay.swift": ["little-ray", "spaces"],
   "Host/BrowserWindowController.swift#Links from other apps": otherApps,
   // The settings: storage and observers, and the catalog of what they are (each entry's window row and test command).
-  "Host/RaySettings.swift": settingReaders,
+  "Host/RaySettings.swift": [...settingReaders, "undo-reopens-default-on"],
   "Host/SettingsCatalog.swift": settingReaders,
   // The Settings window: its frame and sidebar, the panes' layout, the pane-content registry and each pane's own
   // content, the controls (RaySwitch and the swatches are also the welcome's), the live pictures and search (whose

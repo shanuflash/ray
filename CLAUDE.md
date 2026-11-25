@@ -131,7 +131,9 @@ publicly or create accounts.
   dictionary (saved 0.2 s after a change and on quit, sorted keys): a missing or invalid value loads as its default,
   and keys this build doesn't know are written back as they were. Also holds Ray's own state there as typed fields,
   not settings: the hosts the user zoomed (see Page zoom below), `zoomAdopted`, the Settings window's frame and
-  `onboarded`. Private windows read it, never write to it (their zoomed hosts stay in memory).
+  `onboarded`. Private windows read it, never write to it (their zoomed hosts stay in memory). Every setting's value is
+  written, so a changed default never reaches an existing profile by itself: `undoReopensOn` turns "Reopen closed tabs
+  with ⌘Z" on once per profile (its default went from off to on; check `undo-reopens-default-on`).
 - `SettingsWindow`: Ray's own Settings window, direction G (PLAN.md §13): ⌘, (the pane last shown, else General),
   `ray://settings/<pane>`, or a command bar row. 880×600 (at least 760×480; a saved frame below that opens at the default), full-size content, the traffic lights over a 210 pt
   sidebar in Ray's sidebar colour: a 28 pt search field, the panes as 30 pt rows 2 pt apart (icon and name; the

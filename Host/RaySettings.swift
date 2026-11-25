@@ -20,7 +20,8 @@ final class RaySettings {
 
   /// Ray's own state kept in Settings.json beside the settings: no row, no observers, never reset.
   private static let stateKeys: Set<String> = ["zoomedHosts", "zoomAdopted", "windowFrame", "onboarded", "defaultBrowserAsks",
-                                                "defaultBrowserAskedAt", "defaultBrowserNever", "sidebarWidth", "littleRaySize"]
+                                                "defaultBrowserAskedAt", "defaultBrowserNever", "sidebarWidth", "littleRaySize",
+                                                "undoReopensOn"]
 
   /// Each setting's value by id, always valid (see `SettingKey.validate`).
   private var values: [String: Any] = [:]
@@ -45,6 +46,9 @@ final class RaySettings {
   private(set) var sidebarWidth: CGFloat
   /// Little Ray's size (`LittleRay.swift`), as `NSStringFromSize`: the last one you gave one.
   private(set) var littleRaySize: String?
+  /// Settings.json keeps every setting's value, so a profile from before "Reopen closed tabs with ⌘Z" became on by
+  /// default (Arc's) kept it off: it's turned on once per profile, and this says that happened.
+  private var undoReopensOn: Bool
   /// Posted when the width is remembered; the object is the window controller that dragged it.
   static let sidebarWidthDidChange = Notification.Name("RaySidebarWidthDidChange")
 
@@ -74,6 +78,11 @@ final class RaySettings {
     sidebarWidth = SidebarWidth.saved(file["sidebarWidth"]) ?? SidebarWidth.standard
     littleRaySize = file["littleRaySize"] as? String
     values = Dictionary(uniqueKeysWithValues: AnySettingKey.all.map { ($0.id, $0.load(file[$0.id])) })
+    undoReopensOn = file["undoReopensOn"].flatMap { Bool(settingJSON: $0) } ?? false
+    if !undoReopensOn {
+      values[AnySettingKey.undoReopensClosedTab.id] = true
+      undoReopensOn = true
+    }
     let known = Set(AnySettingKey.all.map(\.id)).union(Self.stateKeys)
     unknown = file.filter { !known.contains($0.key) }
     // The profile's colour follows Settings › Theme.
@@ -279,6 +288,7 @@ final class RaySettings {
     file["windowFrame"] = windowFrame
     file["sidebarWidth"] = sidebarWidth == SidebarWidth.standard ? nil : Double(sidebarWidth)
     file["littleRaySize"] = littleRaySize
+    file["undoReopensOn"] = undoReopensOn
     guard JSONSerialization.isValidJSONObject(file),
           let data = try? JSONSerialization.data(withJSONObject: file, options: [.sortedKeys]) else { return }
     try? data.write(to: url, options: .atomic)

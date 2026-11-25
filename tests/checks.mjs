@@ -8429,6 +8429,27 @@ const checks = {
     await command("key w cmd keywin");
     await until("own tab closed", () => !state().tabs.some((t) => t.id === own));
   },
+  async "undo-reopens-default-on"() {
+    // A profile whose Settings.json froze "Reopen closed tabs with ⌘Z" off (its old default) has it on after the
+    // update, once: turned off again, it stays off across a relaunch. Own instances on one data dir.
+    const dir = mkdtempSync(join(tmpdir(), "ray-undo-default-"));
+    let it;
+    try {
+      writeFileSync(join(dir, "Settings.json"), JSON.stringify({ undoReopensClosedTab: false, onboarded: true }));
+      it = ownInstance("undo-default", { RAY_DATA_DIR: dir });
+      await it.until("turned on", (x) => x?.settings?.undoReopensClosedTab === true);
+      await it.ok("setting undoReopensClosedTab off");
+      await it.until("off", (x) => x.settings.undoReopensClosedTab === false);
+      await it.stop();
+      const saved = JSON.parse(readFileSync(join(dir, "Settings.json"), "utf8"));
+      assert(saved.undoReopensClosedTab === false && saved.undoReopensOn === true, `saved ${JSON.stringify(saved)}`);
+      it = ownInstance("undo-default", { RAY_DATA_DIR: dir });
+      await it.until("stays off", (x) => x?.settings?.undoReopensClosedTab === false);
+    } finally {
+      if (it) await it.stop().catch(() => {});
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
   async "sidebar-undo"() {
     // Arc's ⌘Z for the sidebar: each organisation edit is one undo (⇧⌘Z redoes), Edit › Undo naming it; ⌘Z brings
     // back a Clear Today; with Reopen closed tabs with ⌘Z on, closed tabs and edits undo in the order they happened.
