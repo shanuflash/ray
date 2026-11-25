@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Profiles</title>
+<style>
+:root {
+  --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --ink3: #A1A1A6; --hair: rgba(0,0,0,.08);
+  --side: #E6E6E6; --content: #F2F2F4; --card: #FFFFFF; --edge: rgba(0,0,0,.06); --track: rgba(0,0,0,.06);
+  --sel: #D0C6E5; --selInk: #6240AF; --accent: #8257E5; --onAccent: #fff; --red: #E5484D; --chip: #fff;
+  --surface: rgba(250,250,252,.92); --page: #fff;
+}
+:root[data-theme="dark"] {
+  --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --ink3: #6C6C72; --hair: rgba(255,255,255,.09);
+  --side: #131313; --content: #1E1E1E; --card: #282828; --edge: rgba(255,255,255,.07); --track: rgba(255,255,255,.08);
+  --sel: #3F3655; --selInk: #C8B6F6; --accent: #A486F0; --onAccent: #000; --red: #FF6369; --chip: #28282D;
+  --surface: rgba(40,39,45,.94); --page: #242428;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --ink3: #6C6C72; --hair: rgba(255,255,255,.09);
+    --side: #131313; --content: #1E1E1E; --card: #282828; --edge: rgba(255,255,255,.07); --track: rgba(255,255,255,.08);
+    --sel: #3F3655; --selInk: #C8B6F6; --accent: #A486F0; --onAccent: #000; --red: #FF6369; --chip: #28282D;
+    --surface: rgba(40,39,45,.94); --page: #242428;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--desk); color: var(--ink); font: 13px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1060px; margin: 0 auto; padding: 0 16px 80px; }
+h1 { font-size: 22px; font-weight: 600; margin: 22px 0 4px; }
+h2 { font-size: 16px; font-weight: 600; margin: 36px 0 4px; }
+.sub { color: var(--ink2); margin: 0 0 12px; max-width: 840px; }
+.bar { position: sticky; top: 0; z-index: 9; background: color-mix(in srgb, var(--desk) 88%, transparent); backdrop-filter: blur(14px);
+  padding: 8px 0; border-bottom: 1px solid var(--hair); display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ink2); }
+.bar b { color: var(--ink); margin-right: auto; }
+button.t { font: inherit; font-size: 12px; color: var(--ink); background: var(--chip); border: 1px solid var(--hair); border-radius: 7px; padding: 3px 9px; cursor: pointer; }
+button.t[aria-pressed="true"] { background: var(--accent); color: var(--onAccent); border-color: transparent; }
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 12px; }
+.opt { background: var(--chip); border: 1px solid var(--hair); border-radius: 12px; padding: 12px; min-width: 0; }
+.opt h3 { margin: 0 0 2px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+.opt h3 .id { font-size: 11px; font-weight: 700; color: var(--onAccent); background: var(--accent); border-radius: 4px; padding: 0 5px; }
+.opt h3 .tag { font-size: 10.5px; color: var(--ink2); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.opt > p { margin: 0 0 10px; color: var(--ink2); font-size: 12px; }
+a { color: var(--accent); }
+/* pieces */
+.stage { background: var(--content); border-radius: 10px; padding: 14px; box-shadow: 0 0 0 .5px var(--edge); }
+.q { background: var(--surface); border-radius: 13px; padding: 14px; box-shadow: 0 0 0 .5px var(--hair), 0 18px 40px -14px rgba(0,0,0,.4); max-width: 320px; margin: 0 auto; }
+.q b { display: block; font-size: 13.5px; margin-bottom: 4px; } .q p { margin: 0 0 10px; color: var(--ink2); font-size: 12px; }
+.q .chk { font-size: 12px; display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+.q .radio { width: 13px; height: 13px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--ink3); display: inline-block; }
+.q .radio.on { box-shadow: inset 0 0 0 4px var(--accent); }
+.btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+.b { height: 26px; padding: 0 11px; border-radius: 7px; border: 0; font: inherit; font-size: 12px; font-weight: 500; background: var(--track); color: var(--ink); }
+.b.red { background: var(--red); color: #fff; } .b.pri { background: var(--accent); color: var(--onAccent); }
+.title { font-size: 20px; font-weight: 600; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+.pill { font-size: 11.5px; font-weight: 500; padding: 2px 8px; border-radius: 10px; background: var(--track); color: var(--ink2); display: inline-flex; gap: 5px; align-items: center; }
+.ghead { display: flex; align-items: center; font-size: 13px; font-weight: 600; margin: 12px 4px 7px; }
+.ghead .r { margin-left: auto; }
+.pop { height: 22px; border-radius: 6px; background: var(--track); padding: 2px 8px; display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 500; }
+.card { background: var(--card); border-radius: 10px; box-shadow: 0 0 0 .5px var(--edge); }
+.row { min-height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 12px; position: relative; font-size: 12.5px; }
+.row + .row::before { content: ""; position: absolute; left: 12px; right: 0; top: 0; height: .5px; background: var(--hair); }
+.row .r { margin-left: auto; color: var(--ink2); font-size: 12px; }
+.ic { width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center; font-size: 11px; color: #fff; font-weight: 700; }
+.avatar { width: 18px; height: 18px; border-radius: 50%; display: inline-grid; place-items: center; color: #fff; font-size: 10px; font-weight: 700; }
+.mini { display: flex; height: 170px; border-radius: 9px; overflow: hidden; box-shadow: 0 0 0 .5px var(--edge); }
+.mini .sb { width: 120px; background: var(--side); padding: 8px 6px; font-size: 11.5px; display: flex; flex-direction: column; gap: 2px; }
+.mini .sb .it { padding: 4px 6px; border-radius: 6px; } .mini .sb .it.on { background: var(--sel); color: var(--selInk); }
+.mini .sb .sec { font-size: 10px; color: var(--ink3); margin: 6px 6px 0; font-weight: 600; }
+.mini .main { flex: 1; background: var(--content); padding: 10px 12px; overflow: hidden; }
+.ob { background: var(--page); border-radius: 12px; padding: 18px; box-shadow: 0 0 0 .5px var(--edge); text-align: center; }
+.ob h4 { margin: 0 0 4px; font-size: 16px; } .ob p { margin: 0 0 12px; color: var(--ink2); font-size: 12px; }
+.ob .list { text-align: left; max-width: 300px; margin: 0 auto 12px; }
+ul.ex { margin: 0; padding-left: 18px; } ul.ex li { margin-bottom: 6px; }
+.tick { display: inline-block; width: 14px; height: 14px; border-radius: 4px; background: var(--accent); color: var(--onAccent); font-size: 10px; text-align: center; line-height: 14px; margin-right: 6px; }
+.untick { display: inline-block; width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--ink3); margin-right: 6px; vertical-align: -2px; }
+</style>
+</head>
+<body>
+<div class="bar"><b>Ray Profiles mocks</b>
+  <button class="t" data-th="auto" aria-pressed="true">Auto</button><button class="t" data-th="light">Light</button><button class="t" data-th="dark">Dark</button></div>
+<div class="wrap">
+<h1>Profiles</h1>
+<p class="sub">Arc's model: a profile keeps its own logins, cookies, history, passwords, autofill and extensions; Spaces pick a profile, and favorites belong to the profile. Ray already has a profile per Space (Edit Space › Profile). These are the decisions left. Pick one per row (1–5); row 6 is a list to tick.</p>
+
+<h2>1. Where Spaces and Profiles live in Settings</h2>
+<p class="sub">The layouts are in <a href="settings-spaces.html">settings-spaces.html</a>: <b>A</b> two panes (Spaces, Profiles), <b>B</b> Arc's one pane with Profiles holding their Spaces, <b>C</b> Spaces as pictures with Profiles below. Pick there.</p>
+
+<h2>2. Deleting a profile</h2>
+<div class="opts">
+  <div class="opt"><h3><span class="id">2A</span> Its Spaces move to Default</h3>
+    <p>The profile's data goes; its Spaces stay, on Default (signed out of what that profile was signed in to). Nothing in the sidebar disappears.</p>
+    <div class="stage"><div class="q"><b>Delete the “Work” profile?</b><p>Its passwords, cookies, history and extensions are deleted. Work and Clients move to Default.</p>
+      <div class="btns"><button class="b">Cancel</button><button class="b red">Delete</button></div></div></div></div>
+  <div class="opt"><h3><span class="id">2B</span> Its Spaces go with it <span class="tag">Arc</span></h3>
+    <p>Arc's: deleting a profile deletes its Spaces too. Their tabs go to Recently Closed (⇧⌘T brings them back into the Space you're on).</p>
+    <div class="stage"><div class="q"><b>Delete the “Work” profile?</b><p>Its Spaces (Work, Clients), and its passwords, cookies, history and extensions are deleted.</p>
+      <div class="btns"><button class="b">Cancel</button><button class="b red">Delete</button></div></div></div></div>
+  <div class="opt"><h3><span class="id">2C</span> Ask which</h3>
+    <p>The question offers both; moving to Default is chosen. One more decision at a destructive moment.</p>
+    <div class="stage"><div class="q"><b>Delete the “Work” profile?</b><p>Its passwords, cookies, history and extensions are deleted. Its Spaces:</p>
+      <div class="chk"><span class="radio on"></span>Move Work and Clients to Default</div><div class="chk"><span class="radio"></span>Delete them too</div>
+      <div class="btns"><button class="b">Cancel</button><button class="b red">Delete</button></div></div></div></div>
+</div>
+
+<h2>3. Which profile the data panes show (Passwords, Autofill, Extensions, Privacy, Downloads' folder)</h2>
+<div class="opts">
+  <div class="opt"><h3><span class="id">3A</span> The Space you're on</h3>
+    <p>Settings shows the profile of the Space on screen, named beside the pane's title. To see another, go to one of its Spaces. Nothing to pick, can surprise.</p>
+    <div class="mini"><div class="sb"><div class="it">General</div><div class="sec">Your data</div><div class="it on">Passwords</div><div class="it">Autofill</div><div class="it">Extensions</div></div>
+      <div class="main"><div class="title">Passwords <span class="pill"><span class="avatar" style="background:#2F6BEA">W</span>Work</span></div>
+      <div class="card"><div class="row"><span class="ic" style="background:#24292F">G</span>github.com<span class="r">shanu</span></div><div class="row"><span class="ic" style="background:#5E6AD2">L</span>linear.app<span class="r">shanu@work</span></div></div></div></div></div>
+  <div class="opt"><h3><span class="id">3B</span> A profile pop-up on each pane <span class="tag">Ardia</span></h3>
+    <p>Ardia's: a profile pop-up at the right of the pane's first group header, starting on the Space you're on. Hidden while there's one profile.</p>
+    <div class="mini"><div class="sb"><div class="it">General</div><div class="sec">Your data</div><div class="it on">Passwords</div><div class="it">Autofill</div><div class="it">Extensions</div></div>
+      <div class="main"><div class="title">Passwords</div><div class="ghead">Saved<span class="r pop"><span class="avatar" style="background:#2F6BEA">W</span>Work ▾</span></div>
+      <div class="card"><div class="row"><span class="ic" style="background:#24292F">G</span>github.com<span class="r">shanu</span></div><div class="row"><span class="ic" style="background:#5E6AD2">L</span>linear.app<span class="r">shanu@work</span></div></div></div></div></div>
+  <div class="opt"><h3><span class="id">3C</span> One pop-up for the whole window</h3>
+    <p>A profile pop-up at the top of Settings' sidebar, over "Your data": every data pane follows it. Starts on the Space you're on.</p>
+    <div class="mini"><div class="sb"><div class="it">General</div><div class="sec">Your data</div><div class="it" style="background:var(--track);display:flex;gap:5px;align-items:center"><span class="avatar" style="background:#2F6BEA">W</span>Work ▾</div><div class="it on">Passwords</div><div class="it">Autofill</div><div class="it">Extensions</div></div>
+      <div class="main"><div class="title">Passwords</div>
+      <div class="card"><div class="row"><span class="ic" style="background:#24292F">G</span>github.com<span class="r">shanu</span></div><div class="row"><span class="ic" style="background:#5E6AD2">L</span>linear.app<span class="r">shanu@work</span></div></div></div></div></div>
+</div>
+
+<h2>4. Arc's profiles on import</h2>
+<div class="opts">
+  <div class="opt"><h3><span class="id">4A</span> Each one a profile, no question</h3>
+    <p>Every Arc profile becomes a Ray profile of the same name; its Spaces point at it; its passwords, cookies, autofill and history go into it. Default stays Default. A re-import finds the same ones.</p>
+    <div class="ob"><h4>Moving in</h4><p>2 profiles, 5 Spaces</p><div class="list">
+      <div><span class="tick">✓</span>Default: Personal, Side</div><div><span class="tick">✓</span>Work: Work, Clients, Infra</div></div></div></div>
+  <div class="opt"><h3><span class="id">4B</span> Ask, separate by default</h3>
+    <p>The "what to bring" step shows Arc's profiles and asks: keep them separate (picked) or bring everything into Default.</p>
+    <div class="ob"><h4>Arc has 2 profiles</h4><p>Default (Personal, Side) · Work (Work, Clients, Infra)</p>
+      <div class="list"><div><span class="tick">●</span>Keep them as separate profiles</div><div><span class="untick"></span>Bring everything into one</div></div>
+      <button class="b pri">Continue</button></div></div>
+</div>
+
+<h2>5. A Space on a profile, in the sidebar</h2>
+<div class="opts">
+  <div class="opt"><h3><span class="id">5A</span> Nothing extra <span class="tag">Arc</span></h3><p>Arc doesn't mark a Space's profile in the sidebar; the Space's theme is enough.</p></div>
+  <div class="opt"><h3><span class="id">5B</span> The profile's initial on the Space name</h3><p>A small avatar after the Space's name at the top of its list when it isn't on Default.</p>
+    <div class="stage" style="padding:10px"><div style="font-size:12px;font-weight:600;color:var(--ink2);display:flex;gap:6px;align-items:center">💼 Work <span class="avatar" style="background:#2F6BEA">W</span></div></div></div>
+</div>
+
+<h2>6. What else Arc's profiles do (tick what you want now)</h2>
+<div class="opt"><ul class="ex">
+  <li><span class="untick"></span><b>Little Ray opens in the profile of the Space you're on</b> (today always Default), so a link from Slack is signed in as Work while you're in Work.</li>
+  <li><span class="untick"></span><b>A private window per profile</b>: ⇧⌘N opens the private side of the Space's profile (today always Default's).</li>
+  <li><span class="untick"></span><b>Command bar</b>: tabs and history from the profile you're on rank first; "Switch to Tab" across profiles keeps working.</li>
+  <li><span class="untick"></span><b>Extensions per profile</b> in site controls and the toolbar follow the Space (today the first profile used).</li>
+  <li><span class="untick"></span><b>Settings › Profiles' New Profile…</b> without making a Space (Arc makes them from a Space only).</li>
+</ul></div>
+</div>
+<script>
+document.querySelectorAll('[data-th]').forEach((b) => b.addEventListener('click', () => {
+  if (b.dataset.th === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = b.dataset.th;
+  document.querySelectorAll('[data-th]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+}));
+</script>
+</body>
+</html>
