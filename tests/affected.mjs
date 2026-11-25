@@ -22,7 +22,9 @@ const drag = ["sidebar-drops", "drag-click-selects", "drag-reorder", "drag-to-pi
 const folders = ["folders", "folders-relaunch", "multi-select", "folder-create", "folder-toggle", "folder-rename", "folder-animation",
   "folder-drag-in", "folder-drag-folder", "folder-out-and-delete"];
 // Spaces (Spaces.swift, SpaceSlide.swift, SpaceEditor.swift, `// MARK: Spaces` and the sections after it).
-const spaceChecks = ["spaces", "spaces-migrate"];
+const spaceChecks = ["spaces", "spaces-migrate", "profiles"];
+// The data panes' profile pop-up reaches every data pane.
+const dataPanes = ["settings-passwords", "settings-autofill", "settings-extensions", "settings-privacy", "profiles"];
 const sidebarMotion = ["sidebar-toggle", "peek-zones", "window-lights", "toggle-keeps-page-still", "sidebar-resize", "peek-dock",
   "sidebar-motion-cheap"];
 const tabSwitchCost = ["tab-switch-cheap", "tab-switcher"];
@@ -83,6 +85,10 @@ export const areas = {
   "Host/Spaces.swift": [...spaceChecks, "settings-theme", "settings-colours", "import-browser"],
   "Host/SpaceSlide.swift": [...spaceChecks, "sidebar-follows-active", "icons-on-pixels"],
   "Host/SpaceEditor.swift": spaceChecks,
+  "Host/SettingsSpaces.swift": [...spaceChecks, "settings-window", "settings-panes", "settings-catalog", "settings-search"],
+  "Host/SettingsProfiles.swift": dataPanes,
+  "Host/BrowserWindowController.swift#Spaces in Settings": spaceChecks,
+  "Host/BrowserWindowController.swift#Profiles": [...spaceChecks, "import-browser", "onboarding"],
   "Host/ArcIconNames.swift": ["import-browser", "onboarding"],
   "Host/BrowserWindowController.swift#Spaces": [...spaceChecks, "little-ray"],
   "Host/BrowserWindowController.swift#Space editor": spaceChecks,

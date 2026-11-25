@@ -29,6 +29,7 @@ window. Every decision serves three things:
    shipped in 0.2.0.**
 2. **Spaces.** **Done 2026-11-24:** Arc's model (owner's picks 1A, 2C, 4B (2026-11-25, was 4A), 5A of `docs/mocks/spaces.html`), a
    full theme per Space (Window colour and Accent) and a profile per Space (Default, shared or new, as Arc).
+   Profiles done 2026-11-25 (owner's picks of `docs/mocks/profiles.html`: Settings layout C, 2A, 3B, 4A, 5A).
 3. **Full Arc import:** Spaces, pinned tabs, folders, cookies. **Mostly done 2026-10-29:** `Importer/` (Ardia's
    import core) and the first-run onboarding bring pinned tabs and folders, favorites, open tabs, history,
    bookmarks, passwords, cookies and autofill from Arc and eight other browsers. Arc's Spaces come in as Spaces

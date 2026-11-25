@@ -134,11 +134,23 @@ final class ImportSession {
       return completion(summary)
     }
     running = true
-    let run = ImportRun(
-      source: source, profileId: profile.id, items: items, importer: importer, controller: controller, event: event)
-    run.start { [weak self] summary in
-      self?.running = false
-      completion(summary)
+    let start = { [weak self] (target: RayCoreProfile, directory: String?) in
+      let run = ImportRun(
+        source: source, profileId: profile.id, items: items, importer: importer, controller: controller, profile: target,
+        profileDirectory: directory, event: event)
+      run.start { summary in
+        self?.running = false
+        completion(summary)
+      }
+    }
+    // Owner's pick 4A: an Arc profile other than Default becomes a Ray profile of its own (found again next time), and
+    // everything of it goes there: its Spaces, favorites, history, passwords, cookies and autofill.
+    if source.id == "arc", profile.id != "Default", !controller.isPrivate {
+      controller.importProfile(source: "arc:\(profile.id)", name: profile.name) { directory, loaded in
+        start(loaded ?? controller.mainProfile, loaded == nil ? nil : directory)
+      }
+    } else {
+      start(controller.isPrivate ? controller.profile : controller.mainProfile, nil)
     }
   }
 }

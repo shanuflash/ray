@@ -316,6 +316,27 @@ publicly or create accounts.
   Open in ‹Space›. Test commands `space switch|click|next|previous|new|edit|delete|deletenow|menu|swipe <dx> [steps]
   [hold]|release|editor name|icon|window|accent|custom|profile|confirm|cancel|question|move|state`, `littleray
   openinspace <n>`; state log `sidebar.spaces`, `littleRays[].openInSpaces`; checks `spaces`, `spaces-migrate`.
+- Profiles (`ProfileInfo` in `Host/Spaces.swift`, `BrowserWindowController` `// MARK: Profiles` and `// MARK: Spaces in
+  Settings`, `Host/SettingsSpaces.swift`, `Host/SettingsProfiles.swift`; owner's picks of `docs/mocks/profiles.html` and C
+  of `docs/mocks/settings-spaces.html`, 2026-11-25). `SidebarState.profiles` (Sidebar.json `profiles`, Default first,
+  `tidyProfiles` keeps one per directory a Space uses): name, colour, `source` ("arc:Profile 1", so a re-import finds
+  it). Settings › Spaces (`SpacesPaneContent`, pane `spaces`; `ray://settings/spaces`, Chrome's `/people`,
+  `/profiles`, `/manageProfile`): the Spaces as pictures (`SpacePicturesView`, a small window in the Space's theme;
+  the last cell New Space, `addSpaceFromSettings`), the chosen one's `SpaceEditorView` with `inSettings` (no title
+  or Done; every change applies at once through `applyFromSettings`; Delete Space… asks, `SettingsConfirm`), then
+  Profiles (`ProfilesListView`: `SettingsItemRow`s opening to name, colour and Delete Profile…). `deleteProfile`
+  (pick 2A): its Spaces move to Default (`changeProfile`), its favorites go, the engine deletes its data
+  (`RayCoreEngine.delete`). The data panes' profile (pick 3B): `SettingsDataProfile` (the Space on screen's profile
+  until a pane's `ProfileChooserView` pop-up, the section `<pane>.profile` at each pane's top, hidden with one
+  profile, picks another); `SettingsPages.profile` and `settingsDataProfile` read it, and each pane reloads on
+  `SettingsDataProfile.didChange`. Import (pick 4A): an Arc profile other than Default gets a Ray profile of its own
+  (`importProfile`), and `ImportRun` writes everything into it (`profileDirectory`; its Spaces and favorites in
+  `addImported`). Little Ray opens in the normal window's current profile; Open in Ray into a Space on another
+  profile opens the page there afresh. The command bar shows other Spaces' tabs only when typing, one at most,
+  after this Space's tabs, unless it's the inline-completed lead (`Suggestions.fewerFromOtherSpaces`). Test commands
+  `spacespane state|pick|new|name|icon|window|accent|profile|delete|confirm|profileopen|profilerename|profiledelete|
+  dataprofile <n>` (1-based); state log `sidebar.spaces.profiles`, `deletedProfiles`, `littleRays[].profile`,
+  `commandBar.rows[].space`; checks `profiles`, `import-browser` (Arc's Profile 1).
 - `TileSelection` (`Host/TileSelection.swift`, from Ardia's `DockSelection`, Apache-2.0): Arc's selected favorite, a
   3 pt ring and a 22 % wash, both the tile's favicon blurred (`BlurredIcon`, cached per image); none for the globe.
   Favorite icons are 16 pt. State log `sidebarFrames.tileRing`; check `tile-hover`. Sidebar icons (rows, tiles, folder

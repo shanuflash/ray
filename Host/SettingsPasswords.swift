@@ -34,11 +34,17 @@ final class PasswordsPaneContent: SettingsPaneContent {
 
   let saved = SavedPasswordsView()
   let more = PasswordsMoreView()
+  private var profileWatch: NSObjectProtocol?
+
+  init() {
+    profileWatch = SettingsDataProfile.observe { [weak self] in self?.saved.reloadIfUnlocked() }
+  }
 
   var hasContent: Bool { true }
 
   func sections() -> [SettingsSection] {
     [
+      SettingsDataProfile.section("passwords"),
       SettingsSection(
         id: "passwords.saved", place: .after(SettingGroup.passwordsSaving.id), view: saved, card: false,
         search: [

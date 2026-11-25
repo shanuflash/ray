@@ -154,6 +154,8 @@ final class SidebarState: Codable {
   /// Favorites of the other profiles, by profile directory: Arc's favorites belong to a profile, so Spaces on the same
   /// profile share them.
   var profileFavorites: [String: [SidebarEntry]] = [:]
+  /// Every profile's name and colour, the default one first (`ProfileInfo`); kept in step with the Spaces'.
+  var profiles: [ProfileInfo] = [ProfileInfo(directory: nil, name: ProfileInfo.defaultName)]
   var sidebarHidden = false
   /// Whether the window was full screen, to reopen that way. Optional so older files still load.
   var fullScreen: Bool?
@@ -167,6 +169,9 @@ final class SidebarState: Codable {
   init() {
     currentSpaceID = spaces[0].id
   }
+
+  /// Spaces on a profile.
+  func spaces(on directory: String?) -> [Space] { spaces.filter { $0.profile == directory } }
 
   // MARK: Spaces
 
@@ -250,7 +255,7 @@ final class SidebarState: Codable {
   // MARK: Saved form
 
   private enum CodingKeys: String, CodingKey {
-    case spaces, currentSpaceID, favorites, profileFavorites, sidebarHidden, fullScreen, pageToolbar, fullAddress
+    case spaces, currentSpaceID, favorites, profileFavorites, profiles, sidebarHidden, fullScreen, pageToolbar, fullAddress
     // Before Spaces: one list of each, now the first Space's.
     case pinned, today, activeEntryID
   }
@@ -259,6 +264,7 @@ final class SidebarState: Codable {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     defaultFavorites = try c.decodeIfPresent([SidebarEntry].self, forKey: .favorites) ?? []
     profileFavorites = try c.decodeIfPresent([String: [SidebarEntry]].self, forKey: .profileFavorites) ?? [:]
+    profiles = (try? c.decodeIfPresent([ProfileInfo].self, forKey: .profiles)) ?? []
     sidebarHidden = try c.decodeIfPresent(Bool.self, forKey: .sidebarHidden) ?? false
     fullScreen = try c.decodeIfPresent(Bool.self, forKey: .fullScreen)
     pageToolbar = try c.decodeIfPresent(Bool.self, forKey: .pageToolbar)
@@ -285,7 +291,32 @@ final class SidebarState: Codable {
     for space in spaces {
       for entry in space.pinned where entry.kind == .favorite { entry.kind = .pinned }
     }
+    tidyProfiles()
   }
+
+  /// The default profile first, one entry per directory, each valid and named, and an entry for every directory a
+  /// Space uses (a file from before profiles had names: the first Space on it names it).
+  func tidyProfiles() {
+    var seen = Set<String>()
+    var tidy = [profiles.first { $0.directory == nil } ?? ProfileInfo(directory: nil, name: ProfileInfo.defaultName)]
+    for var info in profiles {
+      guard let directory = info.directory.flatMap(Space.validProfile), seen.insert(directory).inserted else { continue }
+      info.directory = directory
+      info.name = ProfileInfo.name(from: info.name) ?? "Profile"
+      info.color = info.color.flatMap(Space.validHex)
+      tidy.append(info)
+    }
+    for space in spaces {
+      guard let directory = space.profile, seen.insert(directory).inserted else { continue }
+      tidy.append(ProfileInfo(directory: directory, name: space.name, color: space.color))
+    }
+    tidy[0].name = ProfileInfo.name(from: tidy[0].name) ?? ProfileInfo.defaultName
+    tidy[0].color = tidy[0].color.flatMap(Space.validHex)
+    tidy[0].source = nil
+    profiles = tidy
+  }
+
+  func profileInfo(_ directory: String?) -> ProfileInfo? { profiles.first { $0.directory == directory } }
 
   func encode(to encoder: Encoder) throws {
     var c = encoder.container(keyedBy: CodingKeys.self)
@@ -293,6 +324,7 @@ final class SidebarState: Codable {
     try c.encode(currentSpaceID, forKey: .currentSpaceID)
     try c.encode(defaultFavorites, forKey: .favorites)
     if !profileFavorites.isEmpty { try c.encode(profileFavorites, forKey: .profileFavorites) }
+    try c.encode(profiles, forKey: .profiles)
     try c.encode(sidebarHidden, forKey: .sidebarHidden)
     try c.encodeIfPresent(fullScreen, forKey: .fullScreen)
     try c.encodeIfPresent(pageToolbar, forKey: .pageToolbar)

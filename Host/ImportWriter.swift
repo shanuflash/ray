@@ -275,6 +275,8 @@ final class ImportRun: @unchecked Sendable {
   private let importer: Importer
   private let controller: BrowserWindowController
   private let profile: RayCoreProfile
+  /// The Ray profile it goes into (nil: Default): its Spaces and favorites are that profile's.
+  private let profileDirectory: String?
   private let isPrivate: Bool
   private let onEvent: (ImportEvent) -> Void
   /// Only touched on the run's own thread; handed to the main thread at the end.
@@ -282,13 +284,15 @@ final class ImportRun: @unchecked Sendable {
   private var started = Set<ImportItem>()
 
   init(source: ImportSource, profileId: String, items: Set<ImportItem>, importer: Importer,
-       controller: BrowserWindowController, event: @escaping (ImportEvent) -> Void) {
+       controller: BrowserWindowController, profile: RayCoreProfile, profileDirectory: String?,
+       event: @escaping (ImportEvent) -> Void) {
     self.source = source
     self.profileId = profileId
     self.items = items
     self.importer = importer
     self.controller = controller
-    profile = controller.profile
+    self.profile = profile
+    self.profileDirectory = profileDirectory
     isPrivate = controller.isPrivate
     onEvent = event
   }
@@ -448,7 +452,7 @@ final class ImportRun: @unchecked Sendable {
       if wanted.contains(.openTabs) { today = result.tabs.filter { !$0.pinned }.compactMap(ImportShape.node) }
     }
     let counts = DispatchQueue.main.sync { [controller] in
-      controller.addImported(favorites: favorites, pinned: pinned, today: today, spaces: spaces)
+      controller.addImported(favorites: favorites, pinned: pinned, today: today, spaces: spaces, profile: profileDirectory)
     }
     for item in wanted {
       if let reason = failures[item] { emit(.failed(item, reason: reason)); continue }

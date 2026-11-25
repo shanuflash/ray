@@ -793,6 +793,23 @@ enum Suggestions {
   /// The Space of an open tab when it isn't the one on screen (the window sets it before each build).
   static var spaceName: (RayCoreTab) -> String? = { _ in nil }
 
+  /// Other Spaces' tabs never crowd out this one's (owner, 2026-11-25): with nothing typed, the recent tabs are this
+  /// Space's only; typing, at most one other Space's tab shows, after this Space's tabs, unless it's the host the field
+  /// completes inline (a strong match, which keeps its lead).
+  static func fewerFromOtherSpaces(_ rows: [Suggestion], query: String) -> [Suggestion] {
+    guard rows.contains(where: { $0.space != nil }) else { return rows }
+    if query.isEmpty { return rows.filter { $0.space == nil } }
+    if let lead = rows.first, lead.space != nil, lead.completion != nil {
+      return [lead] + rows.dropFirst().filter { $0.space == nil }
+    }
+    guard let other = rows.first(where: { $0.space != nil }) else { return rows }
+    var kept = rows.filter { $0.space == nil }
+    let lastTab = kept.lastIndex { if case .tab = $0.kind { return true } else { return false } }
+    let originally = rows.firstIndex { $0.space != nil } ?? kept.count
+    kept.insert(other, at: min(max(lastTab.map { $0 + 1 } ?? 0, originally), kept.count))
+    return kept
+  }
+
   private static func historySuggestion(_ entry: HistoryItem, favicon: (String) -> NSImage?) -> Suggestion {
     pageSuggestion(kind: .history(entry.url), url: entry.url, title: entry.title, icon: favicon(entry.url) ?? clock)
   }

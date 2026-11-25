@@ -60,7 +60,9 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   static func open(_ url: String) -> LittleRay? {
     guard let engine = RayCoreEngine.shared else { return nil }
     LinkActivationOrder.shared.linkArriving()
-    let little = LittleRay(url: url, profile: engine.defaultProfile)
+    // The profile of the Space you're on (owner, 2026-11-25), so a link from Slack opens signed in as that Space is.
+    let normal = AppController.shared.windows.first { !$0.isPrivate }
+    let little = LittleRay(url: url, profile: normal?.profile ?? engine.defaultProfile)
     all.append(little)
     steps.append("opened")
     if launchedInBackground {
@@ -253,12 +255,14 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
   func openInRay(space: UUID? = nil) {
     guard !closed, !tab.closed, let owner = AppController.shared.openMainWindow() else { return }
     let target = space.flatMap { id in owner.state.space(id: id) }
-    if let target, target.profile != nil {
+    // A tab can't change profile: into a Space on another profile than the page's, it opens there afresh.
+    let destination = target ?? owner.state.current
+    if owner.loadedProfile(destination.profile) !== profile {
       let url = tab.url
       closed = true
       Self.all.removeAll { $0 === self }
-      Self.steps.append("openedInSpace")
-      owner.openInSpace(url, target)
+      Self.steps.append(target == nil ? "openedInRay" : "openedInSpace")
+      owner.openInSpace(url, destination)
       if tab.delegate === self { tab.delegate = nil }
       tab.close()
       panel.close()
@@ -421,7 +425,8 @@ final class LittleRay: NSObject, RayCoreWindowDelegate, RayCoreTabDelegate {
     ["url": tab.url, "address": address.text, "frame": NSStringFromRect(window.frame),
      "content": NSStringFromSize(window.contentRect(forFrameRect: window.frame).size),
      "card": NSStringFromRect(card.frame), "pageInCard": tab.view.superview === card, "visible": window.isVisible,
-     "key": window.isKeyWindow, "private": profile.offTheRecord, "openLabel": openButton.title, "openInSpaces": spaceTitles,
+     "key": window.isKeyWindow, "private": profile.offTheRecord,
+     "profile": (profile.path as NSString).lastPathComponent, "openLabel": openButton.title, "openInSpaces": spaceTitles,
      "copied": copyButton.image?.accessibilityDescription == "Copied",
      "fullScreenAuxiliary": window.collectionBehavior.contains(.fullScreenAuxiliary)]
   }

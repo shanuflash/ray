@@ -258,7 +258,7 @@ extension AnySettingKey {
 /// The Settings window's panes, in sidebar order. Each has a title, a line saying what it is for and an SF Symbol;
 /// its rows come from the catalog (`ui.pane`), its own UI (if any) from `SettingsPanes.content(for:)`.
 enum SettingPane: String, CaseIterable {
-  case general, tabs, appearance, search, privacy, passwords, autofill, extensions, shortcuts, about
+  case general, tabs, spaces, appearance, search, privacy, passwords, autofill, extensions, shortcuts, about
 
   /// Where a pane sits in the window's sidebar: the top group, "Your data" or "More".
   enum Section: String, CaseIterable {
@@ -286,6 +286,8 @@ enum SettingPane: String, CaseIterable {
     case .general: return Info(title: "General", subtitle: "Opening and quitting Ray, downloads and updates.", symbol: "gearshape", section: .main)
 
     case .tabs: return Info(title: "Tabs and sidebar", subtitle: "Where new tabs go and how you move between them.", symbol: "sidebar.left", section: .main)
+
+    case .spaces: return Info(title: "Spaces", subtitle: "Your Spaces, their themes, and profiles.", symbol: "square.stack", section: .main)
 
     case .appearance: return Info(title: "Appearance", subtitle: "Your colour, the address bar and how pages look.", symbol: "paintpalette", section: .main)
 

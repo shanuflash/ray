@@ -17,9 +17,7 @@ engine does when Ray has no UI of its own for them, and haven't been tried by ha
 
 **Big**
 1. ~~**Spaces**~~ (Done 2026-11-24). Leftovers: Known limitations 78.
-2. **Profiles**: a Space can have a profile of its own since 2026-11-24 (Edit Space… › Profile: Default, another
-   Space's, or New Profile). Left: a Profiles pane (rename, delete a profile and its data), Arc's profiles imported as
-   profiles (they land on the default one), extensions, passwords and settings panes per profile.
+2. ~~**Profiles**~~ (Done 2026-11-25). Leftovers: Known limitations 79.
 3. **Split View**: two or more pages side by side in one window.
 4. ~~**Little Arc**~~ (Done: Little Ray, a quick look at links from other apps; owner 2026-11-24: not a mini browser,
    so no ⌥⌘N). Leftovers: Known limitations 77.
@@ -528,11 +526,18 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     wait. Hidden test instances draw no rows (AppKit skips an off-screen window), so whether a switch's rows draw
     is checked by hand. Hidden test instances can't swipe with a trackpad: `spaces` drives the swipe through its code path
     (`space swipe`), so the feel of a real two-finger swipe is checked by hand.
+79. **Profiles leftovers** (2026-11-25, owner's picks of `docs/mocks/profiles.html`). Not built, by the owner's
+    choice: a private window per profile (⇧⌘N is always Default's private side), extensions per profile in site
+    controls and their toolbar (they follow the first profile used), the command bar ranking the profile you're on
+    first, and New Profile without a Space (a profile is made from a Space's Profile pop-up). Arc's profile colours
+    and avatars aren't imported (Ray's profiles start grey). Deleting a profile deletes the engine's copy only after
+    loading it; a profile whose Spaces were all deleted stays in Settings › Spaces until deleted there.
 
 ## Done
 
 | What | When |
 |---|---|
+| Profiles: Settings › Spaces (each Space as a picture of the window in its theme, its editor under them, then Profiles: rename, colour, Delete Profile…, which moves its Spaces to Default and deletes its data), a profile pop-up on Passwords, Autofill, Extensions and Privacy (the Space's profile until picked), Arc's profiles imported as profiles with their Spaces, favorites, history, passwords, cookies and autofill, Little Ray in the Space's profile, and the command bar showing at most one tab from other Spaces | 2026-11-25, `feat: profiles` |
 | Spaces (Arc's): each with its own name, icon, theme (a Window colour for the browser and an Accent), profile, pinned tabs, folders and Today; favorites shared per profile. Icons in the sidebar's footer, the Space's name over its list, two-finger swipe across the sidebar (the rows trail a little, owner's pick 2C), ⌃1–9 and ⌥⌘←/→ (Spaces menu), New/Edit/Delete Space (a panel from the footer's +, 4B), Move to › a Space, the command bar's tabs from every Space, Recently Closed back into its Space, Arc's and Zen's Spaces imported as Spaces, Little Ray's Open in ‹Space› | 2026-11-24, `feat: spaces` |
 | Little Ray: a link from another app opens in a small window for a quick look (the pop-up window's look: its address, Copy Link, Open in Ray ⌘O), centred, remembering its size; Open in Ray moves the live page into Today; ⌘W, Escape or the close light put it in Recently Closed. Settings › General › Open links from other apps in Little Ray, on by default | 2026-11-24, `feat: little ray` |
 | No crash when an extension closes a tab showing a sign-in dialog: the engine's dialog host closes its dialogs while the tab is whole (`engine-ray/fixups/0010`); the engine's own third-party cookie default is Chrome's (`0011`) | 2026-11-24, `fix: tab dialogs close before teardown, cookie default` |

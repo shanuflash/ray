@@ -44,7 +44,10 @@ final class PrivacyPaneContent: SettingsPaneContent {
   private var appButtons: [String: SettingsButton] = [:]
   private var clearDataButton: SettingsButton?
 
+  private var profileWatch: NSObjectProtocol?
+
   init() {
+    profileWatch = SettingsDataProfile.observe { [weak self] in self?.reload() }
     sitesList.onShow = { [weak self] in self?.reload() }
     sitesList.onWindowKey = { [weak self] in self?.reloadSoon() }
     EngineEvents.on("siteSettings.changed") { [weak self] payload in
@@ -61,6 +64,7 @@ final class PrivacyPaneContent: SettingsPaneContent {
 
   func sections() -> [SettingsSection] {
     [
+      SettingsDataProfile.section("privacy"),
       SettingsSection(
         id: "privacy.sites", title: "Site permissions", place: .top, view: sitesList,
         search: [

@@ -40,11 +40,20 @@ final class AutofillPaneContent: SettingsPaneContent {
 
   let addresses = AutofillAddressesView()
   let cards = AutofillCardsView()
+  private var profileWatch: NSObjectProtocol?
+
+  init() {
+    profileWatch = SettingsDataProfile.observe { [weak self] in
+      self?.addresses.load()
+      self?.cards.load()
+    }
+  }
 
   var hasContent: Bool { true }
 
   func sections() -> [SettingsSection] {
     [
+      SettingsDataProfile.section("autofill"),
       SettingsSection(
         id: "autofill.addresses", place: .bottom, view: addresses, card: false,
         search: [SettingsSearchEntry(title: "Addresses", detail: "The addresses Ray fills into forms",

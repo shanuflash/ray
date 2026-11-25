@@ -118,6 +118,8 @@ enum SettingsPanes {
 
     case .tabs: return TabsPaneContent()
 
+    case .spaces: return SpacesPaneContent()
+
     case .appearance: return AppearancePaneContent()
 
     case .search: return SearchPaneContent()

@@ -37,12 +37,17 @@ final class SpaceEditorView: NSView, NSTextFieldDelegate {
   private let profiles: [SpaceProfileChoice]
   let cancelButton = PanelButton(title: "Cancel")
   let confirmButton: PanelButton
+  /// Settings › Spaces' editor: no title, Cancel or Done (every change applies at once), and Delete Space….
+  let inSettings: Bool
+  let deleteButton = SettingsButton("Delete Space…", destructive: true)
+  var onDelete: (() -> Void)?
   private var pickingColor: WritableKeyPath<SpaceDraft, String?>?
 
-  init(draft: SpaceDraft, isNew: Bool, profiles: [SpaceProfileChoice]) {
+  init(draft: SpaceDraft, isNew: Bool, profiles: [SpaceProfileChoice], inSettings: Bool = false) {
     self.draft = draft
     self.isNew = isNew
     self.profiles = profiles
+    self.inSettings = inSettings
     confirmButton = PanelButton(title: isNew ? "Create Space" : "Done", primary: true)
     super.init(frame: .zero)
     wantsLayer = true
@@ -89,6 +94,12 @@ final class SpaceEditorView: NSView, NSTextFieldDelegate {
     confirmButton.onClick = { [weak self] in self?.confirm() }
     addSubview(cancelButton)
     addSubview(confirmButton)
+    deleteButton.onClick = { [weak self] in self?.onDelete?() }
+    addSubview(deleteButton)
+    title.isHidden = inSettings
+    cancelButton.isHidden = inSettings
+    confirmButton.isHidden = inSettings
+    deleteButton.isHidden = !inSettings
     refreshChoices()
   }
 
@@ -97,6 +108,9 @@ final class SpaceEditorView: NSView, NSTextFieldDelegate {
   override var isFlipped: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
   static let width: CGFloat = 268
+
+  var profileTitles: [String] { profiles.map(\.title) }
+  var isTyping: Bool { nameField.field.currentEditor() != nil }
 
   func focusName() {
     window?.makeFirstResponder(nameField.field)
@@ -215,17 +229,17 @@ final class SpaceEditorView: NSView, NSTextFieldDelegate {
   func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
     switch selector {
     case #selector(NSResponder.insertNewline(_:)):
-      confirm()
+      if inSettings { window?.makeFirstResponder(nil) } else { confirm() }
       return true
     case #selector(NSResponder.cancelOperation(_:)):
-      onFinish?(false)
+      if !inSettings { onFinish?(false) }
       return true
     default:
       return false
     }
   }
 
-  override func cancelOperation(_ sender: Any?) { onFinish?(false) }
+  override func cancelOperation(_ sender: Any?) { if !inSettings { onFinish?(false) } }
 
   private func confirm() {
     guard Space.name(from: draft.name) != nil else { return }
@@ -238,16 +252,16 @@ final class SpaceEditorView: NSView, NSTextFieldDelegate {
     super.layout()
     let inset: CGFloat = 12
     let width = bounds.width - inset * 2
-    var y: CGFloat = 6
+    var y: CGFloat = inSettings ? 14 : 6
     func line(_ view: NSView, height: CGFloat, gap: CGFloat = 8) {
       view.frame = NSRect(x: inset, y: y, width: width, height: height)
       y += height + gap
     }
-    line(title, height: title.intrinsicContentSize.height, gap: 10)
+    if !inSettings { line(title, height: title.intrinsicContentSize.height, gap: 10) }
     line(nameField, height: 30, gap: 14)
     func label(_ index: Int) { line(labels[index], height: labels[index].intrinsicContentSize.height, gap: 6) }
     func grid(_ cells: [SpaceChoiceCell], columns: Int, size: CGFloat) {
-      let step = width / CGFloat(columns)
+      let step = min(width / CGFloat(columns), size + 12)
       for (index, cell) in cells.enumerated() {
         let column = index % columns, row = index / columns
         cell.frame = NSRect(x: inset + CGFloat(column) * step + (step - size) / 2, y: y + CGFloat(row) * (size + 4),
@@ -263,17 +277,29 @@ final class SpaceEditorView: NSView, NSTextFieldDelegate {
     label(2)
     grid(accentCells, columns: 10, size: 22)
     label(3)
-    line(profileButton, height: 24, gap: 18)
+    profileButton.frame = NSRect(x: inset, y: y, width: min(width, 260), height: 24)
+    y += 24 + 18
     let buttonWidth = (width - 8) / 2
     cancelButton.frame = NSRect(x: inset, y: y, width: buttonWidth, height: 28)
     confirmButton.frame = NSRect(x: inset + buttonWidth + 8, y: y, width: buttonWidth, height: 28)
+    let deleteWidth = deleteButton.fittingSize.width
+    deleteButton.frame = NSRect(x: inset, y: y, width: max(deleteWidth, 120), height: 28)
   }
 
-  /// Laid out at the panel's width, sized to what it holds.
-  func fit() {
-    frame.size = NSSize(width: Self.width, height: 1000)
+  /// Laid out at the panel's width (or Settings' column), sized to what it holds.
+  func fit(width: CGFloat = SpaceEditorView.width) {
+    frame.size = NSSize(width: width, height: 1000)
     layoutSubtreeIfNeeded()
-    frame.size.height = confirmButton.frame.maxY + 12
+    frame.size.height = confirmButton.frame.maxY + (inSettings ? 14 : 12)
+  }
+
+  /// The height `fit` would give at a width.
+  func height(forWidth width: CGFloat) -> CGFloat {
+    let old = frame.size
+    fit(width: width)
+    let height = frame.height
+    frame.size = old
+    return height
   }
 
   var debug: [String: Any] {

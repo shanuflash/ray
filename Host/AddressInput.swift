@@ -44,7 +44,9 @@ enum AddressInput {
   /// One line per pane, a blank line between, so panes added in parallel merge cleanly.
   private static let nativeSettingsPaths: [String: String] = [
     "appearance": "appearance", "fonts": "appearance",
-    "people": "appearance", "profiles": "appearance", "manageprofile": "appearance", "account": "appearance",
+    "people": "spaces", "profiles": "spaces", "manageprofile": "spaces", "account": "appearance",
+
+    "spaces": "spaces",
     "googleservices": "appearance", "signout": "appearance", "importdata": "appearance",
 
     "general": "general",

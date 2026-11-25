@@ -529,7 +529,7 @@ var settingsReauthAllowed: Bool {
 }
 
 /// The engine's default profile, where saved passwords and autofill live (never a private window's).
-var settingsDataProfile: RayCoreProfile? { RayCoreEngine.shared?.defaultProfile }
+var settingsDataProfile: RayCoreProfile? { SettingsDataProfile.current }
 
 /// After a change worth checking: every window's state log (test builds) shows it.
 func settingsDataChanged(_ event: String) {

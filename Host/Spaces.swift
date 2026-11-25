@@ -209,3 +209,39 @@ struct ImportedSpace {
     return Space.validIcon("sf:" + symbol)
   }
 }
+
+/// A profile as Ray shows it (Settings › Spaces' Profiles, the editor's Profile pop-up, the data panes' chooser): its
+/// engine directory (nil for the default one), a name and a colour. The engine knows profiles only by directory; this
+/// is Ray's own, saved in Sidebar.json's `profiles`.
+struct ProfileInfo: Codable, Equatable {
+  var directory: String?
+  var name: String
+  /// `#RRGGBB`, the profile's avatar; nil is grey.
+  var color: String?
+  /// Where an imported profile came from ("arc:Profile 1"), so importing it again finds the same one.
+  var source: String?
+
+  static let defaultName = "Default"
+  static let nameLimit = 40
+
+  static func name(from text: String) -> String? {
+    SidebarEntry.name(from: text).map { String($0.prefix(nameLimit)) }
+  }
+
+  /// The avatar: the name's first letter on the profile's colour.
+  static func avatar(_ info: ProfileInfo, size: CGFloat = 18) -> NSImage {
+    let fill = info.color.flatMap(ProfileColor.parse).map { NSColor(srgbRed: $0.r, green: $0.g, blue: $0.b, alpha: 1) }
+      ?? NSColor.systemGray
+    let letter = String(info.name.first.map(String.init) ?? "·").uppercased()
+    return NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+      fill.setFill()
+      NSBezierPath(ovalIn: rect).fill()
+      let text = NSAttributedString(string: letter, attributes: [
+        .font: NSFont.systemFont(ofSize: size * 0.55, weight: .bold), .foregroundColor: ProfileColor.foreground(on: fill),
+      ])
+      let bounds = text.size()
+      text.draw(at: NSPoint(x: rect.midX - bounds.width / 2, y: rect.midY - bounds.height / 2))
+      return true
+    }
+  }
+}

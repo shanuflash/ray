@@ -49,9 +49,12 @@ final class ExtensionsPaneContent: SettingsPaneContent {
 
   static let store = "https://chromewebstore.google.com/category/extensions"
 
+  private var profileWatch: NSObjectProtocol?
+
   init() {
     installedList.onShow = { [weak self] in self?.reload() }
     installedList.onWindowKey = { [weak self] in self?.reload() }
+    profileWatch = SettingsDataProfile.observe { [weak self] in self?.reload() }
     showInstalled()
     showAdd()
   }
@@ -69,6 +72,7 @@ final class ExtensionsPaneContent: SettingsPaneContent {
         title: "Add from a link", detail: "A Chrome Web Store link or an extension's ID", keywords: ["install extension", "url", "id"]))
     }
     return [
+      SettingsDataProfile.section("extensions"),
       SettingsSection(
         id: "extensions.installed", title: "Installed", place: .top, view: installedList,
         search: [

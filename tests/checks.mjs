@@ -2340,6 +2340,82 @@ const checks = {
       rmSync(dir, { recursive: true, force: true });
     }
   },
+  async profiles() {
+    // Settings › Spaces (pick C) and Profiles: a new Space on a new profile from the pane, the data panes' profile
+    // pop-up (3B), Little Ray in the Space's profile, the command bar keeping other Spaces' tabs to one row, then
+    // Delete Profile… (2A: its Spaces move to Default and its data goes).
+    const dir = mkdtempSync(join(tmpdir(), "ray-profiles-"));
+    let it;
+    const spaces = (s) => s.sidebar.spaces;
+    const pane = async () => JSON.parse(await it.cmd("spacespane state"));
+    try {
+      it = ownInstance("profiles", { RAY_DATA_DIR: dir });
+      await it.until("started", (x) => x?.sidebar?.today.some((e) => e.live));
+      let p = await pane();
+      assert(p.pictures === 1 && p.profiles.length === 1 && p.profiles[0].name === "Default", `pane at first ${JSON.stringify(p)}`);
+      // New Space from the pane, put on a new profile from its editor.
+      await it.ok("spacespane new");
+      let s = await it.until("a second Space", (x) => spaces(x).list.length === 2);
+      await it.ok("spacespane name Clients");
+      await it.ok("spacespane profile 2");
+      s = await it.until("on its own profile", (x) => spaces(x).list[1].profile?.startsWith("Space ")
+        && spaces(x).profiles.length === 2 && spaces(x).profiles[1].loaded, 20000);
+      const directory = spaces(s).list[1].profile;
+      assert(spaces(s).list[1].name === "Clients" && spaces(s).profiles[1].name === "Clients", `named ${JSON.stringify(spaces(s).profiles)}`);
+      p = await pane();
+      assert(p.profiles[1].spaces === "Clients", `profile rows ${JSON.stringify(p.profiles)}`);
+      // The data panes follow the Space on screen, and their pop-up picks another.
+      assert(p.dataProfile.directory === null, `data panes on ${JSON.stringify(p.dataProfile)}`);
+      await it.ok("space switch 2");
+      await it.until("in Clients", (x) => spaces(x).current === 1 && spaces(x).windowProfile);
+      await until("the data panes followed", async () => (await pane()).dataProfile.directory === directory, 10000);
+      assert((await pane()).dataProfile.path.endsWith(directory), "the data panes' profile isn't Clients'");
+      await it.ok("spacespane dataprofile 1");
+      await until("picked Default", async () => (await pane()).dataProfile.directory === null, 10000);
+      // Little Ray opens in the Space's profile.
+      await it.ok(`littleray open ${origin}/b?little=profile`);
+      s = await it.until("a Little Ray", (x) => x.littleRays?.length === 1);
+      assert(s.littleRays[0].profile === directory, `Little Ray's profile ${s.littleRays[0].profile}`);
+      await it.ok("littleray close");
+      // Three tabs in Clients; from Personal the bar shows one of them at most, after Personal's own.
+      for (const n of [1, 2, 3]) {
+        await it.ok("menu newTab");
+        await it.ok(`type ${origin}/c?n=other${n}`);
+        await it.ok("enter");
+      }
+      await it.until("Clients' tabs", (x) => spaces(x).list[1].today.filter((e) => e.live).length >= 3, 20000);
+      await it.ok("space switch 1");
+      await it.until("Personal", (x) => spaces(x).current === 0);
+      await it.ok("menu newTab");
+      s = await it.until("the bar, nothing typed", (x) => x.commandBar?.rows);
+      assert(!s.commandBar.rows.some((r) => r.space), `other Spaces' tabs with nothing typed: ${JSON.stringify(s.commandBar.rows)}`);
+      await it.ok("type other");
+      s = await it.until("the bar on 'other'", (x) => x.commandBar?.rows?.length > 0 && x.commandBar.query === "other");
+      const fromOthers = s.commandBar.rows.filter((r) => r.space);
+      assert(fromOthers.length <= 1, `${fromOthers.length} rows from other Spaces: ${JSON.stringify(s.commandBar.rows)}`);
+      await it.cmd("escape");
+      await it.cmd("escape");
+      // Delete Profile… asks (over the Settings window), then the profile goes and Clients moves to Default.
+      await it.ok("settings open spaces");
+      await it.until("Settings › Spaces", (x) => x.settingsWindow?.open && x.settingsWindow.pane === "spaces");
+      await it.ok("spacespane profileopen 2");
+      await it.ok("spacespane profiledelete 2");
+      await sleep(600);
+      await it.ok("spacespane confirm accept");
+      s = await it.until("deleted", (x) => spaces(x).profiles.length === 1 && spaces(x).list[1].profile === null
+        && spaces(x).deletedProfiles.some((d) => d.directory === directory && d.deleted), 20000);
+      assert(spaces(s).list[1].name === "Clients", "Clients went with its profile");
+      // After a relaunch: Clients on Default, one profile.
+      await it.stop().catch(() => {});
+      it = ownInstance("profiles-2", { RAY_DATA_DIR: dir });
+      s = await it.until("relaunched", (x) => x?.sidebar?.spaces?.list.length === 2);
+      assert(spaces(s).profiles.length === 1 && spaces(s).list[1].profile === null, `after relaunch ${JSON.stringify(spaces(s).profiles)}`);
+    } finally {
+      if (it) await it.stop().catch(() => {});
+      if (it && it.proc.exitCode === null && it.proc.signalCode === null) it.proc.kill("SIGKILL");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
   async "spaces-migrate"() {
     // A Sidebar.json from before Spaces loads as one Space, "Personal", with everything it had.
     const dir = mkdtempSync(join(tmpdir(), "ray-spaces-migrate-"));
@@ -3076,7 +3152,7 @@ const checks = {
       await it.ok("settings open passwords");
       s = await it.until("passwords pane", (s) => s.settingsWindow.pane === "passwords");
       assert(pane(s).locked, "Passwords isn't locked at first");
-      assert(s.settingsWindow.rows.passwords.join() === "offerToSaveLogins,passwords.saved,jumpCloudRelay,jumpCloudRelay.setup,passwords.more",
+      assert(s.settingsWindow.rows.passwords.join() === "passwords.profile,offerToSaveLogins,passwords.saved,jumpCloudRelay,jumpCloudRelay.setup,passwords.more",
         `rows ${s.settingsWindow.rows.passwords}`);
       if (process.env.SNAP_DIR) await it.ok(`settings snap ${join(process.env.SNAP_DIR, "settings-passwords-locked.png")}`);
       await it.ok("passwords unlock");
@@ -3784,7 +3860,7 @@ const checks = {
       await it.ok("settings open autofill");
       s = await it.until("autofill pane", (s) => s.settingsWindow.pane === "autofill");
       assert(pane(s).addresses === 0 && pane(s).cards === 0, `a new profile has autofill ${JSON.stringify(pane(s))}`);
-      assert(s.settingsWindow.rows.autofill.join() === "autofillAddresses,autofillCards,autofill.addresses,autofill.cards",
+      assert(s.settingsWindow.rows.autofill.join() === "autofill.profile,autofillAddresses,autofillCards,autofill.addresses,autofill.cards",
         `rows ${s.settingsWindow.rows.autofill}`);
       // Addresses: add, edit, delete (asked first).
       await it.ok("autofill addaddress 0");
@@ -4007,6 +4083,18 @@ const checks = {
         `names on tabs Arc never renamed: ${JSON.stringify(allPinned.filter((e) => e.customTitle))}`);
       assert(allToday.some((e) => e.pinnedURL === null && e.url === "https://today2.example/" && e.title === "Renamed today"),
         `Today: ${JSON.stringify(allToday.map((e) => [e.url, e.title]))}`);
+
+      // Arc's other profile (owner's pick 4A): a Ray profile of its own, named after it, holding its Spaces; importing
+      // it again finds the same one.
+      const work = await runImport(it, "arc Profile 1 pinnedTabs,favorites,openTabs");
+      assert(JSON.stringify(work.import.failed) === "{}", `Arc's Profile 1 failed: ${JSON.stringify(work.import.failed)}`);
+      const arcProfile = work.sidebar.spaces.profiles.find((p) => p.source === "arc:Profile 1");
+      assert(arcProfile?.directory?.startsWith("Space ") && arcProfile.loaded, `Arc's profile: ${JSON.stringify(work.sidebar.spaces.profiles)}`);
+      const workSpace = work.sidebar.spaces.list.find((sp) => sp.name === "Work");
+      assert(workSpace?.profile === arcProfile.directory, `Work's profile: ${JSON.stringify(workSpace)}`);
+      const workAgain = await runImport(it, "arc Profile 1 pinnedTabs,favorites,openTabs");
+      assert(workAgain.sidebar.spaces.profiles.filter((p) => p.source === "arc:Profile 1").length === 1
+        && workAgain.sidebar.spaces.list.filter((sp) => sp.name === "Work").length === 1, "a second import made another profile or Space");
 
       // Chrome: everything; the key comes from the fixture secret.
       const all = "pinnedTabs,openTabs,history,bookmarks,passwords,cookies,autofill,extensions";
@@ -5333,7 +5421,7 @@ const checks = {
     await resetSettings();
     await closeSettingsWindow().catch(() => {});
     const win = () => state().settingsWindow;
-    const all = ["general", "tabs", "appearance", "search", "privacy", "passwords", "autofill", "extensions", "shortcuts", "about"];
+    const all = ["general", "tabs", "spaces", "appearance", "search", "privacy", "passwords", "autofill", "extensions", "shortcuts", "about"];
     await command("settings open appearance");
     await until("appearance", async () => { await command("state"); return win().open && win().pane === "appearance"; });
     assert(win().panes.join() === all.join() && win().sidebarPanes.join() === all.join(), `panes ${win().panes} / ${win().sidebarPanes}`);
@@ -5391,7 +5479,7 @@ const checks = {
     await command("settings asapp on");
     await command("settings open search");
     await until("Ray.app's panes", async () => { await command("state"); return win().open && win().looksLikeRayApp; });
-    assert(win().panes.join() === "general,tabs,appearance,search,privacy,passwords,autofill,extensions,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
+    assert(win().panes.join() === "general,tabs,spaces,appearance,search,privacy,passwords,autofill,extensions,shortcuts,about" && win().sidebarPanes.join() === win().panes.join(), `Ray.app panes ${win().panes}`);
     assert(["jumpCloudRelay", "jumpCloudRelay.setup"].every(id => win().rows.passwords.includes(id)), `Ray.app passwords rows ${win().rows.passwords}`);
     // Every pane has content of its own now, so none is hidden; Search opens as itself.
     assert(win().pane === "search", `Search opened as ${win().pane}`);

@@ -875,9 +875,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   @discardableResult
   func addImported(
     favorites: [ArcImport.Node], pinned: [ArcImport.Node], today: [ArcImport.Node], spaces imported: [ImportedSpace] = [],
-    event: String = "import"
+    profile directory: String? = nil, event: String = "import"
   ) -> SidebarImportCounts {
-    var known = Set(state.allEntries.filter { !$0.isFolder }.map { $0.pinnedURL ?? $0.url })
+    // Another profile's import (owner's pick 4A) knows only that profile's favorites and Spaces.
+    let other = directory != nil && !isPrivate
+    var known = Set((other ? state.favorites(profile: directory) + state.spaces(on: directory).flatMap { $0.pinned + $0.today }
+                     : state.allEntries).filter { !$0.isFolder }.map { $0.pinnedURL ?? $0.url })
     var counts = SidebarImportCounts()
     func tabs(_ nodes: [ArcImport.Node]) -> [(url: String, title: String, name: String?)] {
       nodes.flatMap { node -> [(url: String, title: String, name: String?)] in
@@ -895,7 +898,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     }
     for tab in tabs(favorites) {
       guard known.insert(tab.url).inserted else { counts.alreadyFavorites += 1; continue }
-      state.favorites.append(entry(.favorite, tab.url, tab.title, tab.name))
+      if other {
+        state.setFavorites(state.favorites(profile: directory) + [entry(.favorite, tab.url, tab.title, tab.name)], profile: directory)
+      } else {
+        state.favorites.append(entry(.favorite, tab.url, tab.title, tab.name))
+      }
       counts.favorites += 1
     }
     var added: [SidebarEntry] = []
@@ -920,7 +927,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       }
     }
     add(pinned, in: nil)
-    state.pinned += added
+    if !other { state.pinned += added }
     func addToday(_ nodes: [ArcImport.Node], to space: Space) {
       for tab in tabs(nodes) {
         guard known.insert(tab.url).inserted else { counts.alreadyToday += 1; continue }
@@ -928,22 +935,23 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         counts.today += 1
       }
     }
-    addToday(today, to: state.current)
+    if !other { addToday(today, to: state.current) }
     // Each of the other browser's Spaces a Space here: the one of that name if there is one, else a new one (a
     // private window has none, so its Spaces' tabs join its lists).
     for space in imported {
       let target: Space
       if isPrivate {
         target = state.current
-      } else if let same = state.spaces.first(where: { $0.name.lowercased() == space.name.lowercased() }) {
+      } else if let same = state.spaces.first(where: { $0.name.lowercased() == space.name.lowercased() && $0.profile == directory }) {
         target = same
-      } else if state.spaces.count == 1, state.current.pinned.isEmpty, state.current.today.isEmpty, state.current.icon == nil,
+      } else if !other, state.spaces.count == 1, state.current.pinned.isEmpty, state.current.today.isEmpty, state.current.icon == nil,
                 state.current.color == nil {
         // A first import into a new Ray: its first Space takes the empty one's place.
         target = state.current
         target.name = Space.name(from: space.name) ?? target.name
       } else {
         target = Space(name: Space.name(from: space.name) ?? "Imported")
+        target.profile = isPrivate ? nil : directory
         state.spaces.append(target)
       }
       // Each Space keeps its own pins: a page pinned in two of the other browser's Spaces is pinned in both here.
@@ -1565,7 +1573,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     reloadSidebar()
     store.save(state)
     logState(event)
+    if !isPrivate { NotificationCenter.default.post(name: Self.spacesDidChange, object: self) }
   }
+
+  /// Posted after the normal window's sidebar changed (Settings › Spaces and the data panes' profile chooser follow).
+  static let spacesDidChange = Notification.Name("RaySpacesDidChange")
 
   @discardableResult
   func openToday(_ url: String, after opener: SidebarEntry?, foreground: Bool) -> SidebarEntry {
@@ -3165,7 +3177,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       settings: SettingsSearch.barMatches, frecency: history.frecency(of:), favicon: favicons.image(for:),
       name: { [weak self] tab in self?.state.entry(for: tab)?.customTitle },
       lastUsed: { [weak self] tab in self?.state.entry(for: tab)?.lastUsed ?? .distantPast })
-    bar.show(rows)
+    bar.show(Suggestions.fewerFromOtherSpaces(rows, query: trimmed))
     let offered = SearchEngines.offer(for: query, use: history.use(ofHost:))
     bar.offer(offered)
     preconnect(to: rows.first)
@@ -4310,15 +4322,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   /// Every profile a Space uses, Default first, each named by its Spaces.
-  private func profileChoices() -> [SpaceProfileChoice] {
-    var choices = [SpaceProfileChoice(directory: nil, title: "Default")]
-    var seen = Set<String>()
-    for space in state.spaces {
-      guard let directory = space.profile, seen.insert(directory).inserted else { continue }
-      let names = state.spaces.filter { $0.profile == directory }.map(\.name).joined(separator: ", ")
-      choices.append(SpaceProfileChoice(directory: directory, title: "Same as \(names)"))
-    }
-    return choices
+  func profileChoices() -> [SpaceProfileChoice] {
+    state.tidyProfiles()
+    return state.profiles.map { SpaceProfileChoice(directory: $0.directory, title: $0.name) }
   }
 
   private func showSpaceEditor(_ space: Space, draft: SpaceDraft, original: SpaceDraft, isNew: Bool, previous: UUID?) {
@@ -4390,7 +4396,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   /// A Space onto another profile: its open tabs close (a tab can't change profile) and reopen there when used;
   /// favorites become that profile's.
-  private func changeProfile(of space: Space, to directory: String?) {
+  func changeProfile(of space: Space, to directory: String?) {
+    // A new profile is named after the Space that made it.
+    if let directory, state.profileInfo(directory) == nil {
+      state.profiles.append(ProfileInfo(directory: directory, name: ProfileInfo.name(from: space.name) ?? "Profile",
+                                        color: space.color))
+    }
     for entry in space.pinned + space.today where entry.isLive {
       entry.remember()
       entry.tab?.close()
@@ -4504,6 +4515,120 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     changed("insert")
   }
 
+  // MARK: Spaces in Settings
+
+  /// Settings › Spaces' editor: every change applies at once (name, icon, colours, profile).
+  func applyFromSettings(_ draft: SpaceDraft, to space: Space) {
+    guard !isPrivate, state.spaces.contains(where: { $0 === space }) else { return }
+    if let name = Space.name(from: draft.name) { space.name = name }
+    space.icon = draft.icon
+    space.color = draft.color
+    space.accent = draft.accent
+    if draft.profile != space.profile {
+      changeProfile(of: space, to: draft.profile == SpaceEditorView.newProfile ? Space.newProfileDirectory() : draft.profile)
+    }
+    if space === state.current { SpaceLook.apply(space) }
+    changed("spaceSettings")
+  }
+
+  /// Settings › Spaces' New Space: made with the next theme, after the others; the window stays where it is.
+  func addSpaceFromSettings() -> Space? {
+    guard !isPrivate else { return nil }
+    let used = Set(state.spaces.compactMap(\.color))
+    let pick = SpaceTheme.windows.indices.first { !used.contains(SpaceTheme.windows[$0]) } ?? state.spaces.count % SpaceTheme.windows.count
+    let space = Space(name: "New Space")
+    space.color = SpaceTheme.windows[pick]
+    state.spaces.append(space)
+    changed("spaceAdded")
+    return space
+  }
+
+  // MARK: Profiles
+
+  /// A profile's engine object, loaded (nil: Default's, the main profile).
+  func loadedProfile(_ directory: String?) -> RayCoreProfile? {
+    guard let directory else { return mainProfile }
+    return spaceProfiles[directory]
+  }
+
+  /// Loads a profile for Settings (a data pane showing it) and answers when it has.
+  func loadProfile(_ directory: String?, _ done: @escaping (RayCoreProfile?) -> Void) {
+    guard let directory else { return done(mainProfile) }
+    withProfile(directory, done)
+  }
+
+  func renameProfile(_ directory: String?, to text: String) {
+    guard let name = ProfileInfo.name(from: text), let index = state.profiles.firstIndex(where: { $0.directory == directory })
+    else { return }
+    state.profiles[index].name = name
+    changed("profileRenamed")
+  }
+
+  func setProfileColor(_ directory: String?, _ hex: String?) {
+    guard let index = state.profiles.firstIndex(where: { $0.directory == directory }) else { return }
+    state.profiles[index].color = hex.flatMap(Space.validHex)
+    changed("profileColor")
+  }
+
+  /// Settings › Spaces' Delete Profile… (owner's pick 2A): the profile's data goes from disk (its cookies, history,
+  /// passwords, autofill, extensions, its favorites); its Spaces stay, on Default, their open tabs closed (they open
+  /// there, signed out, on their next use). Default can't go.
+  func deleteProfile(_ directory: String) {
+    guard !isPrivate, state.profileInfo(directory) != nil else { return }
+    for space in state.spaces(on: directory) { changeProfile(of: space, to: nil) }
+    for entry in state.favorites(profile: directory) where entry.isLive { entry.tab?.close() }
+    state.profileFavorites[directory] = nil
+    state.profiles.removeAll { $0.directory == directory }
+    // The engine deletes a profile it has loaded (one not loaded this run is loaded first).
+    withProfile(directory) { [weak self] loaded in
+      guard let self else { return }
+      self.spaceProfiles[directory] = nil
+      guard let loaded, let engine = RayCoreEngine.shared else {
+        self.deletedProfiles.append(["directory": directory, "deleted": false])
+        return
+      }
+      engine.delete(loaded) { [weak self] deleted in
+        DispatchQueue.main.async {
+          self?.deletedProfiles.append(["directory": directory, "deleted": deleted])
+          self?.logState("profileDeleted")
+        }
+      }
+    }
+    if profile.offTheRecord == false, state.current.profile == nil {
+      profile = mainProfile
+      coreWindow.activeProfile = mainProfile
+    }
+    changed("profileDeleted")
+  }
+
+  /// For the state log: profiles deleted this run.
+  private var deletedProfiles: [[String: Any]] = []
+
+  /// The Ray profile an imported browser's profile goes into (owner's pick 4A): Arc's Default is Ray's Default, any
+  /// other Arc profile one of Ray's own, named after it and found again on the next import (`ProfileInfo.source`).
+  func importProfile(source key: String, name: String, _ done: @escaping (_ directory: String?, RayCoreProfile?) -> Void) {
+    guard !isPrivate else { return done(nil, profile) }
+    let directory: String
+    if let known = state.profiles.first(where: { $0.source == key })?.directory {
+      directory = known
+    } else {
+      directory = Space.newProfileDirectory()
+      let used = Set(state.profiles.map(\.name))
+      var title = ProfileInfo.name(from: name) ?? "Imported"
+      if used.contains(title) { title = ProfileInfo.name(from: "\(title) (Arc)") ?? title }
+      state.profiles.append(ProfileInfo(directory: directory, name: title, source: key))
+      store.save(state)
+    }
+    withProfile(directory) { loaded in done(loaded == nil ? nil : directory, loaded) }
+  }
+
+  var profilesDebug: [[String: Any]] {
+    state.profiles.map {
+      ["directory": $0.directory ?? NSNull(), "name": $0.name, "color": $0.color ?? NSNull(), "source": $0.source ?? NSNull(),
+       "spaces": state.spaces(on: $0.directory).map(\.name), "loaded": $0.directory.map { spaceProfiles[$0] != nil } ?? true]
+    }
+  }
+
   // MARK: Space tests
 
   private func spacesDebug(_ describe: (SidebarEntry) -> [String: Any]) -> [String: Any] {
@@ -4523,6 +4648,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "dockShown": sidebar.spaceDockShown,
       "slides": sidebar.slideCount, "slideSteps": sidebar.slideSteps, "sliding": sidebar.isSliding,
       "swipeCommits": sidebar.swipeCommits, "swipeCancels": sidebar.swipeCancels,
+      "profiles": profilesDebug, "deletedProfiles": deletedProfiles,
       "look": ["window": SpaceLook.windowHex as Any? ?? NSNull(), "accent": ProfileColor.spaceAccentHex as Any? ?? NSNull()],
       "editor": spaceEditor?.debug ?? NSNull(),
       "blankBands": sidebar.lastBlankBands,
@@ -4722,6 +4848,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
           "rows": bar.suggestions.map { row -> [String: Any] in
             var logged: [String: Any] = ["kind": row.kindName, "title": row.title, "detail": row.detail]
             if row.suggested { logged["suggested"] = true }
+            if let space = row.space { logged["space"] = space }
             if case .tab(let tab) = row.kind { logged["tab"] = Int(tab.tabId) }
             if case .search(let url) = row.kind { logged["url"] = url }
             if case .history(let url) = row.kind { logged["url"] = url }

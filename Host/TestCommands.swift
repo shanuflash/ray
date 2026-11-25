@@ -961,6 +961,7 @@ enum TestCommands {
     case "crashed":
       result = AppController.shared.current?.crashedPages.test(argument) ?? "no window"
     case "privacy": result = PrivacyPaneContent.test(argument)
+    case "spacespane": result = SpacesPaneContent.test(argument)
     case "extpane": result = ExtensionsPaneContent.test(argument)
     case "passwords":
       guard let answer = PasswordsPaneContent.shared.test(line, argument) else { return }

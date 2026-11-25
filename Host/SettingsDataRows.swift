@@ -554,8 +554,9 @@ enum SettingsConfirm {
 // MARK: Pages
 
 enum SettingsPages {
-  /// The profile the data panes show and change: the normal one, never a private window's.
-  static var profile: RayCoreProfile? { RayCoreEngine.shared?.defaultProfile }
+  /// The profile the data panes show and change: the Space on screen's, or the one a pane's pop-up picked
+  /// (`SettingsDataProfile`); never a private window's.
+  static var profile: RayCoreProfile? { SettingsDataProfile.current }
 
   /// Whether an engine event is about the normal profile (private windows' changes aren't the panes' business).
   static func isNormalProfile(_ payload: [String: Any]) -> Bool {
