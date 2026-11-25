@@ -27,15 +27,17 @@ final class SidebarEntry: Codable {
   var icon: String?
   /// For Today folders: the Chrome tab group they are now (its id this run), never saved.
   var groupToken: String?
-  /// A tab a page opened behind it and never shown since: it doesn't count as used (⌃Tab's order, the tab a close
-  /// shows) until it is, as Ardia's `unseen`. Never saved.
+  // MARK: Tab use
+
+  /// A tab a page opened behind it and never shown since, as Ardia's `unseen`: a close and the command bar pass it over
+  /// until it's shown, and ⌃Tab puts it right after its opener (`switcherOrder`). Never saved.
   var unseen = false
   /// The tab whose page opened this one (a link, ⌘-click, `window.open`): Back with no history of its own closes this
   /// tab and goes back there (Ardia's "Close Tab and Go Back"). Dropped when the user types an address into it.
   /// Never saved.
   var openerID: UUID?
 
-  /// When the tab was last used for ⌃Tab and for picking the tab a close shows: never, while it's unseen.
+  /// When the tab was last used, for the command bar's open tabs: never, while it's unseen.
   var lastUsed: Date { unseen ? .distantPast : lastActive }
 
   // MARK: Names and saved fields

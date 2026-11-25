@@ -77,6 +77,8 @@ export const areas = {
   "Host/SidebarModel.swift#Names and saved fields": [...pages, ...drag, ...commandBar, "tab-rename", "folder-create",
     "folder-rename", "favorites", "pin-unload-restore", "tile-hover", "clear", "reopen-closed-tab", "arc-import",
     "import-browser", "private-window", "close-last-window"],
+  // A tab opened behind (unseen), its opener, and when it was last used.
+  "Host/SidebarModel.swift#Tab use": ["close-shows-last-used", "tab-switcher", "back-closes-link-tab", "background-tab", "bar-ranking"],
   // When a pinned tab or favorite counts as away from its page.
   "Host/SidebarModel.swift#Pinned page": ["pin-unload-restore", "reopen-closed-tab", "favorites", "row-menus"],
   // Duplicate's copy of an entry.
@@ -418,4 +420,6 @@ export const needs = {
   "folder-drag-folder": ["folder-create"],
   "folder-out-and-delete": ["folder-create"],
   "drag-to-favorite": ["drag-click-selects", "drag-reorder", "drag-to-pin"],
+  // It clicks a link on /a, which these open and load.
+  "background-tab": ["page-channel", "navigate"],
 };

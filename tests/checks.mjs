@@ -8535,8 +8535,8 @@ const checks = {
     }
   },
   async "close-shows-last-used"() {
-    // Arc's and Ardia's: closing a tab shows the one used before it, not a neighbour; a tab opened behind and never
-    // shown doesn't count as used (⌃Tab skips it too); ⌘T's empty bar lists tabs most recent first.
+    // Arc's and Ardia's: closing a tab shows the one used before it, not a neighbour; ⌘T's empty bar lists tabs most
+    // recent first; a tab opened behind is ⌃Tab's next step.
     const tabs = await usedTabs();
     await command(`row ${tabs[0].id}`);
     await until("first", () => state().activeEntry === tabs[0].id);
@@ -8550,27 +8550,45 @@ const checks = {
     await command("escape");
     await command("key w cmd keywin");
     await until("the tab used before", async () => { await command("state"); return state().activeEntry === tabs[0].id; }, 5000);
-    // A background tab from the page doesn't take ⌃Tab's first step: the tab before it does.
-    const { target } = await session("/a");
-    await send("Target.activateTarget", { targetId: target.targetId });
-    await until("/a active", () => state().active === tabFor("/a")?.id);
+    // A tab the page opened behind is ⌃Tab's first step (Arc's and Ardia's): right after its opener, newest first.
     const before = state().tabs.length;
-    const { sessionId } = await session("/a");
-    await evaluate(sessionId, `(() => { const a = document.createElement("a"); a.id = "unseenbg"; a.href = "/b?unseenbg"; a.textContent = "bg"; document.body.prepend(a); })()`);
-    await clickElement(sessionId, "#unseenbg", 4);
-    await until("background tab", () => state().tabs.length === before + 1);
-    await evaluate(sessionId, `document.querySelector("#unseenbg").remove()`);
+    await send("Target.createTarget", { url: `${origin}/a?ctrltab` });
+    const { target, sessionId } = await session("?ctrltab");
+    await send("Target.activateTarget", { targetId: target.targetId });
+    await until("opener active", () => state().active === tabFor("?ctrltab")?.id);
+    const opener = state().active;
+    for (const [n, name] of ["bgone", "bgtwo"].entries()) {
+      await evaluate(sessionId, `(() => { const a = document.createElement("a"); a.id = "${name}"; a.href = "/b?${name}"; a.textContent = "bg"; document.body.prepend(a); })()`);
+      await clickElement(sessionId, `#${name}`, 4);
+      await until("background tab", () => state().tabs.length === before + n + 2);
+      await evaluate(sessionId, `document.querySelector("#${name}").remove()`);
+      await sleep(20);
+    }
     await settle();
-    const prior = state().recentOrder[1];
-    assert(prior !== tabFor("?unseenbg")?.id, "the unseen tab counts as the tab used before");
+    await command("state");
+    assert(state().active === opener, "the background tabs stayed behind");
+    const order = state().recentOrder;
+    assert(order[0] === opener && order[1] === tabFor("?bgtwo")?.id && order[2] === tabFor("?bgone")?.id,
+      `⌃Tab's order after two background tabs: ${JSON.stringify(order.slice(0, 3))}`);
     await command("key ctrltap");
-    await until("⌃Tab went back", async () => { await command("state"); return state().active === prior; }, 5000);
-    await send("Target.closeTarget", { targetId: (await targets()).find((t) => t.url.includes("?unseenbg")).targetId });
+    await until("⌃Tab went to the newest background tab", async () => { await command("state"); return state().active === tabFor("?bgtwo")?.id; }, 5000);
+    await command("key ctrltap");
+    await until("⌃Tab went back to the opener", async () => { await command("state"); return state().active === opener; }, 5000);
+    for (const name of ["?bgtwo", "?bgone", "?ctrltab"]) {
+      await send("Target.closeTarget", { targetId: (await targets()).find((t) => t.url.includes(name)).targetId });
+    }
     await until("closed", () => state().tabs.length === before);
   },
   async "back-closes-link-tab"() {
     // Back on a tab a link opened, with no history of its own, closes it and goes back to the tab that opened it
     // (Ardia's "Close Tab and Go Back"); ⌘-click and a middle click on Back open the page before in a new tab.
+    // An earlier check may have closed /a (tab-pictures-dropped closes the first Today tabs): a tab that went there
+    // from another page, so its own Back is plain Back.
+    if (!(await targets()).some((t) => t.url === `${origin}/a`)) {
+      await send("Target.createTarget", { url: `${origin}/c?backpre` });
+      const pre = await session("/c?backpre");
+      await evaluate(pre.sessionId, `location.href = "/a"`);
+    }
     const { target } = await session("/a");
     await send("Target.activateTarget", { targetId: target.targetId });
     await until("/a active", () => state().active === tabFor("/a")?.id);

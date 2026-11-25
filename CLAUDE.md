@@ -461,7 +461,8 @@ publicly or create accounts.
 - `TabSwitcher` (`Host/TabSwitcher.swift`, `BrowserWindowController` `// MARK: Tab switcher`): Arc's ⌃Tab switcher
   (sizes from Cra's measurements of Arc 1.170 and the owner's recording; look B of the mocks, owner 2026-11-04). With
   `recentTabCycling` on, ⌃Tab opens a walk over the up to 5 most recent tabs (current first, as many as fit the
-  window) on card 1 (⌃⇧Tab: the last); the panel (`TabSwitcherView`, on `SurfaceBackdrop`, 22 pt corners, 180×158
+  window; `switcherOrder`, Ardia's `recentTabIds`: a tab opened behind and never shown comes right after its opener,
+  newest first, so one ⌃Tab after a ⌘-click goes to it; state log `recentOrder`) on card 1 (⌃⇧Tab: the last); the panel (`TabSwitcherView`, on `SurfaceBackdrop`, 22 pt corners, 180×158
   cards on a 182 pitch, 158×105 pictures, the selected card `SelectedRow`'s wash)
   shows after 0.15 s, centred on the whole window, below `floating`, with no animation (Arc has none). Tab / ⇧Tab and
   ← → move and wrap; the pointer picks a card (once it has moved since the panel showed); releasing Control (the
@@ -689,7 +690,7 @@ publicly or create accounts.
 - Closing and Back (`BrowserWindowController` `// MARK: Closing`, `// MARK: Back and forward`): the tab shown after
   the active one closes is the one used before it (Arc's, Ardia's PR #416): `successor(closing:)` takes Back's opener
   first, else the most recently used awake tab, never a tab closing with it (`closingTogether`), one opened behind and
-  never shown (`SidebarEntry.unseen`, which `lastUsed` ranks last, ⌃Tab too) only if nothing else is open, the
+  never shown (`SidebarEntry.unseen`, which `lastUsed` ranks last for the command bar) only if nothing else is open, the
   nearest for ties. `closeByUser` selects it **before** `tab.close()`: Chrome activates its own pick (opener or next
   in its strip) and reports it before `didRemove`. A tab its page or an extension closes keeps Chrome's pick.
   `SidebarEntry.openerID` (never saved) is the tab whose page opened it; Back on such a Today tab with no history of
@@ -1054,8 +1055,8 @@ takes no app that fails Gatekeeper (docs.brew.sh/Acceptable-Casks).
   hidden test window happens to land on the visible desktop: `switch-back-latency` then fails (on older commits
   too) and leaves state that breaks `private-window`, `arc-import` and `close-last-window` after it. A subset run
   can also fail from what earlier checks left behind: `pin-unload-restore` leaves its tab pinned, so `favorites` and
-  `reopen-closed-tab` fail right after it (on main too); run those alone. `background-tab` as the first check after
-  boot clicks before `/a` has loaded (run `page-channel navigate` before it), and `link-preview` fails right after
+  `reopen-closed-tab` fail right after it (on main too); run those alone. `background-tab` needs `page-channel navigate` before it
+  (`needs` adds them), and `link-preview` fails right after
   `reopen-closed-tab` (on main too). A Chrome log line can land inside a long `[ray-state]`
   line (pipe writes over 512 bytes aren't atomic) and the runner dies on `JSON.parse`; run the checks it didn't reach. Before blaming a change, run the same command on the
   previous commit (`git stash -u`, build, run, `git stash pop`) and compare.

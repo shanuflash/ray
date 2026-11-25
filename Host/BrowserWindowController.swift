@@ -2064,18 +2064,51 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard RaySettings.shared[.recentTabCycling] else { return cycleTab(by: step) }
     if tabSwitcher.isOpen { return tabSwitcher.step(step, order: [], cards: 0, held: true) }
     let live = state.allEntries.filter { $0.isLive && !$0.isFolder }
-    // Most recently used first, the current tab on top; ties keep the sidebar's order.
-    var order = live.enumerated().sorted { ($0.element.lastUsed, $1.offset) > ($1.element.lastUsed, $0.offset) }.map(\.element)
-    if let active = activeEntry, let at = order.firstIndex(where: { $0 === active }) {
-      order.remove(at: at)
-      order.insert(active, at: 0)
-    }
+    let order = switcherOrder(live)
     tabPictures.keep(Set(live.map(\.id)))
     if let active = activeEntry { tabPictures.capture(active) }
     // From a menu click nothing is held, and the walk switches at once.
     let event = NSApp.currentEvent
     let held = event?.type == .keyDown && event?.modifierFlags.contains(.control) == true
     tabSwitcher.step(step, order: order, cards: TabSwitcherView.cards(fitting: root.bounds.width), held: held)
+  }
+
+  /// ⌃Tab's order, Ardia's `recentTabIds`: the current tab, then the tabs used before it, most recent first (ties keep
+  /// the sidebar's order). A tab opened behind and never shown comes right after the tab that opened it, newest first,
+  /// so one ⌃Tab after a ⌘-click goes to it, as in Arc and Ardia (a close and the command bar still pass it over); one
+  /// whose opener is gone comes after the used tabs.
+  func switcherOrder(_ live: [SidebarEntry]) -> [SidebarEntry] {
+    let place = Dictionary(live.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+    let newer = { (a: SidebarEntry, b: SidebarEntry) in (a.lastActive, place[a.id] ?? 0) > (b.lastActive, place[b.id] ?? 0) }
+    let current = activeEntry.flatMap { active in live.first { $0 === active } }
+    var children: [UUID: [SidebarEntry]] = [:]
+    var loose: [SidebarEntry] = []
+    for entry in live where entry.unseen && entry !== current {
+      if let opener = entry.openerID, opener != entry.id, place[opener] != nil {
+        children[opener, default: []].append(entry)
+      } else {
+        loose.append(entry)
+      }
+    }
+    for key in children.keys { children[key]?.sort(by: newer) }
+    loose.sort(by: newer)
+    let recent = live.enumerated().filter { !$0.element.unseen && $0.element !== current }
+      .sorted { ($0.element.lastActive, $1.offset) > ($1.element.lastActive, $0.offset) }.map(\.element)
+    var order: [SidebarEntry] = []
+    var added = Set<UUID>()
+    func append(_ root: SidebarEntry) {
+      var stack = [root]
+      while let entry = stack.popLast() {
+        guard added.insert(entry.id).inserted else { continue }
+        order.append(entry)
+        stack.append(contentsOf: (children[entry.id] ?? []).reversed())
+      }
+    }
+    if let current { append(current) }
+    recent.forEach(append)
+    loose.forEach(append)
+    live.sorted(by: newer).forEach(append)
+    return order
   }
 
   /// Control was let go: the switcher switches to the card it reached.
@@ -4895,8 +4928,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     state["littleRaySteps"] = LittleRay.steps
     state["linkActivationRestores"] = LinkActivationOrder.shared.restores
     state["back"] = ["enabled": canGoBack, "tooltip": backToolTip, "lastPress": HistoryButton.lastPress]
-    state["recentOrder"] = self.state.allEntries.filter { $0.isLive }
-      .sorted { $0.lastUsed > $1.lastUsed }.map(tabID)
+    state["recentOrder"] = switcherOrder(self.state.allEntries.filter { $0.isLive && !$0.isFolder }).map(tabID)
     state["recentlyClosed"] = ClosedTabsMenu.shared.debug(for: self)
     state["looks"] = AppLook.debug.merging([
       "window": window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? "dark" : "light",
