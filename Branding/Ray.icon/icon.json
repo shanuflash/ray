@@ -1,34 +1,23 @@
 {
   "fill-specializations": [
     {
-      "value": {
-        "automatic-gradient": "extended-srgb:1.00000,0.45000,0.40000,1.00000"
-      }
+      "value": "none"
     },
     {
       "appearance": "dark",
-      "value": "system-dark"
+      "value": "none"
     }
   ],
   "groups": [
     {
       "layers": [
         {
-          "image-name": "RayGlyph.svg",
-          "name": "RayGlyph",
+          "image-name": "TintedGlyph.svg",
+          "name": "TintedGlyph",
           "glass": true,
-          "fill-specializations": [
-            {
-              "value": "none"
-            },
-            {
-              "appearance": "dark",
-              "value": "none"
-            }
-          ],
           "opacity-specializations": [
             {
-              "value": 1
+              "value": 0
             },
             {
               "appearance": "dark",
@@ -36,26 +25,17 @@
             },
             {
               "appearance": "tinted",
-              "value": 0
+              "value": 1
             }
           ]
         },
         {
-          "image-name": "RayDarkGlyph.svg",
-          "name": "RayDarkGlyph",
-          "glass": true,
-          "fill-specializations": [
-            {
-              "value": "none"
-            },
-            {
-              "appearance": "dark",
-              "value": "none"
-            }
-          ],
+          "image-name": "Glyph.svg",
+          "name": "Glyph",
+          "glass": false,
           "opacity-specializations": [
             {
-              "value": 0
+              "value": 1
             },
             {
               "appearance": "dark",
@@ -64,68 +44,32 @@
             {
               "appearance": "tinted",
               "value": 0
-            }
-          ]
-        },
-        {
-          "image-name": "RayTintedGlyph.svg",
-          "name": "RayTintedGlyph",
-          "glass": true,
-          "fill-specializations": [
-            {
-              "value": "none"
-            },
-            {
-              "appearance": "dark",
-              "value": "none"
-            }
-          ],
-          "opacity-specializations": [
-            {
-              "value": 0
-            },
-            {
-              "appearance": "dark",
-              "value": 0
-            },
-            {
-              "appearance": "tinted",
-              "value": 1
             }
           ]
         }
       ],
       "shadow": {
-        "kind": "neutral",
-        "opacity": 0.5
+        "kind": "layer-color",
+        "opacity": 0.8
       },
       "translucency": {
-        "enabled": true,
-        "value": 0.4
+        "enabled": false,
+        "value": 0.5
       }
     },
     {
       "layers": [
         {
-          "image-name": "RayBackground.svg",
-          "name": "RayBackground",
+          "image-name": "Background.svg",
+          "name": "Background",
           "glass": false,
-          "fill-specializations": [
-            {
-              "value": "none"
-            },
-            {
-              "appearance": "dark",
-              "value": "none"
-            }
-          ],
           "opacity-specializations": [
             {
               "value": 1
             },
             {
               "appearance": "dark",
-              "value": 0
+              "value": 1
             },
             {
               "appearance": "tinted",
@@ -145,9 +89,6 @@
     }
   ],
   "supported-platforms": {
-    "circles": [
-      "watchOS"
-    ],
     "squares": "shared"
   }
 }

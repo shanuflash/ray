@@ -968,6 +968,8 @@ enum TestCommands {
     case "autofill":
       guard let answer = AutofillPaneContent.shared.test(line, argument) else { return }
       result = answer
+    case "appicon":
+      result = AppIconSet.test(argument)
     case "searchpane":
       result = SearchPaneContent.testCommand(argument)
     case "jumpcloud":

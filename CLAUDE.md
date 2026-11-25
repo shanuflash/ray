@@ -122,7 +122,7 @@ publicly or create accounts.
   and sidebar section (top, "Your data", "More"); `isShown` hides a pane with no shown row and no content of its own,
   in Ray.app only. **Adding a setting:** one entry plus its name in `all`, then the feature reads
   `RaySettings.shared[.id]` (and `observe(.id)` if it follows changes); `settings-catalog` covers it with no check
-  code. Unbuilt rows today (test builds only): `appIcon`, `showClearButton`, `hideAddressBarWhileScrolling`,
+  code. Unbuilt rows today (test builds only): `showClearButton`, `hideAddressBarWhileScrolling`,
   `sidebarMediaControls`.
 - `RaySettings`: the settings' values. `shared[.key]` reads, `set(.key, value)` writes, `apply(key, text)` (`default`
   resets any setting) is the one call the window's controls and the test command `setting` both make, and
@@ -790,10 +790,30 @@ publicly or create accounts.
   while Ray is active; Arc's and Ardia's, check `peek-zones`), and stays out to 24 pt past its own edge.
 - `Branding/alternates/<name>.icon`: Icon Composer documents (icon.json + Assets: Background, Glyph, a white
   TintedGlyph for macOS 26's Clear and Tinted looks, Decor on themed ones; light tiles take macOS's dark fill in
-  Dark; no masks or filters, the glow is the glyph group's layer-colour shadow; not yet opened in Icon Composer): the Neon CRT mark (owner's pick for the new
-  logo, `docs/mocks/logo-scanline.html`) in each app icon theme for the unbuilt `appIcon` setting (`crt` the default,
-  `classic` the old sun; themed ones are original moods, never a game's or brand's name or art), made by `tools/alternate-icons.py` (which also fills `docs/mocks/app-icons.html`); not
-  built into the app, and `Branding/Ray.icon` is still the sun.
+  Dark; no masks or filters, the glow is the glyph group's layer-colour shadow; not yet opened in Icon Composer by the owner): the Neon CRT mark (owner's pick for the new
+  logo, `docs/mocks/logo-scanline.html`) in each app icon style, theme and colour (`crt` the default, `classic` the
+  old sun; themed ones are original moods, never a game's or brand's name or art), made by `tools/alternate-icons.py`
+  (which also fills `docs/mocks/app-icons.html`). `Branding/Ray.icon` is a copy of `crt.icon` (re-copy it if `crt`
+  changes). `scripts/build-app.sh` exports each alternate once per change with Icon Composer's `ictool` (412 px PNG,
+  the artwork alone, `build/alternates`) into `Contents/Resources/AppIcons/<name>.png`, and builds the Dock tile
+  plug-in once per change of `DockTile/` (`build/docktile`), into `Contents/PlugIns/RayDockTile.docktileplugin`
+  signed with the app's identity before the app, named by the app's `NSDockTilePlugIn` key.
+- `AppIconSet` (`Host/AppIcon.swift`, with `Host/AppIconCanvas.swift` and `DockTile/DockTilePlugIn.swift`): the
+  `appIcon` setting (an icon's name, `colour` for the colour nearest the theme colour, `default` = `crt`; Settings ›
+  Appearance › App icon, owner's layout B of `docs/mocks/app-icons.html`: `AppIconControl`, a `.custom` wide control of
+  `PictureChoiceControl`'s `PictureCard`s, 16 styles and themes then Colour, four to a row, and, only while Colour
+  is chosen, an "Icon colour" line of swatches: Match theme colour then each profile colour). `AppIconSet.start()` (engine
+  start, `AppLook`'s neighbour in `engineDidStart`) applies it at every launch and on each change: `crt` is the bundle's
+  own icon (`applicationIconImage = nil`, so macOS 26's Dark and Tinted looks work), another is its PNG drawn on
+  macOS's icon grid (`AppIconCanvas.dockImage`: 824 of 1024 with a soft shadow, compiled into the app and the
+  plug-in). It also writes the resolved icon's name to the app's own preference `appIcon` (CFPreferences, the bundle
+  id's domain) and posts the distributed notice `<bundle id>.appIconChanged` (`userInfo["icon"]`) once per change;
+  the plug-in reads the preference when the Dock asks for the tile while Ray isn't running and redraws on the notice
+  (named after the bundle id: a test build never reaches the real plug-in; it never writes anything). The signed bundle is
+  never written, so Finder and Launchpad keep the default (MISSING 79). `colour` follows `ProfileColor.didChange`.
+  Test command `appicon state|press <value>|colour <name|match>` (open `settings open appearance` first); state log
+  `looks.appIcon` (`chosen`, `resolved`, `applied` "bundle" or a name, `posts`, `prefs`, `files`, `plugIn`,
+  `plugInKey`); check `app-icon`.
 - `Branding/Ray.icon` (Icon Composer; `actool` builds Assets.car + Ray.icns) and `tools/rebrand-pak.py` (renames
   "Ardia" to "Ray" and swaps Ardia's logos in the engine's .pak files at build time) and
   `tools/trim-settings-pak.py` (takes Profiles, Appearance and behavior and Search engine out of the engine's chrome://settings page in

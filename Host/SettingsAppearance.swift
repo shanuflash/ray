@@ -10,4 +10,9 @@ final class AppearancePaneContent: SettingsPaneContent {
       mini.minimalAddress = RaySettings.shared[.minimalURL]
     }
   }
+
+  /// App icon: the styles and themes as cards, then a colour line (Host/AppIcon.swift).
+  func control(named name: String, for key: AnySettingKey) -> NSView? {
+    name == "appIcon" ? AppIconControl() : nil
+  }
 }

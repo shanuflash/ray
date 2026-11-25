@@ -41,6 +41,7 @@ enum AppLook {
       "appearance": NSApp.appearance.map { $0.name == .darkAqua ? "dark" : "light" } ?? "auto",
       "effective": dark ? "dark" : "light",
       "scrollers": NSScroller.preferredScrollerStyle == .overlay ? "overlay" : "legacy",
+      "appIcon": AppIconSet.debug,
     ]
   }
 }
