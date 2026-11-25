@@ -67,8 +67,9 @@ final class SidebarEntry: Codable {
     return folder
   }
 
-  init(kind: Kind, url: String, title: String = "") {
-    id = UUID()
+  /// `id`: a new one, or (an undo bringing a row back) the one it had.
+  init(kind: Kind, url: String, title: String = "", id: UUID = UUID()) {
+    self.id = id
     self.kind = kind
     self.url = url
     self.title = title

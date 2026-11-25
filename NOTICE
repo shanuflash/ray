@@ -16,6 +16,8 @@ It includes and builds against third-party work:
   licence text is in the file's header).
 - Host/TabSwitcher.swift: ⌃W in the switcher adapted from Circa's BrowserTabSwitcher.swift
   (https://github.com/okafrancois/circa), Copyright (c) 2026 Okatech, MIT License.
+- Host/SidebarUndo.swift: ⌘Z's timeline of sidebar edits and closed tabs after Circa's SidebarUndoRouter.swift
+  (https://github.com/okafrancois/circa), Copyright (c) 2026 Okatech, MIT License.
 - At build time, the engine built from engine/ (Chromium Framework.framework): Chromium (BSD-3-Clause and others),
   Helium (GPL-3.0, The Helium Authors), ungoogled-chromium (BSD-3-Clause) and the engine layer above. Its
   corresponding source is engine/ plus the Chromium and Helium versions it names.

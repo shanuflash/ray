@@ -618,6 +618,10 @@ enum TestCommands {
       result = rowAction(argument)
     case "rename":
       result = rename(argument)
+    case "sidebarundo":
+      // `sidebarundo clear`: forgets the current window's sidebar edits (checks start from none).
+      guard argument == "clear", let controller = AppController.shared.current else { result = "usage: sidebarundo clear"; break }
+      controller.sidebarUndo.clear()
     case "rowmenu":
       result = rowMenu(argument)
     case "selaction":

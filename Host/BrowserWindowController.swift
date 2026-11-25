@@ -1716,8 +1716,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   // MARK: Row actions
 
-  /// What a row's menu item (or its close button, or a test's `rowaction`) does to an entry.
+  /// What a row's menu item (or its close button, or a test's `rowaction`) does to an entry. Changes to the sidebar's
+  /// organisation are one ⌘Z each (`SidebarUndo`).
   func perform(_ action: SidebarRowAction, on entry: SidebarEntry) {
+    guard let name = Self.undoName(action, entry) else { return performNow(action, on: entry) }
+    sidebarUndo.edit(name, state: state) { performNow(action, on: entry) }
+  }
+
+  private func performNow(_ action: SidebarRowAction, on entry: SidebarEntry) {
     // Changes that move rows around slide them there (and drop new ones in) rather than jump.
     switch action {
     case .newFolder, .moveToFolder, .removeFromFolder, .deleteFolder, .pinFolder, .unpinFolder, .pin, .unpin,
@@ -1896,6 +1902,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// comes to Today brings the tabs of the folders inside it into itself. A Today folder that's pinned stops being a
   /// Chrome tab group (Chrome never lets a pinned tab be in one).
   func move(_ entry: SidebarEntry, to target: SidebarDropTarget) {
+    let name: String
+    if case .favorites = target { name = entry.kind == .favorite ? "Move Favorite" : "Add to Favorites" } else {
+      name = entry.isFolder ? "Move Folder" : "Move Tab"
+    }
+    sidebarUndo.edit(name, state: state) { moveNow(entry, to: target) }
+  }
+
+  private func moveNow(_ entry: SidebarEntry, to target: SidebarDropTarget) {
     guard state.entry(id: entry.id) === entry else { return }
     let fromToday = state.today.contains { $0 === entry }
     let block = entry.isFolder || entry.kind == .pinned ? state.block(of: entry) : [entry]
@@ -1978,7 +1992,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   /// File › New Folder: an empty folder at the end of the pinned tabs, named and ready to rename.
   func newFolder() {
     let folder = SidebarEntry.folder("New Folder", in: nil)
-    state.pinned.append(folder)
+    sidebarUndo.edit("New Folder", state: state) { state.pinned.append(folder) }
     changed("sidebar")
     sidebar.beginRename(folder)
   }
@@ -1986,7 +2000,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func rename(_ entry: SidebarEntry, to title: String) {
     let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
     guard entry.isFolder, state.entry(id: entry.id) === entry else { return }
-    entry.title = title.isEmpty ? "New Folder" : String(title.prefix(200))
+    sidebarUndo.edit("Rename Folder", state: state) { entry.title = title.isEmpty ? "New Folder" : String(title.prefix(200)) }
     changed("sidebar")
   }
 
@@ -2096,6 +2110,66 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
                                 y: ((root.bounds.height - size.height) / 2).rounded(.down)))
   }
 
+
+  // MARK: Sidebar undo
+
+  /// The sidebar's organisation edits, for ⌘Z and ⇧⌘Z (`UndoCloseTab` routes them here outside text).
+  let sidebarUndo = SidebarUndo()
+
+  /// Edit › Undo's name for a row action that reorganises the sidebar; nil for one that doesn't (closing, copying,
+  /// muting: closed tabs come back through Recently Closed).
+  static func undoName(_ action: SidebarRowAction, _ entry: SidebarEntry) -> String? {
+    let thing = entry.isFolder ? "Folder" : "Tab"
+    switch action {
+    case .pin, .pinFolder: return "Pin " + thing
+    case .unpin, .unpinFolder: return "Unpin " + thing
+    case .moveToPinned, .moveToToday, .moveToFolder, .removeFromFolder, .moveToSpace: return "Move " + thing
+    case .newFolder, .newNestedFolder: return "New Folder"
+    case .deleteFolder: return "Delete Folder"
+    case .addToFavorites: return "Add to Favorites"
+    case .removeFromFavorites: return "Remove from Favorites"
+    case .setColor: return "Change Colour"
+    case .setIcon: return "Change Icon"
+    default: return nil
+    }
+  }
+
+  /// What ⌘Z undoes outside text: the newest of the last sidebar edit, a Clear Today and (with Reopen closed tabs
+  /// with ⌘Z on) any closed tab; for Edit › Undo's title, "Pin Tab", "Clear Today" or "Close Tab".
+  enum UndoStep { case edit(String), reopen(String) }
+
+  func nextUndo(reopeningClosedTabs: Bool) -> UndoStep? {
+    let edit = sidebarUndo.nextUndo
+    if let closed = closedTabs.items.last, reopeningClosedTabs || closed.batch != nil,
+       closed.closedAt > edit?.at ?? -.infinity {
+      return .reopen(closed.batch == nil ? "Close Tab" : "Clear Today")
+    }
+    return edit.map { .edit($0.name) }
+  }
+
+  var nextRedoName: String? { sidebarUndo.nextRedo?.name }
+
+  @discardableResult
+  func undoSidebarEdit() -> Bool {
+    guard let edit = sidebarUndo.takeUndo() else { return false }
+    restoreSidebar(edit.before, leaving: edit.after)
+    return true
+  }
+
+  @discardableResult
+  func redoSidebarEdit() -> Bool {
+    guard let edit = sidebarUndo.takeRedo() else { return false }
+    restoreSidebar(edit.after, leaving: edit.before)
+    return true
+  }
+
+  private func restoreSidebar(_ shape: SidebarSnapshot, leaving other: SidebarSnapshot) {
+    iconPicker?.close()
+    sidebar.animateNextChange()
+    shape.restore(into: state, leaving: other) { self.groups.release($0) }
+    if let active = state.activeEntryID, state.entry(id: active) == nil { state.activeEntryID = nil }
+    changed("undo")
+  }
 
   // MARK: Recently closed
 
@@ -2228,7 +2302,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     var name = SidebarEntry.name(from: text)
     if name == entry.pageTitle { name = nil }
     guard name != entry.customTitle else { return }
-    entry.customTitle = name
+    sidebarUndo.edit("Rename Tab", state: state) { entry.customTitle = name }
     changed("rename")
   }
 
@@ -3393,6 +3467,14 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   func sidebar(_ sidebar: SidebarView, perform action: SidebarRowAction, onAll entries: [SidebarEntry]) {
     let tabs = entries.filter { !$0.isFolder && state.entry(id: $0.id) === $0 }
     guard let first = tabs.first else { return }
+    guard let name = Self.undoName(action, first) else { return performNow(action, onAll: tabs) }
+    sidebarUndo.edit(tabs.count > 1 ? name.replacingOccurrences(of: " Tab", with: " Tabs") : name, state: state) {
+      performNow(action, onAll: tabs)
+    }
+  }
+
+  private func performNow(_ action: SidebarRowAction, onAll tabs: [SidebarEntry]) {
+    guard let first = tabs.first else { return }
     switch action {
     case .newFolder:
       // A folder where the first one is, all of them inside it, ready to name.
@@ -3424,6 +3506,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
 
   /// Several selected tabs dragged together: the held one lands at the target, the rest right after it, in order.
   func sidebar(_ sidebar: SidebarView, move entries: [SidebarEntry], to target: SidebarDropTarget) {
+    sidebarUndo.edit(entries.count > 1 ? "Move Tabs" : "Move Tab", state: state) { moveTogether(entries, to: target) }
+  }
+
+  private func moveTogether(_ entries: [SidebarEntry], to target: SidebarDropTarget) {
     guard let held = entries.first else { return }
     move(held, to: target)
     var previous = held
@@ -4670,6 +4756,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "window": window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? "dark" : "light",
     ]) { _, new in new }
     state["undo"] = UndoCloseTab.shared.debug
+    state["sidebarUndo"] = sidebarUndo.debug
     state["hapticTicks"] = SidebarView.hapticTicks
     state["tabSwitcher"] = tabSwitcher.debug.merging(["pictureCopies": tabPictures.copies]) { $1 }
     state["tabPictures"] = tabPictures.ids.map(\.uuidString)

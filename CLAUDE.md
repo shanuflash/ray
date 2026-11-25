@@ -643,9 +643,24 @@ publicly or create accounts.
   also accepts). Records ⌘W / row Close / Clear Today, tags normal tabs with `ac_tab_restore_tag` so Chrome's tab
   restore keeps their history (`ac_tab_restore_take` + `coreWindow.restoreTab` put them back in their sidebar place);
   private windows keep their own in-memory list. Check `reopen-closed-tab`. `UndoCloseTab` (`// MARK: Undo close
-  tab`): Settings › Reopen closed tabs with ⌘Z makes it Edit › Undo's target; outside text it reopens through
-  `ClosedTabsMenu`, and in Ray's text fields or an editable page element (the page view's `textInputType`, as
-  Ardia reads it) it sends `undo:` on down the responder chain (on by default, Arc's). Check `settings-undo-reopens`.
+  tab`) is always Edit › Undo's and Redo's target: outside text ⌘Z takes the newest of the window's last sidebar edit
+  (below), a Clear Today batch and, with Settings › Reopen closed tabs with ⌘Z on, any closed tab (`ClosedTab.closedAt`,
+  `nextUndo(reopeningClosedTabs:)`), reopening through `ClosedTabsMenu`; ⇧⌘Z redoes edits. In Ray's text fields or an
+  editable page element (the page view's `textInputType`, as Ardia reads it), or with nothing of Ray's to undo, it
+  sends `undo:`/`redo:` on down the responder chain. The items' titles name the step ("Undo Pin Tab", "Undo Clear
+  Today", "Redo Move Tab"). Check `settings-undo-reopens`.
+- `SidebarUndo` (`Host/SidebarUndo.swift`, `BrowserWindowController` `// MARK: Sidebar undo`; Arc's ⌘Z, the timeline
+  after Circa's `SidebarUndoRouter`): each organisation edit (pin/unpin, favorites, moves and drags, Move to ▸ (a Space too), new,
+  nested and deleted folders, tab and folder names, icons, colours) runs in `sidebarUndo.edit(name, state:)`, which
+  keeps a `SidebarSnapshot` (every Space's pinned and Today and each profile's favorites, by key: each row's place, kind,
+  parent, pinned URL, name, icon, colour; never the page) before and
+  after; nested calls fold into the outermost, an edit that changes nothing records nothing, a new edit clears redo.
+  Names: `undoName(_:_:)`. Undo restores the before shape (`SidebarSnapshot.restore`): rows the edit made go unless
+  live, rows opened since stay in place, a pinned row, favorite or folder gone since comes back unloaded with its id
+  (`SidebarEntry.init(…id:)`), a closed Today tab doesn't (Recently Closed has it), a Today folder leaving Today is
+  released from its Chrome group; a list whose Space was deleted since is left as it is. Per window, in memory, 100 deep. Closing, Clear Today and duplicates aren't edits.
+  Test command `sidebarundo clear`; state log `sidebarUndo` (`undo`, `redo`, `steps`) and `undo` (`title`,
+  `enabled`, `redoTitle`, `redoEnabled`); checks `sidebar-undo`, `spaces` (Move to › a Space).
 - Closing and Back (`BrowserWindowController` `// MARK: Closing`, `// MARK: Back and forward`): the tab shown after
   the active one closes is the one used before it (Arc's, Ardia's PR #416): `successor(closing:)` takes Back's opener
   first, else the most recently used awake tab, never a tab closing with it (`closingTogether`), one opened behind and

@@ -68,6 +68,9 @@ export const areas = {
   "Host/SettingsShortcutEditor.swift": ["settings-shortcut-editor", "settings-shortcuts", "settings-panes", "settings-window",
     "settings-search", "settings-catalog", "settings-persist"],
   "Host/SidebarModel.swift": "all",
+  "Host/SidebarModel.swift#Names and saved fields": ["sidebar-undo", "tab-rename", "folder-rename", "folders", "favorites", "reopen-closed-tab", "row-menus"],
+  "Host/SidebarUndo.swift": ["sidebar-undo", "spaces"],
+  "Host/BrowserWindowController.swift#Sidebar undo": ["sidebar-undo", "settings-undo-reopens", "spaces"],
   // What Sidebar.json keeps of an entry, its name and titles, and what the sidebar shows of it.
   "Host/SidebarModel.swift#Names and saved fields": [...pages, ...drag, ...commandBar, "tab-rename", "folder-create",
     "folder-rename", "favorites", "pin-unload-restore", "tile-hover", "clear", "reopen-closed-tab", "arc-import",
@@ -140,7 +143,7 @@ export const areas = {
   "Host/SidebarView.swift#Drops from elsewhere": ["sidebar-drops", "drag-to-peek"],
   "Host/SidebarView.swift#Drop edge": ["drag-to-peek"],
   "Host/BrowserWindowController.swift#Drag to peek": ["drag-to-peek", "peek-zones", "peek-dock"],
-  "Host/BrowserWindowController.swift#Sidebar drops": ["sidebar-drops", "row-menus"],
+  "Host/BrowserWindowController.swift#Sidebar drops": ["sidebar-undo", "sidebar-drops", "row-menus"],
   // Back closing a tab a link opened; ⌘-click and a middle click on Back and Forward.
   "Host/BrowserWindowController.swift#Back and forward": ["back-closes-link-tab", "back-forward-list", "navigate", "reopen-closed-tab"],
   "Host/SidebarView.swift#Active tab in view": ["sidebar-follows-active", "tab-switcher", "bar-switch-to-tab"],
@@ -175,17 +178,17 @@ export const areas = {
   "Host/BrowserWindowController.swift#Closing": ["multi-select", "close-last-window", "reopen-closed-tab", "close-shows-last-used",
     "settings-undo-reopens", "address-fragment", "page-commands", "bar-actions"],
   // What a row's menu items, close buttons and the `rowaction` test command do (pin, move, folders, close…).
-  "Host/BrowserWindowController.swift#Row actions": [...drag, ...folders, "row-menus", "favorites", "pin-unload-restore",
+  "Host/BrowserWindowController.swift#Row actions": ["sidebar-undo", ...drag, ...folders, "row-menus", "favorites", "pin-unload-restore",
     "tab-rename", "reopen-closed-tab", "tile-hover", "peek-zones", "clear", "copy-url", "bar-actions", "bar-ranking",
     "settings-fade-unloaded", "settings-new-tab-position", "warn-before-quitting"],
   // File › New Folder, ⌘D, Back to Pinned URL, Clear Today, tab cycling and ⌘1–9: the rest of Entries.
-  "Host/BrowserWindowController.swift#Sidebar commands": [...folders, "clear", "clear-today-keeps-current", "arc-keys", "peek-zones", "pin-unload-restore", "favorites",
+  "Host/BrowserWindowController.swift#Sidebar commands": ["sidebar-undo", ...folders, "clear", "clear-today-keeps-current", "arc-keys", "peek-zones", "pin-unload-restore", "favorites",
     "settings-recent-tab-cycling", "settings-shortcut-editor", "folder-rename", "row-menus"],
   // Arc's ⌃Tab switcher: the walk, its panel and the page pictures.
   "Host/BrowserWindowController.swift#Tab switcher": ["settings-recent-tab-cycling", ...tabSwitchCost, "tab-pictures-dropped", "close-shows-last-used"],
-  "Host/BrowserWindowController.swift#Recently closed": ["reopen-closed-tab", "tab-rename", "warn-before-quitting", "clear-today-keeps-current", "back-closes-link-tab"],
+  "Host/BrowserWindowController.swift#Recently closed": ["sidebar-undo", "reopen-closed-tab", "tab-rename", "warn-before-quitting", "clear-today-keeps-current", "back-closes-link-tab"],
   // A tab's own name: Rename…, the double click, the test command's `rename` (folders too).
-  "Host/BrowserWindowController.swift#Tab names": ["tab-rename", "folder-rename"],
+  "Host/BrowserWindowController.swift#Tab names": ["sidebar-undo", "tab-rename", "folder-rename"],
   // The rows' menu items: Duplicate, Share Folder…, Edit Pinned Page.
   "Host/BrowserWindowController.swift#Row menus": ["row-menus", "folders", "multi-select"],
   "Host/BrowserWindowController.swift#Page toolbar": ["pending-security", "pending-address", "page-toolbar", "address-fragment", "page-loading", "load-sweep-once", "site-controls",
@@ -339,9 +342,9 @@ export const areas = {
   "Host/Surface.swift": ["surfaces-snap", "panels", "notes", "site-controls", "permission", "permission-allow", "downloads"],
   "Host/Updater.swift": ["updater-config", "settings-general"],
   // ⇧⌘T and History › Recently Closed.
-  "Host/ClosedTabs.swift": ["reopen-closed-tab", "tab-rename", "clear-today-keeps-current"],
+  "Host/ClosedTabs.swift": ["sidebar-undo", "reopen-closed-tab", "tab-rename", "clear-today-keeps-current"],
   // ⌘Z: Edit › Undo, or reopening a closed tab outside text.
-  "Host/ClosedTabs.swift#Undo close tab": ["settings-undo-reopens", "reopen-closed-tab", "settings-shortcuts"],
+  "Host/ClosedTabs.swift#Undo close tab": ["sidebar-undo", "settings-undo-reopens", "reopen-closed-tab", "settings-shortcuts"],
   // Light or dark for Ray's windows, and the scroll bars pages are told to draw.
   "Host/AppLook.swift": ["settings-appearance-mode", "settings-scroll-bars", "settings-panes", "settings-window"],
   "Host/SafeStorage.swift": ["safe-storage-migration"],

@@ -2261,6 +2261,14 @@ const checks = {
       assert(/Move to > [^"]*\|Spaces\|Work/.test(menu), `Move to: ${menu}`);
       await it.ok(`space move ${home.id} 2`);
       s = await it.until("moved", (x) => spaces(x).list[1].today[0]?.id === home.id && !spaces(x).list[0].today.some((e) => e.id === home.id));
+      // ⌘Z moves it back to Personal (Edit › Undo names it), ⇧⌘Z moves it again.
+      s = await it.until("Undo Move Tab", (x) => x.undo?.title === "Undo Move Tab");
+      await it.ok("key z cmd keywin");
+      s = await it.until("⌘Z moved it back", (x) => spaces(x).list[0].today.some((e) => e.id === home.id)
+        && !spaces(x).list[1].today.some((e) => e.id === home.id) && x.undo?.redoTitle === "Redo Move Tab");
+      await it.ok("key z cmd shift keywin");
+      s = await it.until("⇧⌘Z moved it again", (x) => spaces(x).list[1].today[0]?.id === home.id
+        && !spaces(x).list[0].today.some((e) => e.id === home.id));
       // The command bar finds a tab in another Space, and going there changes Space.
       await it.ok(`row ${home.id}`);
       await it.until("its Space came with it", (x) => spaces(x).current === 1 && x.activeEntry === home.id);
@@ -6119,6 +6127,9 @@ const checks = {
     // element of the page it still undoes typing. Off (the default): Edit › Undo is AppKit's own.
     try {
       await resetSettings();
+      // Sidebar edits earlier checks made would be ⌘Z's first.
+      await command("sidebarundo clear");
+      await setSetting("undoReopensClosedTab", "off");
       const undo = () => state().undo;
       const open = async (tag) => {
         await send("Target.createTarget", { url: `${origin}/b?${tag}` });
@@ -6140,7 +6151,7 @@ const checks = {
       await select("undoOne");
       await closeActive("undoOne");
       await select("undoStay");
-      assert(undo().target === false && undo().reopens === false && undo().title === "Undo", `off: ${JSON.stringify(undo())}`);
+      assert(undo().target === true && undo().reopens === false && undo().title === "Undo", `off: ${JSON.stringify(undo())}`);
       const tabs = state().tabs.length;
       await cmdZ();
       await sleep(600);
@@ -6186,7 +6197,8 @@ const checks = {
       assert(undo().editsText === true && undo().reopens === false, `the command bar: ${JSON.stringify(undo())}`);
       await command("escape");
       await setSetting("undoReopensClosedTab", "off");
-      await until("Edit › Undo is AppKit's again", async () => { await command("state"); return undo().target === false && undo().title === "Undo"; });
+      // Off, with nothing of the sidebar's to undo, ⌘Z is the responder chain's again (Edit › Undo plain "Undo").
+      await until("Edit › Undo is plain again", async () => { await command("state"); return undo().reopens === false && undo().title === "Undo"; });
       // Closed as a page closes itself, so Recently Closed (which reopen-closed-tab counts) gets nothing more.
       for (const tag of ["undoOne", "undoTwo", "undoStay"]) {
         const target = (await targets()).find((t) => t.url.includes(`?${tag}`));
@@ -8416,6 +8428,109 @@ const checks = {
     }
     await command("key w cmd keywin");
     await until("own tab closed", () => !state().tabs.some((t) => t.id === own));
+  },
+  async "sidebar-undo"() {
+    // Arc's ⌘Z for the sidebar: each organisation edit is one undo (⇧⌘Z redoes), Edit › Undo naming it; ⌘Z brings
+    // back a Clear Today; with Reopen closed tabs with ⌘Z on, closed tabs and edits undo in the order they happened.
+    await resetSettings();
+    await setSetting("undoReopensClosedTab", "off");
+    await todayTabs(4);
+    await command("sidebarundo clear");
+    const sb = () => state().sidebar;
+    const all = () => [...sb().favorites, ...sb().pinned, ...sb().today];
+    const find = (id) => all().find((e) => e.id === id);
+    const where = (id) => ["favorites", "pinned", "today"].find((k) => sb()[k].some((e) => e.id === id)) ?? "gone";
+    const undo = () => state().undo;
+    const cmdZ = () => command("key z cmd keywin");
+    const shiftCmdZ = () => command("key z cmd shift keywin");
+    const wait = (what, test, ms = 5000) => until(what, async () => { await command("state"); return test(); }, ms);
+    const [a, b] = sb().today.filter((e) => e.live && e.kind === "today" && !e.parent);
+    await command(`row ${a.id}`);
+    await until("a active", () => state().activeEntry === a.id);
+    await wait("nothing to undo", () => undo().title === "Undo" && undo().redoTitle === "Redo");
+
+    // Pin: ⌘Z puts it back where it was in Today, still open; ⇧⌘Z pins it again.
+    const at = sb().today.findIndex((e) => e.id === a.id);
+    await command(`rowaction pin ${a.id}`);
+    await wait("pinned", () => where(a.id) === "pinned" && undo().title === "Undo Pin Tab" && undo().enabled);
+    await cmdZ();
+    await wait("⌘Z unpinned", () => where(a.id) === "today" && sb().today.findIndex((e) => e.id === a.id) === at
+      && find(a.id).live && find(a.id).pinnedURL === null && undo().redoTitle === "Redo Pin Tab");
+    await shiftCmdZ();
+    await wait("⇧⌘Z pinned again", () => where(a.id) === "pinned" && undo().title === "Undo Pin Tab" && undo().redoTitle === "Redo");
+    await cmdZ();
+    await wait("⌘Z unpinned again", () => where(a.id) === "today");
+
+    // Favorites, and Move to › Pinned.
+    await command(`rowaction favorite ${b.id}`);
+    await wait("favorite", () => where(b.id) === "favorites" && undo().title === "Undo Add to Favorites");
+    await cmdZ();
+    await wait("⌘Z unfavorited", () => where(b.id) === "today" && find(b.id).live);
+    await command(`rowaction topinned ${b.id}`);
+    await wait("moved", () => where(b.id) === "pinned" && undo().title === "Undo Move Tab");
+    await cmdZ();
+    await wait("⌘Z moved back", () => where(b.id) === "today");
+
+    // A new folder, its name and its colour undo one at a time, newest first.
+    await command(`rowaction newfolder ${a.id}`);
+    // The new folder opens in its name field, where ⌘Z is the field's: the edit waits in the sidebar's list.
+    await wait("folder", () => find(a.id).parent && state().sidebarUndo.undo.at(-1) === "New Folder");
+    const folder = find(a.id).parent;
+    await command(`rename ${folder} Undo Folder`);
+    await wait("renamed", () => find(folder).title === "Undo Folder" && undo().title === "Undo Rename Folder");
+    const colour = find(folder).color === "blue" ? "red" : "blue";
+    const before = find(folder).color;
+    await command(`rowaction color ${folder} ${colour}`);
+    await wait("coloured", () => find(folder).color === colour && undo().title === "Undo Change Colour");
+    await cmdZ();
+    await wait("⌘Z colour", () => find(folder).color === before && undo().title === "Undo Rename Folder");
+    await cmdZ();
+    await wait("⌘Z name", () => find(folder).title === "New Folder");
+    await cmdZ();
+    await wait("⌘Z folder", () => !find(folder) && find(a.id).parent === null && find(a.id).live
+      && sb().today.findIndex((e) => e.id === a.id) === at);
+    // ⇧⌘Z brings the folder back with the tab in it, the same folder.
+    await shiftCmdZ();
+    await wait("⇧⌘Z folder", () => find(a.id).parent === folder && find(folder)?.kind === "folder");
+    await command(`rowaction deletefolder ${folder}`);
+    await wait("deleted", () => !find(folder) && undo().title === "Undo Delete Folder");
+    await cmdZ();
+    await wait("⌘Z delete", () => find(a.id).parent === folder && find(folder));
+    await command(`rowaction deletefolder ${folder}`);
+    await wait("deleted again", () => !find(folder));
+
+    // A tab's name.
+    await command(`rename ${b.id} Undo Name`);
+    await wait("tab named", () => find(b.id).customTitle === "Undo Name" && undo().title === "Undo Rename Tab");
+    await cmdZ();
+    await wait("⌘Z tab name", () => find(b.id).customTitle === null);
+
+    // Clear Today comes back with ⌘Z, with the setting off (the default).
+    await command(`row ${a.id}`);
+    await until("a active", () => state().activeEntry === a.id);
+    const tabsOf = () => sb().today.filter((e) => e.kind !== "folder");
+    const count = tabsOf().length;
+    await command("key k cmd shift keywin");
+    await wait("cleared", () => tabsOf().length === 1 && undo().title === "Undo Clear Today", 8000);
+    await cmdZ();
+    await wait("⌘Z clear", () => tabsOf().length === count, 10000);
+
+    // With Reopen closed tabs with ⌘Z on, a closed tab and an edit undo newest first. The clear brought b back as a
+    // new row.
+    await setSetting("undoReopensClosedTab", "on");
+    const b2 = tabsOf().find((e) => e.url === b.url && e.live && e.id !== a.id);
+    await command(`rowaction pin ${b2.id}`);
+    await wait("pinned b", () => where(b2.id) === "pinned");
+    const closing = find(a.id).url;
+    await command(`row ${a.id}`);
+    await until("a active", () => state().activeEntry === a.id);
+    await command("key w cmd keywin");
+    await wait("a closed", () => !find(a.id) && undo().title === "Undo Close Tab");
+    await cmdZ();
+    await wait("⌘Z reopened", () => tabsOf().some((e) => e.url === closing && e.live) && undo().title === "Undo Pin Tab");
+    await cmdZ();
+    await wait("⌘Z unpinned b", () => where(b2.id) === "today");
+    await resetSettings();
   },
   async "clear-today-keeps-current"() {
     // Arc's Clear (⇧⌘K): every Today tab but the one you're on; ⇧⌘T brings the whole clear back.

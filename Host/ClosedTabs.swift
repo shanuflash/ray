@@ -1,9 +1,12 @@
 import AppKit
+import QuartzCore
 
 /// A tab the user closed, kept so ⇧⌘T and History › Recently Closed can bring it back where it was: the same place
 /// in Today, or the pinned row (in its folder) or favorite it was the page of.
 struct ClosedTab {
   let id = UUID()
+  /// When it closed, so ⌘Z takes it and the sidebar's edits (`SidebarUndo`) in the order they happened.
+  let closedAt = CACurrentMediaTime()
   /// The sidebar entry it was. A pinned or favorite entry stays in the sidebar (closing only unloads it), so
   /// reopening brings that same row back to life; a Today entry is gone and comes back as a new one.
   let entryID: UUID
@@ -188,45 +191,44 @@ final class ClosedTabsMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
 
 // MARK: Undo close tab
 
-/// Settings › Reopen closed tabs with ⌘Z (off; Arc's ⌘Z, and Ardia's "⌘Z reopens closed tabs"): while it's on, Edit ›
-/// Undo's target is this. Outside text it reopens the last closed tab as ⇧⌘T does (again: the one closed before);
-/// with a text field of Ray's or an editable element of the page focused it is Undo, sent on down the responder chain
-/// as if the item had no target. Keys reach the page first (CLAUDE.md, Key routing), so a page that takes ⌘Z for its
-/// own undo (an editor calling preventDefault) never gets here; Chrome's renderer leaves ⌘Z to the menu on the Mac.
+/// Edit › Undo and Redo are Ray's: outside text, ⌘Z undoes the sidebar's last organisation edit (`SidebarUndo`, Arc's)
+/// and ⇧⌘Z redoes it. With Settings › Reopen closed tabs with ⌘Z on (Arc's ⌘Z, and Ardia's "⌘Z reopens closed tabs")
+/// ⌘Z also reopens closed tabs as ⇧⌘T does, in the order they and the edits happened. With a text field of Ray's or an
+/// editable element of the page focused, or nothing of Ray's to undo, it is Undo, sent on down the responder chain as
+/// if the item had no target. Keys reach the page first (CLAUDE.md, Key routing), so a page that takes ⌘Z for its own
+/// undo (an editor calling preventDefault) never gets here; Chrome's renderer leaves ⌘Z to the menu on the Mac.
 final class UndoCloseTab: NSObject, NSMenuItemValidation {
   static let shared = UndoCloseTab()
   static let undo = Selector(("undo:"))
-  private var observation: SettingsObservation?
+  static let redo = Selector(("redo:"))
 
   func install() {
-    apply()
-    observation = RaySettings.shared.observe(.undoReopensClosedTab) { [weak self] _ in self?.apply() }
-  }
-
-  /// Edit › Undo points here while the setting is on, and at the responder chain (no target, AppKit's own) while off.
-  private func apply() {
-    guard let item = MainMenu.item(for: Self.undo) else { return }
-    item.target = RaySettings.shared[.undoReopensClosedTab] ? self : nil
-    item.title = "Undo"
+    for selector in [Self.undo, Self.redo] { MainMenu.item(for: selector)?.target = self }
   }
 
   /// The window ⌘Z is for: the key window, or with Ray in the background (no key window) the browser window used last.
   private var window: NSWindow? { NSApp.keyWindow ?? AppController.shared.current?.window }
 
-  /// Whether ⌘Z reopens a tab now: the setting is on, the window is a browser window and what has its focus edits no
-  /// text.
-  var reopens: Bool {
-    guard RaySettings.shared[.undoReopensClosedTab], let window,
-          AppController.shared.windows.contains(where: { $0.window === window }) else { return false }
-    return !Self.editsText(window.firstResponder)
+  /// The browser window ⌘Z acts on as Ray's: the window is one, and what has its focus edits no text.
+  private var controller: BrowserWindowController? {
+    guard let window, let controller = AppController.shared.windows.first(where: { $0.window === window }),
+          !Self.editsText(window.firstResponder) else { return nil }
+    return controller
   }
 
-  /// What takes undo: in the window's responder chain (the page, else the window's own undo manager), as AppKit finds
-  /// it for an item with no target.
-  private var undoTarget: NSResponder? {
+  /// Whether ⌘Z may reopen a tab now: the setting is on, the window is a browser window and what has its focus edits
+  /// no text.
+  var reopens: Bool { RaySettings.shared[.undoReopensClosedTab] && controller != nil }
+
+  /// What ⌘Z does now outside text.
+  private var step: BrowserWindowController.UndoStep? { controller?.nextUndo(reopeningClosedTabs: reopens) }
+
+  /// What takes `action` (undo or redo): in the window's responder chain (the page, else the window's own undo
+  /// manager), as AppKit finds it for an item with no target.
+  private func target(for action: Selector) -> NSResponder? {
     var responder = window?.firstResponder
     while let current = responder {
-      if current.responds(to: Self.undo) { return current }
+      if current.responds(to: action) { return current }
       responder = current.nextResponder
     }
     return nil
@@ -246,22 +248,48 @@ final class UndoCloseTab: NSObject, NSMenuItemValidation {
   }
 
   @objc(undo:) func undoOrReopen(_ sender: Any?) {
-    if reopens {
-      ClosedTabsMenu.shared.reopenClosedTab(sender)
-    } else if let target = undoTarget {
-      NSApp.sendAction(Self.undo, to: target, from: sender)
+    switch step {
+    case .reopen: ClosedTabsMenu.shared.reopenClosedTab(sender)
+    case .edit: controller?.undoSidebarEdit()
+    case nil:
+      if reopens { ClosedTabsMenu.shared.reopenClosedTab(sender) } else { forward(Self.undo, sender) }
     }
   }
 
+  @objc(redo:) func redoEdit(_ sender: Any?) {
+    if controller?.redoSidebarEdit() != true { forward(Self.redo, sender) }
+  }
+
+  private func forward(_ action: Selector, _ sender: Any?) {
+    if let target = target(for: action) { NSApp.sendAction(action, to: target, from: sender) }
+  }
+
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
-    let reopens = self.reopens
-    item.title = reopens ? "Undo Close Tab" : "Undo"
-    if reopens {
+    if item.action == Self.redo {
+      if let name = controller?.nextRedoName {
+        item.title = "Redo " + name
+        return true
+      }
+      item.title = "Redo"
+      return validateForwarded(item, Self.redo)
+    }
+    switch step {
+    case .edit(let name), .reopen(let name):
+      item.title = "Undo " + name
+      return true
+    case nil where reopens:
+      item.title = "Undo Close Tab"
       let probe = NSMenuItem(title: "", action: #selector(ClosedTabsMenu.reopenClosedTab(_:)), keyEquivalent: "")
       return ClosedTabsMenu.shared.validateMenuItem(probe)
+    case nil:
+      item.title = "Undo"
+      return validateForwarded(item, Self.undo)
     }
-    // Undo as AppKit would have it: enabled when whatever takes undo: in the responder chain says so.
-    guard let target = undoTarget else { return false }
+  }
+
+  /// Undo or Redo as AppKit would have it: enabled when whatever takes it in the responder chain says so.
+  private func validateForwarded(_ item: NSMenuItem, _ action: Selector) -> Bool {
+    guard let target = target(for: action) else { return false }
     typealias Validate = @convention(c) (AnyObject, Selector, NSMenuItem) -> ObjCBool
     for name in ["validateMenuItem:", "validateUserInterfaceItem:"] {
       let validate = NSSelectorFromString(name)
@@ -278,12 +306,21 @@ final class UndoCloseTab: NSObject, NSMenuItemValidation {
     let item = MainMenu.item(for: Self.undo)
     let responder = window?.firstResponder
     var title = item?.title ?? ""
+    var enabled = false
     if let item, item.target === self {
-      _ = validateMenuItem(item)
+      enabled = validateMenuItem(item)
       title = item.title
     }
+    let redo = MainMenu.item(for: Self.redo)
+    var redoTitle = redo?.title ?? ""
+    var redoEnabled = false
+    if let redo, redo.target === self {
+      redoEnabled = validateMenuItem(redo)
+      redoTitle = redo.title
+    }
     return [
-      "target": item?.target === self, "reopens": reopens, "title": title,
+      "target": item?.target === self, "reopens": reopens, "title": title, "enabled": enabled,
+      "redoTitle": redoTitle, "redoEnabled": redoEnabled,
       "focus": responder.map { String(describing: type(of: $0)) } ?? "", "editsText": Self.editsText(responder),
     ]
   }
