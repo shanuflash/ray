@@ -127,14 +127,17 @@ extension AnySettingKey {
       detail: "", about: "Off, the address sits at the top of the sidebar, as in Arc. Also in View › Show Address Bar on Page.",
       keywords: ["toolbar", "url bar", "address bar", "arc", "dia", "top bar"], control: .toggle))
 
-  /// Ray's icon in the Dock. Not built yet (the other icons need designing): its row shows only in test builds.
+  /// Ray's icon in the Dock and the app switcher (Host/AppIcon.swift): an icon's name (`AppIconSet.styles`, the themes), a
+  /// colour's (`space-blue`), or `colour` (the one nearest the theme colour). `default` is the Neon CRT, `crt`.
   static let appIcon = SettingKey<String>(
-    "appIcon", default: "default", built: false,
+    "appIcon", default: "crt", validate: AppIconSet.validated,
     ui: SettingUI(
       pane: .appearance, group: .theme, title: "App icon",
-      detail: "", about: "Shown in the Dock and the app switcher.",
-      keywords: ["dock icon", "logo", "icon"],
-      control: .choice([SettingChoice(title: "Default", value: "default")]), rare: true))
+      detail: "", about: "Shown in the Dock and the app switcher. Neon CRT, other colours, themes and Colour.",
+      keywords: ["dock icon", "logo", "icon", "app icon", "neon", "crt", "theme"],
+      control: .custom("appIcon"), rare: true),
+    customTests: (samples: ["vice", "space-blue", "colour", "classic"],
+                  rejects: ["nonsense", "Vice", "space-", "space-purple", "../crt", "crt.png"]))
 
   // Tabs and sidebar
 

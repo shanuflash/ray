@@ -81,6 +81,7 @@ Ray updates itself after that (Ray › Check for Updates…).
   - Spaces, like Arc: swipe between them, ⌃1–9, each with its own theme and pinned tabs, and its own profile if you want
   - Profiles: separate logins, history and passwords per Space, Arc's profiles imported as profiles
   - JumpCloud Go sign-in
+  - A new icon (Neon CRT) and 24 others to pick in Settings: colours, styles and themes
 
 ## Coming
 

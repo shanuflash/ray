@@ -260,7 +260,7 @@ export const areas = {
   "Host/SettingsWindow.swift": settings,
   "Host/SettingsPaneView.swift": settings,
   "Host/SettingsPanes.swift": settings,
-  "Host/SettingsAppearance.swift": ["settings-panes", "settings-window", "settings-page-address-bar"],
+  "Host/SettingsAppearance.swift": ["settings-panes", "settings-window", "settings-page-address-bar", "app-icon"],
   "Host/SettingsTabs.swift": ["settings-panes", "settings-window"],
   "Host/SettingsAbout.swift": ["settings-panes", "settings-search", "settings-general"],
   "Host/SettingsGeneral.swift": ["little-ray", "settings-general", "settings-panes", "settings-search", "warn-before-quitting", "updater-config",
@@ -352,7 +352,13 @@ export const areas = {
   // ⌘Z: Edit › Undo, or reopening a closed tab outside text.
   "Host/ClosedTabs.swift#Undo close tab": ["sidebar-undo", "settings-undo-reopens", "reopen-closed-tab", "settings-shortcuts"],
   // Light or dark for Ray's windows, and the scroll bars pages are told to draw.
-  "Host/AppLook.swift": ["settings-appearance-mode", "settings-scroll-bars", "settings-panes", "settings-window"],
+  "Host/AppLook.swift": ["settings-appearance-mode", "settings-scroll-bars", "settings-panes", "settings-window", "app-icon"],
+  // The app icon: the setting's control, its application, the Dock tile plug-in and the alternates the build exports.
+  "Host/AppIcon.swift": ["app-icon", "settings-catalog", "settings-window", "settings-panes", "settings-appearance-mode"],
+  "Host/AppIconCanvas.swift": ["app-icon"],
+  "DockTile/": ["app-icon"],
+  "Branding/Ray.icon/": ["app-icon", "about-panel"],
+  "Branding/alternates/": ["app-icon"],
   "Host/SafeStorage.swift": ["safe-storage-migration"],
   // Chrome's third-party cookie default written into the profile before the engine starts.
   "Host/ProfileDefaults.swift": ["third-party-cookies"],

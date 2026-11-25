@@ -51,6 +51,29 @@ if [ ! -f "$logos/ray-256.png" ] || [ -n "$(find "$root/Branding/Ray.icon" -newe
   done
 fi
 
+# The alternate app icons (Branding/alternates/<name>.icon, made by tools/alternate-icons.py): each exported once per
+# change as the artwork alone, 412 px (the 824 of macOS's 1024 icon grid, halved), for Settings' cards and the Dock
+# (Host/AppIcon.swift, DockTile/). Icon Composer's ictool renders them: a second or so for all 24.
+alts="$root/build/alternates"
+mkdir -p "$alts"
+for icon in "$root"/Branding/alternates/*.icon; do
+  alt=$(basename "$icon" .icon)
+  if [ ! -f "$alts/$alt.png" ] || [ -n "$(find "$icon" -newer "$alts/$alt.png" -print -quit)" ]; then
+    "$ictool" "$icon" --export-image --output-file "$alts/$alt.png" --platform macOS --rendition Default \
+      --width 412 --height 412 --scale 1 >/dev/null
+  fi
+done
+
+# The Dock tile plug-in (DockTile/): keeps the chosen icon in the Dock while Ray isn't running. One binary for both
+# apps (it reads the app's bundle id at run time); built once per change of its sources.
+docktile="$root/build/docktile/RayDockTile"
+if [ ! -f "$docktile" ] || [ "$root/DockTile/DockTilePlugIn.swift" -nt "$docktile" ] || [ "$root/Host/AppIconCanvas.swift" -nt "$docktile" ]; then
+  mkdir -p "$root/build/docktile"
+  xcrun swiftc -O -parse-as-library -module-name RayDockTile -target arm64-apple-macos14.0 -swift-version 5 \
+    -Xlinker -bundle -emit-executable -framework AppKit \
+    "$root/DockTile/DockTilePlugIn.swift" "$root/Host/AppIconCanvas.swift" -o "$docktile"
+fi
+
 build() {
   local app="$1" id="$2" name="$3"
   shift 3
@@ -84,6 +107,28 @@ build() {
     -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
     -o "$app/Contents/MacOS/Ray"
   cp "$root"/Resources/* "$app/Contents/Resources/"
+  mkdir -p "$app/Contents/Resources/AppIcons"
+  cp "$alts"/*.png "$app/Contents/Resources/AppIcons/"
+  # The Dock tile plug-in, signed below with the app's identity (inside out, before the app).
+  local plugin="$app/Contents/PlugIns/RayDockTile.docktileplugin"
+  mkdir -p "$plugin/Contents/MacOS"
+  cp "$docktile" "$plugin/Contents/MacOS/RayDockTile"
+  cat > "$plugin/Contents/Info.plist" <<PLUGIN
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>RayDockTile</string>
+  <key>CFBundleIdentifier</key><string>$id.docktile</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>RayDockTile</string>
+  <key>CFBundlePackageType</key><string>BNDL</string>
+  <key>CFBundleShortVersionString</key><string>$version</string>
+  <key>CFBundleVersion</key><string>$build</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSPrincipalClass</key><string>RayDockTilePlugIn</string>
+</dict></plist>
+PLUGIN
   # The app icon: an Icon Composer document, so macOS 26+ gets its light, dark, tinted and clear looks (Assets.car)
   # and older systems the .icns.
   xcrun actool "$root/Branding/Ray.icon" --compile "$app/Contents/Resources" --platform macosx \
@@ -106,6 +151,7 @@ build() {
   <key>CFBundleVersion</key><string>$build</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSPrincipalClass</key><string>BrowserCrApplication</string>
+  <key>NSDockTilePlugIn</key><string>RayDockTile.docktileplugin</string>
   <key>SUFeedURL</key><string>$feed_url</string>
   <key>SUPublicEDKey</key><string>$sparkle_key</string>
   <key>SUEnableAutomaticChecks</key><true/>
@@ -171,6 +217,7 @@ PLIST
   sign "$sparkle/Autoupdate"
   sign "$sparkle/Updater.app"
   sign "$app/Contents/Frameworks/Sparkle.framework"
+  sign "$plugin"
   sign "$app/Contents/MacOS/Ray"
   sign "$app"
   codesign --verify --deep --strict "$app"

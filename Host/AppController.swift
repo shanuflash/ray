@@ -33,6 +33,7 @@ final class AppController: NSObject, RayCoreEngineDelegate, NSApplicationDelegat
     NSApp.delegate = self
     SearchEngines.install()
     AppLook.start()
+    AppIconSet.start()
     MainMenu.install(target: self)
     Bookmarks.shared.start()
     installReservedKeyRouting()

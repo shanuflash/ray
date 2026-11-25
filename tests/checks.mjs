@@ -387,7 +387,7 @@ async function resetSettings() {
   for (const [name, value] of [["minimalURL", "off"], ["loadingProgress", "on"], ["theme", "default"], ["defaultZoom", "1"],
     ["newTabNextToActive", "off"], ["recentTabCycling", "on"], ["copyLinkShortcut", "on"], ["sidebarShortcut", "on"],
     ["appearanceMode", "auto"], ["scrollBars", "system"], ["pageAddressBar", "on"], ["showSidebarButton", "on"],
-    ["fadeUnloadedTabs", "off"], ["tabReorderHaptics", "on"], ["undoReopensClosedTab", "on"], ["shortcuts", "default"], ["surfaceStyle", "glass"]])
+    ["fadeUnloadedTabs", "off"], ["tabReorderHaptics", "on"], ["undoReopensClosedTab", "on"], ["shortcuts", "default"], ["surfaceStyle", "glass"], ["appIcon", "default"]])
     await command(`setting ${name} ${value}`);
   await command("state");
 }
@@ -5483,7 +5483,7 @@ const checks = {
     assert(["jumpCloudRelay", "jumpCloudRelay.setup"].every(id => win().rows.passwords.includes(id)), `Ray.app passwords rows ${win().rows.passwords}`);
     // Every pane has content of its own now, so none is hidden; Search opens as itself.
     assert(win().pane === "search", `Search opened as ${win().pane}`);
-    assert(!win().rows.appearance.includes("appIcon") && win().rows.appearance.includes("appearanceMode") && win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
+    assert(win().rows.appearance.includes("appIcon") && win().rows.appearance.includes("appearanceMode") && win().rows.appearance.includes("scrollBars") && win().rows.appearance.includes("minimalURL"), `Ray.app rows ${win().rows.appearance}`);
     assert(win().rows.tabs.join() === "newTabNextToActive,recentTabCycling,showSidebarButton,fadeUnloadedTabs,tabReorderHaptics,autoPictureInPicture", `Ray.app tabs rows ${win().rows.tabs}`);
     if (process.env.SNAP_DIR) await command(`settings snap ${join(process.env.SNAP_DIR, "settings-as-app.png")}`);
     await command("settings asapp off");
@@ -5532,9 +5532,9 @@ const checks = {
     await until("cleared", async () => { await command("state"); return search().query === "" && win().sidebarPanes.length === win().panes.length; });
     // Ray.app doesn't find rows it doesn't show.
     await command("settings asapp on");
-    await command("settings search app icon");
-    await until("searched", async () => { await command("state"); return search().query === "app icon"; });
-    assert(!search().results.some((r) => r.id === "appIcon"), `Ray.app found an unbuilt row: ${JSON.stringify(search().results)}`);
+    await command("settings search clear button");
+    await until("searched", async () => { await command("state"); return search().query === "clear button"; });
+    assert(!search().results.some((r) => r.id === "showClearButton"), `Ray.app found an unbuilt row: ${JSON.stringify(search().results)}`);
     await command("settings asapp off");
     await command("settings search");
     if (process.env.SNAP_DIR) {
@@ -5594,12 +5594,12 @@ const checks = {
     await command("escape");
     // Rows Ray.app doesn't show aren't offered.
     await command("settings asapp on");
-    bar = await barFor("app icon");
-    assert(!settingRows(bar).some((r) => r.title === "Settings: App icon"), `Ray.app offered an unbuilt row: ${JSON.stringify(bar.rows)}`);
+    bar = await barFor("clear button");
+    assert(!settingRows(bar).some((r) => r.title === "Settings: Show the Clear button"), `Ray.app offered an unbuilt row: ${JSON.stringify(bar.rows)}`);
     await command("escape");
     await command("settings asapp off");
-    bar = await barFor("app icon");
-    assert(settingRows(bar).some((r) => r.title === "Settings: App icon"), `a test build hid an unbuilt row: ${JSON.stringify(bar.rows)}`);
+    bar = await barFor("clear button");
+    assert(settingRows(bar).some((r) => r.title === "Settings: Show the Clear button"), `a test build hid an unbuilt row: ${JSON.stringify(bar.rows)}`);
     await command("escape");
   },
   async "settings-colours"() {
@@ -6052,6 +6052,81 @@ const checks = {
       for (const started of lines("launches.jsonl")) if (alive(started.pid)) process.kill(started.pid, "SIGKILL");
       rmSync(dir, { recursive: true, force: true });
     }
+  },
+  async "app-icon"() {
+    // The app icon (Host/AppIcon.swift, DockTile/): the built app carries every alternate and a signed Dock tile plug-in
+    // named in Info.plist; the choice (Settings › Appearance, `appIcon`) is applied to the app, written to the app's own
+    // preference for the plug-in and announced once per change; the Settings control follows it (layout B: cards, then a
+    // colour line only while Colour is chosen). Test builds use their own bundle id's preference and notice only.
+    await resetSettings();
+    const plist = (path) => JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", path], { encoding: "utf8" }));
+    const main = plist(join(app, "Contents/Info.plist"));
+    assert(main.NSDockTilePlugIn === "RayDockTile.docktileplugin", `NSDockTilePlugIn is ${main.NSDockTilePlugIn}`);
+    const plugIn = join(app, "Contents/PlugIns/RayDockTile.docktileplugin");
+    const plugInInfo = plist(join(plugIn, "Contents/Info.plist"));
+    assert(plugInInfo.NSPrincipalClass === "RayDockTilePlugIn" && plugInInfo.CFBundlePackageType === "BNDL"
+      && plugInInfo.CFBundleIdentifier === `${main.CFBundleIdentifier}.docktile`, `plug-in Info.plist ${JSON.stringify(plugInInfo)}`);
+    assert(existsSync(join(plugIn, "Contents/MacOS", plugInInfo.CFBundleExecutable)), "the plug-in has no executable");
+    execFileSync("codesign", ["--verify", "--strict", plugIn]);
+    // Every Branding/alternates/<name>.icon is a PNG in the app, and the app's own icon is the compiled Ray.icon.
+    const names = readdirSync(join(root, "Branding/alternates")).filter((n) => n.endsWith(".icon")).map((n) => n.slice(0, -5));
+    assert(names.length === 24 && names.includes("crt") && names.includes("classic") && names.includes("space-teal"), `alternates ${names}`);
+    for (const name of names) assert(statSync(join(app, "Contents/Resources/AppIcons", `${name}.png`)).size > 2000, `${name}.png is missing or empty`);
+    assert(existsSync(join(app, "Contents/Resources/Assets.car")) && existsSync(join(app, "Contents/Resources/Ray.icns")), "the app icon isn't compiled");
+    const icon = async () => { await command("state"); return state().looks.appIcon; };
+    let now = await icon();
+    assert(now.chosen === "crt" && now.resolved === "crt" && now.applied === "bundle" && now.prefs === "crt", `default ${JSON.stringify(now)}`);
+    assert(now.files === 24 && now.plugIn === true && now.plugInKey === "RayDockTile.docktileplugin", `bundle ${JSON.stringify(now)}`);
+    // A theme, a colour, and the one that follows the theme colour.
+    const posts = now.posts;
+    await setSetting("appIcon", "vice");
+    now = await icon();
+    assert(now.chosen === "vice" && now.applied === "vice" && now.prefs === "vice" && now.artwork === true && now.posts === posts + 1, `vice ${JSON.stringify(now)}`);
+    await setSetting("appIcon", "vice");
+    assert((await icon()).posts === posts + 1, "an unchanged icon was announced again");
+    await setSetting("appIcon", "space-blue");
+    now = await icon();
+    assert(now.applied === "space-blue" && now.prefs === "space-blue", `space-blue ${JSON.stringify(now)}`);
+    await setSetting("appIcon", "colour");
+    now = await icon();
+    assert(now.chosen === "colour" && now.resolved === "space-lavender" && now.applied === "space-lavender", `colour (lavender) ${JSON.stringify(now)}`);
+    await setSetting("theme", "#12A594");
+    await until("colour follows the theme colour", async () => (await icon()).applied === "space-teal", 5000);
+    assert((await icon()).prefs === "space-teal", "the plug-in's preference didn't follow the theme colour");
+    await setSetting("theme", "default");
+    await until("colour back to lavender", async () => (await icon()).applied === "space-lavender", 5000);
+    // The old unbuilt row's value and the default are the Neon CRT, which is the bundle's own icon.
+    await setSetting("appIcon", "default");
+    now = await icon();
+    assert(now.chosen === "crt" && now.applied === "bundle" && now.prefs === "crt", `back to crt ${JSON.stringify(now)}`);
+    // Settings' control: seventeen cards, Colour's line only while it's chosen, and every press is the setting.
+    await command("settings open appearance");
+    await until("appearance pane", async () => { await command("state"); return state().settingsWindow.open && state().settingsWindow.pane === "appearance"; });
+    const control = async () => JSON.parse(await commandResult("appicon state")).control;
+    let c = await control();
+    assert(c.cards.length === 17 && c.cards[0] === "crt" && c.cards[16] === "colour" && c.selected === "crt" && c.coloursShown === false && c.pictures === 17,
+      `control ${JSON.stringify(c)}`);
+    await command("appicon press phosphor");
+    await until("phosphor chosen", async () => (await icon()).chosen === "phosphor");
+    assert((await control()).selected === "phosphor", "the card didn't follow the setting");
+    await command("appicon press colour");
+    await until("colour chosen", async () => (await icon()).chosen === "colour");
+    await until("colour line shown", async () => (await control()).coloursShown === true && (await control()).colourSelected === "colour");
+    assert((await commandResult("appicon colour teal")) === "ok", "no teal swatch");
+    await until("teal chosen", async () => (await icon()).chosen === "space-teal");
+    c = await control();
+    assert(c.selected === "colour" && c.colourSelected === "space-teal" && c.swatches === 9 && c.coloursShown === true, `teal ${JSON.stringify(c)}`);
+    await command("appicon press colour");
+    assert((await icon()).chosen === "space-teal", "pressing Colour again dropped the chosen colour");
+    await command("appicon press crt");
+    await until("crt again", async () => (await icon()).chosen === "crt");
+    await until("colour line gone", async () => (await control()).coloursShown === false);
+    if (process.env.SNAP_DIR) {
+      await setSetting("appIcon", "colour");
+      await command(`settings snap ${join(process.env.SNAP_DIR, "settings-app-icon.png")}`);
+    }
+    await command("settings close");
+    await resetSettings();
   },
   async "settings-appearance-mode"() {
     // Light, Dark or Automatic: NSApp's appearance, which the window (and every view of Ray's) takes, and which pages
