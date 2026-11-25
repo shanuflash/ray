@@ -27,7 +27,7 @@ window. Every decision serves three things:
    mock-keychain data (decrypt with the known mock key, re-encrypt under the real one). Keep our own patches few,
    small and in separate files from Ardia's, so following Ardia's Chromium bumps stays cheap. **Done 2026-10-28,
    shipped in 0.2.0.**
-2. **Spaces.** **Done 2026-11-24:** Arc's model (owner's picks 1A, 2C, 4A, 5A of `docs/mocks/spaces.html`), a
+2. **Spaces.** **Done 2026-11-24:** Arc's model (owner's picks 1A, 2C, 4B (2026-11-25, was 4A), 5A of `docs/mocks/spaces.html`), a
    full theme per Space (Window colour and Accent) and a profile per Space (Default, shared or new, as Arc).
 3. **Full Arc import:** Spaces, pinned tabs, folders, cookies. **Mostly done 2026-10-29:** `Importer/` (Ardia's
    import core) and the first-run onboarding bring pinned tabs and folders, favorites, open tabs, history,

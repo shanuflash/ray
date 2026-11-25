@@ -129,6 +129,8 @@ final class SpaceDockView: NSView {
     return cells[index].convert(cells[index].bounds, to: nil)
   }
 
+  func cell(_ index: Int) -> NSView? { cells.indices.contains(index) ? cells[index] : nil }
+
   func press(_ index: Int) -> Bool {
     guard cells.indices.contains(index) else { return false }
     onSelect?(index)
@@ -238,6 +240,8 @@ final class SpaceSlide: NSView {
     let bands: [(rect: NSRect, header: Bool)]
     let size: NSSize
     let scale: CGFloat
+    /// Test builds: rows with nothing drawn in them.
+    var blankBands = 0
   }
 
   private var oldLayers: [(CALayer, Int, Bool)] = []
@@ -275,6 +279,12 @@ final class SpaceSlide: NSView {
       context.translateBy(x: -visible.minX, y: -visible.minY)
       layer.render(in: context)
     }
+    // Test builds count rows with nothing drawn (a row pictured before its first draw).
+    var pixels: [UInt8] = []
+    if TestEnvironment.isTestBuild, let data = context.data {
+      pixels = Array(UnsafeBufferPointer(start: data.assumingMemoryBound(to: UInt8.self), count: context.bytesPerRow * context.height))
+    }
+    let bytesPerRow = context.bytesPerRow, height = context.height
     guard let image = context.makeImage() else { return nil }
     var bands: [(NSRect, Bool)] = []
     for view in content.subviews where !view.isHidden && view.alphaValue > 0.01 && view.frame.intersects(visible) {
@@ -282,11 +292,30 @@ final class SpaceSlide: NSView {
       bands.append((NSRect(x: 0, y: rect.minY, width: visible.width, height: rect.height), view === header))
     }
     bands.sort { $0.0.minY < $1.0.minY }
-    return Shot(image: image, bands: bands.map { (rect: $0.0, header: $0.1) }, size: visible.size, scale: scale)
+    var shot = Shot(image: image, bands: bands.map { (rect: $0.0, header: $0.1) }, size: visible.size, scale: scale)
+    if !pixels.isEmpty {
+      // The context's memory runs bottom row first: a band's rows counted from the top are flipped.
+      shot.blankBands = bands.filter { band, _ in
+        let top = max(0, Int(band.minY * scale)), bottom = min(height, Int(band.maxY * scale))
+        guard bottom > top else { return false }
+        for row in top..<bottom {
+          let start = (height - 1 - row) * bytesPerRow
+          var x = start + 3
+          while x < start + bytesPerRow {
+            if pixels[x] > 8 { return false }
+            x += 4
+          }
+        }
+        return true
+      }.count
+    }
+    return shot
   }
 
   /// Starts a slide from one list's picture to the other's.
   /// `new` nil: no Space that way, the old list only stretches (a rubber band).
+  /// `new`: the incoming list's picture; nil when the list itself moves in (`SidebarView.startSlide`) or for a rubber
+  /// band.
   func begin(from old: Shot, to new: Shot?, direction: CGFloat) {
     self.direction = direction
     steps = 0

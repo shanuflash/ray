@@ -16,10 +16,10 @@ struct SpaceProfileChoice {
   let title: String
 }
 
-/// New Space and Edit Space… (owner's pick 4A of `docs/mocks/spaces.html`, Arc's): the Space's sidebar becomes the
-/// form, under the top row. Name, icon, a full theme (the Window colour the browser takes and the Accent Ray's
+/// New Space and Edit Space… (owner's pick 4B of `docs/mocks/spaces.html`, 2026-11-25): a panel that grows out of the
+/// footer's + (or the Space's icon). Name, icon, a full theme (the Window colour the browser takes and the Accent Ray's
 /// selection, loading and "on" states take) and its profile, as Arc offers one. Every change shows at once on the
-/// window behind; Cancel puts it back, Create Space (or Done) keeps it. Return confirms, Escape cancels.
+/// window behind; Cancel, Escape or a click outside puts it back, Create Space (or Done, Return) keeps it.
 final class SpaceEditorView: NSView, NSTextFieldDelegate {
   static let newProfile = "new"
   private(set) var draft: SpaceDraft
@@ -96,8 +96,7 @@ final class SpaceEditorView: NSView, NSTextFieldDelegate {
 
   override var isFlipped: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
-  override var wantsUpdateLayer: Bool { true }
-  override func updateLayer() { layer?.backgroundColor = SpaceLook.background.cgColor }
+  static let width: CGFloat = 268
 
   func focusName() {
     window?.makeFirstResponder(nameField.field)
@@ -270,8 +269,12 @@ final class SpaceEditorView: NSView, NSTextFieldDelegate {
     confirmButton.frame = NSRect(x: inset + buttonWidth + 8, y: y, width: buttonWidth, height: 28)
   }
 
-  /// The form's height for a width: everything above plus the buttons.
-  var contentHeight: CGFloat { confirmButton.frame.maxY + 12 }
+  /// Laid out at the panel's width, sized to what it holds.
+  func fit() {
+    frame.size = NSSize(width: Self.width, height: 1000)
+    layoutSubtreeIfNeeded()
+    frame.size.height = confirmButton.frame.maxY + 12
+  }
 
   var debug: [String: Any] {
     ["new": isNew, "name": draft.name, "icon": draft.icon ?? NSNull(), "color": draft.color ?? NSNull(),

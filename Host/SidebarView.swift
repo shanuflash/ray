@@ -536,7 +536,6 @@ final class SidebarView: NSView {
 
     addressPill.frame = NSRect(x: inset, y: rowCenter + 24, width: width, height: 36)
     var y = contentTop
-    editor?.frame = NSRect(x: 0, y: y - 4, width: bounds.width, height: max(0, bounds.height - y + 4))
 
     let dragged = isDragging ? drag?.entry : nil
     let target = dragged == nil ? nil : drag?.target
@@ -719,6 +718,11 @@ final class SidebarView: NSView {
     content.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(rowY + inset, scrollView.frame.height))
     landing = [:]
     revealActiveIfNeeded()
+    // A layout during a slide put the incoming rows home: they land there, and the slide goes on from it.
+    if !incomingRows.isEmpty {
+      incomingRows = incomingRows.map { ($0.view, $0.view.frame.origin, $0.index, $0.header) }
+      moveIncoming(progress: slideSpring.value)
+    }
   }
 
   // MARK: Active tab in view
@@ -1889,15 +1893,9 @@ final class SidebarView: NSView {
   /// Where the list's rows start in the scrolled content: under the Space's name when it shows.
   private var listTop: CGFloat { spaceHeader.isHidden ? 0 : SpaceHeaderView.height + 2 }
 
-  /// New Space's and Edit Space…'s form (4A, Arc's): the sidebar under its top row becomes it.
-  private(set) var editor: NSView?
-
-  func showEditor(_ view: NSView?) {
-    editor?.removeFromSuperview()
-    editor = view
-    if let view { addSubview(view) }
-    needsLayout = true
-  }
+  /// New Space's panel hangs from the footer's +; Edit Space…'s from the Space's icon when it shows.
+  var newSpaceAnchor: NSView { newSpaceButton }
+  func spaceAnchor(_ index: Int) -> NSView? { spaceDock.isHidden ? nil : spaceDock.cell(index) }
 
   // MARK: Spaces
 
@@ -1927,16 +1925,30 @@ final class SidebarView: NSView {
 
   private func currentShot() -> SpaceSlide.Shot? {
     layoutSubtreeIfNeeded()
-    return SpaceSlide.shot(of: content, visible: scrollView.documentVisibleRect, header: spaceHeader,
-                           scale: PixelGrid.scale(of: self))
+    // Rows made or changed for this list haven't drawn yet: a picture of their layers would be blank (the owner's
+    // recording: the new Space's pinned rows missing until the slide ended).
+    content.layoutSubtreeIfNeeded()
+    content.displayIfNeeded()
+    // AppKit draws a layer-backed view's layer at the next commit, not in displayIfNeeded: ask each layer now.
+    func draw(_ layer: CALayer) {
+      layer.layoutIfNeeded()
+      layer.displayIfNeeded()
+      layer.sublayers?.forEach(draw)
+    }
+    content.layer.map(draw)
+    let shot = SpaceSlide.shot(of: content, visible: scrollView.documentVisibleRect, header: spaceHeader,
+                               scale: PixelGrid.scale(of: self))
+    if let shot { lastBlankBands = shot.blankBands }
+    return shot
   }
+
+  /// For the state log: rows the last picture of a list had nothing drawn in (should be none).
+  private(set) var lastBlankBands = 0
 
   /// Slides from a picture of the list that left to the list now laid out (a click on a Space's icon, ⌃1–9).
   private func slide(from old: SpaceSlide.Shot, forward: Bool) {
-    guard let new = currentShot() else { return }
-    let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-    if reduce { return }
-    startSlide(old, new, direction: forward ? 1 : -1)
+    if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return }
+    startSlide(old, incoming: true, direction: forward ? 1 : -1)
     slideTarget = nil
     slideSpring.jump(to: 0)
     slideRunning = true
@@ -1945,16 +1957,57 @@ final class SidebarView: NSView {
 
   private var slideRunning = false
 
-  private func startSlide(_ old: SpaceSlide.Shot, _ new: SpaceSlide.Shot?, direction: CGFloat) {
+  /// `incoming`: the list now laid out comes in as itself, each row's frame moved per frame (AppKit's own geometry,
+  /// which it keeps: a picture of rows made for the switch came out blank, the owner's recording, 2026-11-25, and
+  /// AppKit undoes layer transforms on a view's layer). A rubber band has none: the picture alone moves.
+  private func startSlide(_ old: SpaceSlide.Shot, incoming: Bool, direction: CGFloat) {
+    restoreIncoming()
     slideCount += 1
     slideView.frame = scrollView.frame
     slideView.isHidden = false
-    slideView.begin(from: old, to: new, direction: direction)
-    scrollView.alphaValue = 0
+    slideView.begin(from: old, to: nil, direction: direction)
+    scrollView.alphaValue = incoming ? 1 : 0
+    guard incoming else { return }
+    layoutSubtreeIfNeeded()
+    let visible = scrollView.documentVisibleRect
+    var index = 0
+    incomingRows = content.subviews
+      .filter { !$0.isHidden && $0.alphaValue > 0.01 && $0.frame.intersects(visible) }
+      .sorted { $0.frame.minY < $1.frame.minY }
+      .map { view in
+        let header = view === spaceHeader
+        if !header { index += 1 }
+        return (view, view.frame.origin, header ? 0 : index, header)
+      }
+    moveIncoming(progress: 0)
+  }
+
+  /// The incoming list's rows while a slide runs: each with where it lands, its place below the name, and the name.
+  private var incomingRows: [(view: NSView, home: NSPoint, index: Int, header: Bool)] = []
+
+  private func moveIncoming(progress value: CGFloat) {
+    guard !incomingRows.isEmpty else { return }
+    let width = slideView.bounds.width
+    let distance = (1 - value) * slideView.direction
+    for row in incomingRows {
+      let x = row.header ? distance * width * SpaceSlide.headerSpeed
+        : distance * width + distance * CGFloat(row.index) * SpaceSlide.trail
+      row.view.setFrameOrigin(NSPoint(x: (row.home.x + x).rounded(), y: row.home.y))
+      if row.header { row.view.alphaValue = max(0, 1 - abs(distance) * 1.3) }
+    }
+  }
+
+  private func restoreIncoming() {
+    for row in incomingRows {
+      row.view.setFrameOrigin(row.home)
+      if row.header { row.view.alphaValue = 1 }
+    }
+    incomingRows = []
   }
 
   private func slideMoved(_ value: CGFloat) {
     slideView.set(progress: value)
+    moveIncoming(progress: value)
     if let target = slideTarget { delegate?.sidebar(self, slideFrom: target.from, to: target.to, progress: value) }
     guard slideRunning, !slideSpring.isMoving, swipe == nil else { return }
     endSlide(landed: value >= 0.5)
@@ -1962,6 +2015,7 @@ final class SidebarView: NSView {
 
   private func endSlide(landed: Bool) {
     slideRunning = false
+    restoreIncoming()
     slideView.isHidden = true
     slideView.clear()
     scrollView.alphaValue = 1
@@ -2064,14 +2118,14 @@ final class SidebarView: NSView {
         spaceHeader.show(lists.space)
         showLists(favorites: lists.favorites, pinned: lists.pinned, today: lists.today, active: lists.active)
         scrollView.contentView.scroll(to: .zero)
-        if let old = swipe.old, let new = currentShot() {
+        if let old = swipe.old {
           swipe.to = wanted
-          startSlide(old, new, direction: wanted > swipe.from ? 1 : -1)
+          startSlide(old, incoming: true, direction: wanted > swipe.from ? 1 : -1)
           slideTarget = (swipe.from, wanted)
         }
       } else if let old = swipe.old {
         swipe.edge = true
-        startSlide(old, nil, direction: swipe.travel < 0 ? 1 : -1)
+        startSlide(old, incoming: false, direction: swipe.travel < 0 ? 1 : -1)
       }
     }
     self.swipe = swipe

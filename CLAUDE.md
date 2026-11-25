@@ -287,7 +287,7 @@ publicly or create accounts.
   `sidebar.iconPicker`, `sidebar.iconPickerAnimations`, `sidebar.changesAnimated`, and `color`/`icon`/`group` per entry.
   Checks `folders` (an unpacked extension's service worker drives `chrome.tabGroups`), `folders-relaunch`.
 - Spaces (`Host/Spaces.swift`, `Host/SpaceSlide.swift`, `Host/SpaceEditor.swift`, `BrowserWindowController`
-  `// MARK: Spaces` and the sections after it, `SidebarView` `// MARK: Spaces`; owner's picks 1A, 2C, 4A, 5A of
+  `// MARK: Spaces` and the sections after it, `SidebarView` `// MARK: Spaces`; owner's picks 1A, 2C, 4B, 5A of
   `docs/mocks/spaces.html`, 2026-11-24). `SidebarState.spaces` (never empty, Sidebar.json `spaces`; a file from before
   Spaces loads as one "Personal") with `currentSpaceID`; `state.pinned`/`today`/`activeEntryID` are the shown Space's,
   so code that edits "the sidebar" edits the Space on screen, and `allEntries`, `todayFolders`, `allToday`,
@@ -300,11 +300,13 @@ publicly or create accounts.
   activation of another Space's tab is ignored; a close's successor stays in the Space. Sidebar: the Space's name heads
   its list (`SpaceHeaderView`), its icons sit in the footer (`SpaceDockView`, Arc's 26 pt cells, dots past what fits,
   hidden with one Space) with a + (New Space); a switch or a two-finger swipe (`SpaceSwipeScrollView` hands a
-  sideways gesture to `spaceSwipe`, decided at its start) slides pictures of both lists cut per row (`SpaceSlide`, the
+  sideways gesture to `spaceSwipe`, decided at its start) slides a picture of the leaving list cut per row and the incoming list's own rows by their frames
+  (a picture of rows made for the switch came out blank, and AppKit undoes layer transforms; `SpaceSlide`; state log `blankBands`, the
   rows trailing 7 pt each, the name at 0.55 speed) on the sidebar's spring, the window colour following. New Space
-  makes the Space and goes there with the sidebar as the form (`SpaceEditorView`: name, icons, Window and Accent
+  makes the Space and goes there, its form a `Panels` panel from the footer's + (Edit Space…'s from the Space's icon;
+  `SpaceEditorView`: name, icons, Window and Accent
   swatches with any colour via macOS's colour panel, Profile: Default, another Space's or New Profile; live preview;
-  Cancel removes a new one). Menus: the footer icon's and the name's (Edit Space…, Move Left/Right, New Space…,
+  Cancel, Escape or a click outside removes a new one). Menus: the footer icon's and the name's (Edit Space…, Move Left/Right, New Space…,
   Delete Space…, which asks, `PanelQuestion`, Delete dead 0.5 s, its tabs to Recently Closed in one batch), Move to ›
   a Space in row menus, the Spaces menu (⌃1–9, ⌥⌘→/←). Today folders are Chrome groups only on the default profile
   (`TabGroupSync.today(of:)`). `ClosedTab.spaceID` reopens into its Space. The command bar's tab rows of another

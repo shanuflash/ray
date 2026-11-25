@@ -4048,6 +4048,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private var loadingProfiles: [String: [(RayCoreProfile?) -> Void]] = [:]
   /// The form New Space and Edit Space… show over the sidebar, and what Cancel puts back.
   private var spaceEditor: SpaceEditorView?
+  private var spaceEditorPanel: PanelHandle?
   private var spaceEditing: (space: Space, original: SpaceDraft, previous: UUID?)?
   /// For the state log: Space switches, and the last Space question.
   private var spaceSwitches = 0
@@ -4321,7 +4322,6 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   private func showSpaceEditor(_ space: Space, draft: SpaceDraft, original: SpaceDraft, isNew: Bool, previous: UUID?) {
-    if state.sidebarHidden { toggleSidebar() }
     let editor = SpaceEditorView(draft: draft, isNew: isNew, profiles: profileChoices())
     spaceEditor = editor
     spaceEditing = (space, original, previous)
@@ -4330,7 +4330,23 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       self.preview(draft, on: space)
     }
     editor.onFinish = { [weak self] keep in self?.finishSpaceEditor(keep: keep) }
-    sidebar.showEditor(editor)
+    editor.fit()
+    // A hidden sidebar peeks for it, so the + it hangs from is there.
+    if state.sidebarHidden, !peeking { beginPeek() }
+    // 4B: out of the footer's + for a new Space, out of its icon for an edit (the + when one Space shows no icons).
+    let index = state.spaces.firstIndex { $0 === space }
+    let button = isNew ? sidebar.newSpaceAnchor : index.flatMap(sidebar.spaceAnchor) ?? sidebar.newSpaceAnchor
+    let anchor = PanelAnchor(rect: { [weak self, weak button] in
+      guard let self, let button, button.window != nil else { return .zero }
+      return button.convert(button.bounds, to: self.root)
+    }, below: false, align: isNew ? .trailing : .center, button: button)
+    spaceEditorPanel = panels.open(PanelSpec(
+      name: "spaceEditor", content: editor, anchor: anchor, closesOn: [.outsideClick, .escape, .windowInactive],
+      overSidebar: true, onClose: { [weak self, weak editor] in
+        // Closed by a click outside, Escape or the window going: as Cancel.
+        guard let self, let editor, self.spaceEditor === editor else { return }
+        self.finishSpaceEditor(keep: false)
+      }))
     editor.focusName()
     logState("spaceEditor")
   }
@@ -4350,7 +4366,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard let editor = spaceEditor, let editing = spaceEditing else { return }
     spaceEditor = nil
     spaceEditing = nil
-    sidebar.showEditor(nil)
+    let panel = spaceEditorPanel
+    spaceEditorPanel = nil
+    panel?.close()
     let space = editing.space
     if keep {
       let draft = editor.draft
@@ -4507,6 +4525,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "swipeCommits": sidebar.swipeCommits, "swipeCancels": sidebar.swipeCancels,
       "look": ["window": SpaceLook.windowHex as Any? ?? NSNull(), "accent": ProfileColor.spaceAccentHex as Any? ?? NSNull()],
       "editor": spaceEditor?.debug ?? NSNull(),
+      "blankBands": sidebar.lastBlankBands,
       "question": lastSpaceQuestion ?? NSNull(),
     ]
   }

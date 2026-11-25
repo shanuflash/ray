@@ -2221,11 +2221,20 @@ const checks = {
       it = ownInstance("spaces", { RAY_DATA_DIR: dir });
       let s = await it.until("started", (x) => x?.sidebar?.today.some((e) => e.live));
       const home = s.sidebar.today.find((e) => e.live);
+      // More rows in Personal than Work will have, so going back makes rows the slide must picture drawn.
+      for (const n of [1, 2, 3]) {
+        await it.ok("menu newTab");
+        await it.ok(`type ${origin}/c?n=personal${n}`);
+        await it.ok("enter");
+      }
+      await it.until("Personal's tabs", (x) => x.sidebar.today.filter((e) => e.live).length >= 4);
+      await it.ok(`row ${home.id}`);
       assert(spaces(s).list.length === 1 && spaces(s).list[0].name === "Personal", `first Space ${JSON.stringify(spaces(s).list)}`);
       assert(spaces(s).header === "Personal" && !spaces(s).dockShown, `header ${spaces(s).header}, dock ${spaces(s).dockShown}`);
       // New Space: made at once and gone to, its sidebar the form; the theme shows on the window while you pick.
       await it.ok("space new");
       s = await it.until("the form", (x) => spaces(x).editor?.new === true && spaces(x).current === 1);
+      assert(s.panels.open?.name === "spaceEditor", `New Space's panel (4B): ${JSON.stringify(s.panels.open)}`);
       assert(s.activeEntry === null, `an empty Space shows a tab: ${s.activeEntry}`);
       await it.ok("space editor name Work");
       await it.ok("space editor icon 1");
