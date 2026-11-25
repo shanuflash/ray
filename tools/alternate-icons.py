@@ -69,9 +69,92 @@ def glow(stops, opacity=.75, blur=34):
                f'<feGaussianBlur stdDeviation="{blur}"/></filter>')
 
 
+def r_spans(y):
+    """Where a row at height y crosses the R: [(x0, x1), …], left to right."""
+    spans = []
+    if TOP <= y <= BOTTOM:
+        spans.append([300, 424])
+    if TOP <= y <= 594:
+        spans.append([300, 548 + math.sqrt(max(0, 182 ** 2 - (y - 412) ** 2))])
+    if 560 <= y <= BOTTOM:
+        k = (y - 560) * 140 / 234
+        spans.append([496 + k, 630 + k])
+    spans.sort()
+    merged = []
+    for a, b in spans:
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    if 346 <= y <= 478:  # the counter
+        c0, c1 = 424, 540 + math.sqrt(max(0, 66 ** 2 - (y - 412) ** 2))
+        cut = []
+        for a, b in merged:
+            if b <= c0 or a >= c1:
+                cut.append([a, b])
+            else:
+                if a < c0:
+                    cut.append([a, c0])
+                if b > c1:
+                    cut.append([c1, b])
+        merged = cut
+    return merged
+
+
+def simplify(points):
+    """Drops points on a straight line between their neighbours."""
+    out = []
+    for pt in points:
+        while len(out) >= 2:
+            (x0, y0), (x1, y1) = out[-2], out[-1]
+            if abs((x1 - x0) * (pt[1] - y0) - (y1 - y0) * (pt[0] - x0)) < 0.6:
+                out.pop()
+            else:
+                break
+        out.append(pt)
+    return out
+
+
+def striped_r(n=16, height=22):
+    """The R cut into n scanlines as plain polygons: no mask, clip or filter, which Icon Composer may not draw."""
+    pitch = (BOTTOM - TOP) / n
+    paths = []
+    for i in range(n):
+        top = TOP + i * pitch
+        ys = [top + .001] + [top + k for k in range(1, height)] + [top + height - .001]
+        rows = [(y, r_spans(y)) for y in ys]
+        start = 0
+        while start < len(rows):  # runs of rows that cross the R the same number of times
+            end = start
+            while end + 1 < len(rows) and len(rows[end + 1][1]) == len(rows[start][1]):
+                end += 1
+            run = rows[start:end + 1]
+            for j in range(len(run[0][1])):
+                left = [(sp[j][0], y) for y, sp in run]
+                right = [(sp[j][1], y) for y, sp in reversed(run)]
+                pts = simplify(left) + simplify(right)
+                paths.append("M" + " L".join(f"{x:.1f} {y:.1f}" for x, y in pts) + " Z")
+            start = end + 1
+    return f'<path d="{" ".join(paths)}"/>'
+
+
+STRIPED_R = None
+
+
 def glyph(stops):
-    mask = f'<mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">{stripes()}</mask>'
-    return svg(f'<g fill="url(#g)" mask="url(#m)">{R}</g>', lin("g", stops) + mask)
+    global STRIPED_R
+    STRIPED_R = STRIPED_R or striped_r()
+    return svg(f'<g fill="url(#g)">{STRIPED_R}</g>', lin("g", stops))
+
+
+def mono(glyph_svg):
+    """macOS's Clear and Tinted looks: the glyph in white only; the system tints it and lays it on glass."""
+    body = re.sub(r'^.*?<svg[^>]*>', '', glyph_svg, flags=re.S).replace('</svg>', '')
+    body = re.sub(r'<defs>.*?</defs>', '', body, flags=re.S)
+    body = re.sub(r'fill="(?!none)[^"]*"', 'fill="#FFFFFF"', body)
+    body = re.sub(r'<rect [^>]*fill="none"[^>]*/>', '', body)  # block outlines
+    body = re.sub(r'opacity="[^"]*"', '', body)
+    return svg(body)
 
 
 SUNSET = [(0, "#FFB13C"), (.55, "#FF5A5F"), (1, "#E23A8A")]
@@ -86,13 +169,17 @@ def mix(hex_, toward, amount):
 
 
 def theme(name, title, blurb, bg, stops, family="Ray", notes=CRT_NOTES, glow_opacity=.75, color=None,
-          decor=None, glyph_svg=None, **bgargs):
-    """decor: (body, defs) drawn over the glyph as its own layer, Decor.svg; bgargs' extra: scenery under it."""
-    return dict(name=name, title=title, family=family, color=color, blurb=blurb, composer=notes,
+          decor=None, glyph_svg=None, light=False, **bgargs):
+    """decor: (body, defs) drawn over the glyph as its own layer, Decor.svg; bgargs' extra: scenery under it.
+    light: a light tile, which macOS's Dark look swaps for its own dark fill (the glyph and decor stay)."""
+    g = glyph_svg or glyph(stops)
+    return dict(name=name, title=title, family=family, color=color, blurb=blurb, composer=notes, light=light,
+                glow=stops[len(stops) // 2][1],
                 layers={"Background.svg": background(bg, **bgargs),
                         "Glow.svg": glow(stops, glow_opacity) if glow_opacity else None,
-                        "Glyph.svg": glyph_svg or glyph(stops),
-                        "Decor.svg": svg(decor[0], decor[1]) if decor else None})
+                        "Glyph.svg": g,
+                        "Decor.svg": svg(decor[0], decor[1]) if decor else None,
+                        "TintedGlyph.svg": mono(g)})
 
 
 def classic():
@@ -104,10 +191,13 @@ def classic():
          '<rect x="252" y="688" width="520" height="50" rx="25"/></g>')
     bg = svg('<rect width="1024" height="1024" fill="url(#bg)"/>',
              lin("bg", [(0, "#FF9A3C"), (1, "#FF4F7B")], user=(0, 0, 0, 1024)))
-    return dict(name="classic", title="Classic", family="Ray", color=None,
+    dark = svg(g.replace('fill="#FFFFFF"', 'fill="url(#dg)"'),
+               lin("dg", [(0, "#FF9A3C"), (1, "#FF4F7B")], user=(0, 290, 0, 740)))
+    return dict(name="classic", title="Classic", family="Ray", color=None, light=True, glow=None,
                 blurb="Ray's sunrise icon from before the rebrand, for anyone who'd rather keep it.",
-                composer="As the old Branding/Ray.icon: background no glass, glyph glass on, translucency 0.4.",
-                layers={"Background.svg": bg, "Glow.svg": None, "Glyph.svg": svg(g)})
+                composer="The old Branding/Ray.icon: in Dark the sun turns sunrise-coloured on macOS's dark fill.",
+                layers={"Background.svg": bg, "Glow.svg": None, "Glyph.svg": svg(g), "DarkGlyph.svg": dark,
+                        "TintedGlyph.svg": svg(g)})
 
 
 def inside_r(x, y):
@@ -197,7 +287,7 @@ def themed():
     t.append(theme(
         "blocks", "Blocks", "The R built from blocks: grass on top, dirt and stone below, under a blocky sky. "
         "The block-building game feeling, drawn from scratch.",
-        [(0, "#6EC3FF"), (1, "#BDE6FF")], [(0, "#5DBB3F"), (1, "#5DBB3F")], family="Themes", glow_opacity=0,
+        [(0, "#6EC3FF"), (1, "#BDE6FF")], [(0, "#5DBB3F"), (1, "#5DBB3F")], family="Themes", light=True, glow_opacity=0,
         notes="Background no glass; no glow; the Glyph is the blocks (glass off, crisp edges). Keep the cells on "
               "whole pixels (48 of 1024 lands well down to 64 px).",
         vignette=0, lines_opacity=0,
@@ -208,7 +298,7 @@ def themed():
     t.append(theme(
         "beach", "Beach", "A summer afternoon: the R in sunset lines over turquoise water, a warm sun, foam on the "
         "sand.", [(0, "#8FE3FF"), (.6, "#3EC6E8"), (.62, "#1FA2D6"), (1, "#1592C4")],
-        [(0, "#FFF6C9"), (.5, "#FFB13C"), (1, "#FF5A5F")], family="Themes", notes=THEMED_NOTES, glow_opacity=.5,
+        [(0, "#FFF6C9"), (.5, "#FFB13C"), (1, "#FF5A5F")], family="Themes", light=True, notes=THEMED_NOTES, glow_opacity=.5,
         vignette=.15, lines_opacity=.04,
         extra='<circle cx="800" cy="210" r="110" fill="#FFE66B"/><circle cx="800" cy="210" r="170" fill="#FFE66B" opacity=".25"/>'
               '<path d="M0 840 C120 815 240 860 360 835 C480 810 600 860 720 835 C840 810 940 850 1024 830 V1024 H0 Z" fill="#F7D9A0"/>'
@@ -244,7 +334,7 @@ def themed():
     t.append(theme(
         "sakura", "Sakura", "Spring: the R in plum-pink lines on a soft pink sky, a blossoming branch and petals "
         "drifting down.", [(0, "#FFE7EF"), (1, "#FFF6E8")], [(0, "#FF9EC4"), (.5, "#E0457B"), (1, "#8E1F5A")],
-        family="Themes", glow_opacity=.35, vignette=0, lines="#000000", lines_opacity=.02, notes=THEMED_NOTES,
+        family="Themes", light=True, glow_opacity=.35, vignette=0, lines="#000000", lines_opacity=.02, notes=THEMED_NOTES,
         decor=('<path d="M60 230 C160 190 250 140 360 70 M170 175 C200 130 205 100 195 50" stroke="#5A2A2A" '
                'stroke-width="22" fill="none" stroke-linecap="round"/>' +
                blossom(260, 110, 2.2) + blossom(160, 70, 1.8) + blossom(350, 50, 1.9) + blossom(80, 180, 2) +
@@ -267,7 +357,7 @@ def variants():
               [(0, "#2A0F4F"), (1, "#12082A")], [(0, "#FF6AD5"), (.5, "#C774E8"), (1, "#5BE3FF")]),
         theme("paper", "Paper", "Light mode: the sunset lines printed on warm paper, no glow, no vignette.",
               [(0, "#FFFBF3"), (1, "#F3E9DC")], [(0, "#FF9A3C"), (.55, "#F2475F"), (1, "#C42A7A")],
-              glow_opacity=0, lines="#000000", lines_opacity=.025, vignette=0,
+              light=True, glow_opacity=0, lines="#000000", lines_opacity=.025, vignette=0,
               notes="Background no glass. No glow layer. Glyph glass off, shadow neutral 0.2."),
         theme("mono", "Mono", "White lines on black, nothing else: the plainest and the most legible small.",
               "#000000", [(0, "#FFFFFF"), (1, "#FFFFFF")], glow_opacity=.35, vignette=0, lines_opacity=.04),
@@ -297,23 +387,58 @@ def prefixed(svg_text, prefix):
     return re.sub(r'url\(#([^)]+)\)', lambda m: f'url(#{prefix}-{m.group(1)})', inner)
 
 
+def icon_json(v):
+    """The Icon Composer document: what each layer shows in macOS 26's looks (default, dark, tinted; Clear and
+    Tinted both use "tinted": the system lays the white glyph on glass and colours it). The glyph group's own
+    shadow in the layer's colour stands in for the mock's blurred glow, which is an SVG filter Icon Composer may
+    not draw. Unchecked in Icon Composer: open it on a Mac before building."""
+    L = v["layers"]
+
+    def layer(file, default, dark, tinted, glass=False):
+        return {"image-name": file, "name": file[:-4], "glass": glass,
+                "opacity-specializations": [{"value": default}, {"appearance": "dark", "value": dark},
+                                            {"appearance": "tinted", "value": tinted}]}
+    light = v.get("light")
+    glyphs = [layer("TintedGlyph.svg", 0, 0, 1, glass=True)]
+    if L.get("Decor.svg"):
+        glyphs.append(layer("Decor.svg", 1, 1, 0))
+    if L.get("DarkGlyph.svg"):
+        glyphs += [layer("Glyph.svg", 1, 0, 0), layer("DarkGlyph.svg", 0, 1, 0)]
+    else:
+        glyphs.append(layer("Glyph.svg", 1, 1, 0))
+    shadow = ({"kind": "layer-color", "opacity": 0.8} if v.get("glow") else {"kind": "neutral", "opacity": 0.3})
+    fill = [{"value": "none"}, {"appearance": "dark", "value": "system-dark" if light else "none"}]
+    return {"fill-specializations": fill,
+            "groups": [{"layers": glyphs, "shadow": shadow, "translucency": {"enabled": False, "value": 0.5}},
+                       {"layers": [layer("Background.svg", 1, 0 if light else 1, 0)],
+                        "shadow": {"kind": "neutral", "opacity": 0.5}, "translucency": {"enabled": False, "value": 0.5}}],
+            "supported-platforms": {"squares": "shared"}}
+
+
 def main():
     vs = variants()
     if os.path.isdir(OUT):
         shutil.rmtree(OUT)
     data = []
     for v in vs:
-        d = os.path.join(OUT, v["name"])
-        os.makedirs(d)
-        for file, text in v["layers"].items():  # a missing or None layer isn't written
-            if text:
-                with open(os.path.join(d, file), "w") as f:
+        d = os.path.join(OUT, v["name"] + ".icon")
+        os.makedirs(os.path.join(d, "Assets"))
+        for file, text in v["layers"].items():  # a missing or None layer isn't written; Glow.svg is the mock's only
+            if text and file != "Glow.svg":
+                with open(os.path.join(d, "Assets", file), "w") as f:
                     f.write(text)
+        with open(os.path.join(d, "icon.json"), "w") as f:
+            json.dump(icon_json(v), f, indent=2)
+            f.write("\n")
         glyph_html = "".join(prefixed(v["layers"][k], f'{v["name"]}-{k[:-4].lower()}')
                              for k in ("Glow.svg", "Glyph.svg", "Decor.svg") if v["layers"].get(k))
         data.append(dict(name=v["name"], title=v["title"], family=v["family"], color=v["color"], blurb=v["blurb"],
                          composer=v["composer"], bg=prefixed(v["layers"]["Background.svg"], v["name"] + "-bg"),
-                         glyph=glyph_html))
+                         glyph=glyph_html, light=bool(v.get("light")), glowColor=v.get("glow"),
+                         dark=prefixed(v["layers"]["DarkGlyph.svg"], v["name"] + "-dk") if v["layers"].get("DarkGlyph.svg") else None,
+                         decor=prefixed(v["layers"]["Decor.svg"], v["name"] + "-dc") if v["layers"].get("Decor.svg") else None,
+                         glyphOnly=prefixed(v["layers"]["Glyph.svg"], v["name"] + "-go"),
+                         tinted=prefixed(v["layers"]["TintedGlyph.svg"], v["name"] + "-tg").replace("#FFFFFF", "currentColor")))
     with open(HTML) as f:
         html = f.read()
     start, end = "/* GENERATED:BEGIN */", "/* GENERATED:END */"
