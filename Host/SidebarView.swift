@@ -370,6 +370,9 @@ final class SidebarView: NSView {
     }
     pendingShow = nil
     let switching = space != nil && shownSpace != nil && space?.id != shownSpace?.id
+    // A switch while the last one is still sliding (⌃1 ⌃2 quickly): that one lands first, so the list pictured
+    // leaving is whole and in place, and this one slides too (it used to cut over with no slide).
+    if switching, !swipeLanded { settleSlideNow() }
     // Another Space's lists: picture the one leaving before its rows change, unless a swipe already showed this one.
     let leaving = switching && !swipeLanded && window != nil ? currentShot() : nil
     swipeLanded = false
@@ -535,6 +538,9 @@ final class SidebarView: NSView {
     CATransaction.commit()
 
     addressPill.frame = NSRect(x: inset, y: rowCenter + 24, width: width, height: 36)
+    if let spaceForm {
+      spaceForm.frame = NSRect(x: 0, y: contentTop, width: bounds.width, height: max(0, downloadsButton.frame.minY - 6 - contentTop))
+    }
     var y = contentTop
 
     let dragged = isDragging ? drag?.entry : nil
@@ -1888,7 +1894,30 @@ final class SidebarView: NSView {
 
   @objc private func showBookmarks() { delegate?.sidebarBookmarks(self, anchor: bookmarksButton) }
 
-  @objc private func newSpace() { delegate?.sidebarNewSpace(self) }
+  /// The footer's +: Arc's menu (New Space…, New Folder, New Tab).
+  @objc private func newSpace() {
+    let menu = NSMenu()
+    for (title, action) in [("New Space…", #selector(menuNewSpace)), ("New Folder", #selector(menuNewFolder)),
+                            ("New Tab", #selector(menuNewTab))] {
+      let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+      item.target = self
+      menu.addItem(item)
+    }
+    if TestEnvironment.isTestBuild { return menuNewSpace() }
+    menu.popUp(positioning: nil, at: NSPoint(x: 0, y: newSpaceButton.bounds.height + 4), in: newSpaceButton)
+  }
+  @objc private func menuNewSpace() { delegate?.sidebarNewSpace(self) }
+  @objc private func menuNewFolder() { NSApp.sendAction(#selector(AppController.newFolder(_:)), to: nil, from: self) }
+  @objc private func menuNewTab() { delegate?.sidebarNewTab(self) }
+
+  /// New Space's and Edit Space's form, over the list from under the address field to above the footer.
+  var spaceForm: NSView? {
+    didSet {
+      oldValue?.removeFromSuperview()
+      if let spaceForm { addSubview(spaceForm) }
+      needsLayout = true
+    }
+  }
 
   /// Where the list's rows start in the scrolled content: under the Space's name when it shows.
   private var listTop: CGFloat { spaceHeader.isHidden ? 0 : SpaceHeaderView.height + 2 }
@@ -2012,6 +2041,18 @@ final class SidebarView: NSView {
     guard slideRunning, !slideSpring.isMoving, swipe == nil else { return }
     endSlide(landed: value >= 0.5)
   }
+
+  /// A running slide (not a swipe under the fingers) jumps to its end and cleans up.
+  private func settleSlideNow() {
+    guard !slideView.isHidden, swipe == nil else { return }
+    settledEarly += 1
+    slideSpring.jump(to: slideSpring.target)
+    if !slideView.isHidden { endSlide(landed: slideSpring.value >= 0.5) }
+    layoutSubtreeIfNeeded()
+  }
+
+  /// For the state log: slides cut short by the next switch.
+  private(set) var settledEarly = 0
 
   private func endSlide(landed: Bool) {
     slideRunning = false

@@ -8,6 +8,8 @@ struct SpaceDraft: Equatable {
   var accent: String?
   /// nil: the default profile; "new": a new one made on Create; else a profile directory another Space uses.
   var profile: String?
+  var mode: String? = nil
+  var strength: Double? = nil
 }
 
 /// A profile the editor offers: its directory and the Spaces on it.

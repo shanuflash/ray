@@ -562,11 +562,17 @@ final class SwatchRow: NSView {
     return compact ? NSSize(width: CGFloat(count) * (size + gap) - gap, height: size) : NSSize(width: 340, height: size)
   }
 
-  override init(frame: NSRect) {
-    super.init(frame: frame)
-    let entries: [(String?, String)] = [(nil, "Lavender")] + ProfileColor.presets.map { ($0.hex as String?, $0.name) }
+  override convenience init(frame: NSRect) {
+    self.init(entries: [(nil, "Lavender")] + ProfileColor.presets.map { ($0.hex as String?, $0.name) })
+  }
+
+  /// Other swatches (a Space's Window and Accent): `none` is what the nil choice shows (Ray's own colour), lavender
+  /// when it's nil too.
+  init(entries: [(String?, String)], none: NSColor? = nil) {
+    super.init(frame: .zero)
     for (hex, name) in entries {
       let button = SwatchButton(hex: hex, isCustom: false, name: name)
+      button.noneColor = none
       button.onClick = { [weak self] in self?.onChoose?(hex) }
       buttons.append(button)
       addSubview(button)
@@ -613,6 +619,8 @@ private final class SwatchButton: NSControl {
   private let rainbow = CAGradientLayer()
   private let ring = CAShapeLayer()
   private let check = NSImageView()
+  /// What a nil colour shows instead of the lavender.
+  var noneColor: NSColor?
 
   init(hex: String?, isCustom: Bool, name: String) {
     self.hex = hex
@@ -655,7 +663,7 @@ private final class SwatchButton: NSControl {
     if let hex, let rgb = ProfileColor.parse(hex) {
       return NSColor(srgbRed: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1)
     }
-    return isCustom ? nil : ProfileColor.lavender
+    return isCustom ? nil : noneColor ?? ProfileColor.lavender
   }
 
   override func updateLayer() {
@@ -696,6 +704,8 @@ private final class SwatchButton: NSControl {
 final class EditorField: NSView {
   let field: NSTextField
   var fill: NSColor = SettingsColors.track { didSet { needsDisplay = true } }
+  /// Room at the left for something drawn over the field (the Space form's icon button).
+  var contentInsetLeft: CGFloat = 0 { didSet { if oldValue != contentInsetLeft { needsLayout = true } } }
 
   init(placeholder: String = "", secure: Bool = false) {
     field = secure ? NSSecureTextField() : NSTextField()
@@ -726,7 +736,8 @@ final class EditorField: NSView {
   override func layout() {
     super.layout()
     let height = ceil(field.intrinsicContentSize.height)
-    field.frame = NSRect(x: 9, y: ((bounds.height - height) / 2).rounded(), width: bounds.width - 18, height: height)
+    field.frame = NSRect(x: 9 + contentInsetLeft, y: ((bounds.height - height) / 2).rounded(),
+                         width: bounds.width - 18 - contentInsetLeft, height: height)
   }
 }
 

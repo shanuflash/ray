@@ -302,11 +302,15 @@ publicly or create accounts.
   hidden with one Space) with a + (New Space); a switch or a two-finger swipe (`SpaceSwipeScrollView` hands a
   sideways gesture to `spaceSwipe`, decided at its start) slides a picture of the leaving list cut per row and the incoming list's own rows by their frames
   (a picture of rows made for the switch came out blank, and AppKit undoes layer transforms; `SpaceSlide`; state log `blankBands`, the
-  rows trailing 7 pt each, the name at 0.55 speed) on the sidebar's spring, the window colour following. New Space
-  makes the Space and goes there, its form a `Panels` panel from the footer's + (Edit Space…'s from the Space's icon;
-  `SpaceEditorView`: name, icons, Window and Accent
-  swatches with any colour via macOS's colour panel, Profile: Default, another Space's or New Profile; live preview;
-  Cancel, Escape or a click outside removes a new one). Menus: the footer icon's and the name's (Edit Space…, Move Left/Right, New Space…,
+  rows trailing 7 pt each, the name at 0.55 speed) on the sidebar's spring, the window colour following. A switch
+  during a slide lands it first (`settleSlideNow`, state log `settledEarly`), so each switch animates. The footer's +
+  is a menu (New Space…, New Folder, New Tab). New Space makes the Space and goes there, its sidebar Arc's "Create a
+  Space" form in Ray's look (`Host/SpaceCreate.swift`, `SpaceCreateView` in `SidebarView.spaceForm`, the owner's
+  recording and `docs/mocks/spaces-create.html`; Edit Space… the same form with Done and Delete Space…): name with an
+  icon button (`SpaceIconPicker`, a `Panels` panel: Emoji / Icon, search by Unicode name, category tabs, trash), the
+  Profile pop-up (New Profile… opens `NewProfileCard`), Theme (`SpaceThemePanel` beside the sidebar: Light / Auto /
+  Dark as `Space.mode`, applied by `applySpaceMode`; the Window colour and its `strength`; the Accent); live preview;
+  Cancel or Escape removes a new one; Create pops its icon (`SpacePop`). Settings › Spaces edits with Settings rows. Menus: the footer icon's and the name's (Edit Space…, Move Left/Right, New Space…,
   Delete Space…, which asks, `PanelQuestion`, Delete dead 0.5 s, its tabs to Recently Closed in one batch), Move to ›
   a Space in row menus, the Spaces menu (⌃1–9, ⌥⌘→/←). Today folders are Chrome groups only on the default profile
   (`TabGroupSync.today(of:)`). `ClosedTab.spaceID` reopens into its Space. The command bar's tab rows of another
@@ -314,7 +318,7 @@ publicly or create accounts.
   (`ImportedSpace`: Arc's first gradient colour (else its mid tone) the Window, the Accent left to the profile colour, its named icons through
   `ArcIconNames`, Open Arc's table; one of the same name is joined; a fresh Ray's empty Personal takes the first). Little Ray's ▾:
   Open in ‹Space›. Test commands `space switch|click|next|previous|new|edit|delete|deletenow|menu|swipe <dx> [steps]
-  [hold]|release|editor name|icon|window|accent|custom|profile|confirm|cancel|question|move|state`, `littleray
+  [hold]|release|editor name|icon|window|accent|custom|profile|iconpicker|theme|newprofile|closepanel|confirm|cancel|question|move|state`, `littleray
   openinspace <n>`; state log `sidebar.spaces`, `littleRays[].openInSpaces`; checks `spaces`, `spaces-migrate`.
 - Profiles (`ProfileInfo` in `Host/Spaces.swift`, `BrowserWindowController` `// MARK: Profiles` and `// MARK: Spaces in
   Settings`, `Host/SettingsSpaces.swift`, `Host/SettingsProfiles.swift`; owner's picks of `docs/mocks/profiles.html` and C

@@ -2234,12 +2234,25 @@ const checks = {
       // New Space: made at once and gone to, its sidebar the form; the theme shows on the window while you pick.
       await it.ok("space new");
       s = await it.until("the form", (x) => spaces(x).editor?.new === true && spaces(x).current === 1);
-      assert(s.panels.open?.name === "spaceEditor", `New Space's panel (4B): ${JSON.stringify(s.panels.open)}`);
+      assert(spaces(s).editor.form === "sidebar" && !s.panels.open, `New Space's form in the sidebar: ${JSON.stringify(s.panels.open)}`);
       assert(s.activeEntry === null, `an empty Space shows a tab: ${s.activeEntry}`);
       await it.ok("space editor name Work");
       await it.ok("space editor icon 1");
       await it.ok("space editor window 2");
       await it.ok("space editor custom accent #FF8800");
+      // The icon picker (Emoji / Icon, search) and the theme panel (Light / Auto / Dark, strength) beside the sidebar.
+      await it.ok("space editor iconpicker");
+      s = await it.until("icon picker", (x) => spaces(x).editorPanel === "spaceIcon");
+      await it.ok("space editor iconpicker search briefcase");
+      await it.ok("space editor iconpicker pick 0");
+      s = await it.until("picked closes", (x) => spaces(x).editorPanel === null && spaces(x).editor.icon === "💼");
+      await it.ok("space editor theme mode 2");
+      await it.ok("space editor theme strength 0.5");
+      s = await it.until("theme", (x) => spaces(x).editorPanel === "spaceTheme" && spaces(x).mode === "dark"
+        && spaces(x).strength === 0.5 && spaces(x).windowAppearance === "NSAppearanceNameDarkAqua");
+      await it.ok("space editor theme mode 1");
+      await it.ok("space editor closepanel");
+      s = await it.until("auto", (x) => spaces(x).mode === null && spaces(x).windowAppearance === null);
       s = await it.until("previewed", (x) => spaces(x).look.window === "#2F6BEA" && spaces(x).look.accent === "#FF8800"
         && spaces(x).header === "Work");
       await it.ok("space editor confirm");
@@ -2261,6 +2274,10 @@ const checks = {
       assert(spaces(s).slides >= 1, "no slide on the switch");
       const keys = JSON.stringify(s.shortcuts ?? {});
       assert(keys.includes("selectSpace1") && keys.includes("nextSpace"), `Spaces' keys missing from Shortcuts: ${keys.slice(0, 300)}`);
+      // Two switches inside one slide: the first lands, the second slides too.
+      const before = spaces(await it.now()).slides;
+      it.proc.stdin.write("space next\nspace previous\n");
+      s = await it.until("both switches slid", (x) => spaces(x).current === 0 && spaces(x).slides >= before + 2 && !spaces(x).sliding);
       await it.ok("space next");
       await it.until("⌥⌘→ to Work", (x) => spaces(x).current === 1 && x.activeEntry === workTab.id);
       await it.ok("space click 1");
@@ -2325,11 +2342,11 @@ const checks = {
       await it.ok("menu reopenClosedTab");
       await it.until("its tab back, in the Space you're on", (x) => spaces(x).list[1].today.some((e) => e.url.includes("n=side")));
       // After a relaunch: the Spaces, their looks and tabs, and the one you were on.
-      const before = await it.now();
+      const lastRun = await it.now();
       await it.stop().catch(() => {});
       it = ownInstance("spaces-2", { RAY_DATA_DIR: dir });
       s = await it.until("relaunched", (x) => x?.sidebar?.spaces?.list.length === 2);
-      assert(spaces(s).current === spaces(before).current, `current ${spaces(s).current} vs ${spaces(before).current}`);
+      assert(spaces(s).current === spaces(lastRun).current, `current ${spaces(s).current} vs ${spaces(lastRun).current}`);
       const again = spaces(s).list[1];
       assert(again.name === "Work" && again.color === "#2F6BEA" && again.accent === "#FF8800" && again.today.some((e) => e.id === home.id),
         `Work after the relaunch ${JSON.stringify(again)}`);
@@ -2399,6 +2416,9 @@ const checks = {
       await it.ok("settings open spaces");
       await it.until("Settings › Spaces", (x) => x.settingsWindow?.open && x.settingsWindow.pane === "spaces");
       await it.ok("spacespane profileopen 2");
+      // Its colour comes from Appearance's swatch row (the second swatch is the first preset).
+      await it.ok("spacespane profilecolour 2 1");
+      await it.until("profile coloured", (x) => spaces(x).profiles[1]?.color === "#2F6BEA");
       await it.ok("spacespane profiledelete 2");
       await sleep(600);
       await it.ok("spacespane confirm accept");

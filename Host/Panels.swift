@@ -97,6 +97,8 @@ final class Panels {
 
   var isOpen: Bool { open != nil }
   var name: String? { spec?.name }
+  /// What the open panel shows (tests).
+  var content: NSView? { spec?.content }
   /// A panel from the sidebar is open: a peeking sidebar stays out.
   var holdsSidebar: Bool { spec?.overSidebar == true }
 

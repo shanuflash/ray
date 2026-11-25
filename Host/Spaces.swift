@@ -18,6 +18,10 @@ final class Space: Codable {
   var accent: String?
   /// The engine profile its pages load in (a directory name under the data dir); nil is the default profile.
   var profile: String?
+  /// Light or dark for the window while the Space shows ("light", "dark"); nil follows Ray's setting.
+  var mode: String?
+  /// How strongly the Window colour washes the sidebar (0.1–0.85); nil is `SpaceLook.defaultStrength`.
+  var strength: Double?
   var pinned: [SidebarEntry] = []
   var today: [SidebarEntry] = []
   /// The tab it shows when you come back to it.
@@ -29,7 +33,7 @@ final class Space: Codable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case id, name, icon, color, accent, profile, pinned, today, activeEntryID
+    case id, name, icon, color, accent, profile, mode, strength, pinned, today, activeEntryID
   }
 
   init(from decoder: Decoder) throws {
@@ -40,6 +44,8 @@ final class Space: Codable {
     color = try c.decodeIfPresent(String.self, forKey: .color).flatMap(Self.validHex)
     accent = try c.decodeIfPresent(String.self, forKey: .accent).flatMap(Self.validHex)
     profile = try c.decodeIfPresent(String.self, forKey: .profile).flatMap(Self.validProfile)
+    mode = try c.decodeIfPresent(String.self, forKey: .mode).flatMap { ["light", "dark"].contains($0) ? $0 : nil }
+    strength = try c.decodeIfPresent(Double.self, forKey: .strength).map { min(max($0, 0.1), 0.85) }
     pinned = try c.decodeIfPresent([SidebarEntry].self, forKey: .pinned) ?? []
     today = try c.decodeIfPresent([SidebarEntry].self, forKey: .today) ?? []
     activeEntryID = try c.decodeIfPresent(UUID.self, forKey: .activeEntryID)
@@ -53,6 +59,8 @@ final class Space: Codable {
     try c.encodeIfPresent(color, forKey: .color)
     try c.encodeIfPresent(accent, forKey: .accent)
     try c.encodeIfPresent(profile, forKey: .profile)
+    try c.encodeIfPresent(mode, forKey: .mode)
+    try c.encodeIfPresent(strength, forKey: .strength)
     try c.encode(pinned, forKey: .pinned)
     try c.encode(today, forKey: .today)
     try c.encodeIfPresent(activeEntryID, forKey: .activeEntryID)
@@ -104,15 +112,19 @@ enum SpaceLook {
   static let didChange = Notification.Name("RaySpaceLookDidChange")
   private static var window: NSColor?
   private(set) static var windowHex: String?
+  private static var windowStrength: Double?
+  static let defaultStrength = 0.30
 
   /// The window's colour now: the Space's wash, or Ray's own.
   static var background: NSColor { window ?? SidebarColors.background }
 
   static func apply(_ space: Space?, privateWindow: Bool = false) {
     let hex = privateWindow ? nil : space?.color
-    if hex != windowHex {
+    let strength = space?.strength
+    if hex != windowHex || strength != windowStrength {
       windowHex = hex
-      window = hex.map(windowColor)
+      windowStrength = strength
+      window = hex.map { windowColor($0, strength: strength) }
     }
     ProfileColor.override(hex: privateWindow ? nil : space?.accent)
     NotificationCenter.default.post(name: didChange, object: nil)
@@ -121,10 +133,11 @@ enum SpaceLook {
 
 extension SpaceLook {
   /// The window's colour for a Window colour (nil: Ray's own).
-  static func windowColor(_ hex: String?) -> NSColor {
+  static func windowColor(_ hex: String?, strength: Double? = nil) -> NSColor {
     guard let rgb = hex.flatMap(ProfileColor.parse) else { return SidebarColors.background }
     let tint = NSColor(srgbRed: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1)
-    return ProfileColor.mix(tint, over: SidebarColors.background, 0.30, dark: 0.24)
+    let light = CGFloat(strength ?? defaultStrength)
+    return ProfileColor.mix(tint, over: SidebarColors.background, light, dark: light * 0.8)
   }
 
   /// Part way from one resolved colour to another, in sRGB.
@@ -230,8 +243,9 @@ struct ProfileInfo: Codable, Equatable {
 
   /// The avatar: the name's first letter on the profile's colour.
   static func avatar(_ info: ProfileInfo, size: CGFloat = 18) -> NSImage {
+    // No colour of its own: lavender, as the swatch row's first (nil) choice says.
     let fill = info.color.flatMap(ProfileColor.parse).map { NSColor(srgbRed: $0.r, green: $0.g, blue: $0.b, alpha: 1) }
-      ?? NSColor.systemGray
+      ?? ProfileColor.lavender
     let letter = String(info.name.first.map(String.init) ?? "·").uppercased()
     return NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
       fill.setFill()

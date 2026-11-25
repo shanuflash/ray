@@ -29,7 +29,7 @@ final class SpacesPaneContent: SettingsPaneContent {
   func sections() -> [SettingsSection] {
     [
       SettingsSection(
-        id: "spaces.list", title: "Spaces", place: .top, view: pictures, card: false,
+        id: "spaces.list", place: .top, view: pictures, card: false,
         search: [SettingsSearchEntry(title: "Spaces", detail: "Each Space's name, icon, colours and profile",
                                      keywords: ["space", "spaces", "theme", "colour", "color", "icon", "emoji", "new space",
                                                 "delete space", "rename space"])]),
@@ -46,7 +46,7 @@ final class SpacesPaneContent: SettingsPaneContent {
     let spaces = window.state.spaces
     if pictures.selected.flatMap(window.state.space(id:)) == nil { pictures.selected = window.state.current.id }
     pictures.show(spaces, profiles: window.state.profiles)
-    if editor.spaceID == nil || editor.spaceID.flatMap(window.state.space(id:)) == nil {
+    if editor.spaceID != pictures.selected || editor.spaceID.flatMap(window.state.space(id:)) == nil {
       editor.show(pictures.selected)
     } else {
       editor.refreshProfiles()
@@ -218,59 +218,174 @@ final class SpacePictureCell: NSView {
 
 // MARK: Editor
 
-/// The chosen Space's editor, on its card.
-final class SpaceSettingsEditor: NSView, SettingsSizing {
+/// The chosen Space in Settings' own rows (as every other pane): Name, Icon, Window, Accent and Profile, then Delete
+/// Space…. Every change applies at once (`applyFromSettings`).
+final class SpaceSettingsEditor: NSView, SettingsSizing, NSTextFieldDelegate {
   private(set) var spaceID: UUID?
-  private(set) var editor: SpaceEditorView?
+  private var list: SettingsRowList?
+  private let nameField = EditorField(placeholder: "Space name")
+  private var iconPopUp: SettingsPopUp?
+  private var windowRow: SwatchRow?
+  private var accentRow: SwatchRow?
+  private var profilePopUp: SettingsPopUp?
+  private var deleteButton: SettingsButton?
+  private var pickingColor: WritableKeyPath<SpaceDraft, String?>?
 
   override var isFlipped: Bool { true }
 
+  private var window_: BrowserWindowController? { SettingsDataProfile.window }
+  private var space: Space? { spaceID.flatMap { window_?.state.space(id: $0) } }
+
+  private var draft: SpaceDraft? {
+    guard let space else { return nil }
+    return SpaceDraft(name: space.name, icon: space.icon, color: space.color, accent: space.accent, profile: space.profile)
+  }
+
   func show(_ id: UUID?) {
-    editor?.removeFromSuperview()
-    editor = nil
+    list?.removeFromSuperview()
+    list = nil
     spaceID = id
-    guard let window = SettingsDataProfile.window, let id, let space = window.state.space(id: id) else {
+    guard let window = window_, let space else {
       settingsSectionResized()
       return
     }
-    let draft = SpaceDraft(name: space.name, icon: space.icon, color: space.color, accent: space.accent, profile: space.profile)
-    let made = SpaceEditorView(draft: draft, isNew: false, profiles: window.profileChoices(), inSettings: true)
-    made.onChange = { [weak window, weak space] draft in
-      guard let window, let space else { return }
-      window.applyFromSettings(draft, to: space)
+    nameField.field.stringValue = space.name
+    nameField.field.delegate = self
+    nameField.field.setAccessibilityLabel("Space name")
+    let name = SettingsRowView(title: "Name", detail: "", control: FixedSize(nameField, NSSize(width: 220, height: 28)))
+
+    let icons = SettingsPopUp([("None", "")] + SpaceTheme.icons.map { (Self.iconTitle($0), $0) }, selected: space.icon ?? "")
+    for item in icons.itemArray {
+      guard let value = item.representedObject as? String, value.hasPrefix("sf:") else { continue }
+      item.image = NSImage(systemSymbolName: String(value.dropFirst(3)), accessibilityDescription: nil)
     }
-    made.deleteButton.isEnabled = window.state.spaces.count > 1
-    made.onDelete = { [weak window, weak space] in
-      guard let window, let space, window.state.spaces.count > 1 else { return }
-      let tabs = (space.pinned + space.today).filter { !$0.isFolder }.count
-      SettingsConfirm.ask("deleteSpace", title: "Delete “\(space.name)”?",
-                          message: tabs == 0 ? "" : "Its \(tabs == 1 ? "tab closes" : "\(tabs) tabs close"). ⇧⌘T brings them back.",
-                          confirm: "Delete") { yes in
-        if yes { window.deleteSpace(space) }
-      }
-    }
+    icons.onChoose = { [weak self] value in self?.change { $0.icon = value.isEmpty ? nil : value } }
+    iconPopUp = icons
+    let icon = SettingsRowView(title: "Icon", detail: "", control: icons)
+
+    let windowSwatches = SwatchRow(entries: [(nil, "Ray's")] + SpaceTheme.windows.map { ($0 as String?, $0) },
+                                   none: SidebarColors.background)
+    windowSwatches.compact = true
+    windowSwatches.selection = space.color
+    windowSwatches.onChoose = { [weak self] hex in self?.change { $0.color = hex } }
+    windowSwatches.onCustom = { [weak self] in self?.pickColor(\.color) }
+    windowRow = windowSwatches
+    let windowColour = SettingsRowView(title: "Window", detail: "", control: windowSwatches)
+
+    let accentSwatches = SwatchRow(entries: [(nil, "Profile colour")] + SpaceTheme.accents.map { ($0 as String?, $0) })
+    accentSwatches.compact = true
+    accentSwatches.selection = space.accent
+    accentSwatches.onChoose = { [weak self] hex in self?.change { $0.accent = hex } }
+    accentSwatches.onCustom = { [weak self] in self?.pickColor(\.accent) }
+    accentRow = accentSwatches
+    let accent = SettingsRowView(title: "Accent", detail: "", control: accentSwatches)
+
+    let profiles = SettingsPopUp(window.profileChoices().map { ($0.title, $0.directory ?? "") } + [("-", "-"), ("New Profile", SpaceEditorView.newProfile)],
+                                 selected: space.profile ?? "")
+    profiles.onChoose = { [weak self] value in self?.change { $0.profile = value.isEmpty ? nil : value } }
+    profilePopUp = profiles
+    let profile = SettingsRowView(title: "Profile", detail: "", control: profiles)
+
+    let delete = SettingsButton("Delete Space…", destructive: true) { [weak self] in self?.askDelete() }
+    delete.isEnabled = window.state.spaces.count > 1
+    deleteButton = delete
+    let remove = SettingsRowView(title: "", detail: "", control: delete)
+
+    let made = SettingsRowList(rows: [name, icon, windowColour, accent, profile, remove])
     addSubview(made)
-    editor = made
+    list = made
     settingsSectionResized()
     needsLayout = true
   }
 
-  /// A profile made or renamed elsewhere: the editor's pop-up lists it (the editor is rebuilt; it holds no typing then).
-  func refreshProfiles() {
-    guard let editor, let window = SettingsDataProfile.window else { return }
-    let names = window.profileChoices().map(\.title)
-    if editor.profileTitles != names, !editor.isTyping { show(spaceID) }
+  private static func iconTitle(_ icon: String) -> String {
+    icon.hasPrefix("sf:") ? String(icon.dropFirst(3)).replacingOccurrences(of: ".fill", with: "").capitalized : icon
   }
 
-  func height(forWidth width: CGFloat) -> CGFloat { editor?.height(forWidth: width) ?? 0 }
+  private func change(_ edit: (inout SpaceDraft) -> Void) {
+    guard let window = window_, let space, var draft else { return }
+    edit(&draft)
+    window.applyFromSettings(draft, to: space)
+  }
+
+  func controlTextDidChange(_ obj: Notification) {
+    let text = nameField.field.stringValue
+    guard Space.name(from: text) != nil else { return }
+    change { $0.name = text }
+  }
+
+  private func pickColor(_ path: WritableKeyPath<SpaceDraft, String?>) {
+    pickingColor = path
+    let panel = NSColorPanel.shared
+    panel.showsAlpha = false
+    panel.setTarget(self)
+    panel.setAction(#selector(colorPicked(_:)))
+    if !TestEnvironment.isTestBuild { panel.orderFront(nil) }
+  }
+
+  @objc private func colorPicked(_ panel: NSColorPanel) {
+    guard let path = pickingColor else { return }
+    let hex = ProfileColor.hex(of: panel.color)
+    change { $0[keyPath: path] = hex }
+  }
+
+  private func askDelete() {
+    guard let window = window_, let space, window.state.spaces.count > 1 else { return }
+    let tabs = (space.pinned + space.today).filter { !$0.isFolder }.count
+    SettingsConfirm.ask("deleteSpace", title: "Delete “\(space.name)”?",
+                        message: tabs == 0 ? "" : "Its \(tabs == 1 ? "tab closes" : "\(tabs) tabs close"). ⇧⌘T brings them back.",
+                        confirm: "Delete") { yes in
+      if yes { window.deleteSpace(space) }
+    }
+  }
+
+  /// Something changed elsewhere (a profile made or renamed, a colour from the sidebar): the rows show it, unless the
+  /// name is being typed.
+  func refreshProfiles() {
+    guard nameField.field.currentEditor() == nil else { return }
+    show(spaceID)
+  }
+
+  func height(forWidth width: CGFloat) -> CGFloat { list.map { sizedHeight($0, width: width) } ?? 0 }
 
   override func layout() {
     super.layout()
-    editor?.fit(width: bounds.width)
-    editor?.frame.origin = .zero
+    list?.frame = bounds
   }
 
-  var debug: [String: Any] { editor?.debug ?? [:] }
+  // For tests: as clicks and typing would.
+  func setName(_ text: String) {
+    nameField.field.stringValue = text
+    controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+  }
+
+  func chooseIcon(_ index: Int) -> Bool {
+    guard SpaceTheme.icons.indices.contains(index) else { return false }
+    change { $0.icon = SpaceTheme.icons[index] }
+    return true
+  }
+
+  func chooseWindow(_ index: Int) { change { $0.color = index == 0 ? nil : SpaceTheme.windows[min(index - 1, SpaceTheme.windows.count - 1)] } }
+  func chooseAccent(_ index: Int) { change { $0.accent = index == 0 ? nil : SpaceTheme.accents[min(index - 1, SpaceTheme.accents.count - 1)] } }
+
+  /// The nth of the Profile pop-up's choices (the last is New Profile).
+  func chooseProfile(_ index: Int) -> Bool {
+    guard let window = window_ else { return false }
+    let choices = window.profileChoices().map(\.directory) + [SpaceEditorView.newProfile]
+    guard choices.indices.contains(index) else { return false }
+    change { $0.profile = choices[index] }
+    return true
+  }
+
+  var canDelete: Bool { deleteButton?.isEnabled == true }
+  func pressDelete() { askDelete() }
+
+  var debug: [String: Any] {
+    guard let space else { return [:] }
+    return ["name": space.name, "icon": space.icon ?? NSNull(), "color": space.color ?? NSNull(),
+            "accent": space.accent ?? NSNull(), "profile": space.profile ?? NSNull(),
+            "profiles": (window_?.profileChoices().map(\.title) ?? []) + ["New Profile"], "rows": list?.rows.count ?? 0]
+  }
 }
 
 // MARK: Profiles
@@ -282,6 +397,8 @@ final class ProfilesListView: NSView, SettingsSizing {
   private(set) var infos: [ProfileInfo] = []
   private var nameFields: [String: EditorField] = [:]
   private var deleteButtons: [String: SettingsButton] = [:]
+  private var swatchRows: [String: SwatchRow] = [:]
+  private var colourFor: String??
 
   override var isFlipped: Bool { true }
 
@@ -296,6 +413,7 @@ final class ProfilesListView: NSView, SettingsSizing {
     rows.forEach { $0.removeFromSuperview() }
     nameFields = [:]
     deleteButtons = [:]
+    swatchRows = [:]
     rows = profiles.map { info in
       let key = Self.key(info.directory)
       let names = spaces.filter { $0.profile == info.directory }.map(\.name)
@@ -321,21 +439,37 @@ final class ProfilesListView: NSView, SettingsSizing {
     name.field.action = #selector(nameCommitted(_:))
     name.field.identifier = NSUserInterfaceItemIdentifier(key)
     nameFields[key] = name
-    var swatches: [NSView] = []
-    for hex in [nil] + SpaceTheme.accents.map(Optional.some) {
-      let swatch = SettingsButton(hex == nil ? "None" : " ")
-      swatch.wantsLayer = true
-      if let hex, let rgb = ProfileColor.parse(hex) {
-        swatch.layer?.backgroundColor = NSColor(srgbRed: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1).cgColor
-      }
-      swatch.onClick = { SettingsDataProfile.window?.setProfileColor(info.directory, hex) }
-      swatch.setAccessibilityLabel(hex ?? "None")
-      swatches.append(swatch)
-    }
+    // Appearance's own swatch row: lavender (nil), the presets and any colour, the chosen one marked.
+    let swatches = SwatchRow()
+    swatches.compact = true
+    swatches.selection = info.color
+    swatches.onChoose = { hex in SettingsDataProfile.window?.setProfileColor(info.directory, hex) }
+    swatches.onCustom = { [weak self] in self?.pickColour(for: info) }
+    swatchRows[key] = swatches
     let delete = SettingsButton("Delete Profile…", destructive: true) { [weak self] in self?.askDelete(info) }
     delete.isHidden = info.directory == nil
     deleteButtons[key] = delete
     return ProfileBody(name: name, swatches: swatches, delete: delete)
+  }
+
+  /// Custom Colour…: macOS's colour panel, followed live.
+  private func pickColour(for info: ProfileInfo) {
+    colourFor = .some(info.directory)
+    let panel = NSColorPanel.shared
+    panel.showsAlpha = false
+    panel.setTarget(self)
+    panel.setAction(#selector(colourPicked(_:)))
+    if !TestEnvironment.isTestBuild { panel.orderFront(nil) }
+  }
+
+  @objc private func colourPicked(_ panel: NSColorPanel) {
+    guard let directory = colourFor else { return }
+    SettingsDataProfile.window?.setProfileColor(directory, ProfileColor.hex(of: panel.color))
+  }
+
+  func chooseColour(_ index: Int, _ swatch: Int) -> Bool {
+    guard infos.indices.contains(index), let row = swatchRows[Self.key(infos[index].directory)] else { return false }
+    return row.press(index: swatch)
   }
 
   @objc private func nameCommitted(_ field: NSTextField) {
@@ -397,16 +531,16 @@ final class ProfilesListView: NSView, SettingsSizing {
 /// A profile's row opened: its name, colour swatches and Delete Profile….
 private final class ProfileBody: NSView, SettingsSizing {
   private let name: EditorField
-  private let swatches: [NSView]
+  private let swatches: SwatchRow
   private let delete: SettingsButton
   private let colourLabel = settingsLabel("Colour", size: 12, color: .secondaryLabelColor)
 
-  init(name: EditorField, swatches: [NSView], delete: SettingsButton) {
+  init(name: EditorField, swatches: SwatchRow, delete: SettingsButton) {
     self.name = name
     self.swatches = swatches
     self.delete = delete
     super.init(frame: .zero)
-    ([name, colourLabel, delete] + swatches).forEach(addSubview)
+    [name, colourLabel, swatches, delete].forEach(addSubview)
   }
 
   required init?(coder: NSCoder) { fatalError() }
@@ -420,13 +554,8 @@ private final class ProfileBody: NSView, SettingsSizing {
     name.frame = NSRect(x: 0, y: 4, width: min(bounds.width, 280), height: 28)
     let labelHeight = colourLabel.intrinsicContentSize.height
     colourLabel.frame = NSRect(x: 0, y: 44 + (22 - labelHeight) / 2, width: 50, height: labelHeight)
-    var x: CGFloat = 54
-    for swatch in swatches {
-      let width: CGFloat = swatch === swatches.first ? 52 : 22
-      swatch.frame = NSRect(x: x, y: 44, width: width, height: 22)
-      swatch.layer?.cornerRadius = swatch === swatches.first ? 6 : 11
-      x += width + 6
-    }
+    let size = swatches.fittingSize
+    swatches.frame = NSRect(x: 56, y: 44 + (22 - size.height) / 2, width: size.width, height: size.height).integral
     delete.frame = NSRect(x: 0, y: 82, width: max(delete.fittingSize.width, 130), height: 28)
   }
 }
@@ -452,21 +581,24 @@ extension SpacesPaneContent {
       guard let number, content.pictures.press(number) else { return "no such space" }
     case "new":
       guard content.pictures.press(content.pictures.count) else { return "no new" }
-    case "name": content.editor.editor?.setName(words.dropFirst().joined(separator: " "))
+    case "name": content.editor.setName(words.dropFirst().joined(separator: " "))
     case "icon":
-      guard let number, content.editor.editor?.choose(iconAt: number) == true else { return "no icon" }
-    case "window": content.editor.editor?.choose(window: number.map { $0 + 1 }, accent: nil)
-    case "accent": content.editor.editor?.choose(window: nil, accent: number.map { $0 + 1 })
+      guard let number, content.editor.chooseIcon(number) else { return "no icon" }
+    case "window": content.editor.chooseWindow((number ?? -1) + 1)
+    case "accent": content.editor.chooseAccent((number ?? -1) + 1)
     case "profile":
-      guard let number, content.editor.editor?.chooseProfile(number) == true else { return "no profile" }
+      guard let number, content.editor.chooseProfile(number) else { return "no profile" }
     case "delete":
-      guard let editor = content.editor.editor, editor.deleteButton.isEnabled else { return "can't delete" }
-      editor.onDelete?()
+      guard content.editor.canDelete else { return "can't delete" }
+      content.editor.pressDelete()
     case "confirm": return SettingsConfirm.answer(accept: words.count > 1 && words[1] == "accept")
     case "profileopen":
       guard let number, content.profiles.toggle(number) else { return "no profile" }
     case "profilerename":
       guard let number, content.profiles.rename(number, rest) else { return "no profile" }
+    case "profilecolour":
+      guard let number, words.count > 2, let swatch = Int(words[2]), content.profiles.chooseColour(number, swatch)
+      else { return "no swatch" }
     case "profiledelete":
       guard let number, content.profiles.pressDelete(number) else { return "can't delete" }
     case "dataprofile":

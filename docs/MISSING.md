@@ -515,8 +515,9 @@ Smaller gaps found while building the items above. Each says where the fix goes.
     checked by hand (hidden instances never activate or change Spaces). Its ⌘O, ⇧⌘C and ⌘W go through the menu only while it is key, which
     hidden test windows never are: `little-ray` drives its controls directly, so the key routing is checked by hand.
 78. **Spaces leftovers** (2026-11-24). Spaces are reordered by their menu's Move Left/Right only, not by dragging
-    footer icons; clicking a Space's name doesn't collapse Pinned (Arc's); no per-Space light or dark (the theme is
-    a Window colour and an Accent). The accent is app-wide while a Space shows (one normal window), so a private
+    footer icons; clicking a Space's name doesn't collapse Pinned (Arc's); the theme is one Window colour (Arc's
+    gradient of several isn't), and a Space's Light/Dark sets the window, not pages' `prefers-color-scheme` (macOS's
+    or the app setting decides that). The emoji picker's search uses Unicode names, not macOS's keywords. The accent is app-wide while a Space shows (one normal window), so a private
     window takes it too. Today folders in a Space on a profile of its own stay plain folders, not Chrome tab groups
     (a group lives in one profile's window). Delete Space's tabs reopen from Recently Closed without their history,
     into the Space you're on; a deleted Space's profile keeps its data on disk. Moving a tab to a Space on another

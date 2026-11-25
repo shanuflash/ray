@@ -969,7 +969,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       addToday(space.today, to: target)
     }
     state.normalizePinned()
-    if !isPrivate { SpaceLook.apply(state.current) }
+    if !isPrivate {
+      SpaceLook.apply(state.current)
+      applySpaceMode()
+    }
     changed(event)
     return counts
   }
@@ -4092,8 +4095,20 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   private var spaceProfiles: [String: RayCoreProfile] = [:]
   private var loadingProfiles: [String: [(RayCoreProfile?) -> Void]] = [:]
   /// The form New Space and Edit Space… show over the sidebar, and what Cancel puts back.
-  private var spaceEditor: SpaceEditorView?
-  private var spaceEditorPanel: PanelHandle?
+  private var spaceEditor: SpaceCreateView?
+  private var spaceSubPanel: PanelHandle?
+  private weak var spaceTheme: SpaceThemePanel?
+  private weak var newProfileCard: NewProfileCard?
+
+  /// The shown Space's Light or Dark (Auto follows Ray's setting); a private window stays dark.
+  func applySpaceMode() {
+    guard !isPrivate else { return }
+    switch state.current.mode {
+    case "light": window.appearance = NSAppearance(named: .aqua)
+    case "dark": window.appearance = NSAppearance(named: .darkAqua)
+    default: window.appearance = nil
+    }
+  }
   private var spaceEditing: (space: Space, original: SpaceDraft, previous: UUID?)?
   /// For the state log: Space switches, and the last Space question.
   private var spaceSwitches = 0
@@ -4106,6 +4121,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard !isPrivate else { return }
     themeBackdrop.layer?.backgroundColor = nil
     SpaceLook.apply(state.current)
+    applySpaceMode()
     // The profiles of other Spaces load now, so going there is instant; the shown Space's before its tab opens.
     for directory in Set(state.spaces.compactMap(\.profile)) { withProfile(directory) { _ in } }
     if let directory = state.current.profile {
@@ -4212,6 +4228,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     spaceSwitches += 1
     spaceLookAnimates = true
     SpaceLook.apply(space)
+    applySpaceMode()
     return true
   }
 
@@ -4343,14 +4360,16 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     space.profile = state.current.profile
     state.spaces.append(space)
     switchSpace(to: space)
-    let draft = SpaceDraft(name: "", icon: nil, color: space.color, accent: space.accent, profile: space.profile)
+    let draft = SpaceDraft(name: "", icon: nil, color: space.color, accent: space.accent, profile: space.profile,
+                           mode: space.mode, strength: space.strength)
     showSpaceEditor(space, draft: draft, original: draft, isNew: true, previous: previous)
   }
 
   func editSpace(_ space: Space) {
     guard !isPrivate, spaceEditor == nil else { return }
     if space !== state.current { switchSpace(to: space) }
-    let draft = SpaceDraft(name: space.name, icon: space.icon, color: space.color, accent: space.accent, profile: space.profile)
+    let draft = SpaceDraft(name: space.name, icon: space.icon, color: space.color, accent: space.accent, profile: space.profile,
+                           mode: space.mode, strength: space.strength)
     showSpaceEditor(space, draft: draft, original: draft, isNew: false, previous: nil)
   }
 
@@ -4361,7 +4380,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   private func showSpaceEditor(_ space: Space, draft: SpaceDraft, original: SpaceDraft, isNew: Bool, previous: UUID?) {
-    let editor = SpaceEditorView(draft: draft, isNew: isNew, profiles: profileChoices())
+    let editor = SpaceCreateView(draft: draft, isNew: isNew, profiles: profileChoices())
     spaceEditor = editor
     spaceEditing = (space, original, previous)
     editor.onChange = { [weak self, weak space] draft in
@@ -4369,24 +4388,79 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       self.preview(draft, on: space)
     }
     editor.onFinish = { [weak self] keep in self?.finishSpaceEditor(keep: keep) }
-    editor.fit()
-    // A hidden sidebar peeks for it, so the + it hangs from is there.
+    editor.onIcon = { [weak self] button in self?.openSpaceIconPicker(from: button) }
+    editor.onTheme = { [weak self] row in self?.openSpaceTheme(from: row) }
+    editor.onNewProfile = { [weak self] in self?.openNewProfileCard() }
+    editor.onDelete = { [weak self, weak space] in
+      guard let self, let space else { return }
+      self.finishSpaceEditor(keep: true)
+      self.askDeleteSpace(space)
+    }
+    // A hidden sidebar comes out for it (Arc's form lives in the sidebar).
     if state.sidebarHidden, !peeking { beginPeek() }
-    // 4B: out of the footer's + for a new Space, out of its icon for an edit (the + when one Space shows no icons).
-    let index = state.spaces.firstIndex { $0 === space }
-    let button = isNew ? sidebar.newSpaceAnchor : index.flatMap(sidebar.spaceAnchor) ?? sidebar.newSpaceAnchor
-    let anchor = PanelAnchor(rect: { [weak self, weak button] in
-      guard let self, let button, button.window != nil else { return .zero }
-      return button.convert(button.bounds, to: self.root)
-    }, below: false, align: isNew ? .trailing : .center, button: button)
-    spaceEditorPanel = panels.open(PanelSpec(
-      name: "spaceEditor", content: editor, anchor: anchor, closesOn: [.outsideClick, .escape, .windowInactive],
-      overSidebar: true, onClose: { [weak self, weak editor] in
-        // Closed by a click outside, Escape or the window going: as Cancel.
-        guard let self, let editor, self.spaceEditor === editor else { return }
-        self.finishSpaceEditor(keep: false)
-      }))
+    sidebar.spaceForm = editor
     editor.focusName()
+    logState("spaceEditor")
+  }
+
+  /// The icon picker, under the form's icon button.
+  private func openSpaceIconPicker(from button: NSView) {
+    guard let editor = spaceEditor else { return }
+    let picker = SpaceIconPicker(chosen: editor.draft.icon)
+    picker.onPick = { [weak self] icon in
+      self?.spaceEditor?.update { $0.icon = icon }
+      self?.spaceSubPanel?.close()
+    }
+    spaceSubPanel = panels.open(PanelSpec(
+      name: "spaceIcon", content: picker, anchor: PanelAnchor(rect: { [weak self, weak button] in
+        guard let self, let button, button.window != nil else { return .zero }
+        return button.convert(button.bounds, to: self.root)
+      }, below: true, align: .leading, button: button), closesOn: [.outsideClick, .escape, .windowInactive],
+      overSidebar: true))
+    logState("spaceEditor")
+  }
+
+  /// The theme panel, beside the sidebar at the Theme row.
+  private func openSpaceTheme(from row: NSView) {
+    guard let editor = spaceEditor else { return }
+    let draft = editor.draft
+    let theme = SpaceThemePanel(mode: draft.mode, color: draft.color, strength: draft.strength, accent: draft.accent)
+    theme.onChange = { [weak self] mode, color, strength, accent in
+      self?.spaceEditor?.update {
+        $0.mode = mode
+        $0.color = color
+        $0.strength = strength
+        $0.accent = accent
+      }
+    }
+    spaceSubPanel = panels.open(PanelSpec(
+      name: "spaceTheme", content: theme, anchor: PanelAnchor(rect: { [weak self, weak row] in
+        guard let self, let row, row.window != nil else { return .zero }
+        // Just right of the sidebar, level with the row.
+        let frame = row.convert(row.bounds, to: self.root)
+        let edge = self.sidebar.convert(self.sidebar.bounds, to: self.root).maxX
+        return NSRect(x: edge, y: frame.minY, width: 1, height: frame.height)
+      }, below: true, align: .leading, button: row), closesOn: [.outsideClick, .escape, .windowInactive],
+      overSidebar: true))
+    spaceTheme = theme
+    logState("spaceEditor")
+  }
+
+  /// New Profile…: a card at the top centre that names it; Create Profile makes it and chooses it for the Space.
+  private func openNewProfileCard() {
+    let card = NewProfileCard(frame: .zero)
+    card.onFinish = { [weak self] name in
+      guard let self else { return }
+      self.spaceSubPanel?.close()
+      guard let name else { return }
+      let directory = Space.newProfileDirectory()
+      self.state.profiles.append(ProfileInfo(directory: directory, name: name, color: self.spaceEditor?.draft.color))
+      self.spaceEditor?.useProfile(directory, choices: self.profileChoices())
+    }
+    spaceSubPanel = panels.open(PanelSpec(name: "newProfile", content: card, anchor: questionAnchor,
+                                          closesOn: [.escape, .windowInactive], asks: true))
+    newProfileCard = card
+    card.focus()
     logState("spaceEditor")
   }
 
@@ -4396,7 +4470,12 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     space.icon = draft.icon
     space.color = draft.color
     space.accent = draft.accent
-    if space === state.current { SpaceLook.apply(space) }
+    space.mode = draft.mode
+    space.strength = draft.strength
+    if space === state.current {
+      SpaceLook.apply(space)
+      applySpaceMode()
+    }
     reloadSidebar()
     logState("spaceEditor")
   }
@@ -4405,9 +4484,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     guard let editor = spaceEditor, let editing = spaceEditing else { return }
     spaceEditor = nil
     spaceEditing = nil
-    let panel = spaceEditorPanel
-    spaceEditorPanel = nil
-    panel?.close()
+    spaceSubPanel?.close()
+    spaceSubPanel = nil
+    spaceTheme = nil
+    newProfileCard = nil
+    sidebar.spaceForm = nil
     let space = editing.space
     if keep {
       let draft = editor.draft
@@ -4415,6 +4496,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       if draft.profile != editing.original.profile {
         changeProfile(of: space, to: draft.profile == SpaceEditorView.newProfile ? Space.newProfileDirectory() : draft.profile)
       }
+      if editor.isNew { SpacePop.play(draft.icon ?? String(space.name.prefix(1)), in: sidebar) }
     } else if editor.isNew {
       // A new Space cancelled is gone, with nothing in it yet; back to the Space you were on.
       let back = editing.previous.flatMap(state.space(id:)) ?? state.spaces.first { $0 !== space }
@@ -4560,7 +4642,10 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     if draft.profile != space.profile {
       changeProfile(of: space, to: draft.profile == SpaceEditorView.newProfile ? Space.newProfileDirectory() : draft.profile)
     }
-    if space === state.current { SpaceLook.apply(space) }
+    if space === state.current {
+      SpaceLook.apply(space)
+      applySpaceMode()
+    }
     changed("spaceSettings")
   }
 
@@ -4679,11 +4764,15 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "switches": spaceSwitches,
       "header": sidebar.spaceHeaderTitle,
       "dockShown": sidebar.spaceDockShown,
-      "slides": sidebar.slideCount, "slideSteps": sidebar.slideSteps, "sliding": sidebar.isSliding,
+      "slides": sidebar.slideCount, "slideSteps": sidebar.slideSteps, "settledEarly": sidebar.settledEarly, "sliding": sidebar.isSliding,
       "swipeCommits": sidebar.swipeCommits, "swipeCancels": sidebar.swipeCancels,
       "profiles": profilesDebug, "deletedProfiles": deletedProfiles,
       "look": ["window": SpaceLook.windowHex as Any? ?? NSNull(), "accent": ProfileColor.spaceAccentHex as Any? ?? NSNull()],
       "editor": spaceEditor?.debug ?? NSNull(),
+      "editorPanel": panels.name ?? NSNull(),
+      "mode": state.current.mode ?? NSNull(),
+      "strength": state.current.strength ?? NSNull(),
+      "windowAppearance": window.appearance?.name.rawValue ?? NSNull(),
       "blankBands": sidebar.lastBlankBands,
       "question": lastSpaceQuestion ?? NSNull(),
     ]
@@ -4734,7 +4823,30 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         guard let n = rest.dropFirst().first.flatMap(Int.init), editor.chooseProfile(n) else { return "no profile" }
       case "confirm": editor.confirmButton.onClick?()
       case "cancel": editor.cancelButton.onClick?()
-      default: return "usage: space editor name|icon|window|accent|custom|profile|confirm|cancel"
+      case "iconpicker":
+        // iconpicker: open; iconpicker search <words>; iconpicker pick <n> (0-based among those shown)
+        let arg = Array(rest.dropFirst())
+        if arg.isEmpty { editor.iconButton.onClick?() }
+        guard let picker = panels.content as? SpaceIconPicker else { return "no picker" }
+        if arg.first == "search" { picker.setSearch(arg.dropFirst().joined(separator: " ")) }
+        if arg.first == "pick" { guard let n = arg.dropFirst().first.flatMap(Int.init), picker.pick(n) else { return "no item" } }
+        if arg.first == "shown" { return picker.shown.prefix(12).joined(separator: " ") }
+      case "theme":
+        let arg = Array(rest.dropFirst())
+        if spaceTheme == nil { editor.themeRow.onClick?() }
+        guard let theme = spaceTheme else { return "no theme" }
+        if arg.first == "mode", let n = arg.dropFirst().first.flatMap(Int.init) { theme.choose(mode: n) }
+        if arg.first == "strength", let v = arg.dropFirst().first.flatMap(Double.init) { theme.setStrength(v) }
+      case "newprofile":
+        if newProfileCard == nil { openNewProfileCard() }
+        guard let card = newProfileCard else { return "no card" }
+        let name = rest.dropFirst().joined(separator: " ")
+        if !name.isEmpty {
+          card.type(name)
+          card.create.onClick?()
+        }
+      case "closepanel": spaceSubPanel?.close()
+      default: return "usage: space editor name|icon|window|accent|custom|profile|iconpicker|theme|newprofile|closepanel|confirm|cancel"
       }
     case "question":
       guard let question = spaceQuestion else { return "no question" }

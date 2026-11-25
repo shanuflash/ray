@@ -87,6 +87,7 @@ export const areas = {
   "Host/Spaces.swift": [...spaceChecks, "settings-theme", "settings-colours", "import-browser"],
   "Host/SpaceSlide.swift": [...spaceChecks, "sidebar-follows-active", "icons-on-pixels"],
   "Host/SpaceEditor.swift": spaceChecks,
+  "Host/SpaceCreate.swift": spaceChecks,
   "Host/SettingsSpaces.swift": [...spaceChecks, "settings-window", "settings-panes", "settings-catalog", "settings-search"],
   "Host/SettingsProfiles.swift": dataPanes,
   "Host/BrowserWindowController.swift#Spaces in Settings": spaceChecks,
