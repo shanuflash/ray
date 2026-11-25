@@ -113,7 +113,11 @@ items above. The revamp that gives these a home is PLAN.md section 13.
 
 **Smaller**
 5. New tabs at the bottom of Today (Ray offers the top or below the current tab) and where the New Tab button sits.
-7. Alternate app icons: a few need designing first.
+7. New logo and alternate app icons: the owner picked Neon CRT (`docs/mocks/logo-scanline.html`, 2026-11-24) as
+   Ray's new mark; its themes (colours, styles and themed ones: Vice Nights, Blocks, Beach,
+   Christmas, Halloween, Deep Space, Sakura) are mocked in `docs/mocks/app-icons.html` (Icon Composer documents in `Branding/alternates/`, with macOS 26's Dark, Clear and Tinted looks). Left:
+   open the `.icon` drafts in Icon Composer on a Mac and fix what it draws differently, pick a Settings layout,
+   make Ray.icon from `crt`, build the Dock tile plug-in and the `appIcon` row.
 8. Hide the address bar above the page (View › Show Address Bar on Page) while scrolling down: it tucks into a
    thin strip with the site's name; scrolling up or clicking the strip brings it back.
 9. Arc's "Clear" button between pinned tabs and Today (Ray has no such button yet; Clear Today's Tabs is only in

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ray Logo Concepts</title>
+<style>
+:root { --desk: #E9E9EC; --ink: #1C1C1E; --ink2: #6C6C70; --panel: #fff; --hair: rgba(0,0,0,.08); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --desk: #0E0E10; --ink: #F5F5F7; --ink2: #9C9CA4; --panel: #1C1C1F; --hair: rgba(255,255,255,.09); } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--desk); color: var(--ink); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; }
+.wrap { max-width: 1000px; margin: 0 auto; padding: 8px 16px 48px; }
+h1 { font-size: 22px; font-weight: 600; margin: 18px 0 4px; }
+.sub { color: var(--ink2); margin: 0 0 14px; max-width: 760px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.c { background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; overflow: hidden; }
+.stage { display: grid; grid-template-columns: 1fr 1fr; }
+.stage > div { height: 170px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+.l { background: radial-gradient(500px 260px at 0% 0%, #CFE4FF, transparent 60%), radial-gradient(400px 300px at 100% 100%, #FFD9C7, transparent 60%), #F3F1EE; }
+.d { background: radial-gradient(500px 260px at 0% 100%, #2B3F8C, transparent 60%), radial-gradient(400px 260px at 100% 0%, #5B2A6E, transparent 60%), #0A0B14; }
+.ic { position: relative; flex: none; }
+.ic .tile { position: absolute; left: 9.77%; top: 9.77%; width: 80.47%; height: 80.47%; border-radius: 22.45%; overflow: hidden;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.08), 0 1.5% 3% rgba(0,0,0,.18), 0 4% 9% rgba(0,0,0,.16); }
+.ic .tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 max(.5px,.6%) rgba(255,255,255,.28), inset 0 1.2% 1.5% rgba(255,255,255,.22); }
+.ic svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.smalls { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.t { padding: 10px 14px 14px; }
+.n { font-weight: 600; font-size: 14px; }
+.n small { color: var(--ink2); font-weight: 500; margin-left: 6px; }
+.b { color: var(--ink2); margin-top: 2px; }
+.word { display: flex; align-items: center; gap: 10px; padding: 0 14px 14px; font: 600 22px/1 -apple-system, system-ui, sans-serif; letter-spacing: -.02em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Ray logo concepts, round 1</h1>
+<p class="sub">New marks for a possible rebrand, each as an app icon at 128, 32 and 16 px on light and dark desktops, with the wordmark beside a small one. Sketches to pick a direction from, not finished art.</p>
+<div class="grid" id="grid"></div>
+</div>
+<script>
+const C = [
+  { id: "beam", name: "Beam", tag: "a ray of light",
+    blurb: "One beam of light crossing the tile from a bright point, widening as it goes. The most literal \"Ray\", and it reads at 16 px as a slash of light.",
+    svg: `<defs><linearGradient id="beam-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2A1B5C"/><stop offset="1" stop-color="#0E0B24"/></linearGradient>
+      <linearGradient id="beam-b" gradientUnits="userSpaceOnUse" x1="250" y1="780" x2="900" y2="160"><stop offset="0" stop-color="#FFF6D6"/><stop offset=".35" stop-color="#FFB35C"/><stop offset="1" stop-color="#FF4F7B" stop-opacity="0"/></linearGradient>
+      <radialGradient id="beam-g" cx="262" cy="770" r="230" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFD58A" stop-opacity=".75"/><stop offset="1" stop-color="#FF7A5C" stop-opacity="0"/></radialGradient></defs>
+      <rect width="1024" height="1024" fill="url(#beam-bg)"/><circle cx="262" cy="770" r="230" fill="url(#beam-g)"/>
+      <path d="M248 752 L1060 50 L1060 330 L276 790 Z" fill="url(#beam-b)"/>
+      <circle cx="262" cy="770" r="46" fill="#FFF8E6"/>` },
+  { id: "manta", name: "Manta", tag: "the other ray",
+    blurb: "A manta ray gliding up the tile: friendly, memorable, and nothing else in the Dock looks like it. Arc had a playful brand; this keeps that spirit.",
+    svg: `<defs><linearGradient id="m-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22C3D6"/><stop offset=".6" stop-color="#1667D9"/><stop offset="1" stop-color="#1B2E8A"/></linearGradient>
+      <radialGradient id="m-l" cx="512" cy="120" r="620" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+      <rect width="1024" height="1024" fill="url(#m-bg)"/><rect width="1024" height="1024" fill="url(#m-l)"/>
+      <g fill="#FFFFFF">
+      <path d="M512 372 C556 372 586 390 604 418 C700 430 806 482 872 590 C790 594 712 620 650 676 C606 716 562 736 512 738 C462 736 418 716 374 676 C312 620 234 594 152 590 C218 482 324 430 420 418 C438 390 468 372 512 372 Z"/>
+      <path d="M424 414 C398 366 420 318 472 300 C462 336 468 372 484 400 Z"/>
+      <path d="M600 414 C626 366 604 318 552 300 C562 336 556 372 540 400 Z"/>
+      <path d="M502 730 L522 730 L514 900 Z"/></g>
+      <g fill="#1667D9" opacity=".35"><circle cx="470" cy="520" r="10"/><circle cx="554" cy="520" r="10"/><circle cx="440" cy="556" r="8"/><circle cx="584" cy="556" r="8"/></g>` },
+  { id: "rbeam", name: "R-Beam", tag: "monogram",
+    blurb: "A bold R whose leg is a beam of light running off the corner. Keeps today's sunrise colours, so it's a rebrand without losing what friends already know.",
+    svg: `<defs><linearGradient id="r-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF9A3C"/><stop offset="1" stop-color="#FF4F7B"/></linearGradient>
+      <linearGradient id="r-leg" gradientUnits="userSpaceOnUse" x1="520" y1="560" x2="1024" y2="1024"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+      <rect width="1024" height="1024" fill="url(#r-bg)"/>
+      <path fill="#fff" d="M318 250 H560 C680 250 758 320 758 420 C758 520 680 590 560 590 H426 V774 H318 Z M426 346 V494 H552 C612 494 646 466 646 420 C646 374 612 346 552 346 Z"/>
+      <path fill="url(#r-leg)" d="M500 590 L626 590 L1060 1000 L1060 1060 L900 1060 Z"/>` },
+  { id: "comet", name: "Comet", tag: "spark with a tail",
+    blurb: "A four-point spark with a long tail of light: speed and newness, a nod to Arc's star without copying it. Strong on dark desktops.",
+    svg: `<defs><linearGradient id="c-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7C5CFF"/><stop offset="1" stop-color="#2B1B6E"/></linearGradient>
+      <linearGradient id="c-t" gradientUnits="userSpaceOnUse" x1="620" y1="400" x2="150" y2="880"><stop offset="0" stop-color="#FFE7B0"/><stop offset=".4" stop-color="#FF8FB1" stop-opacity=".8"/><stop offset="1" stop-color="#FF8FB1" stop-opacity="0"/></linearGradient></defs>
+      <rect width="1024" height="1024" fill="url(#c-bg)"/>
+      <path d="M600 360 L670 450 L160 900 L120 880 Z" fill="url(#c-t)"/>
+      <path fill="#fff" d="M640 220 C652 330 694 372 804 384 C694 396 652 438 640 548 C628 438 586 396 476 384 C586 372 628 330 640 220 Z"/>` },
+  { id: "lens", name: "Lens", tag: "light, focused",
+    blurb: "Parallel rays bent by a lens to one bright focus: a browser that brings the web into focus. Calm and grown-up; reads as a dot and a lens when small.",
+    svg: `<defs><linearGradient id="l-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0F172A"/><stop offset="1" stop-color="#1E293B"/></linearGradient>
+      <linearGradient id="l-lens" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8BE9FF" stop-opacity=".55"/><stop offset="1" stop-color="#C4B5FD" stop-opacity=".55"/></linearGradient></defs>
+      <rect width="1024" height="1024" fill="url(#l-bg)"/>
+      <g stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" fill="none" opacity=".9">
+        <path d="M150 400 H440 L770 512"/><path d="M150 512 H770"/><path d="M150 624 H440 L770 512"/></g>
+      <path d="M440 300 C510 380 510 644 440 724 C370 644 370 380 440 300 Z" fill="url(#l-lens)" stroke="#fff" stroke-opacity=".7" stroke-width="6"/>
+      <circle cx="790" cy="512" r="40" fill="#FFD36B"/><circle cx="790" cy="512" r="90" fill="#FFD36B" opacity=".18"/>` },
+  { id: "horizon", name: "Horizon", tag: "today's sun, simpler",
+    blurb: "Today's sunrise pared down to a ring of light rising over one line, so it survives 16 px. The safe option: an evolution, not a new brand.",
+    svg: `<defs><linearGradient id="h-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFB347"/><stop offset=".55" stop-color="#FF6A5C"/><stop offset="1" stop-color="#C2366E"/></linearGradient>
+      <clipPath id="h-c"><rect x="0" y="0" width="1024" height="640"/></clipPath></defs>
+      <rect width="1024" height="1024" fill="url(#h-bg)"/>
+      <g clip-path="url(#h-c)"><circle cx="512" cy="640" r="250" fill="none" stroke="#fff" stroke-width="70"/><circle cx="512" cy="640" r="120" fill="#fff"/></g>
+      <rect x="170" y="676" width="684" height="64" rx="32" fill="#fff"/>` },
+];
+const icon = (c, s) => `<span class="ic" style="width:${s}px;height:${s}px"><span class="tile"><svg viewBox="0 0 1024 1024">${c.svg.replace(/id="/g, `id="s${s}-`).replace(/url\(#/g, `url(#s${s}-`)}</svg></span></span>`;
+document.getElementById("grid").innerHTML = C.map(c => `<div class="c">
+  <div class="stage"><div class="l">${icon(c,128)}<div class="smalls">${icon(c,32)}${icon(c,16)}</div></div>
+  <div class="d">${icon(c,128)}<div class="smalls">${icon(c,32)}${icon(c,16)}</div></div></div>
+  <div class="t"><div class="n">${c.name}<small>${c.tag}</small></div><div class="b">${c.blurb}</div></div>
+  <div class="word">${icon(c,34)}Ray</div></div>`).join("");
+</script>
+</body>
+</html>

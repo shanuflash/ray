@@ -788,6 +788,12 @@ publicly or create accounts.
   `sidebar.dockFromPeek` (`docking`, `frames`, `leftmost`); check `peek-dock`.
   A hidden sidebar peeks only at the window's edge (its first 5 pt, or up to 24 pt past it on the same screen
   while Ray is active; Arc's and Ardia's, check `peek-zones`), and stays out to 24 pt past its own edge.
+- `Branding/alternates/<name>.icon`: Icon Composer documents (icon.json + Assets: Background, Glyph, a white
+  TintedGlyph for macOS 26's Clear and Tinted looks, Decor on themed ones; light tiles take macOS's dark fill in
+  Dark; no masks or filters, the glow is the glyph group's layer-colour shadow; not yet opened in Icon Composer): the Neon CRT mark (owner's pick for the new
+  logo, `docs/mocks/logo-scanline.html`) in each app icon theme for the unbuilt `appIcon` setting (`crt` the default,
+  `classic` the old sun; themed ones are original moods, never a game's or brand's name or art), made by `tools/alternate-icons.py` (which also fills `docs/mocks/app-icons.html`); not
+  built into the app, and `Branding/Ray.icon` is still the sun.
 - `Branding/Ray.icon` (Icon Composer; `actool` builds Assets.car + Ray.icns) and `tools/rebrand-pak.py` (renames
   "Ardia" to "Ray" and swaps Ardia's logos in the engine's .pak files at build time) and
   `tools/trim-settings-pak.py` (takes Profiles, Appearance and behavior and Search engine out of the engine's chrome://settings page in
