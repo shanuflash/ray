@@ -47,6 +47,10 @@ final class DownloadsController {
   private(set) var items: [Item] = []
   var onChange: ((_ newlyWaiting: Bool) -> Void)?
   private let profile: RayCoreProfile
+  /// The window's other profiles (Spaces on profiles of their own): their downloads list here too.
+  private var others: [RayCoreProfile] = []
+  /// Which profile each download belongs to (by path), for its commands.
+  private var owners: [String: String] = [:]
   /// A private window lists only private downloads and a normal one only normal ones, never each other's.
   private let offTheRecord: Bool
 
@@ -59,6 +63,7 @@ final class DownloadsController {
       guard let self, self.isOurs(payload), let item = (payload["download"] as? [String: Any]).flatMap(Item.init) else {
         return
       }
+      if let path = payload["profile"] as? String { self.owners[item.id] = path }
       let wasWaiting = self.items.first { $0.id == item.id }?.waiting ?? false
       if let index = self.items.firstIndex(where: { $0.id == item.id }) {
         self.items[index] = item
@@ -82,12 +87,24 @@ final class DownloadsController {
     }
   }
 
+  /// Adds a profile a Space uses (its downloads join the list).
+  func watch(_ other: RayCoreProfile) {
+    guard !offTheRecord, other !== profile, !others.contains(where: { $0 === other }) else { return }
+    others.append(other)
+    load(other)
+  }
+
   /// Merges the engine's full list (history included) into ours.
   func loadHistory() {
-    EngineCalls.call("ac_downloads_list", profile: profile) { [weak self] reply in
+    for each in [profile] + others { load(each) }
+  }
+
+  private func load(_ source: RayCoreProfile) {
+    EngineCalls.call("ac_downloads_list", profile: source) { [weak self] reply in
       guard let self, let list = reply?["downloads"] as? [[String: Any]] else { return }
       let known = Set(self.items.map(\.id))
       let history = list.compactMap(Item.init).filter { !known.contains($0.id) && $0.offTheRecord == self.offTheRecord }
+      for item in history { self.owners[item.id] = source.path }
       guard !history.isEmpty else { return }
       self.items = (self.items + history).sorted { $0.started > $1.started }
       self.onChange?(false)
@@ -95,7 +112,8 @@ final class DownloadsController {
   }
 
   private func isOurs(_ payload: [String: Any]) -> Bool {
-    guard (payload["profile"] as? String).map({ $0 == profile.path }) ?? true else { return false }
+    let paths = Set(([profile] + others).map(\.path))
+    guard (payload["profile"] as? String).map({ paths.contains($0) }) ?? true else { return false }
     let fromPrivate = (payload["offTheRecord"] as? Bool ?? false)
       || ((payload["download"] as? [String: Any])?["offTheRecord"] as? Bool ?? false)
     return fromPrivate == offTheRecord
@@ -161,7 +179,8 @@ final class DownloadsController {
   }
 
   private func command(_ command: String, _ id: String) {
-    EngineCalls.call("ac_downloads_command", profile: profile, args: ["id": id, "command": command]) { _ in }
+    let owner = owners[id].flatMap { path in others.first { $0.path == path } } ?? profile
+    EngineCalls.call("ac_downloads_command", profile: owner, args: ["id": id, "command": command]) { _ in }
   }
 }
 

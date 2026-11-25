@@ -240,7 +240,7 @@ final class SpaceCreateView: NSView, NSTextFieldDelegate {
     ["new": isNew, "name": draft.name, "icon": draft.icon ?? NSNull(), "color": draft.color ?? NSNull(),
      "accent": draft.accent ?? NSNull(), "profile": draft.profile ?? NSNull(), "mode": draft.mode ?? NSNull(),
      "strength": draft.strength ?? NSNull(), "profiles": profiles.map(\.title) + ["New Profile"],
-     "canConfirm": confirmButton.isEnabled, "form": "sidebar"]
+     "canConfirm": confirmButton.isEnabled, "form": "sidebar", "emoji": EmojiCatalog.count, "emojiFromMacOS": EmojiCatalog.fromMacOS]
   }
 }
 
@@ -591,8 +591,10 @@ final class SpaceIconGrid: NSView {
   }
 }
 
-/// macOS's emoji in Arc's categories, read from Unicode itself (no data file): each category a set of ranges, every
-/// scalar there that shows as an emoji by default; search matches their Unicode names.
+/// macOS's own emoji, the set its emoji picker shows (Arc's Space icons are these): every emoji macOS names in
+/// CoreEmoji's `AppleName.strings` (1,900-odd, ZWJ sequences and flags included, no skin tones), with those names for
+/// search, sorted into the picker's categories. Without that file (it's private and could move), every scalar
+/// Unicode shows as an emoji by default, named by Unicode.
 enum EmojiCatalog {
   struct Category {
     let name: String
@@ -600,39 +602,87 @@ enum EmojiCatalog {
     let emoji: [String]
   }
 
-  private static func list(_ ranges: [ClosedRange<UInt32>]) -> [String] {
-    ranges.flatMap { range in
-      range.compactMap { value -> String? in
-        guard let scalar = Unicode.Scalar(value), scalar.properties.isEmojiPresentation else { return nil }
-        return String(scalar)
-      }
-    }
+  private static let appleNames: [String: String] = {
+    let path = "/System/Library/PrivateFrameworks/CoreEmoji.framework/Resources/en.lproj/AppleName.strings"
+    guard let data = FileManager.default.contents(atPath: path),
+          let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String]
+    else { return [:] }
+    return plist.filter { Space.validIcon($0.key) != nil }
+  }()
+
+  /// Every emoji with its name.
+  private static let all: [(emoji: String, name: String)] = {
+    if !appleNames.isEmpty { return appleNames.map { ($0.key, $0.value.lowercased()) } }
+    return (0x2190...0x2BFF).compactMap(scalarEmoji) + (0x1F000...0x1FAFF).compactMap(scalarEmoji)
+  }()
+
+  private static func scalarEmoji(_ value: Int) -> (String, String)? {
+    guard let scalar = Unicode.Scalar(UInt32(value)), scalar.properties.isEmojiPresentation else { return nil }
+    return (String(scalar), scalar.properties.name?.lowercased() ?? "")
   }
 
-  static let categories: [Category] = [
-    Category(name: "Smileys and People", symbol: "😀", emoji: list([0x1F600...0x1F64F, 0x1F910...0x1F92F, 0x1F970...0x1F97F,
-                                                                       0x1F9D0...0x1F9DF, 0x1FAE0...0x1FAFF, 0x1F440...0x1F450,
-                                                                       0x1F466...0x1F4A9])),
-    Category(name: "Animals and Nature", symbol: "🐻", emoji: list([0x1F400...0x1F43F, 0x1F980...0x1F9AF, 0x1F330...0x1F344,
-                                                                       0x1F300...0x1F320, 0x1FAB0...0x1FABF])),
-    Category(name: "Food and Drink", symbol: "🍔", emoji: list([0x1F345...0x1F37F, 0x1F950...0x1F96F, 0x1F9C0...0x1F9CF,
-                                                                   0x1FAD0...0x1FADF])),
-    Category(name: "Activity", symbol: "⚽️", emoji: list([0x1F380...0x1F3CF, 0x1F93A...0x1F94F, 0x1FA80...0x1FA8F])),
-    Category(name: "Travel and Places", symbol: "🚗", emoji: list([0x1F3D0...0x1F3FF, 0x1F680...0x1F6FF])),
-    Category(name: "Objects", symbol: "💡", emoji: list([0x1F4AA...0x1F4FF, 0x1F500...0x1F53D, 0x1F550...0x1F567,
-                                                            0x1F56F...0x1F5FF, 0x1FA90...0x1FAAF, 0x1F9E0...0x1F9FF])),
-    Category(name: "Symbols", symbol: "❤️", emoji: list([0x2600...0x27BF, 0x1F7E0...0x1F7EB, 0x2B00...0x2BFF])),
-  ]
+  private static let names = ["Smileys and People", "Animals and Nature", "Food and Drink", "Activity",
+                              "Travel and Places", "Objects", "Symbols", "Flags"]
+  private static let symbols = ["😀", "🐻", "🍔", "⚽️", "🚗", "💡", "❤️", "🏳️"]
 
-  /// Every emoji whose Unicode name has the words typed ("red heart" finds ❤️ through HEAVY BLACK HEART's alias? no:
-  /// the names as Unicode has them).
+  /// The picker's category for an emoji, by its first scalar (and flags by their shape).
+  private static func category(_ emoji: String) -> Int {
+    let scalars = emoji.unicodeScalars.map(\.value)
+    guard let v = scalars.first else { return 6 }
+    func any(_ ranges: [ClosedRange<UInt32>]) -> Bool { ranges.contains { $0.contains(v) } }
+    if any([0x1F1E6...0x1F1FF]) || ((v == 0x1F3F3 || v == 0x1F3F4) && scalars.count > 1) || v == 0x1F3C1 || v == 0x1F6A9
+      || v == 0x1F38C { return 7 }
+    if any([0x1F600...0x1F64F, 0x1F910...0x1F92F, 0x1F930...0x1F939, 0x1F970...0x1F97F, 0x1F9B0...0x1F9B9,
+            0x1F9CD...0x1F9DF, 0x1FAC0...0x1FAC5, 0x1FAE0...0x1FAFF, 0x1F440...0x1F487, 0x1F48B...0x1F48F,
+            0x1F4A9...0x1F4A9, 0x1F466...0x1F478, 0x1F47B...0x1F480, 0x1F574...0x1F57A, 0x1F590...0x1F596,
+            0x1F6B4...0x1F6B6, 0x1F6C0...0x1F6C0, 0x1F3C3...0x1F3CC, 0x1F9E0...0x1F9E0, 0x1F4AA...0x1F4AA,
+            0x261D...0x261D, 0x263A...0x263A, 0x2639...0x2639, 0x270A...0x270D, 0x1F4A2...0x1F4A6, 0x1F4A8...0x1F4A8,
+            0x1F4AB...0x1F4AC, 0x1F4AD...0x1F4AD, 0x1F48C...0x1F48C, 0x1F383...0x1F383, 0x1F385...0x1F385,
+            0x1F9E3...0x1F9E6, 0x1F451...0x1F462, 0x1F393...0x1F393, 0x1F97B...0x1F97F, 0x1FA70...0x1FA7C]) { return 0 }
+    if any([0x1F400...0x1F43F, 0x1F980...0x1F9AE, 0x1F330...0x1F344, 0x1F300...0x1F320, 0x1F32A...0x1F32C,
+            0x1FAB0...0x1FABF, 0x1FAE8...0x1FAE8, 0x2600...0x2604, 0x26C4...0x26C8, 0x2744...0x2744, 0x2614...0x2614,
+            0x2618...0x2618, 0x1F54A...0x1F54A, 0x1F577...0x1F578, 0x1F490...0x1F490, 0x1F4AE...0x1F4AE,
+            0x1F940...0x1F940, 0x1F32D...0x1F32F, 0x2728...0x2728, 0x26A1...0x26A1, 0x1F525...0x1F525,
+            0x1F4A7...0x1F4A7, 0x1F30A...0x1F30A]) { return 1 }
+    if any([0x1F345...0x1F37F, 0x1F950...0x1F96F, 0x1F9C0...0x1F9CB, 0x1FAD0...0x1FADF, 0x2615...0x2615,
+            0x1F32D...0x1F32F, 0x1F9C2...0x1F9C2, 0x1F942...0x1F942]) { return 2 }
+    if any([0x1F380...0x1F3CF, 0x1F93A...0x1F94F, 0x1FA80...0x1FA8F, 0x26BD...0x26BE, 0x26F3...0x26F3,
+            0x26F8...0x26F8, 0x1F3D3...0x1F3D3, 0x1F3F8...0x1F3F9, 0x265F...0x265F, 0x1F9E9...0x1F9E9,
+            0x1F9F5...0x1F9F6, 0x1F6F7...0x1F6F7, 0x1F6F9...0x1F6F9, 0x1F396...0x1F39F]) { return 3 }
+    if any([0x1F3D0...0x1F3FF, 0x1F680...0x1F6FF, 0x2708...0x2708, 0x26F0...0x26FA, 0x1F5FA...0x1F5FF,
+            0x1F30B...0x1F31F, 0x1F301...0x1F309, 0x1F3A0...0x1F3A2, 0x1F3AA...0x1F3AA, 0x1F6E0...0x1F6FF,
+            0x2693...0x2693, 0x231A...0x231B, 0x23F0...0x23F3, 0x1F550...0x1F567, 0x1F9F3...0x1F9F3, 0x1F6FB...0x1F6FC,
+            0x1FA82...0x1FA82, 0x1F3CD...0x1F3CE]) {
+      return any([0x231A...0x231B, 0x23F0...0x23F3]) ? 5 : 4
+    }
+    if any([0x1F4B0...0x1F4FF, 0x1F500...0x1F53D, 0x1F56F...0x1F5F9, 0x1FA90...0x1FAAF, 0x1F9E0...0x1F9FF,
+            0x2328...0x2328, 0x260E...0x260E, 0x2702...0x2702, 0x2709...0x2709, 0x270F...0x2712, 0x1F48D...0x1F48E,
+            0x1F4A1...0x1F4A1, 0x1F4A3...0x1F4A3, 0x1F488...0x1F48A, 0x1F3A5...0x1F3A9, 0x1F3B7...0x1F3BB,
+            0x1F399...0x1F39E, 0x1F6CD...0x1F6CF, 0x1F6D2...0x1F6D2, 0x1F6AA...0x1F6AA, 0x1F6BD...0x1F6BF,
+            0x1F6C1...0x1F6C1, 0x2692...0x2697, 0x2699...0x2699, 0x26B0...0x26B1, 0x1FA9C...0x1FA9C,
+            0x1F9EF...0x1F9FF, 0x1FA78...0x1FA7C, 0x1F97C...0x1F97F]) { return 5 }
+    return 6
+  }
+
+  static let categories: [Category] = {
+    var lists = Array(repeating: [String](), count: names.count)
+    for item in all.sorted(by: { $0.emoji.unicodeScalars.map(\.value).lexicographicallyPrecedes($1.emoji.unicodeScalars.map(\.value)) }) {
+      lists[category(item.emoji)].append(item.emoji)
+    }
+    return names.indices.compactMap { i in
+      lists[i].isEmpty ? nil : Category(name: names[i], symbol: symbols[i], emoji: lists[i])
+    }
+  }()
+
+  /// Every emoji whose name has each typed word ("brief" finds 💼).
   static func search(_ query: String) -> [String] {
     let words = query.lowercased().split(separator: " ").map(String.init)
-    return categories.flatMap(\.emoji).filter { emoji in
-      guard let name = emoji.unicodeScalars.first?.properties.name?.lowercased() else { return false }
-      return words.allSatisfy { name.contains($0) }
-    }
+    return all.filter { item in words.allSatisfy { item.name.contains($0) } }
+      .sorted { $0.name.count < $1.name.count }.map(\.emoji)
   }
+
+  static var count: Int { all.count }
+  static var fromMacOS: Bool { !appleNames.isEmpty }
 }
 
 // MARK: Theme panel
@@ -671,7 +721,10 @@ final class SpaceThemePanel: NSView {
       self?.values.color = hex
       self?.changed()
     }
-    windowRow.onCustom = { [weak self] in self?.pickColor(accent: false) }
+    windowRow.onCustomHex = { [weak self] hex in
+      self?.values.color = hex
+      self?.changed()
+    }
     self.strength.doubleValue = strength ?? SpaceLook.defaultStrength
     self.strength.isContinuous = true
     self.strength.target = self
@@ -682,7 +735,10 @@ final class SpaceThemePanel: NSView {
       self?.values.accent = hex
       self?.changed()
     }
-    accentRow.onCustom = { [weak self] in self?.pickColor(accent: true) }
+    accentRow.onCustomHex = { [weak self] hex in
+      self?.values.accent = hex
+      self?.changed()
+    }
     [self.mode, windowLabel, windowRow, strengthLabel, self.strength, accentLabel, accentRow].forEach(addSubview)
   }
 
@@ -720,6 +776,14 @@ final class SpaceThemePanel: NSView {
     mode.selectedIndex = index
     values.mode = index == 0 ? "light" : index == 2 ? "dark" : nil
     changed()
+  }
+
+  /// The + of the Window or Accent row, as a click.
+  func openPad(accent: Bool) {
+    let row = accent ? accentRow : windowRow
+    if let onCustomHex = row.onCustomHex {
+      ColorPadPopup.show(from: row.customButton, hex: accent ? values.accent : values.color, onChange: onCustomHex)
+    }
   }
 
   func setStrength(_ value: Double) {

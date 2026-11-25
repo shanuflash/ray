@@ -2250,8 +2250,15 @@ const checks = {
       await it.ok("space editor theme strength 0.5");
       s = await it.until("theme", (x) => spaces(x).editorPanel === "spaceTheme" && spaces(x).mode === "dark"
         && spaces(x).strength === 0.5 && spaces(x).windowAppearance === "NSAppearanceNameDarkAqua");
+      // Ray's own colour pad from the Window row's +: picks follow live.
+      await it.ok("space editor theme custom window");
+      await it.cmd("colorpad hue 0.5");
+      await it.cmd("colorpad pick 1 1");
+      s = await it.until("pad colour", (x) => spaces(x).colorPad.open && spaces(x).look.window === "#00FFFF");
+      await it.cmd("colorpad close");
       await it.ok("space editor theme mode 1");
       await it.ok("space editor closepanel");
+      await it.ok("space editor window 2");
       s = await it.until("auto", (x) => spaces(x).mode === null && spaces(x).windowAppearance === null);
       s = await it.until("previewed", (x) => spaces(x).look.window === "#2F6BEA" && spaces(x).look.accent === "#FF8800"
         && spaces(x).header === "Work");
@@ -2369,7 +2376,7 @@ const checks = {
       it = ownInstance("profiles", { RAY_DATA_DIR: dir });
       await it.until("started", (x) => x?.sidebar?.today.some((e) => e.live));
       let p = await pane();
-      assert(p.pictures === 1 && p.profiles.length === 1 && p.profiles[0].name === "Default", `pane at first ${JSON.stringify(p)}`);
+      assert(p.spaces === 1 && p.profiles.length === 1 && p.profiles[0].name === "Default", `pane at first ${JSON.stringify(p)}`);
       // New Space from the pane, put on a new profile from its editor.
       await it.ok("spacespane new");
       let s = await it.until("a second Space", (x) => spaces(x).list.length === 2);
@@ -2384,7 +2391,8 @@ const checks = {
       // The data panes follow the Space on screen, and their pop-up picks another.
       assert(p.dataProfile.directory === null, `data panes on ${JSON.stringify(p.dataProfile)}`);
       await it.ok("space switch 2");
-      await it.until("in Clients", (x) => spaces(x).current === 1 && spaces(x).windowProfile);
+      s = await it.until("in Clients", (x) => spaces(x).current === 1 && spaces(x).windowProfile);
+      assert(spaces(s).extensionsFollow, "the extensions menu shows another profile's extensions");
       await until("the data panes followed", async () => (await pane()).dataProfile.directory === directory, 10000);
       assert((await pane()).dataProfile.path.endsWith(directory), "the data panes' profile isn't Clients'");
       await it.ok("spacespane dataprofile 1");
@@ -2415,10 +2423,38 @@ const checks = {
       // Delete Profile… asks (over the Settings window), then the profile goes and Clients moves to Default.
       await it.ok("settings open spaces");
       await it.until("Settings › Spaces", (x) => x.settingsWindow?.open && x.settingsWindow.pane === "spaces");
-      await it.ok("spacespane profileopen 2");
-      // Its colour comes from Appearance's swatch row (the second swatch is the first preset).
+      // Pick B: profiles as groups; a profile's ⋯ renames, recolours or deletes it (Default's has no Delete).
+      p = await pane();
+      assert(p.profiles[1].menu.join("|") === "Rename…|Colour|-|Copy to Another Profile…|-|Delete Profile…" && !p.profiles[0].menu.includes("Delete Profile…"),
+        `⋯ menus ${JSON.stringify(p.profiles.map((x) => x.menu))}`);
+      await it.ok("spacespane profilerename 2 Client Work");
+      await it.until("profile renamed", (x) => spaces(x).profiles[1]?.name === "Client Work");
+      // Its colour: the ⋯'s Colour (1 is the first preset).
       await it.ok("spacespane profilecolour 2 1");
       await it.until("profile coloured", (x) => spaces(x).profiles[1]?.color === "#2F6BEA");
+      // Copy to Another Profile… (pick A): Default's history into Client Work's.
+      await it.ok("spacespane copy 1");
+      await it.ok("spacespane copyform 1 history,addresses");
+      await it.ok("spacespane copygo");
+      p = await until("copied", async () => { const q = await pane(); return q.copy.last && !q.copy.running && q; }, 20000);
+      assert(p.copy.last.history > 0 && p.copy.last.addresses === 0 && p.copy.last.passwords === undefined,
+        `copy ${JSON.stringify(p.copy.last)}`);
+      // New Profile… makes a profile with a Space; New Space… in a group puts the Space on that profile.
+      await it.ok("spacespane newprofile");
+      s = await it.until("a new profile", (x) => spaces(x).profiles.length === 3 && spaces(x).list.length === 3, 20000);
+      const made = spaces(s).list[2].profile;
+      assert(made?.startsWith("Space ") && spaces(s).profiles[2].name === "New Profile", `new profile ${JSON.stringify(spaces(s).profiles)}`);
+      await it.ok("spacespane new 3");
+      s = await it.until("a Space in it", (x) => spaces(x).list.length === 4 && spaces(x).list[3].profile === made);
+      await it.ok("spacespane pick 4");
+      await it.ok("spacespane delete");
+      await sleep(600);
+      await it.ok("spacespane confirm accept");
+      await it.until("one Space left there", (x) => spaces(x).list.length === 3);
+      await it.ok("spacespane profiledelete 3");
+      await sleep(600);
+      await it.ok("spacespane confirm accept");
+      await it.until("new profile deleted", (x) => spaces(x).profiles.length === 2 && spaces(x).list[2].profile === null, 20000);
       await it.ok("spacespane profiledelete 2");
       await sleep(600);
       await it.ok("spacespane confirm accept");
@@ -2428,7 +2464,7 @@ const checks = {
       // After a relaunch: Clients on Default, one profile.
       await it.stop().catch(() => {});
       it = ownInstance("profiles-2", { RAY_DATA_DIR: dir });
-      s = await it.until("relaunched", (x) => x?.sidebar?.spaces?.list.length === 2);
+      s = await it.until("relaunched", (x) => x?.sidebar?.spaces?.list.length === 3);
       assert(spaces(s).profiles.length === 1 && spaces(s).list[1].profile === null, `after relaunch ${JSON.stringify(spaces(s).profiles)}`);
     } finally {
       if (it) await it.stop().catch(() => {});

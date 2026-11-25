@@ -325,10 +325,16 @@ publicly or create accounts.
   of `docs/mocks/settings-spaces.html`, 2026-11-25). `SidebarState.profiles` (Sidebar.json `profiles`, Default first,
   `tidyProfiles` keeps one per directory a Space uses): name, colour, `source` ("arc:Profile 1", so a re-import finds
   it). Settings › Spaces (`SpacesPaneContent`, pane `spaces`; `ray://settings/spaces`, Chrome's `/people`,
-  `/profiles`, `/manageProfile`): the Spaces as pictures (`SpacePicturesView`, a small window in the Space's theme;
-  the last cell New Space, `addSpaceFromSettings`), the chosen one's `SpaceEditorView` with `inSettings` (no title
-  or Done; every change applies at once through `applyFromSettings`; Delete Space… asks, `SettingsConfirm`), then
-  Profiles (`ProfilesListView`: `SettingsItemRow`s opening to name, colour and Delete Profile…). `deleteProfile`
+  `/profiles`, `/manageProfile`; owner's pick B of `docs/mocks/settings-spaces.html`, Arc's): `ProfileGroupsView`,
+  each profile a group (header with New Space… (`addSpaceFromSettings(profile:)`) and a ⋯: Rename… (a field at the
+  top of its card), Colour ▸ (presets, Custom… on the colour pad), Delete Profile…), its Spaces as `SettingsItemRow`s
+  whose click opens `SpaceSettingsEditor` after the row (Settings rows: name, icon, Window, Accent, Profile (moves the
+  Space), Delete Space…; every change through `applyFromSettings`), New Profile… at the end (`addProfileFromSettings`:
+  a profile with a Space). Copy to Another Profile… in the ⋯ (`Host/ProfileCopy.swift`, pick A): a `PanelQuestion` over
+  Settings with To and boxes; passwords through Chrome's export (one re-auth, a 0700 temp file overwritten and
+  deleted) then `ac_passwords_add`, history `ac_history_query` → `ac_history_import`, addresses → `ac_autofill_save_address`,
+  extensions as Web Store pages opened in a Space on the target; never cookies or cards (test commands `spacespane
+  copy|copyform|copygo`). `deleteProfile`
   (pick 2A): its Spaces move to Default (`changeProfile`), its favorites go, the engine deletes its data
   (`RayCoreEngine.delete`). The data panes' profile (pick 3B): `SettingsDataProfile` (the Space on screen's profile
   until a pane's `ProfileChooserView` pop-up, the section `<pane>.profile` at each pane's top, hidden with one
@@ -341,6 +347,11 @@ publicly or create accounts.
   `spacespane state|pick|new|name|icon|window|accent|profile|delete|confirm|profileopen|profilerename|profiledelete|
   dataprofile <n>` (1-based); state log `sidebar.spaces.profiles`, `deletedProfiles`, `littleRays[].profile`,
   `commandBar.rows[].space`; checks `profiles`, `import-browser` (Arc's Profile 1).
+- `ColorPad` (`Host/ColorPad.swift`; owner's pick A, 2026-11-25): Ray's own colour picker, a saturation/brightness pad
+  over a hue bar with the hex, in a borderless child window under the + it came from (`ColorPadPopup.show(from:hex:
+  onChange:)`; a click elsewhere, Escape or Return closes it). Every `SwatchRow` with `onCustomHex` uses it (Space
+  theme, Settings › Spaces, Appearance, profile colours, the welcome) instead of macOS's colour window. Test command
+  `colorpad state|hue <h>|pick <s> <b>|close`; state log `sidebar.spaces.colorPad`.
 - `TileSelection` (`Host/TileSelection.swift`, from Ardia's `DockSelection`, Apache-2.0): Arc's selected favorite, a
   3 pt ring and a 22 % wash, both the tile's favicon blurred (`BlurredIcon`, cached per image); none for the globe.
   Favorite icons are 16 pt. State log `sidebarFrames.tileRing`; check `tile-hover`. Sidebar icons (rows, tiles, folder

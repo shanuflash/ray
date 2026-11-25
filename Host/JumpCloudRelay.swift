@@ -899,7 +899,8 @@ final class JumpCloudRelay {
   /// Replaces Ray's JumpCloud cookies with Chrome's: `ac_cookies_import` keeps a cookie Ray already has, so a stale
   /// session would win; `ac_site_data_clear` first empties jumpcloud.com in Ray (its cookies and site storage).
   private func copy(_ cookies: [Cookie], for relay: Relay) {
-    guard let profile = relay.controller?.profile ?? RayCoreEngine.shared?.defaultProfile, !profile.offTheRecord else {
+    // The relayed tab's own profile (a Space on another one keeps its sign-in there), else the window's.
+    guard let profile = relay.tab?.profile ?? relay.controller?.profile ?? RayCoreEngine.shared?.defaultProfile, !profile.offTheRecord else {
       cookies.forEach { $0.value.wipe() }
       return fail(relay, "importFailed", note: "Couldn't bring the JumpCloud sign-in into Ray")
     }

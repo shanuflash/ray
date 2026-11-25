@@ -1,22 +1,16 @@
 import AppKit
 
-/// Settings › Spaces (owner's pick C of `docs/mocks/settings-spaces.html`, 2026-11-25): every Space as a small picture
-/// of the window in its theme, the chosen one's editor under them (the sidebar's `SpaceEditorView`, every change at
-/// once, Delete Space…), then Profiles: each profile with its Spaces, opening to its name, colour and Delete Profile…
-/// (owner's pick 2A: its Spaces move to Default). It acts on the normal window (`SettingsDataProfile.window`).
+/// Settings › Spaces and Profiles (owner's pick B of `docs/mocks/settings-spaces.html`, 2026-11-25; Arc's Settings ›
+/// Profiles): each profile is a group (its avatar and name, New Space… and a ⋯ with Rename…, Colour, Delete Profile…),
+/// its Spaces are the rows of its card, and a Space's row opens to its editor (name, icon, Window, Accent, Profile,
+/// which moves it to another profile, Delete Space…). New Profile… at the bottom makes a profile with a Space. Deleting
+/// a profile moves its Spaces to Default (pick 2A). It acts on the normal window (`SettingsDataProfile.window`).
 final class SpacesPaneContent: SettingsPaneContent {
-  let pictures = SpacePicturesView()
-  let editor = SpaceSettingsEditor()
-  let profiles = ProfilesListView()
+  let groups = ProfileGroupsView()
+  var editor: SpaceSettingsEditor { groups.editor }
   private var observer: NSObjectProtocol?
 
   init() {
-    pictures.onSelect = { [weak self] id in self?.editor.show(id) }
-    pictures.onNew = { [weak self] in
-      guard let space = SettingsDataProfile.window?.addSpaceFromSettings() else { return }
-      self?.pictures.selected = space.id
-      self?.editor.show(space.id)
-    }
     observer = NotificationCenter.default.addObserver(forName: BrowserWindowController.spacesDidChange, object: nil,
                                                       queue: .main) { [weak self] _ in self?.refresh() }
     refresh()
@@ -29,194 +23,340 @@ final class SpacesPaneContent: SettingsPaneContent {
   func sections() -> [SettingsSection] {
     [
       SettingsSection(
-        id: "spaces.list", place: .top, view: pictures, card: false,
+        id: "spaces.list", place: .top, view: groups, card: false,
         search: [SettingsSearchEntry(title: "Spaces", detail: "Each Space's name, icon, colours and profile",
                                      keywords: ["space", "spaces", "theme", "colour", "color", "icon", "emoji", "new space",
-                                                "delete space", "rename space"])]),
-      SettingsSection(id: "spaces.editor", place: .top, view: editor),
-      SettingsSection(
-        id: "spaces.profiles", title: "Profiles", place: .bottom, view: profiles,
-        search: [SettingsSearchEntry(title: "Profiles", detail: "Separate logins, history and passwords for Spaces",
-                                     keywords: ["profile", "profiles", "accounts", "delete profile", "rename profile"])]),
+                                                "delete space", "rename space"]),
+                 SettingsSearchEntry(title: "Profiles", detail: "Separate logins, history and passwords for Spaces",
+                                     keywords: ["profile", "profiles", "accounts", "new profile", "delete profile",
+                                                "rename profile"])]),
     ]
   }
 
   func refresh() {
     guard let window = SettingsDataProfile.window else { return }
-    let spaces = window.state.spaces
-    if pictures.selected.flatMap(window.state.space(id:)) == nil { pictures.selected = window.state.current.id }
-    pictures.show(spaces, profiles: window.state.profiles)
-    if editor.spaceID != pictures.selected || editor.spaceID.flatMap(window.state.space(id:)) == nil {
-      editor.show(pictures.selected)
-    } else {
-      editor.refreshProfiles()
-    }
-    profiles.show(window.state.profiles, spaces: spaces)
+    groups.show(window.state.profiles, spaces: window.state.spaces, current: window.state.current.id)
   }
 
   var debug: [String: Any] {
-    ["selected": pictures.selected?.uuidString ?? NSNull(), "pictures": pictures.count, "editor": editor.debug,
-     "profiles": profiles.debug, "dataProfile": SettingsDataProfile.debug]
+    ["selected": groups.selected?.uuidString ?? NSNull(), "spaces": groups.spaceCount, "editor": editor.debug,
+     "profiles": groups.debug, "dataProfile": SettingsDataProfile.debug,
+     "copy": ["asking": ProfileCopy.pending != nil, "running": ProfileCopy.running, "last": ProfileCopy.last as Any? ?? NSNull()]]
   }
 }
 
-// MARK: Pictures
+// MARK: Groups
 
-/// The Spaces as pictures, three a row, then "New Space"; a click chooses the one the editor shows.
-final class SpacePicturesView: NSView, SettingsSizing {
-  static let columns = 3
-  static let cellHeight: CGFloat = 112
-  private var cells: [SpacePictureCell] = []
-  private let newCell = SpacePictureCell(space: nil, profile: nil)
-  var selected: UUID?
-  var onSelect: ((UUID) -> Void)?
-  var onNew: (() -> Void)?
-  var count: Int { cells.count }
+/// The profiles as groups on cards, their Spaces as rows; the chosen Space's editor after its row.
+final class ProfileGroupsView: NSView, SettingsSizing, NSTextFieldDelegate {
+  let editor = SpaceSettingsEditor()
+  private let stack = SettingsStack()
+  private(set) var selected: UUID?
+  private var infos: [ProfileInfo] = []
+  private var spaces: [Space] = []
+  private var rows: [UUID: SettingsItemRow] = [:]
+  private var moreButtons: [String: NSButton] = [:]
+  /// The profile whose name is being edited (its card leads with a field).
+  private var renaming: String?
+  private var renameField: EditorField?
+  /// The profiles and Spaces last shown (directories, ids, profiles).
+  private var shape: [String] = []
+
+  override var isFlipped: Bool { true }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
-    newCell.onClick = { [weak self] in self?.onNew?() }
-    addSubview(newCell)
+    stack.cards = true
+    addSubview(stack)
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
-  override var isFlipped: Bool { true }
+  private static func key(_ directory: String?) -> String { directory ?? "default" }
+  private var window_: BrowserWindowController? { SettingsDataProfile.window }
 
-  func show(_ spaces: [Space], profiles: [ProfileInfo]) {
-    cells.forEach { $0.removeFromSuperview() }
-    cells = spaces.map { space in
-      let cell = SpacePictureCell(space: space, profile: profiles.count > 1 ? profiles.first { $0.directory == space.profile } : nil)
-      cell.chosen = space.id == selected
-      cell.onClick = { [weak self] in
-        self?.selected = space.id
-        self?.cells.forEach { $0.chosen = $0.spaceID == space.id }
-        self?.onSelect?(space.id)
-      }
-      addSubview(cell)
-      return cell
+  var spaceCount: Int { spaces.count }
+
+  func show(_ profiles: [ProfileInfo], spaces: [Space], current: UUID?) {
+    // Typing a name keeps the rows (nothing rebuilds under the field) unless a Space or profile came or went.
+    let shape = profiles.map { $0.directory ?? "" } + spaces.map { "\($0.id)\($0.profile ?? "")" }
+    if renameField?.field.currentEditor() != nil || editor.isTyping, shape == self.shape { return }
+    self.shape = shape
+    infos = profiles
+    if infos.first?.directory != nil || infos.isEmpty {
+      infos.insert(ProfileInfo(directory: nil, name: ProfileInfo.defaultName, color: nil, source: nil), at: 0)
     }
+    self.spaces = spaces
+    if let selected, !spaces.contains(where: { $0.id == selected }) { self.selected = nil }
+    rebuild()
+  }
+
+  private func rebuild() {
+    var items: [SettingsStack.Item] = []
+    rows = [:]
+    moreButtons = [:]
+    for (index, info) in infos.enumerated() {
+      let key = Self.key(info.directory)
+      let header = SettingsDataHeader(title: info.name)
+      let newSpace = SettingsButton("New Space…") { [weak self] in self?.newSpace(in: info.directory) }
+      let more = NSButton(image: NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "More")!,
+                          target: self, action: #selector(morePressed(_:)))
+      more.isBordered = false
+      more.contentTintColor = .secondaryLabelColor
+      more.tag = index
+      more.setAccessibilityLabel("\(info.name) profile")
+      moreButtons[key] = more
+      header.setTrailing([newSpace, more])
+      items.append(.init(view: header, gap: index == 0 ? 0 : 18))
+      if renaming == key {
+        let field = renameField ?? EditorField(placeholder: "Profile name")
+        if renameField == nil { field.field.stringValue = info.name }
+        field.field.delegate = self
+        renameField = field
+        let save = SettingsButton("Save", primary: true) { [weak self] in self?.commitRename() }
+        let cancel = SettingsButton("Cancel") { [weak self] in self?.endRename() }
+        items.append(.init(view: SettingsRenameRow(field: field, buttons: [cancel, save])))
+      }
+      let own = spaces.filter { $0.profile == info.directory }
+      if own.isEmpty {
+        items.append(.init(view: SettingsNote("No Spaces", inset: SettingsNote.rowInset)))
+      }
+      for (n, space) in own.enumerated() {
+        let tabs = (space.pinned + space.today).filter { !$0.isFolder }.count
+        let row = SettingsItemRow(key: space.id.uuidString, icon: Self.icon(space), title: space.name,
+                                  detail: tabs == 1 ? "1 tab" : "\(tabs) tabs", disclosure: true)
+        row.expanded = space.id == selected
+        row.onClick = { [weak self] in self?.select(space.id) }
+        rows[space.id] = row
+        items.append(.init(view: row, line: n > 0 || renaming == key))
+        if space.id == selected {
+          editor.show(space.id)
+          items.append(.init(view: editor, line: true))
+        }
+      }
+    }
+    let newProfile = SettingsDataHeader(title: "")
+    newProfile.setTrailing([SettingsButton("New Profile…") { [weak self] in self?.newProfile() }])
+    items.append(.init(view: newProfile, gap: 10))
+    stack.set(items)
     settingsSectionResized()
     needsLayout = true
   }
 
-  func height(forWidth width: CGFloat) -> CGFloat {
-    let rows = (cells.count + 1 + Self.columns - 1) / Self.columns
-    return CGFloat(rows) * Self.cellHeight + CGFloat(max(0, rows - 1)) * 12
-  }
-
-  override func layout() {
-    super.layout()
-    let gap: CGFloat = 12
-    let width = (bounds.width - gap * CGFloat(Self.columns - 1)) / CGFloat(Self.columns)
-    for (index, cell) in (cells + [newCell]).enumerated() {
-      let column = index % Self.columns, row = index / Self.columns
-      cell.frame = NSRect(x: CGFloat(column) * (width + gap), y: CGFloat(row) * (Self.cellHeight + gap), width: width,
-                          height: Self.cellHeight).integral
+  /// The Space's icon as a 22 pt image (its emoji or symbol on a wash of its colour).
+  private static func icon(_ space: Space) -> NSImage {
+    NSImage(size: NSSize(width: 22, height: 22), flipped: false) { rect in
+      let tint = space.color.flatMap(ProfileColor.parse).map { NSColor(srgbRed: $0.r, green: $0.g, blue: $0.b, alpha: 0.25) }
+        ?? NSColor.labelColor.withAlphaComponent(0.08)
+      tint.setFill()
+      NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
+      drawIcon(space.icon ?? String(space.name.prefix(1)), in: rect, size: 13)
+      return true
     }
   }
 
-  func press(_ index: Int) -> Bool {
-    let all = cells + [newCell]
-    guard all.indices.contains(index) else { return false }
-    all[index].onClick?()
+  func select(_ id: UUID?) {
+    selected = selected == id ? nil : id
+    rebuild()
+  }
+
+  private func newSpace(in directory: String?) {
+    guard let window = window_, let space = window.addSpaceFromSettings(profile: directory) else { return }
+    selected = space.id
+    if let current = SettingsDataProfile.window { show(current.state.profiles, spaces: current.state.spaces, current: nil) }
+  }
+
+  private func newProfile() {
+    guard let window = window_, let directory = window.addProfileFromSettings() else { return }
+    renaming = Self.key(directory)
+    renameField = nil
+    show(window.state.profiles, spaces: window.state.spaces, current: nil)
+    if let field = renameField {
+      field.window?.makeFirstResponder(field.field)
+      field.field.currentEditor()?.selectAll(nil)
+    }
+  }
+
+  // MARK: The profile's ⋯
+
+  @objc private func morePressed(_ sender: NSButton) {
+    guard let menu = moreMenu(sender.tag) else { return }
+    menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+  }
+
+  func moreMenu(_ index: Int) -> NSMenu? {
+    guard infos.indices.contains(index) else { return nil }
+    let info = infos[index]
+    let menu = NSMenu()
+    func item(_ title: String, _ run: @escaping () -> Void) -> NSMenuItem {
+      let item = NSMenuItem(title: title, action: #selector(MenuAction.run(_:)), keyEquivalent: "")
+      let action = MenuAction(run)
+      item.target = action
+      item.representedObject = action
+      return item
+    }
+    menu.addItem(item("Rename…") { [weak self] in self?.beginRename(info.directory) })
+    let colour = NSMenuItem(title: "Colour", action: nil, keyEquivalent: "")
+    let colours = NSMenu()
+    for (name, hex) in [("Lavender", nil as String?)] + ProfileColor.presets.map({ ($0.name, $0.hex as String?) }) {
+      let entry = item(name) { SettingsDataProfile.window?.setProfileColor(info.directory, hex) }
+      entry.state = info.color == hex ? .on : .off
+      entry.image = ProfileInfo.avatar(ProfileInfo(directory: info.directory, name: " ", color: hex, source: nil), size: 12)
+      colours.addItem(entry)
+    }
+    colours.addItem(.separator())
+    colours.addItem(item("Custom…") { [weak self] in
+      guard let self, let button = self.moreButtons[Self.key(info.directory)] else { return }
+      ColorPadPopup.show(from: button, hex: info.color) { hex in SettingsDataProfile.window?.setProfileColor(info.directory, hex) }
+    })
+    colour.submenu = colours
+    menu.addItem(colour)
+    if infos.count > 1 {
+      menu.addItem(.separator())
+      menu.addItem(item("Copy to Another Profile…") { ProfileCopy.ask(from: info.directory) })
+    }
+    if info.directory != nil {
+      menu.addItem(.separator())
+      menu.addItem(item("Delete Profile…") { [weak self] in self?.askDelete(info) })
+    }
+    return menu
+  }
+
+  private func beginRename(_ directory: String?) {
+    renaming = Self.key(directory)
+    renameField = nil
+    rebuild()
+    if let field = renameField {
+      field.window?.makeFirstResponder(field.field)
+      field.field.currentEditor()?.selectAll(nil)
+    }
+  }
+
+  private func commitRename() {
+    guard let key = renaming, let info = infos.first(where: { Self.key($0.directory) == key }),
+          let text = renameField?.field.stringValue else { return endRename() }
+    renaming = nil
+    renameField = nil
+    SettingsDataProfile.window?.renameProfile(info.directory, to: text)
+    rebuild()
+  }
+
+  private func endRename() {
+    renaming = nil
+    renameField = nil
+    rebuild()
+  }
+
+  func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+    if selector == #selector(NSResponder.insertNewline(_:)) { commitRename(); return true }
+    if selector == #selector(NSResponder.cancelOperation(_:)) { endRename(); return true }
+    return false
+  }
+
+  private func askDelete(_ info: ProfileInfo) {
+    guard let directory = info.directory, let window = window_ else { return }
+    let spaces = window.state.spaces(on: directory).map(\.name)
+    let moving = spaces.isEmpty ? "" : " \(spaces.joined(separator: ", ")) \(spaces.count == 1 ? "moves" : "move") to Default."
+    SettingsConfirm.ask("deleteProfile", title: "Delete the “\(info.name)” profile?",
+                        message: "Its passwords, cookies, history and extensions are deleted.\(moving)",
+                        confirm: "Delete") { yes in
+      if yes { window.deleteProfile(directory) }
+    }
+  }
+
+  func height(forWidth width: CGFloat) -> CGFloat { stack.height(forWidth: width) }
+
+  override func layout() {
+    super.layout()
+    stack.frame = bounds
+  }
+
+  // MARK: Tests
+
+  /// The nth Space as the rows list them (profile by profile).
+  func spaceID(_ index: Int) -> UUID? {
+    let ordered = infos.flatMap { info in spaces.filter { $0.profile == info.directory } }
+    return ordered.indices.contains(index) ? ordered[index].id : nil
+  }
+
+  func pressNewSpace(_ profile: Int) -> Bool {
+    guard infos.indices.contains(profile) else { return false }
+    newSpace(in: infos[profile].directory)
     return true
+  }
+
+  func pressNewProfile() { newProfile() }
+
+  func profile(_ index: Int) -> ProfileInfo? { infos.indices.contains(index) ? infos[index] : nil }
+
+  func rename(_ index: Int, _ text: String) -> Bool {
+    guard infos.indices.contains(index) else { return false }
+    beginRename(infos[index].directory)
+    renameField?.field.stringValue = text
+    commitRename()
+    return true
+  }
+
+  func chooseColour(_ index: Int, _ swatch: Int) -> Bool {
+    guard infos.indices.contains(index), swatch >= 0, swatch <= ProfileColor.presets.count else { return false }
+    SettingsDataProfile.window?.setProfileColor(infos[index].directory, swatch == 0 ? nil : ProfileColor.presets[swatch - 1].hex)
+    return true
+  }
+
+  func pressDelete(_ index: Int) -> Bool {
+    guard infos.indices.contains(index), infos[index].directory != nil else { return false }
+    askDelete(infos[index])
+    return true
+  }
+
+  var debug: [[String: Any]] {
+    infos.map { info in
+      let names = spaces.filter { $0.profile == info.directory }.map(\.name)
+      return ["name": info.name, "spaces": names.joined(separator: ", "), "color": info.color ?? NSNull(),
+              "renaming": renaming == Self.key(info.directory), "deletable": info.directory != nil,
+              "menu": moreMenu(infos.firstIndex { $0.directory == info.directory } ?? 0)?.items
+                .map { $0.isSeparatorItem ? "-" : $0.title } ?? []]
+    }
   }
 }
 
-/// One Space as a small window in its theme (its Window colour around a sidebar and a page), its icon and name
-/// under it, and its profile when there's more than one; "New Space" when it has none.
-final class SpacePictureCell: NSView {
-  let spaceID: UUID?
-  private let space: Space?
-  private let profile: ProfileInfo?
-  var onClick: (() -> Void)?
-  var chosen = false { didSet { needsDisplay = true } }
+/// A profile's name being edited, at the top of its card: the field, Cancel and Save.
+private final class SettingsRenameRow: NSView, SettingsSizing {
+  private let field: EditorField
+  private let buttons: [SettingsButton]
 
-  init(space: Space?, profile: ProfileInfo?) {
-    self.space = space
-    spaceID = space?.id
-    self.profile = profile
+  init(field: EditorField, buttons: [SettingsButton]) {
+    self.field = field
+    self.buttons = buttons
     super.init(frame: .zero)
-    setAccessibilityRole(.button)
-    setAccessibilityLabel(space?.name ?? "New Space")
+    addSubview(field)
+    buttons.forEach { addSubview($0) }
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
   override var isFlipped: Bool { true }
-  override var mouseDownCanMoveWindow: Bool { false }
-  override func mouseDown(with event: NSEvent) {}
-  override func mouseUp(with event: NSEvent) {
-    if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
-  }
-  override func accessibilityPerformPress() -> Bool {
-    onClick?()
-    return true
-  }
 
-  override func draw(_ dirtyRect: NSRect) {
-    let card = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 10, yRadius: 10)
-    SettingsColors.card.setFill()
-    card.fill()
-    let picture = NSRect(x: 7, y: 7, width: bounds.width - 14, height: bounds.height - 40)
-    guard let space else {
-      let dashed = NSBezierPath(roundedRect: picture, xRadius: 6, yRadius: 6)
-      dashed.lineWidth = 1
-      dashed.setLineDash([4, 3], count: 2, phase: 0)
-      NSColor.tertiaryLabelColor.setStroke()
-      dashed.stroke()
-      let plus = NSAttributedString(string: "+", attributes: [.font: NSFont.systemFont(ofSize: 22, weight: .light),
-                                                              .foregroundColor: NSColor.secondaryLabelColor])
-      let size = plus.size()
-      plus.draw(at: NSPoint(x: picture.midX - size.width / 2, y: picture.midY - size.height / 2))
-      label("New Space", nil, at: picture.maxY)
-      edge(card)
-      return
-    }
-    SpaceLook.windowColor(space.color).setFill()
-    NSBezierPath(roundedRect: picture, xRadius: 6, yRadius: 6).fill()
-    let side = NSRect(x: picture.minX + 5, y: picture.minY + 6, width: picture.width * 0.3, height: picture.height - 12)
-    NSColor.labelColor.withAlphaComponent(0.13).setFill()
-    for (index, fraction) in [0.75, 0.9, 0.6, 0.8].enumerated() {
-      NSBezierPath(roundedRect: NSRect(x: side.minX, y: side.minY + CGFloat(index) * 9, width: side.width * fraction, height: 5),
-                   xRadius: 2.5, yRadius: 2.5).fill()
-    }
-    let page = NSRect(x: side.maxX + 5, y: picture.minY + 4, width: picture.maxX - side.maxX - 9, height: picture.height - 8)
-    NSColor.textBackgroundColor.setFill()
-    NSBezierPath(roundedRect: page, xRadius: 4, yRadius: 4).fill()
-    label("\(SpaceIcon.prefix(for: space))\(space.name)", profile?.name, at: picture.maxY)
-    edge(card)
-  }
+  func height(forWidth width: CGFloat) -> CGFloat { 48 }
 
-  private func label(_ title: String, _ caption: String?, at top: CGFloat) {
-    let text = NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium),
-                                                              .foregroundColor: NSColor.labelColor])
-    text.draw(with: NSRect(x: 10, y: top + 8, width: bounds.width - 20 - (caption == nil ? 0 : 60), height: 18),
-              options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
-    if let caption {
-      let small = NSAttributedString(string: caption, attributes: [.font: NSFont.systemFont(ofSize: 11),
-                                                                   .foregroundColor: NSColor.secondaryLabelColor])
-      let size = small.size()
-      small.draw(at: NSPoint(x: bounds.width - 10 - min(size.width, 56), y: top + 9))
+  override func layout() {
+    super.layout()
+    var right = bounds.width
+    for button in buttons.reversed() {
+      let size = button.fittingSize
+      button.frame = NSRect(x: right - size.width, y: (bounds.height - size.height) / 2, width: size.width, height: size.height)
+      right -= size.width + 8
     }
-  }
-
-  private func edge(_ card: NSBezierPath) {
-    if chosen {
-      let ring = NSBezierPath(roundedRect: bounds.insetBy(dx: 1.25, dy: 1.25), xRadius: 10, yRadius: 10)
-      ring.lineWidth = 2.5
-      ProfileColor.visible(on: SettingsColors.content).setStroke()
-      ring.stroke()
-    } else {
-      card.lineWidth = 0.5
-      SettingsColors.cardEdge.setStroke()
-      card.stroke()
-    }
+    field.frame = NSRect(x: 0, y: 10, width: min(280, right - 8), height: 28)
   }
 }
 
-// MARK: Editor
+/// An NSMenuItem's closure.
+final class MenuAction: NSObject {
+  private let run: () -> Void
+  init(_ run: @escaping () -> Void) { self.run = run }
+  @objc func run(_ sender: Any?) { run() }
+}
 
 /// The chosen Space in Settings' own rows (as every other pane): Name, Icon, Window, Accent and Profile, then Delete
 /// Space…. Every change applies at once (`applyFromSettings`).
@@ -268,7 +408,7 @@ final class SpaceSettingsEditor: NSView, SettingsSizing, NSTextFieldDelegate {
     windowSwatches.compact = true
     windowSwatches.selection = space.color
     windowSwatches.onChoose = { [weak self] hex in self?.change { $0.color = hex } }
-    windowSwatches.onCustom = { [weak self] in self?.pickColor(\.color) }
+    windowSwatches.onCustomHex = { [weak self] hex in self?.change { $0.color = hex } }
     windowRow = windowSwatches
     let windowColour = SettingsRowView(title: "Window", detail: "", control: windowSwatches)
 
@@ -276,7 +416,7 @@ final class SpaceSettingsEditor: NSView, SettingsSizing, NSTextFieldDelegate {
     accentSwatches.compact = true
     accentSwatches.selection = space.accent
     accentSwatches.onChoose = { [weak self] hex in self?.change { $0.accent = hex } }
-    accentSwatches.onCustom = { [weak self] in self?.pickColor(\.accent) }
+    accentSwatches.onCustomHex = { [weak self] hex in self?.change { $0.accent = hex } }
     accentRow = accentSwatches
     let accent = SettingsRowView(title: "Accent", detail: "", control: accentSwatches)
 
@@ -346,6 +486,8 @@ final class SpaceSettingsEditor: NSView, SettingsSizing, NSTextFieldDelegate {
     show(spaceID)
   }
 
+  var isTyping: Bool { nameField.field.currentEditor() != nil }
+
   func height(forWidth width: CGFloat) -> CGFloat { list.map { sizedHeight($0, width: width) } ?? 0 }
 
   override func layout() {
@@ -388,183 +530,11 @@ final class SpaceSettingsEditor: NSView, SettingsSizing, NSTextFieldDelegate {
   }
 }
 
-// MARK: Profiles
-
-/// Each profile: its avatar, name and Spaces; opened, its name, colour and Delete Profile… (not Default's).
-final class ProfilesListView: NSView, SettingsSizing {
-  private var rows: [SettingsItemRow] = []
-  private var opened: Set<String> = []
-  private(set) var infos: [ProfileInfo] = []
-  private var nameFields: [String: EditorField] = [:]
-  private var deleteButtons: [String: SettingsButton] = [:]
-  private var swatchRows: [String: SwatchRow] = [:]
-  private var colourFor: String??
-
-  override var isFlipped: Bool { true }
-
-  private static func key(_ directory: String?) -> String { directory ?? "default" }
-
-  func show(_ profiles: [ProfileInfo], spaces: [Space]) {
-    // Typing in a name keeps its row: nothing rebuilds under the field.
-    if nameFields.values.contains(where: { $0.field.currentEditor() != nil }), profiles.map(\.directory) == infos.map(\.directory) {
-      return
-    }
-    infos = profiles
-    rows.forEach { $0.removeFromSuperview() }
-    nameFields = [:]
-    deleteButtons = [:]
-    swatchRows = [:]
-    rows = profiles.map { info in
-      let key = Self.key(info.directory)
-      let names = spaces.filter { $0.profile == info.directory }.map(\.name)
-      let row = SettingsItemRow(key: key, icon: ProfileInfo.avatar(info, size: 22), title: info.name,
-                                detail: names.isEmpty ? "No Spaces" : names.joined(separator: ", "),
-                                body: body(for: info), open: opened.contains(key))
-      row.onToggle = { [weak self, weak row] open in
-        if open { self?.opened.insert(key) } else { self?.opened.remove(key) }
-        row?.settingsSectionResized()
-      }
-      addSubview(row)
-      return row
-    }
-    settingsSectionResized()
-    needsLayout = true
-  }
-
-  private func body(for info: ProfileInfo) -> NSView {
-    let key = Self.key(info.directory)
-    let name = EditorField(placeholder: "Profile name")
-    name.field.stringValue = info.name
-    name.field.target = self
-    name.field.action = #selector(nameCommitted(_:))
-    name.field.identifier = NSUserInterfaceItemIdentifier(key)
-    nameFields[key] = name
-    // Appearance's own swatch row: lavender (nil), the presets and any colour, the chosen one marked.
-    let swatches = SwatchRow()
-    swatches.compact = true
-    swatches.selection = info.color
-    swatches.onChoose = { hex in SettingsDataProfile.window?.setProfileColor(info.directory, hex) }
-    swatches.onCustom = { [weak self] in self?.pickColour(for: info) }
-    swatchRows[key] = swatches
-    let delete = SettingsButton("Delete Profile…", destructive: true) { [weak self] in self?.askDelete(info) }
-    delete.isHidden = info.directory == nil
-    deleteButtons[key] = delete
-    return ProfileBody(name: name, swatches: swatches, delete: delete)
-  }
-
-  /// Custom Colour…: macOS's colour panel, followed live.
-  private func pickColour(for info: ProfileInfo) {
-    colourFor = .some(info.directory)
-    let panel = NSColorPanel.shared
-    panel.showsAlpha = false
-    panel.setTarget(self)
-    panel.setAction(#selector(colourPicked(_:)))
-    if !TestEnvironment.isTestBuild { panel.orderFront(nil) }
-  }
-
-  @objc private func colourPicked(_ panel: NSColorPanel) {
-    guard let directory = colourFor else { return }
-    SettingsDataProfile.window?.setProfileColor(directory, ProfileColor.hex(of: panel.color))
-  }
-
-  func chooseColour(_ index: Int, _ swatch: Int) -> Bool {
-    guard infos.indices.contains(index), let row = swatchRows[Self.key(infos[index].directory)] else { return false }
-    return row.press(index: swatch)
-  }
-
-  @objc private func nameCommitted(_ field: NSTextField) {
-    guard let key = field.identifier?.rawValue, let info = infos.first(where: { Self.key($0.directory) == key }) else { return }
-    SettingsDataProfile.window?.renameProfile(info.directory, to: field.stringValue)
-  }
-
-  private func askDelete(_ info: ProfileInfo) {
-    guard let directory = info.directory, let window = SettingsDataProfile.window else { return }
-    let spaces = window.state.spaces(on: directory).map(\.name)
-    let moving = spaces.isEmpty ? "" : " \(spaces.joined(separator: ", ")) \(spaces.count == 1 ? "moves" : "move") to Default."
-    SettingsConfirm.ask("deleteProfile", title: "Delete the “\(info.name)” profile?",
-                        message: "Its passwords, cookies, history and extensions are deleted.\(moving)",
-                        confirm: "Delete") { yes in
-      if yes { window.deleteProfile(directory) }
-    }
-  }
-
-  func height(forWidth width: CGFloat) -> CGFloat { rows.reduce(0) { $0 + $1.height(forWidth: width) } }
-
-  override func layout() {
-    super.layout()
-    var y: CGFloat = 0
-    for row in rows {
-      let height = row.height(forWidth: bounds.width)
-      row.frame = NSRect(x: 0, y: y, width: bounds.width, height: height)
-      y += height
-    }
-  }
-
-  // For tests.
-  func toggle(_ index: Int) -> Bool {
-    guard rows.indices.contains(index) else { return false }
-    rows[index].toggle()
-    return true
-  }
-
-  func rename(_ index: Int, _ text: String) -> Bool {
-    guard infos.indices.contains(index), let field = nameFields[Self.key(infos[index].directory)]?.field else { return false }
-    field.stringValue = text
-    nameCommitted(field)
-    return true
-  }
-
-  func pressDelete(_ index: Int) -> Bool {
-    guard infos.indices.contains(index), let button = deleteButtons[Self.key(infos[index].directory)], !button.isHidden
-    else { return false }
-    button.onClick?()
-    return true
-  }
-
-  var debug: [[String: Any]] {
-    zip(infos, rows).map { info, row in
-      ["name": info.name, "spaces": row.detail, "open": row.isOpen, "deletable": info.directory != nil]
-    }
-  }
-}
-
-/// A profile's row opened: its name, colour swatches and Delete Profile….
-private final class ProfileBody: NSView, SettingsSizing {
-  private let name: EditorField
-  private let swatches: SwatchRow
-  private let delete: SettingsButton
-  private let colourLabel = settingsLabel("Colour", size: 12, color: .secondaryLabelColor)
-
-  init(name: EditorField, swatches: SwatchRow, delete: SettingsButton) {
-    self.name = name
-    self.swatches = swatches
-    self.delete = delete
-    super.init(frame: .zero)
-    [name, colourLabel, swatches, delete].forEach(addSubview)
-  }
-
-  required init?(coder: NSCoder) { fatalError() }
-
-  override var isFlipped: Bool { true }
-
-  func height(forWidth width: CGFloat) -> CGFloat { delete.isHidden ? 82 : 120 }
-
-  override func layout() {
-    super.layout()
-    name.frame = NSRect(x: 0, y: 4, width: min(bounds.width, 280), height: 28)
-    let labelHeight = colourLabel.intrinsicContentSize.height
-    colourLabel.frame = NSRect(x: 0, y: 44 + (22 - labelHeight) / 2, width: 50, height: labelHeight)
-    let size = swatches.fittingSize
-    swatches.frame = NSRect(x: 56, y: 44 + (22 - size.height) / 2, width: size.width, height: size.height).integral
-    delete.frame = NSRect(x: 0, y: 82, width: max(delete.fittingSize.width, 130), height: 28)
-  }
-}
-
 // MARK: Tests
 
 extension SpacesPaneContent {
-  /// `spacespane state|pick <n>|new|name <text>|icon <n>|window <n>|accent <n>|profile <n>|delete|confirm accept|cancel|
-  /// profileopen <n>|profilerename <n> <text>|profiledelete <n>|dataprofile <n>`: the pane as clicks would drive it
+  /// `spacespane state|pick <n>|new [profile]|newprofile|name <text>|icon <n>|window <n>|accent <n>|profile <n>|delete|
+  /// confirm accept|cancel|profilerename <n> <text>|profilecolour <n> <swatch>|profiledelete <n>|dataprofile <n>`: the pane as clicks would drive it
   /// (`<n>` from 1; `dataprofile` picks the data panes' profile, as their pop-up would). Opens the pane if it isn't.
   static func test(_ argument: String) -> String {
     guard let content = SettingsPanes.content(for: .spaces) as? SpacesPaneContent else { return "no pane" }
@@ -578,9 +548,12 @@ extension SpacesPaneContent {
             let text = String(data: data, encoding: .utf8) else { return "{}" }
       return text
     case "pick":
-      guard let number, content.pictures.press(number) else { return "no such space" }
+      guard let number, let id = content.groups.spaceID(number) else { return "no such space" }
+      if content.groups.selected != id { content.groups.select(id) }
     case "new":
-      guard content.pictures.press(content.pictures.count) else { return "no new" }
+      // `new [profile]`: New Space… in a profile's group (1 = Default).
+      guard content.groups.pressNewSpace(number ?? 0) else { return "no profile" }
+    case "newprofile": content.groups.pressNewProfile()
     case "name": content.editor.setName(words.dropFirst().joined(separator: " "))
     case "icon":
       guard let number, content.editor.chooseIcon(number) else { return "no icon" }
@@ -592,21 +565,31 @@ extension SpacesPaneContent {
       guard content.editor.canDelete else { return "can't delete" }
       content.editor.pressDelete()
     case "confirm": return SettingsConfirm.answer(accept: words.count > 1 && words[1] == "accept")
-    case "profileopen":
-      guard let number, content.profiles.toggle(number) else { return "no profile" }
     case "profilerename":
-      guard let number, content.profiles.rename(number, rest) else { return "no profile" }
+      guard let number, content.groups.rename(number, rest) else { return "no profile" }
     case "profilecolour":
-      guard let number, words.count > 2, let swatch = Int(words[2]), content.profiles.chooseColour(number, swatch)
+      guard let number, words.count > 2, let swatch = Int(words[2]), content.groups.chooseColour(number, swatch)
       else { return "no swatch" }
     case "profiledelete":
-      guard let number, content.profiles.pressDelete(number) else { return "can't delete" }
+      guard let number, content.groups.pressDelete(number) else { return "can't delete" }
+    case "copy":
+      // `copy <n>`: Copy to Another Profile… from the nth profile; `copyform <target n> <kinds,…>`; `copygo`.
+      guard let number, let info = content.groups.profile(number) else { return "no profile" }
+      ProfileCopy.ask(from: info.directory)
+      guard ProfileCopy.pending != nil else { return "not asked" }
+    case "copyform":
+      guard let number, let form = ProfileCopy.pending else { return "no form" }
+      let kinds = Set(words.dropFirst(2).joined(separator: ",").split(separator: ",").compactMap { ProfileCopy.Kind(rawValue: String($0)) })
+      form.set(kinds, target: number)
+    case "copygo":
+      guard let question = ProfileCopy.pendingQuestion, question.buttons.count > 1, question.buttons[1].isEnabled else { return "not ready" }
+      question.buttons[1].onClick?()
     case "dataprofile":
       let infos = SettingsDataProfile.profiles
       guard let number, infos.indices.contains(number) else { return "no profile" }
       SettingsDataProfile.pick(infos[number].directory)
     default:
-      return "usage: spacespane state|pick|new|name|icon|window|accent|profile|delete|confirm|profileopen|profilerename|profiledelete|dataprofile"
+      return "usage: spacespane state|pick|new [profile]|newprofile|name|icon|window|accent|profile|delete|confirm|profilerename|profilecolour|profiledelete|copy|copyform|copygo|dataprofile"
     }
     return "ok"
   }

@@ -12,7 +12,17 @@ final class ExtensionsController: NSObject, RayCoreTabDelegate {
   }
 
   private(set) var items: [Item] = []
-  private let profile: RayCoreProfile
+  /// The profile of the Space on screen: its extensions are what the tiles show and run (a Space on another profile
+  /// has its own; the main profile's ones can't act on its tabs).
+  var profile: RayCoreProfile {
+    didSet {
+      guard profile !== oldValue else { return }
+      closePopup()
+      items = []
+      onChange?()
+      refresh()
+    }
+  }
   private let coreWindow: RayCoreWindow
   var onChange: (() -> Void)?
   var openPage: ((String) -> Void)?

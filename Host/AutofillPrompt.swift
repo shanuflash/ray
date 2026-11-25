@@ -44,6 +44,14 @@ final class AutofillPrompts {
   }
 
   private static var observations: [SettingsObservation] = []
+  private static let profiles = NSHashTable<RayCoreProfile>.weakObjects()
+
+  /// A Space's profile loaded: it takes the switches as the default profile has them.
+  static func followSettings(on profile: RayCoreProfile) {
+    profiles.add(profile)
+    profile.addressesAutofilled = RaySettings.shared[.autofillAddresses]
+    profile.cardsAutofilled = RaySettings.shared[.autofillCards]
+  }
 
   /// Settings › Autofill › Save and fill addresses / cards are Chrome's own switches, so the engine stops asking and
   /// filling. From the first window on; later calls do nothing.
@@ -52,7 +60,10 @@ final class AutofillPrompts {
     let switches: [(SettingKey<Bool>, ReferenceWritableKeyPath<RayCoreProfile, Bool>)] =
       [(.autofillAddresses, \.addressesAutofilled), (.autofillCards, \.cardsAutofilled)]
     for (key, preference) in switches {
-      let apply = { (on: Bool) in RayCoreEngine.shared?.defaultProfile[keyPath: preference] = on }
+      let apply = { (on: Bool) in
+        RayCoreEngine.shared?.defaultProfile[keyPath: preference] = on
+        for other in profiles.allObjects { other[keyPath: preference] = on }
+      }
       apply(RaySettings.shared[key])
       observations.append(RaySettings.shared.observe(key) { apply($0) })
     }

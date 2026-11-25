@@ -529,7 +529,13 @@ Smaller gaps found while building the items above. Each says where the fix goes.
 79. **Profiles leftovers** (2026-11-25, owner's picks of `docs/mocks/profiles.html`). Not built, by the owner's
     choice: a private window per profile (⇧⌘N is always Default's private side), extensions per profile in site
     controls and their toolbar (they follow the first profile used), the command bar ranking the profile you're on
-    first, and New Profile without a Space (a profile is made from a Space's Profile pop-up). Arc's profile colours
+    first, and New Profile without a Space (New Profile… makes one with a Space). Fixed 2026-11-25: extensions,
+    downloads, the command bar's history, the password and autofill switches and the JumpCloud relay follow the
+    Space's (or the tab's) profile. Still on the default profile only: zoom levels adopted at first launch, Settings ›
+    General's download folder, Recently Closed pruning on history deletion; a closed tab reopened after its Space was
+    deleted loses its history; Chrome asking for a new window of a profile not on screen gets the current one.
+    Copy to Another Profile… copies passwords, history, addresses and (as store pages) extensions, not sign-ins
+    (the engine has no cookie export) or cards (each number needs its own re-auth). Arc's profile colours
     and avatars aren't imported (Ray's profiles start grey). Deleting a profile deletes the engine's copy only after
     loading it; a profile whose Spaces were all deleted stays in Settings › Spaces until deleted there.
 80. **App icon leftovers** (2026-11-25). The chosen icon shows in the Dock (running or not) and the app switcher, but Finder, Launchpad, the Applications folder and Spotlight keep the default Neon CRT: a custom Finder icon would write into the signed bundle and break its signature (Ardia, Circa and Crest keep the default there too). The icon is reapplied at every launch, so a Sparkle update keeps it. The `.icon` drafts in `Branding/alternates/` were written as files and never opened in Icon Composer by the owner: check what it draws differently (glow, glass). Themed icons don't switch by season by themselves. Hidden test instances can't see the Dock: `app-icon` checks the plug-in's files, the preference and the notice, so how the Dock draws it is checked by hand.

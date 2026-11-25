@@ -169,7 +169,7 @@ final class SettingsPaneView: NSView {
       let swatches = SwatchRow()
       swatches.compact = true
       swatches.onChoose = { hex in settings.apply(key, hex ?? "default") }
-      swatches.onCustom = { [weak self] in self?.openColorPanel(for: key) }
+      swatches.onCustomHex = { hex in settings.apply(key, hex) }
       controls.append((key, .colour(swatches)))
       made = SettingsRowView(title: ui.title, detail: ui.detail, control: swatches)
     case .custom(let name):

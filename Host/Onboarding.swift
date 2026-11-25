@@ -1997,7 +1997,7 @@ fileprivate final class ThemeStepView: OnboardingStepView {
     titleLabel.stringValue = "Make it yours"
     subtitleLabel.stringValue = "Ray's colour, for loading, selection and highlights. Settings › Appearance has it too."
     swatches.onChoose = { hex in RaySettings.shared.apply(.theme, hex ?? "default") }
-    swatches.onCustom = { [weak flow] in flow?.openColorPanel() }
+    swatches.onCustomHex = { hex in RaySettings.shared.apply(.theme, hex) }
     addSubview(swatches)
     addSubview(preview)
   }

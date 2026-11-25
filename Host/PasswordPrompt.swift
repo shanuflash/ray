@@ -33,13 +33,25 @@ final class PasswordPrompts {
   }
 
   private static var observation: SettingsObservation?
+  /// Spaces' own profiles: the switch applies to them too.
+  private static let profiles = NSHashTable<RayCoreProfile>.weakObjects()
+
+  /// A Space's profile loaded: it takes the switch as the default profile has it.
+  static func followSetting(on profile: RayCoreProfile) {
+    profiles.add(profile)
+    profile.passwordsOffered = RaySettings.shared[.offerToSavePasswords]
+    AutofillPrompts.followSettings(on: profile)
+  }
 
   /// Settings › Passwords › Offer to save passwords is Chrome's own switch for it, so the engine stops asking (and
   /// still fills what's saved). From the first window on; later calls do nothing. The autofill prompts' switches too.
   static func followSetting() {
     guard observation == nil else { return }
     AutofillPrompts.followSettings()
-    let apply = { (on: Bool) in RayCoreEngine.shared?.defaultProfile.passwordsOffered = on }
+    let apply = { (on: Bool) in
+      RayCoreEngine.shared?.defaultProfile.passwordsOffered = on
+      for other in profiles.allObjects { other.passwordsOffered = on }
+    }
     apply(RaySettings.shared[.offerToSavePasswords])
     observation = RaySettings.shared.observe(.offerToSavePasswords) { apply($0) }
   }

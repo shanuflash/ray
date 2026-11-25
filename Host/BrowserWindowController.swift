@@ -13,7 +13,9 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   let coreWindow: RayCoreWindow
   /// The profile of the Space on screen (`// MARK: Spaces`): the default one, another Space's own, or a private
   /// window's off-the-record side.
-  private(set) var profile: RayCoreProfile
+  private(set) var profile: RayCoreProfile {
+    didSet { if profile !== oldValue { extensions.profile = profile } }
+  }
   var onClose: (() -> Void)?
 
   private let root = WindowDragArea()
@@ -1561,12 +1563,32 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       if !peeking { beginPeek() }
     } else if peeking, peekForced {
       peekForced = false
-      schedulePeekEnd()
+      // An empty Space held the sidebar out; now a tab shows, the pointer decides as it does for any peek (it stays
+      // while the pointer is on it).
+      if TestEnvironment.isTestBuild, let point = testPointer { pointer(at: point, appActive: true) } else {
+        pointerMoved(screenPoint: NSEvent.mouseLocation)
+      }
+      if peekEndWork == nil, !pointerHoldsPeek { schedulePeekEnd() }
     }
     peekForced = forcedOpen
   }
 
   private var peekForced = false
+  /// Test builds: where `pointer` last put the pointer (window coordinates), since a hidden instance has none.
+  private var testPointer: NSPoint?
+  /// The pointer is where a peeking sidebar stays out.
+  private var pointerHoldsPeek: Bool {
+    let point: NSPoint
+    if TestEnvironment.isTestBuild {
+      guard let test = testPointer else { return false }
+      point = test
+    } else {
+      let screen = NSEvent.mouseLocation
+      point = NSPoint(x: screen.x - window.frame.minX, y: window.frame.maxY - screen.y)
+    }
+    return point.y >= 0 && point.y < root.bounds.height && point.x >= -Self.outsideReach
+      && point.x < Self.peekInset + sidebarWidth + Self.holdSlack
+  }
 
   private func changed(_ event: String) {
     guard !closing else { return }
@@ -2998,6 +3020,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   func pointer(at point: NSPoint, appActive: Bool) {
+    if TestEnvironment.isTestBuild { testPointer = point }
     let height = root.bounds.height
     guard point.y >= 0, point.y < height else {
       if peeking { schedulePeekEnd() }
@@ -4196,7 +4219,11 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
     engine.loadProfile(directory) { [weak self] loaded in
       DispatchQueue.main.async {
         guard let self else { return }
-        if let loaded { self.spaceProfiles[directory] = loaded }
+        if let loaded {
+          self.spaceProfiles[directory] = loaded
+          self.downloads.watch(loaded)
+          PasswordPrompts.followSetting(on: loaded)
+        }
         let waiting = self.loadingProfiles.removeValue(forKey: directory) ?? []
         waiting.forEach { $0(loaded) }
         self.logState("spaceProfile")
@@ -4650,18 +4677,30 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
   }
 
   /// Settings › Spaces' New Space: made with the next theme, after the others; the window stays where it is.
-  func addSpaceFromSettings() -> Space? {
+  func addSpaceFromSettings(profile directory: String? = nil) -> Space? {
     guard !isPrivate else { return nil }
     let used = Set(state.spaces.compactMap(\.color))
     let pick = SpaceTheme.windows.indices.first { !used.contains(SpaceTheme.windows[$0]) } ?? state.spaces.count % SpaceTheme.windows.count
     let space = Space(name: "New Space")
     space.color = SpaceTheme.windows[pick]
+    space.profile = directory
+    if let directory { withProfile(directory) { _ in } }
     state.spaces.append(space)
     changed("spaceAdded")
     return space
   }
 
   // MARK: Profiles
+
+  /// Settings' New Profile…: a profile with a Space of its own (a profile lives while a Space uses it), named
+  /// "New Profile" until renamed.
+  func addProfileFromSettings() -> String? {
+    guard !isPrivate else { return nil }
+    let directory = Space.newProfileDirectory()
+    state.profiles.append(ProfileInfo(directory: directory, name: "New Profile"))
+    guard addSpaceFromSettings(profile: directory) != nil else { return nil }
+    return directory
+  }
 
   /// A profile's engine object, loaded (nil: Default's, the main profile).
   func loadedProfile(_ directory: String?) -> RayCoreProfile? {
@@ -4761,6 +4800,8 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
       "profileFavorites": state.profileFavorites.mapValues { $0.map(describe) },
       "loadedProfiles": spaceProfiles.keys.sorted(),
       "windowProfile": profile === mainProfile ? NSNull() : profile.name as Any,
+      "extensionsFollow": extensions.profile === profile,
+      "colorPad": ColorPadPopup.debug,
       "switches": spaceSwitches,
       "header": sidebar.spaceHeaderTitle,
       "dockShown": sidebar.spaceDockShown,
@@ -4837,6 +4878,7 @@ final class BrowserWindowController: NSObject, RayCoreWindowDelegate, RayCoreTab
         guard let theme = spaceTheme else { return "no theme" }
         if arg.first == "mode", let n = arg.dropFirst().first.flatMap(Int.init) { theme.choose(mode: n) }
         if arg.first == "strength", let v = arg.dropFirst().first.flatMap(Double.init) { theme.setStrength(v) }
+        if arg.first == "custom" { theme.openPad(accent: arg.dropFirst().first == "accent") }
       case "newprofile":
         if newProfileCard == nil { openNewProfileCard() }
         guard let card = newProfileCard else { return "no card" }

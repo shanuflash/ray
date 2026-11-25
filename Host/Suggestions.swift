@@ -131,11 +131,22 @@ final class HistoryCache {
   /// How much you use a site: its pages' frecency added up, by host without "www." (the bar's site search offer).
   func use(ofHost host: String) -> Double { byHost[host] ?? 0 }
 
+  /// The profile the entries are from: another one's (a Space switch) clears them, so the bar never shows one
+  /// profile's history in another's Space.
+  private weak var source: RayCoreProfile?
+
   func refresh(profile: RayCoreProfile, then done: @escaping () -> Void) {
+    if source !== profile {
+      source = profile
+      entries = []
+      byURL = [:]
+      byHost = [:]
+      loading = false
+    }
     if loading { return }
     loading = true
-    EngineCalls.call("ac_history_query", profile: profile, args: ["maxUrls": 3000, "maxVisits": 10]) { [weak self] reply in
-      guard let self else { return }
+    EngineCalls.call("ac_history_query", profile: profile, args: ["maxUrls": 3000, "maxVisits": 10]) { [weak self, weak profile] reply in
+      guard let self, profile != nil, self.source === profile else { return }
       self.loading = false
       guard let rows = reply?["entries"] as? [[String: Any]] else { return }
       let now = Date().timeIntervalSince1970 * 1000

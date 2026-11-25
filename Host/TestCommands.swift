@@ -696,6 +696,20 @@ enum TestCommands {
         little.resize(to: NSSize(width: numbers[0], height: numbers[1]))
       default: result = "usage: littleray open <url>|openinray|close|closelight|escape|copy|snap <path>|size <w> <h>|reset"
       }
+    case "colorpad":
+      // `colorpad state|hue <0-1>|pick <s> <b>|hex <#RRGGBB>|close` (Ray's colour pad, `ColorPadPopup`).
+      let parts = argument.split(separator: " ").map(String.init)
+      let numbers = parts.dropFirst().compactMap(Double.init).map { CGFloat($0) }
+      guard parts.first == "state" || parts.first == "close" || ColorPadPopup.pad != nil else { result = "no pad"; break }
+      switch parts.first {
+      case "state": break
+      case "close": ColorPadPopup.close()
+      case "hue" where numbers.count == 1: ColorPadPopup.pad?.set(hue: numbers[0])
+      case "pick" where numbers.count == 2: ColorPadPopup.pad?.set(saturation: numbers[0], brightness: numbers[1])
+      default: result = "usage: colorpad state|hue <h>|pick <s> <b>|close"
+      }
+      if result == "ok", let data = try? JSONSerialization.data(withJSONObject: ColorPadPopup.debug),
+         let text = String(data: data, encoding: .utf8) { result = text }
     case "space":
       // `space switch <n>|click <n>|next|previous|new|edit|delete|deletenow|menu <n> [title]|swipe <dx> [steps]
       // [hold]|release|editor …|question cancel|delete|move <entry> <n>|state` (Spaces, `// MARK: Spaces`).

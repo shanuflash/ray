@@ -532,6 +532,10 @@ final class AccentButton: NSControl {
 final class SwatchRow: NSView {
   var onChoose: ((String?) -> Void)?
   var onCustom: (() -> Void)?
+  /// Set: the + opens Ray's colour pad (`ColorPadPopup`) under itself and each colour picked comes here.
+  var onCustomHex: ((String) -> Void)?
+  /// The + swatch (the pad hangs from it).
+  var customButton: NSView { custom }
   private var buttons: [SwatchButton] = []
   private let custom = SwatchButton(hex: nil, isCustom: true, name: "Custom Colour…")
 
@@ -577,7 +581,14 @@ final class SwatchRow: NSView {
       buttons.append(button)
       addSubview(button)
     }
-    custom.onClick = { [weak self] in self?.onCustom?() }
+    custom.onClick = { [weak self] in
+      guard let self else { return }
+      if let onCustomHex = self.onCustomHex {
+        ColorPadPopup.show(from: self.custom, hex: self.selection ?? ProfileColor.hex(of: ProfileColor.accent), onChange: onCustomHex)
+      } else {
+        self.onCustom?()
+      }
+    }
     addSubview(custom)
     updateSelection()
   }
